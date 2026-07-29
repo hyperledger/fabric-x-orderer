@@ -26,7 +26,7 @@ func TestSharedConfigLoading(t *testing.T) {
 
 	// 1.
 	networkConfig := testutil.GenerateNetworkConfig(t, "none", "none")
-	err = armageddon.GenerateCryptoConfig(&networkConfig, dir)
+	_, err = armageddon.GenerateCryptoConfigWithProfile(&networkConfig, dir)
 	require.NoError(t, err)
 
 	// 2.

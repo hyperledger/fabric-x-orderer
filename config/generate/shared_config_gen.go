@@ -90,7 +90,7 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 				ShardID:  partyLocalConfig.BatchersLocalConfig[j].BatcherParams.ShardID,
 				Host:     partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenAddress,
 				Port:     partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.ListenPort,
-				SignCert: filepath.Join(partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"),
+				SignCert: filepath.Join(partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.LocalMSPDir, "signcerts", fmt.Sprintf("batcher%d-cert.pem", j+1)),
 				TLSCert:  partyLocalConfig.BatchersLocalConfig[j].GeneralConfig.TLSConfig.Certificate,
 			}
 			batchersConfig = append(batchersConfig, batcherConfig)
@@ -99,7 +99,7 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 		consenterConfig := config.ConsenterNodeConfig{
 			Host:     partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenAddress,
 			Port:     partyLocalConfig.ConsenterLocalConfig.GeneralConfig.ListenPort,
-			SignCert: filepath.Join(partyLocalConfig.ConsenterLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "sign-cert.pem"),
+			SignCert: filepath.Join(partyLocalConfig.ConsenterLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "consenter-cert.pem"),
 			TLSCert:  partyLocalConfig.ConsenterLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 
@@ -112,8 +112,8 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 		orgDir := filepath.Join(cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID))
 		partyConfig := config.PartyConfig{
 			PartyID:         party.ID,
-			CACerts:         []string{filepath.Join(orgDir, "msp", "cacerts", "ca-cert.pem")},
-			TLSCACerts:      []string{filepath.Join(orgDir, "msp", "tlscacerts", "tlsca-cert.pem")},
+			CACerts:         []string{filepath.Join(orgDir, "msp", "cacerts", fmt.Sprintf("org%d-CA-cert.pem", party.ID))},
+			TLSCACerts:      []string{filepath.Join(orgDir, "msp", "tlscacerts", fmt.Sprintf("tlsorg%d-CA-cert.pem", party.ID))},
 			RouterConfig:    routerConfig,
 			BatchersConfig:  batchersConfig,
 			ConsenterConfig: consenterConfig,

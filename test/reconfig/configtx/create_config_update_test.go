@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	ctx "github.com/hyperledger/fabric-x-common/common/configtx"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
@@ -42,6 +44,7 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 
 	newCACerts := [][]byte{[]byte("newCACert")}
 	newTLSCACerts := [][]byte{[]byte("newTLSCACert")}
+	newKnownCerts := [][]byte{[]byte("newKnownCert")}
 
 	configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
 	configUpdateBuilder.UpdateOrderingEndpoint(t, types.PartyID(1), "newIP", 1212)
@@ -82,12 +85,14 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 			},
 		},
 		AdminCerts: [][]byte{[]byte("newAdminCert")},
-	})
+	}, [][]byte{[]byte("knownCerts")})
 
 	configUpdateBuilder.UpdateBatcherSignCert(t, types.PartyID(1), types.ShardID(1), []byte("newSignCert"))
 	configUpdateBuilder.UpdateConsenterSignCert(t, types.PartyID(1), []byte("newSignCert"))
 	configUpdateBuilder.UpdatePartyTLSCACerts(t, types.PartyID(1), newTLSCACerts)
 	configUpdateBuilder.UpdatePartyCACerts(t, types.PartyID(1), newCACerts)
+	configUpdateBuilder.UpdateOrgKnownCerts(t, "org1", newKnownCerts)
+	configUpdateBuilder.AppendOrgKnownCerts(t, "org1", [][]byte{[]byte("additionalKnownCert")})
 
 	configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
 
@@ -114,8 +119,25 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	// Check certs updated
 	require.Equal(t, newCACerts, partiesConfig[0].CACerts)
 	require.Equal(t, newTLSCACerts, partiesConfig[0].TLSCACerts)
+	msp := configUpdate.WriteSet.Groups["Orderer"].Groups["org1"].Values["MSP"].Value
+	mspKnownCerts := getKnownCertsFromMSPValue(msp)
+	require.Equal(t, append(newKnownCerts, []byte("additionalKnownCert")), mspKnownCerts)
 
 	// Further checks can be added here to verify other updates
 	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetBatchersConfig()[0].GetSignCert())
 	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetConsenterConfig().GetSignCert())
+}
+
+func getKnownCertsFromMSPValue(mspValue []byte) [][]byte {
+	// mspValue is a serialised msp.MSPConfig (outer wrapper)
+	mspConfig := &msp.MSPConfig{}
+	if err := proto.Unmarshal(mspValue, mspConfig); err != nil {
+		panic(err)
+	}
+	// mspConfig.Config holds the serialised msppb.FabricMSPConfig
+	fabricConfig := &msppb.FabricMSPConfig{}
+	if err := proto.Unmarshal(mspConfig.GetConfig(), fabricConfig); err != nil {
+		panic(err)
+	}
+	return fabricConfig.GetKnownCerts()
 }

@@ -63,7 +63,7 @@ func TestConsensusFullReplacement(t *testing.T) {
 	configSeq := types.ConfigSequence(0)
 
 	// Initial router context uses party 1's certificate
-	routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem"))
+	routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/server.crt"))
 	require.NoError(t, err)
 	block, _ := pem.Decode(routerCertBytes)
 	require.NotNil(t, block)
@@ -228,7 +228,7 @@ func TestConsensusFullReplacement(t *testing.T) {
 
 			// Update router context to signerB's certificate for the next iteration
 			certPath := filepath.Join(dir, fmt.Sprintf(
-				"crypto/ordererOrganizations/org%d/orderers/party%d/router/tls/tls-cert.pem",
+				"crypto/ordererOrganizations/org%d/orderers/party%d/router/tls/server.crt",
 				signerB, signerB,
 			))
 			certBytes, readErr := os.ReadFile(certPath)
