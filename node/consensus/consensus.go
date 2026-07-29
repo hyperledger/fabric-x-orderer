@@ -98,7 +98,7 @@ type Consensus struct {
 	Arma         Arma
 	PartyID      arma_types.PartyID
 
-	lock                         sync.Mutex
+	lock                         sync.RWMutex
 	State                        *state.State
 	status                       node_utils.NodeStatus
 	fullConfig                   *config.Configuration
@@ -244,7 +244,26 @@ func (c *Consensus) SoftStop() {
 	c.Metrics.StopMetricsTracker()
 }
 
+// isSoftStopped reports whether the consensus node has been soft-stopped.
+// It reads the softStopCh under a read lock so it does not race with the
+// reassignment of softStopCh done in Start under the write lock.
+func (c *Consensus) isSoftStopped() bool {
+	c.lock.RLock()
+	ch := c.softStopCh
+	c.lock.RUnlock()
+
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+
 func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.ConsensusRequest) error {
+	if c.isSoftStopped() {
+		return errors.New("consensus is soft-stopped")
+	}
 	msg := &smartbftprotos.Message{}
 	if err := proto.Unmarshal(request.Payload, msg); err != nil {
 		c.Logger.Warnf("Malformed message: %v", err)
@@ -255,6 +274,9 @@ func (c *Consensus) OnConsensus(channel string, sender uint64, request *orderer.
 }
 
 func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitRequest) error {
+	if c.isSoftStopped() {
+		return errors.New("consensus is soft-stopped")
+	}
 	rawCE := req.Payload.Payload
 	ri, _, err := c.verifyCE(rawCE)
 	if err != nil {
@@ -267,10 +289,8 @@ func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitR
 
 func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error {
 	for {
-		select {
-		case <-c.softStopCh:
+		if c.isSoftStopped() {
 			return errors.New("consensus is soft-stopped")
-		default:
 		}
 
 		event, err := stream.Recv()
@@ -293,10 +313,8 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 
 // SubmitConfig is used to submit a config request from the router in the consenter's party.
 func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
-	select {
-	case <-c.softStopCh:
+	if c.isSoftStopped() {
 		return nil, errors.New("consensus is soft-stopped")
-	default:
 	}
 
 	if err := c.validateRouterFromContext(ctx); err != nil {
@@ -329,10 +347,8 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
-	select {
-	case <-c.softStopCh:
+	if c.isSoftStopped() {
 		return errors.New("consensus is soft-stopped")
-	default:
 	}
 
 	_, ce, err := c.verifyCE(req)
