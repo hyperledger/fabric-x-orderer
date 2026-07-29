@@ -1,3 +1,4 @@
+[![Verify Build](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/verify-build.yml/badge.svg)](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/verify-build.yml)
 [![Deterministic Failure Test](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/deterministic-failure-test.yml/badge.svg)](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/deterministic-failure-test.yml)
 
 # Hyperledger Fabric-X Orderer
