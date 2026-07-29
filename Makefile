@@ -123,11 +123,15 @@ integration-reconfig: integration-reconfig-membership integration-reconfig-ident
 
 .PHONY: integration-reconfig-membership
 integration-reconfig-membership:
-	go test -race -timeout 20m -skip "^TestPartiesFullReplacement$$" ./test/reconfig/membership/...
+	go test -race -timeout 20m -skip "^TestPartiesFullReplacement$$|^TestReJoinSingleParty$$" ./test/reconfig/membership/...
 
 .PHONY: integration-reconfig-membership-full-parties-replacement
 integration-reconfig-membership-full-parties-replacement:
 	go test -race -timeout 20m -run "^TestPartiesFullReplacement$$" ./test/reconfig/membership/...
+
+.PHONY: integration-reconfig-membership-rejoin-single-party
+integration-reconfig-membership-rejoin-single-party:
+	go test -race -timeout 20m -run "^TestReJoinSingleParty$$" ./test/reconfig/membership/...
 
 .PHONY: integration-reconfig-identity
 integration-reconfig-identity:
