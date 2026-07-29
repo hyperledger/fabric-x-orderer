@@ -37,8 +37,10 @@ func (e *Egress) Nodes() []uint64 {
 // SendConsensus sends the BFT message to the cluster
 func (e *Egress) SendConsensus(targetID uint64, m *protos.Message) {
 	e.lock.RLock()
-	defer e.lock.RUnlock()
-	err := e.RPC.SendConsensus(targetID, bftMsgToClusterMsg(m))
+	rpc := e.RPC
+	e.lock.RUnlock()
+
+	err := rpc.SendConsensus(targetID, bftMsgToClusterMsg(m))
 	if err != nil {
 		e.Logger.Warnf("Failed sending to %d: %v", targetID, err)
 	}
@@ -47,7 +49,9 @@ func (e *Egress) SendConsensus(targetID uint64, m *protos.Message) {
 // SendTransaction sends the transaction to the cluster
 func (e *Egress) SendTransaction(targetID uint64, request []byte) {
 	e.lock.RLock()
-	defer e.lock.RUnlock()
+	rpc := e.RPC
+	e.lock.RUnlock()
+
 	msg := &ab.SubmitRequest{
 		Payload: &cb.Envelope{Payload: request},
 	}
@@ -57,7 +61,7 @@ func (e *Egress) SendTransaction(targetID uint64, request []byte) {
 			e.Logger.Warnf("Failed sending transaction to %d: %v", targetID, err)
 		}
 	}
-	e.RPC.SendSubmit(targetID, msg, report)
+	rpc.SendSubmit(targetID, msg, report)
 }
 
 func bftMsgToClusterMsg(message *protos.Message) *ab.ConsensusRequest {
