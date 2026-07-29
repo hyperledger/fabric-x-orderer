@@ -24,20 +24,18 @@ type Egress struct {
 	RPC      *RPC
 	Logger   *flogging.FabricLogger
 	NodeList []uint64
-	lock     sync.RWMutex
+	lock     sync.Mutex
 }
 
 // Nodes returns nodes from the runtime config
 func (e *Egress) Nodes() []uint64 {
-	e.lock.RLock()
-	defer e.lock.RUnlock()
+	e.lock.Lock()
+	defer e.lock.Unlock()
 	return e.NodeList
 }
 
 // SendConsensus sends the BFT message to the cluster
 func (e *Egress) SendConsensus(targetID uint64, m *protos.Message) {
-	e.lock.RLock()
-	defer e.lock.RUnlock()
 	err := e.RPC.SendConsensus(targetID, bftMsgToClusterMsg(m))
 	if err != nil {
 		e.Logger.Warnf("Failed sending to %d: %v", targetID, err)
@@ -46,8 +44,6 @@ func (e *Egress) SendConsensus(targetID uint64, m *protos.Message) {
 
 // SendTransaction sends the transaction to the cluster
 func (e *Egress) SendTransaction(targetID uint64, request []byte) {
-	e.lock.RLock()
-	defer e.lock.RUnlock()
 	msg := &ab.SubmitRequest{
 		Payload: &cb.Envelope{Payload: request},
 	}

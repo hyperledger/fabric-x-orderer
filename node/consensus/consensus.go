@@ -136,29 +136,25 @@ type Consensus struct {
 
 func (c *Consensus) Start() error {
 	c.lock.Lock()
-	c.status.SetState(node_utils.StateRunning)
-	c.softStopCh = make(chan struct{})
-	if err := c.opsSystem.Start(); err != nil {
-		c.Logger.Panicf("failed to start operations subsystem: %s", err)
-		panic(err)
-	}
-	RegisterHealthCheckers(c)
-
-	c.Metrics.StartMetricsTracker()
-	c.Logger.Infof("Prometheus serving on URL: %s", operations.PrometheusMetricsServiceURL(c.opsSystem, c.Logger))
-	c.Logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(c.opsSystem, c.Logger))
-	c.Logger.Infof("Logging spec service serving on URL: %s", operations.LogSpecServiceURL(c.opsSystem, c.Logger))
-	c.Logger.Infof("Version info serving on URL: %s", operations.VersionInfoServiceURL(c.opsSystem, c.Logger))
-
+	c.startServices()
 	bft := c.BFT
 	c.lock.Unlock()
 
 	return bft.Start() // start the bft without holding the lock to avoid deadlock
 }
 
+// StartWithoutBFT starts the node's services (operations subsystem, health checkers and
+// metrics) without starting the BFT. It is used on the dynamic reconfiguration path, where
+// configureConsensus reuses the existing (still-running) BFT instance.
 func (c *Consensus) StartWithoutBFT() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+	c.startServices()
+}
+
+// startServices starts the operations subsystem, health checkers and metrics tracker, and
+// resets softStopCh. It must be called with c.lock held.
+func (c *Consensus) startServices() {
 	c.status.SetState(node_utils.StateRunning)
 	c.softStopCh = make(chan struct{})
 	if err := c.opsSystem.Start(); err != nil {
@@ -279,6 +275,10 @@ func (c *Consensus) SoftStop() {
 	c.Synchronizer.Stop()
 	c.BADB.Close()
 	c.Metrics.StopMetricsTracker()
+	// Note: the BFT is intentionally left running here. processNewConfigBlock is the sole
+	// caller of SoftStop and manages the BFT lifecycle itself: the dynamic-reconfig path
+	// reuses the running instance, and the pending-admin path stops it explicitly (after
+	// closing done). Stopping the BFT here would break both.
 }
 
 // isSoftStopped reports whether the consensus node has been soft-stopped.
@@ -1038,8 +1038,8 @@ func (c *Consensus) processNewConfigBlock(configBlock *common.Block, done chan s
 		c.lock.Lock()
 		c.status.SetState(node_utils.StatePendingAdmin)
 		close(done)
-		c.BFT.Stop() // was not stopped during SoftStop
 		c.lock.Unlock()
+		c.BFT.Stop() // was not stopped during SoftStop, release the lock first — see Stop()
 		return
 	}
 

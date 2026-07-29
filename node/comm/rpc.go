@@ -72,7 +72,9 @@ func (ot OperationType) String() string {
 	return "consensus"
 }
 
-// Reconfigure configures the communicator of the RPC and resets the streams.
+// Reconfigure configures the communicator of the RPC and replaces the stream map.
+// The previous streams are abandoned here; they are aborted out-of-band by
+// Comm.Configure, which deactivates stubs and aborts their RemoteContext.
 func (s *RPC) Reconfigure(members []RemoteNode) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
