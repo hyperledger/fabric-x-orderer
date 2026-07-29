@@ -240,6 +240,22 @@ func TestConsensusFullReplacement(t *testing.T) {
 			routerCtx, err = createContextForSubmitConfig(cert)
 			require.NoError(t, err)
 		})
+
+		// After party 7 has joined and been verified alive+synced, stop it.
+		// It stays down through the remaining iterations and rejoins at the end.
+		if newParty == types.PartyID(7) {
+			var filtered []*consensus_node.Consensus
+			for _, cn := range consensusNodes {
+				if cn.GetPartyID() == types.PartyID(7) {
+					t.Logf(">>> Stopping party 7 (will rejoin from latest config block at the end)")
+					cn.Stop()
+					continue
+				}
+				filtered = append(filtered, cn)
+			}
+			consensusNodes = filtered
+			require.Equal(t, 3, len(consensusNodes), "expected 3 live nodes after stopping party 7")
+		}
 	}
 
 	// Final verification: active set should be {7,8,9,10}
