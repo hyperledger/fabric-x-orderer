@@ -110,21 +110,29 @@ func CertificateToString(cert *x509.Certificate) string {
 }
 
 func GetPortFromEndpoint(endpoint string) uint32 {
-	_, portS, err := net.SplitHostPort(endpoint)
-	if err != nil || len(portS) == 0 {
-		panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
-	}
-	port, err := strconv.ParseUint(portS, 10, 32)
-	if err != nil {
-		panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
-	}
-	return uint32(port)
+	_, port := ParseEndpoint(endpoint)
+	return port
 }
 
 func TrimPortFromEndpoint(endpoint string) string {
-	host, _, err := net.SplitHostPort(endpoint)
-	if err != nil || len(host) == 0 {
+	host, _ := ParseEndpoint(endpoint)
+	return host
+}
+
+func ParseEndpoint(endpoint string) (string, uint32) {
+	host, portS, err := net.SplitHostPort(endpoint)
+	if err != nil {
 		panic(fmt.Sprintf("endpoint %s is not a valid host:port string: %v", endpoint, err))
 	}
-	return host
+	if host == "" {
+		panic(fmt.Sprintf("endpoint %s is not a valid host:port string: host is empty", endpoint))
+	}
+	port, err := strconv.ParseUint(portS, 10, 16) // bit-size 16 rejects ports > 65535
+	if err != nil {
+		panic(fmt.Sprintf("endpoint %s is not a valid host:port string: invalid port %s: %v", endpoint, portS, err))
+	}
+	if port == 0 {
+		panic(fmt.Sprintf("endpoint %s is not a valid host:port string: port must be greater than 0", endpoint))
+	}
+	return host, uint32(port)
 }
