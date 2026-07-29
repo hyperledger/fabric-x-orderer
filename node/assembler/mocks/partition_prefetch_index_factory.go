@@ -11,7 +11,7 @@ import (
 )
 
 type FakePartitionPrefetchIndexerFactory struct {
-	CreateStub        func(assembler.ShardPrimary, *flogging.FabricLogger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration) assembler.PartitionPrefetchIndexer
+	CreateStub        func(assembler.ShardPrimary, *flogging.FabricLogger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration, *assembler.Metrics) assembler.PartitionPrefetchIndexer
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 assembler.ShardPrimary
@@ -22,6 +22,7 @@ type FakePartitionPrefetchIndexerFactory struct {
 		arg6 assembler.BatchCacheFactory
 		arg7 chan types.BatchID
 		arg8 time.Duration
+		arg9 *assembler.Metrics
 	}
 	createReturns struct {
 		result1 assembler.PartitionPrefetchIndexer
@@ -33,7 +34,7 @@ type FakePartitionPrefetchIndexerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakePartitionPrefetchIndexerFactory) Create(arg1 assembler.ShardPrimary, arg2 *flogging.FabricLogger, arg3 time.Duration, arg4 int, arg5 assembler.TimerFactory, arg6 assembler.BatchCacheFactory, arg7 chan types.BatchID, arg8 time.Duration) assembler.PartitionPrefetchIndexer {
+func (fake *FakePartitionPrefetchIndexerFactory) Create(arg1 assembler.ShardPrimary, arg2 *flogging.FabricLogger, arg3 time.Duration, arg4 int, arg5 assembler.TimerFactory, arg6 assembler.BatchCacheFactory, arg7 chan types.BatchID, arg8 time.Duration, arg9 *assembler.Metrics) assembler.PartitionPrefetchIndexer {
 	fake.createMutex.Lock()
 	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
 	fake.createArgsForCall = append(fake.createArgsForCall, struct {
@@ -45,13 +46,14 @@ func (fake *FakePartitionPrefetchIndexerFactory) Create(arg1 assembler.ShardPrim
 		arg6 assembler.BatchCacheFactory
 		arg7 chan types.BatchID
 		arg8 time.Duration
-	}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8})
+		arg9 *assembler.Metrics
+	}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9})
 	stub := fake.CreateStub
 	fakeReturns := fake.createReturns
-	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8})
+	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9})
 	fake.createMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
+		return stub(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9)
 	}
 	if specificReturn {
 		return ret.result1
@@ -65,17 +67,17 @@ func (fake *FakePartitionPrefetchIndexerFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakePartitionPrefetchIndexerFactory) CreateCalls(stub func(assembler.ShardPrimary, *flogging.FabricLogger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration) assembler.PartitionPrefetchIndexer) {
+func (fake *FakePartitionPrefetchIndexerFactory) CreateCalls(stub func(assembler.ShardPrimary, *flogging.FabricLogger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration, *assembler.Metrics) assembler.PartitionPrefetchIndexer) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakePartitionPrefetchIndexerFactory) CreateArgsForCall(i int) (assembler.ShardPrimary, *flogging.FabricLogger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration) {
+func (fake *FakePartitionPrefetchIndexerFactory) CreateArgsForCall(i int) (assembler.ShardPrimary, *flogging.FabricLogger, time.Duration, int, assembler.TimerFactory, assembler.BatchCacheFactory, chan types.BatchID, time.Duration, *assembler.Metrics) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7, argsForCall.arg8
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5, argsForCall.arg6, argsForCall.arg7, argsForCall.arg8, argsForCall.arg9
 }
 
 func (fake *FakePartitionPrefetchIndexerFactory) CreateReturns(result1 assembler.PartitionPrefetchIndexer) {

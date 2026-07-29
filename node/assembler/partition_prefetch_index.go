@@ -69,12 +69,13 @@ type PartitionPrefetchIndexerFactory interface {
 		timerFactory TimerFactory,
 		batchCacheFactory BatchCacheFactory,
 		batchRequestChan chan types.BatchID,
-		popWaitMonitorTimeout time.Duration) PartitionPrefetchIndexer
+		popWaitMonitorTimeout time.Duration,
+		metrics *Metrics) PartitionPrefetchIndexer
 }
 
 type DefaultPartitionPrefetchIndexerFactory struct{}
 
-func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, logger *flogging.FabricLogger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) PartitionPrefetchIndexer {
+func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, logger *flogging.FabricLogger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration, metrics *Metrics) PartitionPrefetchIndexer {
 	return NewPartitionPrefetchIndex(
 		partition,
 		logger,
@@ -84,6 +85,7 @@ func (f *DefaultPartitionPrefetchIndexerFactory) Create(partition ShardPrimary, 
 		batchCacheFactory,
 		batchRequestChan,
 		popWaitMonitorTimeout,
+		metrics,
 	)
 }
 
@@ -176,9 +178,10 @@ type PartitionPrefetchIndex struct {
 
 	cancellationContext context.Context
 	cancelContextFunc   context.CancelFunc
+	metrics             *Metrics
 }
 
-func NewPartitionPrefetchIndex(partition ShardPrimary, logger *flogging.FabricLogger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration) *PartitionPrefetchIndex {
+func NewPartitionPrefetchIndex(partition ShardPrimary, logger *flogging.FabricLogger, defaultTtl time.Duration, maxSizeBytes int, timerFactory TimerFactory, batchCacheFactory BatchCacheFactory, batchRequestChan chan types.BatchID, popWaitMonitorTimeout time.Duration, metrics *Metrics) *PartitionPrefetchIndex {
 	ctx, cancel := context.WithCancel(context.Background())
 	pi := &PartitionPrefetchIndex{
 		logger:                logger,
@@ -194,6 +197,7 @@ func NewPartitionPrefetchIndex(partition ShardPrimary, logger *flogging.FabricLo
 		cancellationContext:   ctx,
 		cancelContextFunc:     cancel,
 		popWaitMonitorTimeout: popWaitMonitorTimeout,
+		metrics:               metrics,
 	}
 	return pi
 }
@@ -284,12 +288,17 @@ func (pi *PartitionPrefetchIndex) saveOrdinaryBatch(batch types.Batch) error {
 	pi.lastPutSeq = batch.Seq()
 	timer = pi.timerFactory.Create(pi.defaultTtl, func() {
 		pi.logger.Infof("TTL handler executed for batch %s", BatchToString(batch))
+
 		pi.stateCond.L.Lock()
+		defer pi.stateCond.L.Unlock()
+
 		_, err := pi.removeUnsafe(batch)
-		pi.stateCond.L.Unlock()
 		if err != nil {
-			pi.logger.Errorf("there was unexpected error which removing a batch with expired TTL: %v", err)
+			pi.logger.Errorf("unexpected error while removing a batch with expired TTL: %v", err)
+			return
 		}
+
+		pi.metrics.updatePrefetchIndexSize(pi.partition.Shard, -batchSizeBytes(batch))
 	})
 	pi.sequenceHeap.Push(&BatchHeapItem[StoppableTimer]{Batch: batch, Value: timer})
 	pi.stateCond.Broadcast()
@@ -328,7 +337,11 @@ func (pi *PartitionPrefetchIndex) Put(batch types.Batch) error {
 		}
 	}
 
-	return pi.saveOrdinaryBatch(batch)
+	if err := pi.saveOrdinaryBatch(batch); err != nil {
+		return err
+	}
+	pi.metrics.updatePrefetchIndexSize(pi.partition.Shard, batchSize)
+	return nil
 }
 
 func (bs *PartitionPrefetchIndex) PutForce(batch types.Batch) error {
@@ -345,6 +358,7 @@ func (bs *PartitionPrefetchIndex) PutForce(batch types.Batch) error {
 	if err != nil {
 		return err
 	}
+	bs.metrics.updatePrefetchIndexSize(bs.partition.Shard, batchSize)
 	// Wake up the PopOrWait goroutine
 	bs.stateCond.Broadcast()
 
@@ -354,10 +368,11 @@ func (bs *PartitionPrefetchIndex) PutForce(batch types.Batch) error {
 func (pi *PartitionPrefetchIndex) evictOldestBatch() error {
 	batchAndTimer := pi.sequenceHeap.Pop()
 	batchAndTimer.Value.Stop()
-	_, err := pi.cache.Pop(batchAndTimer.Batch)
+	batch, err := pi.cache.Pop(batchAndTimer.Batch)
 	if err != nil {
 		return err
 	}
+	pi.metrics.updatePrefetchIndexSize(pi.partition.Shard, -batchSizeBytes(batch))
 	pi.stateCond.Broadcast()
 	return nil
 }

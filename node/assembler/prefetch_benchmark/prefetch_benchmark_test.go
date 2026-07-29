@@ -122,6 +122,15 @@ func createPrefetcherBenchmarkSetup(
 		return time.AfterFunc(duration, action)
 	})
 
+	metricsCfg := &config.AssemblerNodeConfig{
+		PartyId: 1,
+		Metrics: &operations.Metrics{
+			Provider:           "disabled",
+			MetricsLogInterval: time.Second,
+		},
+	}
+	metrics := assembler.NewMetrics(metricsCfg, &node_ledger.AssemblerLedgerMetrics{}, logger)
+
 	prefetchIndex := assembler.NewPrefetchIndex(
 		params.shards,
 		params.parties,
@@ -133,17 +142,9 @@ func createPrefetcherBenchmarkSetup(
 		&assembler.DefaultBatchCacheFactory{},
 		&assembler.DefaultPartitionPrefetchIndexerFactory{},
 		time.Second,
+		metrics,
 	)
 	test.prefetchIndex = prefetchIndex
-
-	metricsCfg := &config.AssemblerNodeConfig{
-		PartyId: 1,
-		Metrics: &operations.Metrics{
-			Provider:           "disabled",
-			MetricsLogInterval: time.Second,
-		},
-	}
-	metrics := assembler.NewMetrics(metricsCfg, &node_ledger.AssemblerLedgerMetrics{}, logger)
 
 	test.prefetcher = assembler.NewPrefetcher(
 		params.shards,
