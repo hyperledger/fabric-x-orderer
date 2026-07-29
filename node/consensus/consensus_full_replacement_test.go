@@ -28,10 +28,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestConsensusFullReplacement tests the consensus behavior when parties are replaced.
+// TestConsensusFullReplacement tests the consensus behavior when parties are replaced,
+// including stopping a party mid-replacement and rejoining it once its original cohort is gone.
 // Starting with parties 1,2,3,4, the test loops 6 times.
-// Each iteration i (1..6) adds party i+4 and then removes party i.
-// Final state: parties 7,8,9,10
+// Each iteration i (1..6) adds party i+4 and then removes party i, so the active set walks
+// {1,2,3,4} -> {2,3,4,5} -> {3,4,5,6} -> {4,5,6,7} -> {5,6,7,8} -> {6,7,8,9} -> {7,8,9,10}.
+// Party 7 joins at iteration 3 (cohort {4,5,6,7}); it is stopped right after it joins and
+// stays down through the remaining iterations, during which 4,5,6 are all removed and replaced
+// by 8,9,10. After the loop, party 7 rejoins by bootstrapping from the latest config block
+// ({7,8,9,10}) while reusing its existing ledger, then must sync and commit a simple request.
+// Final state: parties 7,8,9,10.
 func TestConsensusFullReplacement(t *testing.T) {
 	// Start with parties 1,2,3,4 only
 	initialParties := []types.PartyID{1, 2, 3, 4}
