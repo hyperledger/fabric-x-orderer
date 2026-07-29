@@ -1,3 +1,5 @@
+[![Deterministic Failure Test](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/deterministic-failure-test.yml/badge.svg)](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/deterministic-failure-test.yml)
+
 # Hyperledger Fabric-X Orderer
 
 This repository contains the ordering service of fabric-x.
