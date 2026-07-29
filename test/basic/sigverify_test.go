@@ -200,5 +200,6 @@ func TestSubmitTXWithVerification(t *testing.T) {
 		Blocks:     2, // genesis + block with one tx
 		ErrString:  "cancelled pull from assembler: %d",
 		Signer:     pullRequestSigner,
+		Timeout:    90,
 	})
 }
