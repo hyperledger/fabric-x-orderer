@@ -305,6 +305,19 @@ func TestConsensusFullReplacement(t *testing.T) {
 
 	t.Logf(">>> Complete replacement! Started with parties 1,2,3,4 and ended with parties %v", actualPartyIDs)
 
+	// Final check: with party 7 rejoined, commit a simple request signed by two
+	// current parties (8 and 9). sendSimpleRequest polls every node in
+	// consensusNodes — including the rejoined party 7 — so this asserts both that
+	// party 7 synced and that the cluster commits with party 7 participating.
+	pk8, err := loadBatcherPrivateKey(t, dir, types.PartyID(8))
+	require.NoError(t, err)
+	pk9, err := loadBatcherPrivateKey(t, dir, types.PartyID(9))
+	require.NoError(t, err)
+	lastBlockNumber++
+	t.Logf(">>> Sending post-rejoin request at block %d", lastBlockNumber)
+	sendSimpleRequest(t, consensusNodes, pk8, pk9, types.PartyID(8), types.PartyID(9), configSeq, lastBlockNumber, "")
+	t.Logf(">>> Post-rejoin request committed at block %d on all %d nodes", lastBlockNumber, len(consensusNodes))
+
 	// Cleanup
 	for _, cn := range consensusNodes {
 		cn.Stop()
