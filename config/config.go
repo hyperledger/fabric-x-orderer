@@ -936,26 +936,35 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
 }
 
 // NewUpdatedConfigurationFromBlock builds a new configuration based on current configuration and block
-func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Block) (*Configuration, error) {
+func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Block) (*Configuration, uint32, error) {
 	if config == nil {
-		return nil, errors.New("failed applying new config, current configuration is nil")
+		return nil, 0, errors.New("failed applying new config, current configuration is nil")
 	}
 
 	bccsp, err := config.GetBCCSP()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to initialize BCCSP from config")
+		return nil, 0, errors.Wrap(err, "failed to initialize BCCSP from config")
 	}
 
 	sharedConfig, err := sharedConfigFromBlock(block, bccsp)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed applying new config, failed to read shared configuration from block number %d", block.GetHeader().GetNumber())
+		return nil, 0, errors.Wrapf(err, "failed applying new config, failed to read shared configuration from block number %d", block.GetHeader().GetNumber())
 	}
 	newConfig := &Configuration{
 		LocalConfig:  config.LocalConfig,
 		SharedConfig: sharedConfig,
 	}
 
-	return newConfig, nil
+	env, err := protoutil.ExtractEnvelope(block, 0)
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "failed to extract envelope from new config block")
+	}
+	bundle, err := channelconfig.NewBundleFromEnvelope(env, bccsp)
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "failed to extract bundle from new config block")
+	}
+
+	return newConfig, uint32(bundle.ConfigtxValidator().Sequence()), nil
 }
 
 func (config *Configuration) GetBCCSP() (bccsp.BCCSP, error) {

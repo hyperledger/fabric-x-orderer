@@ -310,16 +310,6 @@ func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
 	b.SoftStop()
 	b.logger.Infof("Apply config")
 
-	// send ack to the consensus node
-	configSeq, err := utils.GetConfigSequenceFromBlock(configBlock, b.config.BCCSP)
-	if err != nil {
-		b.logger.Warnf("failed to get config sequence from block: %s", err)
-		return
-	}
-	if err := b.configAcker.SubmitConfigAck(configSeq); err != nil {
-		b.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
-	}
-
 	isAdminOperationRequired, err := b.ApplyConfig(configBlock)
 	if err != nil {
 		b.logger.Panicf("Failed applying new config: %s", err)
@@ -369,11 +359,16 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, errors.New("current configuration is nil")
 	}
 
-	newConfig, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
+	newConfig, configSeq, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to build new configuration")
 	}
 	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+
+	// send ack to the consensus node
+	if err := b.configAcker.SubmitConfigAck(configSeq); err != nil {
+		b.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
+	}
 
 	// check if batching params changed
 	// TODO: remove this check when memory pool supports dynamic reconfig

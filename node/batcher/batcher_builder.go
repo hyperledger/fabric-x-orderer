@@ -15,12 +15,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/configack"
-	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
-
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -29,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 

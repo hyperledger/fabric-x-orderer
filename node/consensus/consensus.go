@@ -16,8 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/configack"
-
 	smartbft_consensus "github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger-labs/SmartBFT/smartbftprotos"
@@ -25,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
@@ -47,7 +46,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const ConfigAckReceiverTimeout = time.Second * 60
+const ConfigAckReceiverTimeout = time.Second * 60 // TODO: expose in local config
 
 type Storage interface {
 	Append(block *common.Block)
@@ -965,22 +964,6 @@ func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 	c.Logger.Infof("Soft stop")
 	c.SoftStop()
 
-	// wait for acks
-	configSeq, err := utils.GetConfigSequenceFromBlock(configBlock, c.Config.BCCSP)
-	if err != nil {
-		c.Logger.Warnf("failed to get config sequence from block: %s", err)
-		return
-	}
-	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %d", configSeq)
-	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ConfigAckReceiverTimeout)
-	defer cancelFunc()
-	allAcksReceived := c.ConfigAckReceiver.WaitForAllAcks(timeoutCtx, uint64(configSeq))
-	if !allAcksReceived {
-		c.Logger.Warnf("consenter did not receive acknowledgments from all nodes on sequence %d", configSeq)
-	} else {
-		c.Logger.Infof("all acknowledgement have been received, it is safe to apply the new configuration")
-	}
-
 	// apply config
 	isAdminOperationRequired, err := c.ApplyConfig(configBlock)
 	if err != nil {
@@ -1006,9 +989,20 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, errors.New("current configuration is nil")
 	}
 
-	newConfig, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
+	newConfig, configSeq, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to build new configuration")
+	}
+
+	// wait for acks
+	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %d", configSeq)
+	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ConfigAckReceiverTimeout)
+	defer cancelFunc()
+	allAcksReceived := c.ConfigAckReceiver.WaitForAllAcks(timeoutCtx, uint64(configSeq))
+	if !allAcksReceived {
+		c.Logger.Warnf("consenter did not receive acknowledgments from all nodes on sequence %d", configSeq)
+	} else {
+		c.Logger.Infof("all acknowledgement have been received, it is safe to apply the new configuration")
 	}
 
 	// check if party is removed

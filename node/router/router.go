@@ -687,16 +687,6 @@ func (r *Router) processNewConfigBlock(configBlock *common.Block) {
 		return
 	}
 
-	// send ack to the consensus node
-	configSeq, err := utils.GetConfigSequenceFromBlock(configBlock, r.routerNodeConfig.BCCSP)
-	if err != nil {
-		r.logger.Warnf("failed to get config sequence from block: %s", err)
-		return
-	}
-	if err := r.configAcker.SubmitConfigAck(configSeq); err != nil {
-		r.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
-	}
-
 	// apply config
 	adminRequired, err := r.ApplyConfig(configBlock)
 	if err != nil {
@@ -713,9 +703,14 @@ func (r *Router) processNewConfigBlock(configBlock *common.Block) {
 // ApplyConfig applies the new configuration extracted from the config block, and returns whether admin's action is required and error if exists.
 func (r *Router) ApplyConfig(configBlock *common.Block) (bool, error) {
 	// extract new router node config from the last config block and configuration.
-	newConfiguration, err := r.configuration.NewUpdatedConfigurationFromBlock(configBlock)
+	newConfiguration, configSeq, err := r.configuration.NewUpdatedConfigurationFromBlock(configBlock)
 	if err != nil {
 		return false, fmt.Errorf("failed to extract new configuration from last config block: %v", err)
+	}
+
+	// send ack to the consensus node
+	if err := r.configAcker.SubmitConfigAck(configSeq); err != nil {
+		r.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
 	}
 
 	// first, check if party is evicted in the new configuration. If yes, an admin action is required.

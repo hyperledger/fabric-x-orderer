@@ -11,16 +11,13 @@ import (
 	"fmt"
 	"sync"
 
-	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
-
-	"github.com/hyperledger/fabric-x-orderer/common/configack"
-
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	commonsync "github.com/hyperledger/fabric-x-orderer/common/synchronizer"
 	common_utils "github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -30,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/utils"
 )
 
@@ -401,19 +399,14 @@ func (a *Assembler) ProcessNewConfigBlock(configBlock *common.Block) {
 		a.logger.Panicf("Current configuration is nil, cannot process new config block")
 	}
 
-	// send ack to the consensus node
-	configSeq, err := common_utils.GetConfigSequenceFromBlock(configBlock, a.assemblerNodeConfig.BCCSP)
-	if err != nil {
-		a.logger.Warnf("failed to get config sequence from block: %s", err)
-		return
-	}
-	if err := a.configAcker.SubmitConfigAck(configSeq); err != nil {
-		a.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
-	}
-
-	newConfiguration, err := a.configuration.NewUpdatedConfigurationFromBlock(configBlock)
+	newConfiguration, configSeq, err := a.configuration.NewUpdatedConfigurationFromBlock(configBlock)
 	if err != nil {
 		a.logger.Panicf("Failed to apply last config: %v", err)
+	}
+
+	// send ack to the consensus node
+	if err := a.configAcker.SubmitConfigAck(configSeq); err != nil {
+		a.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
 	}
 
 	// check if config can be applied
