@@ -2,55 +2,31 @@
 
 ## Overview
 
-This directory contains the scripts used to run the ARMA deterministic failure test.
+This directory contains the script used to run the ARMA deterministic failure test.
 
 The test starts a local ARMA network (4 parties, 2 shards by default), sends transactions through the loader, pulls blocks from each party's assembler via receivers, optionally runs a failure runner that stops and restarts ARMA components one party at a time, monitors progress, and then collects logs, statistics, and a summary.
 
-The same scripts are used by the GitHub Actions workflow and can also be executed locally from the command line on a Linux machine.
+The same script is used by the GitHub Actions workflow and can also be executed locally from the command line on a Linux machine.
 
 ## Scripts
 
 ```text
 test/deterministic-failure-test/
 ├── deterministic-failure-test.sh
-├── start-arma-network.sh
-├── failure-runner.sh
-├── monitor-completion.sh
-├── collect-results.sh
 └── README.md
 ```
 
 ### `deterministic-failure-test.sh`
 
-Main orchestration script.
+Single entry-point script that contains all logic previously split across five separate files.
 
-It reads configuration from environment variables, removes stale log files from previous runs, generates the network config YAML, runs `armageddon generate` to produce all crypto and config files, patches the generated FileStore `Location` and consenter `WALDir` paths to writable temp directories, starts the ARMA network, starts receivers and the loader, optionally starts the failure runner, runs the monitor, and collects results.
+It defines the following internal functions, then calls `main`:
 
-### `start-arma-network.sh`
-
-Starts all ARMA network components in the correct order: consenters first, then batchers, assemblers, and routers. Stores each process PID under the test directory.
-
-### `failure-runner.sh`
-
-Stops and restarts ARMA components one party at a time in a continuous loop until the stop signal is received.
-
-For each party it kills and restarts: assembler, consenter, router, then all batchers in shard order. After each full party cycle it writes a signal file so `monitor-completion.sh` knows to print a status snapshot.
-
-### `monitor-completion.sh`
-
-Monitors test execution.
-
-- In failure runner mode: prints a status snapshot after each party's full failure cycle completes.
-- Without failure runner: prints a status snapshot every 5 minutes.
-- Always: stops when the configured duration is reached or when the loader and all receivers finish early.
-
-After duration expires, stops the loader immediately then gives receivers a 30-second drain window to pull remaining blocks from the assemblers before killing them.
-
-### `collect-results.sh`
-
-Collects test results.
-
-Cleans the `test-results/` directory from any previous run, then extracts loader and receiver statistics, copies all component and loader/receiver logs into `test-results/logs/` and compresses them with gzip, collects receiver statistics CSV files, and creates a summary report.
+- **`start_arma_network`** — Starts all ARMA network components in the correct order: consenters first, then batchers, assemblers, and routers. Stores each process PID under the test directory.
+- **`run_failure_runner`** — Stops and restarts ARMA components one party at a time in a continuous loop until the stop signal is received. For each party it kills and restarts: assembler, consenter, router, then all batchers in shard order. After each full party cycle it writes a signal file so `monitor_completion` knows to print a status snapshot.
+- **`monitor_completion`** — Monitors test execution. In failure runner mode: prints a status snapshot after each party's full failure cycle completes. Without failure runner: prints a status snapshot every 5 minutes. Always stops when the configured duration is reached or when the loader and all receivers finish early. After duration expires, stops the loader immediately then gives receivers a 30-second drain window to pull remaining blocks from the assemblers before killing them.
+- **`collect_results`** — Cleans the `test-results/` directory from any previous run, then extracts loader and receiver statistics, copies all component and loader/receiver logs into `test-results/logs/` and compresses them with gzip, collects receiver statistics CSV files, and creates a summary report.
+- **`main`** — Reads configuration from environment variables, removes stale log files from previous runs, generates the network config YAML, runs `armageddon generate` to produce all crypto and config files, patches the generated FileStore `Location` and consenter `WALDir` paths to writable temp directories, then calls the functions above in order.
 
 ## Prerequisites
 
@@ -76,7 +52,7 @@ Execute the test from the repository root.
 ### Without failure runner (basic smoke test)
 
 ```bash
-chmod +x test/deterministic-failure-test/*.sh
+chmod +x test/deterministic-failure-test/deterministic-failure-test.sh
 
 DURATION_MINUTES=5 \
 TX_RATE=100 \
@@ -89,19 +65,30 @@ test/deterministic-failure-test/deterministic-failure-test.sh
 
 ### With failure runner enabled
 
-```bash
-chmod +x test/deterministic-failure-test/*.sh
+Use the `make` target — it builds the binaries automatically and runs with sensible defaults:
 
-DURATION_MINUTES=5 \
-TX_RATE=1000 \
-TX_SIZE=300 \
-NUM_PARTIES=4 \
-NUM_SHARDS=2 \
-FAILURE_RUNNER_ENABLED=true \
-FAILURE_RUNNER_INITIAL_WAIT=120 \
-FAILURE_RUNNER_STOP_DURATION=30 \
-FAILURE_RUNNER_RESTART_WAIT=30 \
-test/deterministic-failure-test/deterministic-failure-test.sh
+```bash
+make deterministic-failure-test
+```
+
+Default values used by the target:
+
+| Variable                       | Value  |
+| ------------------------------ | ------ |
+| `DURATION_MINUTES`             | `5`    |
+| `TX_RATE`                      | `1000` |
+| `TX_SIZE`                      | `300`  |
+| `NUM_PARTIES`                  | `4`    |
+| `NUM_SHARDS`                   | `2`    |
+| `FAILURE_RUNNER_ENABLED`       | `true` |
+| `FAILURE_RUNNER_INITIAL_WAIT`  | `90`   |
+| `FAILURE_RUNNER_STOP_DURATION` | `30`   |
+| `FAILURE_RUNNER_RESTART_WAIT`  | `30`   |
+
+Any variable can be overridden on the command line:
+
+```bash
+make deterministic-failure-test DURATION_MINUTES=10 TX_RATE=500
 ```
 
 The values can be adjusted as needed for the desired test configuration.
@@ -135,13 +122,13 @@ When `deterministic-failure-test.sh` runs, it performs the following steps:
 5. Runs `./bin/armageddon generate --sampleConfigPath=testutil/fabric/sampleconfig`.
 6. Patches all generated `Location` (FileStore) and `WALDir` (consenter) paths to writable per-component subdirectories under the temp dir.
 7. Removes stale log files from any previous run.
-8. Starts the ARMA network using `start-arma-network.sh`.
+8. Starts the ARMA network via the `start_arma_network` function.
 9. Starts one receiver per party (background).
 10. Starts the loader (background).
-11. Starts `deterministic-failure-runner.sh` if `FAILURE_RUNNER_ENABLED=true` (background).
-12. Runs `monitor-completion.sh` (blocks until duration expires or all components finish).
+11. Starts `run_failure_runner` if `FAILURE_RUNNER_ENABLED=true` (background).
+12. Calls `monitor_completion` (blocks until duration expires or all components finish).
 13. Waits briefly for the failure runner to stop gracefully.
-14. Runs `collect-results.sh`.
+14. Calls `collect_results`.
 15. Kills any remaining `arma` and `armageddon` processes.
 
 ## Receiver Behaviour
@@ -187,7 +174,7 @@ Result artifacts are written to (cleaned at the start of each run):
 test-results/
 ├── logs/            # component and loader/receiver logs
 ├── statistics/      # per-party statistics CSV files
-└── summary/         # summary.txt with pass/fail and tx counts
+└── summary.txt      # pass/fail verdict and tx counts
 ```
 
 ## GitHub Actions Workflow
