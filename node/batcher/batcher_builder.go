@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -26,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
@@ -120,6 +122,27 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 	b.primaryReqConnector = CreatePrimaryReqConnector(b.primaryID, b.logger, b.config, GetBatchersEndpointsAndCerts(b.batchers), context.Background(), 10*time.Second, 100*time.Millisecond, 1*time.Second)
 
 	b.sigVerifier = buildVerifier(batchers, b.config.ShardId, b.logger)
+
+	var tlsCAsOfConsenter [][]byte
+	var consenterEndpoint string
+	for _, consenter := range b.config.Consenters {
+		if consenter.PartyID == b.config.PartyId {
+			for _, rawTLSCert := range consenter.TLSCACerts {
+				tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCert)
+			}
+			consenterEndpoint = consenter.Endpoint
+		}
+	}
+	connInfo := &configack.ConnectionInfo{
+		TLSCert:           b.config.TLSCertificateFile,
+		TLSKey:            b.config.TLSPrivateKeyFile,
+		ConsensusEndpoint: consenterEndpoint,
+		ConsensusRootCAs:  tlsCAsOfConsenter,
+		PartyID:           b.config.PartyId,
+		NodeType:          protos.NodeType_BATCHER,
+		Shard:             b.config.ShardId,
+	}
+	b.configAcker = configack.NewSender(connInfo, b.logger)
 
 	b.batcher = &BatcherRole{
 		Batchers:                GetBatchersIDs(b.batchers),

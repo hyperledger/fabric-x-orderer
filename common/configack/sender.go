@@ -18,9 +18,11 @@ import (
 	"google.golang.org/grpc"
 )
 
+const SubmitConfigAckTimeout = 60 * time.Second // TODO: expose in local config
+
 type Sender interface {
 	Stop()
-	SubmitConfigAck(configSeq uint32) error
+	SubmitConfigAck(configSeq uint64) error
 }
 
 type sender struct {
@@ -89,8 +91,8 @@ func NewSender(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *sender 
 // The function returns nil once the ConfigAck is successfully sent. It returns an error
 // if the total timeout expires or if ca.ctx is cancelled, for example when the
 // sender is stopped.
-func (s *sender) SubmitConfigAck(configSeq uint32) error {
-	ctx, cancel := context.WithTimeout(s.ctx, 60*time.Second)
+func (s *sender) SubmitConfigAck(configSeq uint64) error {
+	ctx, cancel := context.WithTimeout(s.ctx, SubmitConfigAckTimeout)
 	defer cancel()
 
 	err := s.submitWithRetry(ctx, configSeq)
@@ -128,7 +130,7 @@ func (s *sender) Stop() {
 	s.cancel()
 }
 
-func (s *sender) submitWithRetry(ctx context.Context, configSeq uint32) error {
+func (s *sender) submitWithRetry(ctx context.Context, configSeq uint64) error {
 	conn, err := s.connectToConsenter()
 	if err != nil {
 		s.logger.Errorf("failed to connect to consensus, err: %v\n", err)
@@ -171,7 +173,7 @@ func (s *sender) connectToConsenter() (*grpc.ClientConn, error) {
 // visibility. The response error is not returned to the caller because the client
 // does not take any recovery action based on this response; only the RPC error is
 // used to decide whether the ConfigAck should be retried.
-func (s *sender) sendConfigAckToConsensus(ctx context.Context, conn *grpc.ClientConn, configSeq uint32) error {
+func (s *sender) sendConfigAckToConsensus(ctx context.Context, conn *grpc.ClientConn, configSeq uint64) error {
 	client := protos.NewConsensusClient(conn)
 
 	configAckReq := &protos.ConfigAck{

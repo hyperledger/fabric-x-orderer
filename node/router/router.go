@@ -25,6 +25,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
@@ -66,6 +67,7 @@ type Router struct {
 	configSubmitter  ConfigurationSubmitter
 	shardRouters     map[types.ShardID]*ShardRouter
 	decisionPuller   DecisionPuller
+	configAcker      configack.Sender
 	metrics          *RouterMetrics
 	stopChan         chan struct{}
 	stopOnce         sync.Once
@@ -133,6 +135,21 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.verifier = createVerifier(rconfig)
 
 	r.configSubmitter = NewConfigSubmitter(rconfig, r.logger, r.verifier, r.signer, configUpdateProposer, configRulesVerifier)
+
+	var tlsCAsOfConsenter [][]byte
+	for _, rawTLSCA := range r.routerNodeConfig.Consenter.TLSCACerts {
+		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
+	}
+	connInfo := &configack.ConnectionInfo{
+		TLSCert:           r.routerNodeConfig.TLSCertificateFile,
+		TLSKey:            r.routerNodeConfig.TLSPrivateKeyFile,
+		ConsensusEndpoint: r.routerNodeConfig.Consenter.Endpoint,
+		ConsensusRootCAs:  tlsCAsOfConsenter,
+		PartyID:           r.routerNodeConfig.PartyID,
+		NodeType:          protos.NodeType_ROUTER,
+		Shard:             0,
+	}
+	r.configAcker = configack.NewSender(connInfo, r.logger)
 
 	// create shard routers
 	batcherEndpoints := make(map[types.ShardID]string)
@@ -299,6 +316,9 @@ func (r *Router) Stop() {
 	}
 
 	r.wal.Close()
+
+	// stop the config acker
+	r.configAcker.Stop()
 
 	r.status.SetState(node_utils.StateStopped)
 
@@ -667,6 +687,7 @@ func (r *Router) processNewConfigBlock(configBlock *common.Block) {
 		return
 	}
 
+	// apply config
 	adminRequired, err := r.ApplyConfig(configBlock)
 	if err != nil {
 		r.logger.Panicf("Failed to apply last config: %v", err)
@@ -682,9 +703,14 @@ func (r *Router) processNewConfigBlock(configBlock *common.Block) {
 // ApplyConfig applies the new configuration extracted from the config block, and returns whether admin's action is required and error if exists.
 func (r *Router) ApplyConfig(configBlock *common.Block) (bool, error) {
 	// extract new router node config from the last config block and configuration.
-	newConfiguration, err := r.configuration.NewUpdatedConfigurationFromBlock(configBlock)
+	newConfiguration, configSeq, err := r.configuration.NewUpdatedConfigurationFromBlock(configBlock)
 	if err != nil {
 		return false, fmt.Errorf("failed to extract new configuration from last config block: %v", err)
+	}
+
+	// send ack to the consensus node
+	if err := r.configAcker.SubmitConfigAck(configSeq); err != nil {
+		r.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
 	}
 
 	// first, check if party is evicted in the new configuration. If yes, an admin action is required.

@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
@@ -126,6 +127,12 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.txCount = txCount
 	c.PrevHash = prevHash
 	c.fullConfig = config
+
+	var shards []arma_types.ShardID
+	for _, shardInfo := range c.Config.Shards {
+		shards = append(shards, shardInfo.ShardId)
+	}
+	c.ConfigAckReceiver = configack.NewReceiver(c.Logger, shards)
 
 	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)
 	setupComm(c)

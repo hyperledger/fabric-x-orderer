@@ -128,6 +128,8 @@ func (r *Receiver) AddAck(request *protos.ConfigAck) error {
 	return nil
 }
 
+// WaitForAllAcks blocks until all expected acknowledgments for the given configuration sequence are received.
+// Returns false if the receiver is stopped or the provided context times out or is canceled.
 func (r *Receiver) WaitForAllAcks(timeoutCtx context.Context, configSeq uint64) bool {
 	for {
 		select {

@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	commonsync "github.com/hyperledger/fabric-x-orderer/common/synchronizer"
 	common_utils "github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -26,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/utils"
 )
 
@@ -51,6 +53,7 @@ type Assembler struct {
 	metrics               *Metrics
 	ds                    *AssemblerDeliverService
 	opsSystem             *operations.System
+	configAcker           configack.Sender
 }
 
 func (a *Assembler) Broadcast(server orderer.AtomicBroadcast_BroadcastServer) error {
@@ -94,6 +97,7 @@ func (a *Assembler) Stop() {
 		a.collator.Stop()
 	}
 
+	a.configAcker.Stop()
 	a.metrics.StopMetricsTracker()
 	a.opsSystem.Stop()
 	a.net.Stop()
@@ -213,6 +217,21 @@ func (a *Assembler) initFromConfig(
 
 	a.assemblerNodeConfig = nodeConfig
 	a.configuration = configuration
+
+	var tlsCAsOfConsenter [][]byte
+	for _, rawTLSCert := range a.assemblerNodeConfig.Consenter.TLSCACerts {
+		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCert)
+	}
+	connInfo := &configack.ConnectionInfo{
+		TLSCert:           a.assemblerNodeConfig.TLSCertificateFile,
+		TLSKey:            a.assemblerNodeConfig.TLSPrivateKeyFile,
+		ConsensusEndpoint: a.assemblerNodeConfig.Consenter.Endpoint,
+		ConsensusRootCAs:  tlsCAsOfConsenter,
+		PartyID:           a.assemblerNodeConfig.PartyId,
+		NodeType:          protos.NodeType_ASSEMBLER,
+		Shard:             0,
+	}
+	a.configAcker = configack.NewSender(connInfo, a.logger)
 
 	shardIds := shardsFromAssemblerConfig(nodeConfig)
 	partyIds := partiesFromAssemblerConfig(nodeConfig)
@@ -379,9 +398,15 @@ func (a *Assembler) ProcessNewConfigBlock(configBlock *common.Block) {
 	if a.configuration == nil {
 		a.logger.Panicf("Current configuration is nil, cannot process new config block")
 	}
-	newConfiguration, err := a.configuration.NewUpdatedConfigurationFromBlock(configBlock)
+
+	newConfiguration, configSeq, err := a.configuration.NewUpdatedConfigurationFromBlock(configBlock)
 	if err != nil {
 		a.logger.Panicf("Failed to apply last config: %v", err)
+	}
+
+	// send ack to the consensus node
+	if err := a.configAcker.SubmitConfigAck(configSeq); err != nil {
+		a.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
 	}
 
 	// check if config can be applied

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	smartbft_consensus "github.com/hyperledger-labs/SmartBFT/pkg/consensus"
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
@@ -22,6 +23,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
@@ -43,6 +45,8 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
+
+const ConfigAckReceiverTimeout = time.Second * 60 // TODO: expose in local config
 
 type Storage interface {
 	Append(block *common.Block)
@@ -122,6 +126,7 @@ type Consensus struct {
 	ConfigApplier          ConfigApplier
 	ConfigRequestValidator configrequest.ConfigRequestValidator
 	ConfigRulesVerifier    verify.OrdererRules
+	ConfigAckReceiver      *configack.Receiver
 }
 
 func (c *Consensus) Start() error {
@@ -193,6 +198,7 @@ func (c *Consensus) Stop() {
 	c.Storage.Close()
 	c.Net.Stop()
 	c.opsSystem.Stop()
+	c.ConfigAckReceiver.Stop()
 	c.status.SetState(node_utils.StateStopped)
 
 	close(c.MainExitChan)
@@ -935,11 +941,10 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		}
 		inLatestDecision = true
 		c.Logger.Infof("Delivering config block number %d", lastBlockNum)
-		// if this is a new config block (with a larger number) then apply (soft stop)
+		// if this is a new config block (with a larger number) then apply
 		if c.lastConfigBlockNum < lastBlockNum {
 			c.decisionNumOfLastConfigBlock = hdr.Num
 			c.lastConfigBlockNum = lastBlockNum
-			c.Logger.Infof("Soft stop: pending restart")
 			go c.processNewConfigBlock(configBlock)
 		}
 	}
@@ -956,8 +961,10 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 	c.Logger.Infof("Processing new config block number %d", configBlock.Header.Number)
 
+	c.Logger.Infof("Soft stop")
 	c.SoftStop()
 
+	// apply config
 	isAdminOperationRequired, err := c.ApplyConfig(configBlock)
 	if err != nil {
 		c.Logger.Panicf("Failed to apply new config: %s", err)
@@ -982,9 +989,20 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, errors.New("current configuration is nil")
 	}
 
-	newConfig, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
+	newConfig, configSeq, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to build new configuration")
+	}
+
+	// wait for acks
+	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %d", configSeq)
+	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ConfigAckReceiverTimeout)
+	defer cancelFunc()
+	allAcksReceived := c.ConfigAckReceiver.WaitForAllAcks(timeoutCtx, configSeq)
+	if !allAcksReceived {
+		c.Logger.Warnf("consenter did not receive acknowledgments from all nodes on sequence %d", configSeq)
+	} else {
+		c.Logger.Infof("all acknowledgement have been received, it is safe to apply the new configuration")
 	}
 
 	// check if party is removed
@@ -1016,7 +1034,6 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, nil
 	}
 
-	// TODO: wait for acks from router, batcher and assembler in my party before reconfig
 	c.stopAndReconfigure(newConfig, lastBlock)
 	return false, nil
 }
@@ -1167,23 +1184,52 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 }
 
 func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
+	return validateClientFromContext(ctx, c.Config.Router.TLSCert, "router", c.Logger)
+}
+
+func (c *Consensus) validateAssemblerFromContext(ctx context.Context) error {
+	// TODO: maybe add to consenter config the assembler of its own party and take from there instead of fullConfig.sharedConfig
+	for _, party := range c.fullConfig.SharedConfig.PartiesConfig {
+		if arma_types.PartyID(party.PartyID) == c.PartyID {
+			return validateClientFromContext(ctx, party.AssemblerConfig.GetTlsCert(), "assembler", c.Logger)
+		}
+	}
+	return fmt.Errorf("no assembler config found for party %d", c.PartyID)
+}
+
+func (c *Consensus) validateBatcherFromContext(ctx context.Context, shardID arma_types.ShardID) error {
+	for _, shardInfo := range c.Config.Shards {
+		if shardInfo.ShardId == shardID {
+			for _, batcherInShard := range shardInfo.Batchers {
+				if batcherInShard.PartyID == c.Config.PartyId {
+					return validateClientFromContext(ctx, batcherInShard.TLSCert, "batcher", c.Logger)
+				}
+			}
+		}
+	}
+
+	return fmt.Errorf("no batcher configured for shard %d", shardID)
+}
+
+// validateClientFromContext validates that the client certificate extracted from the context matches the expected
+// certificate from the configuration. expectedRawCert is the TLS cert from ConsenterNodeConfig.
+func validateClientFromContext(ctx context.Context, expectedRawCert []byte, name string, logger *flogging.FabricLogger) error {
 	// extract the client certificate from the context
 	cert := utils.ExtractCertificateFromContext(ctx)
 	if cert == nil {
 		return errors.New("error: access denied; could not extract certificate from context")
 	}
 
-	// extract the router certificate from the ConsenterNodeConfig
-	rawRouterCert := c.Config.Router.TLSCert
-	pemBlock, _ := pem.Decode(rawRouterCert)
+	// extract the certificate from the expectedRawCert
+	pemBlock, _ := pem.Decode(expectedRawCert)
 	if pemBlock == nil || pemBlock.Bytes == nil {
-		return errors.New("error decoding router TLS certificate")
+		return errors.Errorf("error decoding %s TLS certificate", name)
 	}
 
 	// compare the two certificates
 	if !bytes.Equal(pemBlock.Bytes, cert.Raw) {
-		c.Logger.Errorf("error: access denied. The client certificate does not match the router's certificate. \n client's certificate: \n %s \n %x \n ", utils.CertificateToString(cert), cert.Raw)
-		return errors.New("error: access denied. The client certificate does not match the router's certificate")
+		logger.Errorf("error: access denied. The client certificate does not match the %s's certificate. \n client's certificate: \n %s \n %x \n ", name, utils.CertificateToString(cert), cert.Raw)
+		return errors.Errorf("error: access denied. The client certificate does not match the %s's certificate", name)
 	}
 	return nil
 }
@@ -1294,7 +1340,35 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 }
 
 // AckConfig handles ConfigAck RPC calls from party members (router, batchers, assembler).
-// TODO: implement the following: check the client cert, add the ack to the ack receiver handler and send a response back
 func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+	if req == nil {
+		return &protos.ConfigAckResponse{Error: "nil ConfigAck request"}, nil
+	}
+
+	if err := c.validateConfigAckClient(ctx, req); err != nil {
+		c.Logger.Warnf("Rejected ConfigAck request: %v", err)
+		return &protos.ConfigAckResponse{Error: err.Error()}, nil
+	}
+
+	err := c.ConfigAckReceiver.AddAck(req)
+	if err != nil {
+		return &protos.ConfigAckResponse{Error: err.Error()}, nil
+	}
 	return &protos.ConfigAckResponse{}, nil
+}
+
+func (c *Consensus) validateConfigAckClient(ctx context.Context, req *protos.ConfigAck) error {
+	switch req.NodeType {
+	case protos.NodeType_ROUTER:
+		return c.validateRouterFromContext(ctx)
+
+	case protos.NodeType_BATCHER:
+		return c.validateBatcherFromContext(ctx, arma_types.ShardID(req.Shard))
+
+	case protos.NodeType_ASSEMBLER:
+		return c.validateAssemblerFromContext(ctx)
+
+	default:
+		return fmt.Errorf("access denied: unsupported config ack node type %v", req.NodeType)
+	}
 }

@@ -255,7 +255,7 @@ func (config *Configuration) GetBFTConfig(partyID types.PartyID) (smartbft_types
 func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nodeconfig.RouterNodeConfig {
 	bccsp, err := config.GetBCCSP()
 	if err != nil {
-		panic(fmt.Sprintf("error launching router, failed extracting router config: %s", err))
+		panic(fmt.Sprintf("failed extracting router config bccsp: %s", err))
 	}
 
 	// use shards to get every party's RootCAs
@@ -308,6 +308,11 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 	signingPrivateKey, err := utils.ReadPem(filepath.Join(config.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "keystore", "priv_sk"))
 	if err != nil {
 		panic(fmt.Sprintf("error launching batcher, failed extracting batcher config: %s", err))
+	}
+
+	bccsp, err := config.GetBCCSP()
+	if err != nil {
+		panic(fmt.Sprintf("failed extracting batcher config bccsp: %s", err))
 	}
 
 	// use shards to get every party's RootCAs
@@ -365,6 +370,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		},
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
+		BCCSP:                               bccsp,
 	}
 
 	if batcherConfig.FirstStrikeThreshold, err = time.ParseDuration(config.SharedConfig.BatchingConfig.BatchTimeouts.FirstStrikeThreshold); err != nil {
@@ -398,7 +404,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 
 	bccsp, err := config.GetBCCSP()
 	if err != nil {
-		panic(fmt.Sprintf("error launching consenter, failed extracting consenter config: %s", err))
+		panic(fmt.Sprintf("failed extracting consenter config bccsp: %s", err))
 	}
 
 	// TODO: avoid duplications in clientRootCAs
@@ -450,6 +456,11 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 }
 
 func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *nodeconfig.AssemblerNodeConfig {
+	bccsp, err := config.GetBCCSP()
+	if err != nil {
+		panic(fmt.Sprintf("failed extracting assembler config bccsp: %s", err))
+	}
+
 	consenters := config.ExtractConsenters()
 	var consenterFromMyParty nodeconfig.ConsenterInfo
 	for _, consenter := range consenters {
@@ -502,6 +513,7 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
 		},
 		Bundle: bundle,
+		BCCSP:  bccsp,
 	}
 	return assemblerConfig
 }
@@ -924,26 +936,35 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
 }
 
 // NewUpdatedConfigurationFromBlock builds a new configuration based on current configuration and block
-func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Block) (*Configuration, error) {
+func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Block) (*Configuration, uint64, error) {
 	if config == nil {
-		return nil, errors.New("failed applying new config, current configuration is nil")
+		return nil, 0, errors.New("failed applying new config, current configuration is nil")
 	}
 
 	bccsp, err := config.GetBCCSP()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to initialize BCCSP from config")
+		return nil, 0, errors.Wrap(err, "failed to initialize BCCSP from config")
 	}
 
 	sharedConfig, err := sharedConfigFromBlock(block, bccsp)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed applying new config, failed to read shared configuration from block number %d", block.GetHeader().GetNumber())
+		return nil, 0, errors.Wrapf(err, "failed applying new config, failed to read shared configuration from block number %d", block.GetHeader().GetNumber())
 	}
 	newConfig := &Configuration{
 		LocalConfig:  config.LocalConfig,
 		SharedConfig: sharedConfig,
 	}
 
-	return newConfig, nil
+	env, err := protoutil.ExtractEnvelope(block, 0)
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "failed to extract envelope from new config block")
+	}
+	bundle, err := channelconfig.NewBundleFromEnvelope(env, bccsp)
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "failed to extract bundle from new config block")
+	}
+
+	return newConfig, bundle.ConfigtxValidator().Sequence(), nil
 }
 
 func (config *Configuration) GetBCCSP() (bccsp.BCCSP, error) {

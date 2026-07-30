@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -88,6 +89,7 @@ type Batcher struct {
 	mainExitChan                       chan struct{}
 	isStopped                          bool
 	isSoftStopped                      bool
+	configAcker                        configack.Sender
 
 	primaryLock sync.RWMutex
 	term        uint64
@@ -201,6 +203,7 @@ func (b *Batcher) Stop() {
 		b.opsSystem.Stop()
 	}
 
+	b.configAcker.Stop()
 	b.wal.Close()
 	b.Net.Stop()
 	b.Ledger.Close()
@@ -306,6 +309,7 @@ func (b *Batcher) replicateDecision() {
 func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
 	b.SoftStop()
 	b.logger.Infof("Apply config")
+
 	isAdminOperationRequired, err := b.ApplyConfig(configBlock)
 	if err != nil {
 		b.logger.Panicf("Failed applying new config: %s", err)
@@ -355,11 +359,16 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, errors.New("current configuration is nil")
 	}
 
-	newConfig, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
+	newConfig, configSeq, err := currentFullConfig.NewUpdatedConfigurationFromBlock(lastBlock)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to build new configuration")
 	}
 	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
+
+	// send ack to the consensus node
+	if err := b.configAcker.SubmitConfigAck(configSeq); err != nil {
+		b.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
+	}
 
 	// check if batching params changed
 	// TODO: remove this check when memory pool supports dynamic reconfig

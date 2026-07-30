@@ -360,7 +360,7 @@ func TestConfigurationNewUpdatedConfigurationFromBlock(t *testing.T) {
 		}),
 	})
 
-	newConfig, err := fullConfig.NewUpdatedConfigurationFromBlock(genesisBlock)
+	newConfig, _, err := fullConfig.NewUpdatedConfigurationFromBlock(genesisBlock)
 	require.NoError(t, err)
 	require.NotNil(t, newConfig)
 
