@@ -936,7 +936,7 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
 }
 
 // NewUpdatedConfigurationFromBlock builds a new configuration based on current configuration and block
-func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Block) (*Configuration, uint32, error) {
+func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Block) (*Configuration, uint64, error) {
 	if config == nil {
 		return nil, 0, errors.New("failed applying new config, current configuration is nil")
 	}
@@ -964,7 +964,7 @@ func (config *Configuration) NewUpdatedConfigurationFromBlock(block *common.Bloc
 		return nil, 0, errors.Wrapf(err, "failed to extract bundle from new config block")
 	}
 
-	return newConfig, uint32(bundle.ConfigtxValidator().Sequence()), nil
+	return newConfig, bundle.ConfigtxValidator().Sequence(), nil
 }
 
 func (config *Configuration) GetBCCSP() (bccsp.BCCSP, error) {

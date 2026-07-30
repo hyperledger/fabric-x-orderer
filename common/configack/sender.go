@@ -22,7 +22,7 @@ const SubmitConfigAckTimeout = 60 * time.Second // TODO: expose in local config
 
 type Sender interface {
 	Stop()
-	SubmitConfigAck(configSeq uint32) error
+	SubmitConfigAck(configSeq uint64) error
 }
 
 type sender struct {

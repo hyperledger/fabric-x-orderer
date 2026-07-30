@@ -998,7 +998,7 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %d", configSeq)
 	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ConfigAckReceiverTimeout)
 	defer cancelFunc()
-	allAcksReceived := c.ConfigAckReceiver.WaitForAllAcks(timeoutCtx, uint64(configSeq))
+	allAcksReceived := c.ConfigAckReceiver.WaitForAllAcks(timeoutCtx, configSeq)
 	if !allAcksReceived {
 		c.Logger.Warnf("consenter did not receive acknowledgments from all nodes on sequence %d", configSeq)
 	} else {
