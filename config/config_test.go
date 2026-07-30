@@ -674,6 +674,49 @@ func TestReadConfigRejoinBlock(t *testing.T) {
 	}
 }
 
+func TestReadConfigWithInvalidBootstrapBlock(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	bootstrapPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
+	data, err := os.ReadFile(bootstrapPath)
+	require.NoError(t, err)
+
+	block, err := protoutil.UnmarshalBlock(data)
+	require.NoError(t, err)
+
+	env, err := protoutil.ExtractEnvelope(block, 0)
+	require.NoError(t, err)
+
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+
+	configEnv := &common.ConfigEnvelope{}
+	require.NoError(t, proto.Unmarshal(payload.Data, configEnv))
+
+	// Remove the orderer endpoints to make the bootstrap configuration invalid
+	configEnv.Config.ChannelGroup.Groups["Orderer"].Groups["org1"].Values["Endpoints"].Value = protoutil.MarshalOrPanic(&common.OrdererAddresses{})
+
+	payload.Data = protoutil.MarshalOrPanic(configEnv)
+	env.Payload = protoutil.MarshalOrPanic(payload)
+	block.Data.Data[0] = protoutil.MarshalOrPanic(env)
+
+	invalidBootstrapPath := filepath.Join(dir, "bootstrap", "invalid_bootstrap.block")
+	require.NoError(t, os.WriteFile(invalidBootstrapPath, protoutil.MarshalOrPanic(block), 0o644))
+
+	storagePath := filepath.Join(dir, "storage")
+	localConfigPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
+	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPath, storagePath, invalidBootstrapPath, 0)
+
+	logger := testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel)
+	_, _, err = config.ReadConfig(localConfigPath, logger)
+	require.ErrorContains(t, err, "failed to validate bootstrap config")
+}
+
 func ChangeExpirationTimeOfCert(t *testing.T, cert []byte, caCert []byte, caPrivateKey []byte) ([]byte, error) {
 	// Parse the cert to be updated
 	x509Cert, err := utils.Parsex509Cert(cert)

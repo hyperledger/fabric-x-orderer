@@ -40,9 +40,9 @@ type OrdererRules interface {
 
 type DefaultOrdererRules struct{}
 
-// ValidateNewConfig validates the new ordering service configuration before it is applied.
-// It performs internal validation of the proposed config, including consistency
-// checks for parameters defined in multiple places. The rules are as follows:
+// ValidateNewConfig validates the internal consistency of an ordering service configuration before it is applied.
+// It performs internal validation, including consistency checks for parameters
+// defined in multiple places. The rules are as follows:
 //
 //  1. All batching timeouts must be valid durations and positive.
 //  2. BatchSize.AbsoluteMaxBytes must match between OrdererConfig and SharedConfig.
@@ -58,7 +58,7 @@ type DefaultOrdererRules struct{}
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
-		return errors.Wrap(err, "failed to create bundle from new envelope config")
+		return errors.Wrap(err, "failed to create bundle from envelope config")
 	}
 
 	ordererConfig, exists := bundle.OrdererConfig()
