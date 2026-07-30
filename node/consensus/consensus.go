@@ -89,6 +89,7 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
+	*comm.Egress
 	Logger       *flogging.FabricLogger
 	Config       *node_config.ConsenterNodeConfig
 	SigVerifier  SigVerifier
@@ -113,6 +114,10 @@ type Consensus struct {
 	Net                          NetStopper
 	BADB                         *badb.BatchAttestationDB
 	MainExitChan                 chan struct{}
+	// ReconfigAbort is closed by Stop to release a Deliver that is blocked waiting for a
+	// dynamic reconfiguration to complete, so BFT.Stop's goroutine-join can proceed.
+	// It is created once and lives for the lifetime of the node (survives dynamic restarts).
+	ReconfigAbort chan struct{}
 
 	synchronizerFactory bft_synch.SynchronizerFactory // Builds a BFT synchronizer
 	Synchronizer        SynchronizerStopper           // The BFT synchronizer built by the factory
@@ -126,6 +131,25 @@ type Consensus struct {
 
 func (c *Consensus) Start() error {
 	c.lock.Lock()
+	c.startServices()
+	bft := c.BFT
+	c.lock.Unlock()
+
+	return bft.Start() // start the bft without holding the lock to avoid deadlock
+}
+
+// StartWithoutBFT starts the node's services (operations subsystem, health checkers and
+// metrics) without starting the BFT. It is used on the dynamic reconfiguration path, where
+// configureConsensus reuses the existing (still-running) BFT instance.
+func (c *Consensus) StartWithoutBFT() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.startServices()
+}
+
+// startServices starts the operations subsystem, health checkers and metrics tracker, and
+// resets softStopCh. It must be called with c.lock held.
+func (c *Consensus) startServices() {
 	c.status.SetState(node_utils.StateRunning)
 	c.softStopCh = make(chan struct{})
 	if err := c.opsSystem.Start(); err != nil {
@@ -139,11 +163,6 @@ func (c *Consensus) Start() error {
 	c.Logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(c.opsSystem, c.Logger))
 	c.Logger.Infof("Logging spec service serving on URL: %s", operations.LogSpecServiceURL(c.opsSystem, c.Logger))
 	c.Logger.Infof("Version info serving on URL: %s", operations.VersionInfoServiceURL(c.opsSystem, c.Logger))
-
-	bft := c.BFT
-	c.lock.Unlock()
-
-	return bft.Start() // start the bft without holding the lock to avoid deadlock
 }
 
 func (c *Consensus) StartConsensusService() {
@@ -171,6 +190,15 @@ func (c *Consensus) StartConsensusService() {
 func (c *Consensus) Stop() {
 	c.lock.Lock()
 	bft := c.BFT
+	// Release any Deliver that is blocked waiting for a dynamic reconfiguration before we
+	// join the BFT goroutines below: bft.Stop joins the controller/viewchanger goroutine,
+	// which may be the very goroutine parked inside Deliver. Guard against a double close in
+	// case Stop is called more than once.
+	select {
+	case <-c.ReconfigAbort:
+	default:
+		close(c.ReconfigAbort)
+	}
 	c.lock.Unlock()
 	bft.Stop() // stop the bft without holding the lock to avoid deadlock (it is safe to stop it multiple times)
 
@@ -238,7 +266,6 @@ func (c *Consensus) SoftStop() {
 
 	c.Logger.Infof("Soft stopping consensus node")
 	close(c.softStopCh)
-	c.BFT.Stop()
 	c.Synchronizer.Stop()
 	c.BADB.Close()
 	c.Metrics.StopMetricsTracker()
@@ -909,8 +936,11 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// a batch attestation twice.
 	// This is true because a Index(digests) with the same digests is idempotent.
 
+	// NOTE: we intentionally do NOT "defer c.lock.Unlock()" here. When this decision
+	// includes a new config block we must release the lock and then block until the
+	// dynamic reconfiguration has fully installed the new config, before returning to
+	// SmartBFT. See the blocking section below.
 	c.lock.Lock()
-	defer c.lock.Unlock()
 
 	c.Arma.Index(digests)
 	block := state.CreateBlockToAppendFromDecision(uint64(hdr.Num), proposal, signatures, c.PrevHash, uint64(hdr.DecisionNumOfLastConfigBlock))
@@ -924,6 +954,10 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	currentNodes := c.CurrentNodes
 	currentBFTConfig := c.Config.BFTConfig
 	inLatestDecision := false
+	// reconfigDone is closed by the reconfiguration goroutine once the new config is
+	// installed (dynamic path) or the node parks in pending-admin. It is local to this
+	// Deliver invocation and passed to the goroutine, so there is no shared state to guard.
+	var reconfigDone chan struct{}
 	// check if this decision includes a config block
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
 		configBlock := hdr.AvailableCommonBlocks[len(hdr.AvailableCommonBlocks)-1]
@@ -939,12 +973,29 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		if c.lastConfigBlockNum < lastBlockNum {
 			c.decisionNumOfLastConfigBlock = hdr.Num
 			c.lastConfigBlockNum = lastBlockNum
+			reconfigDone = make(chan struct{})
 			c.Logger.Infof("Soft stop: pending restart")
-			go c.processNewConfigBlock(configBlock)
+			go c.processNewConfigBlock(configBlock, reconfigDone)
 		}
 	}
 
 	c.updateMetricsOnDeliver(hdr)
+	c.lock.Unlock()
+
+	// If this decision carried a new config block, block here until the reconfiguration
+	// completes. Because Deliver runs on SmartBFT's controller (or viewchanger) goroutine,
+	// blocking it prevents that goroutine from proposing/verifying against the stale config,
+	// and defers SmartBFT's own internal reconfig (sent on reconfigChan after we return)
+	// until ours is done. On abort (Stop or pending-admin teardown) we return
+	// InLatestDecision:false so the unbuffered reconfigChan send in pkg/consensus is skipped.
+	if reconfigDone != nil {
+		select {
+		case <-reconfigDone:
+			// dynamic reconfiguration installed the new config, or we parked in pending-admin
+		case <-c.ReconfigAbort:
+			return smartbft_types.Reconfig{InLatestDecision: false}
+		}
+	}
 
 	return smartbft_types.Reconfig{
 		CurrentNodes:     currentNodes,
@@ -953,7 +1004,15 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	}
 }
 
-func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
+// processNewConfigBlock applies a newly delivered config block. It runs on its own
+// goroutine spawned by Deliver, which is blocked waiting on done. done is closed exactly
+// once here, in whichever branch we take, so the blocked Deliver is always released:
+//   - dynamic path: after ApplyConfig has synchronously restarted consensus with the new
+//     config, so Deliver resumes against the freshly installed config.
+//   - admin path: before BFT.Stop, because BFT.Stop joins the controller/viewchanger
+//     goroutine, which is the very goroutine parked inside Deliver; closing done first lets
+//     it return so the join can complete.
+func (c *Consensus) processNewConfigBlock(configBlock *common.Block, done chan struct{}) {
 	c.Logger.Infof("Processing new config block number %d", configBlock.Header.Number)
 
 	c.SoftStop()
@@ -967,8 +1026,14 @@ func (c *Consensus) processNewConfigBlock(configBlock *common.Block) {
 		c.Logger.Warnf("Pending admin action to apply new config")
 		c.lock.Lock()
 		c.status.SetState(node_utils.StatePendingAdmin)
+		close(done)
 		c.lock.Unlock()
+		c.BFT.Stop() // was not stopped during SoftStop, release the lock first — see Stop()
+		return
 	}
+
+	// Dynamic path: ApplyConfig has already restarted consensus with the new config.
+	close(done)
 }
 
 func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
@@ -1031,15 +1096,12 @@ func (c *Consensus) stopAndReconfigure(newConfig *config.Configuration, lastBloc
 	c.Net.Stop()
 	c.opsSystem.Stop()
 	c.status.Set(node_utils.StateInitializing, newConfigSeq)
-	c.configureConsensus(newConsensusConfig, newConfig, lastBlock, &policy.DefaultConfigUpdateProposer{})
+	c.configureConsensus(newConsensusConfig, newConfig, lastBlock, &policy.DefaultConfigUpdateProposer{}, false)
 	c.lock.Unlock()
 
 	c.Logger.Infof("Initialize new consensus, config sequence: %d", newConfigSeq)
 	c.StartConsensusService()
-	err := c.Start()
-	if err != nil {
-		c.Logger.Panicf("consensus failed to restart dynamically, err: %v", err)
-	}
+	c.StartWithoutBFT()
 	c.Logger.Infof("Consensus started with new config sequence %d, listening on %s", newConfigSeq, c.Address())
 }
 
@@ -1280,7 +1342,10 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 			c.decisionNumOfLastConfigBlock = hdr.DecisionNumOfLastConfigBlock
 			c.lastConfigBlockNum = lastBlockNum
 			c.Logger.Infof("Synchronizer delivered consenter block: %d, which includes a fabric config block: %d; the consenter will soft stop.", block.GetHeader().Number, lastBlockNum)
-			go c.processNewConfigBlock(configBlock)
+			// This runs on the synchronizer goroutine, not the SmartBFT controller/viewchanger
+			// goroutine, so there is no blocked Deliver to release; processNewConfigBlock closes
+			// this channel but nothing waits on it.
+			go c.processNewConfigBlock(configBlock, make(chan struct{}))
 		}
 	}
 
