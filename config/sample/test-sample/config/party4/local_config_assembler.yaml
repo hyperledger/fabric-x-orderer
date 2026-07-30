@@ -34,7 +34,7 @@ General:
     BCCSP:
         Default: SW
         SW:
-            Security: 256   
+            Security: 256
             Hash: SHA2
     LogSpec: info
 FileStore:

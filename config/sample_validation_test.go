@@ -19,14 +19,18 @@ import (
 
 func TestSampleLocalConfigs(t *testing.T) {
 	err := filepath.WalkDir("sample", func(path string, d os.DirEntry, err error) error {
-		require.NoError(t, err)
+		if err != nil {
+			return err
+		}
 
 		if d.IsDir() {
 			return nil
 		}
 
 		matched, err := filepath.Match("local_config*.yaml", d.Name())
-		require.NoError(t, err)
+		if err != nil {
+			return err
+		}
 
 		if !matched {
 			return nil

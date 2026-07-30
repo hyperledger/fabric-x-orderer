@@ -35,7 +35,7 @@ General:
         Default: SW
         SW:
             Security: 256
-            Hash: SHA2      
+            Hash: SHA2
     LogSpec: info
 FileStore:
     Location: /var/dec-trust/production/orderer/store
