@@ -360,9 +360,10 @@ func TestConfigurationNewUpdatedConfigurationFromBlock(t *testing.T) {
 		}),
 	})
 
-	newConfig, _, err := fullConfig.NewUpdatedConfigurationFromBlock(genesisBlock)
+	newConfig, configSeq, err := fullConfig.NewUpdatedConfigurationFromBlock(genesisBlock)
 	require.NoError(t, err)
 	require.NotNil(t, newConfig)
+	require.Equal(t, configSeq, uint64(0))
 
 	// verify that local config is kept and shared config is changed
 	require.Equal(t, newPort, newConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.Port)
