@@ -230,10 +230,7 @@ func TestSubmitTXWithKnownCertID(t *testing.T) {
 	configPath := filepath.Join(dir, "config.yaml")
 	numOfParties := 4
 	numOfShards := 2
-	parties := []types.PartyID{1, 2, 3, 4}
-	for partyID := 1; partyID <= numOfParties; partyID++ {
-		parties = append(parties, types.PartyID(partyID))
-	}
+
 	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
 	defer netInfo.CleanUp()
 	require.NotNil(t, netInfo)
@@ -262,7 +259,7 @@ func TestSubmitTXWithKnownCertID(t *testing.T) {
 	defer broadcastClient.Stop()
 
 	t.Log("Submit TX with known certID – expect success")
-	mspID := fmt.Sprintf("org%d", 1)
+	mspID := "org1"
 	txContent := tx.PrepareTxWithTimestamp(1, 64, []byte("knownCertIDTx"))
 	envWithCertID := tx.CreateSignedStructuredEnvelopeWithCertID(txContent, signer, certBytes, mspID)
 	require.NotNil(t, envWithCertID)
@@ -275,8 +272,9 @@ func TestSubmitTXWithKnownCertID(t *testing.T) {
 	unknownClientPair, err := unknownCA.NewClientCertKeyPair()
 	require.NoError(t, err)
 	block, _ := pem.Decode(unknownClientPair.Key)
-	reLabeled := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: block.Bytes})
-	unknownPrivKey, err := tx.CreateECDSAPrivateKey(reLabeled)
+	require.NotNil(t, block)
+	privKeyBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: block.Bytes})
+	unknownPrivKey, err := tx.CreateECDSAPrivateKey(privKeyBytes)
 	require.NoError(t, err)
 	unknownSigner := (*crypto.ECDSASigner)(unknownPrivKey)
 

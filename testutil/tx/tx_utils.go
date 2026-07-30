@@ -255,7 +255,7 @@ func CreateSignedStructuredEnvelopeWithCertID(data []byte, signer *crypto.ECDSAS
 	}
 }
 
-func certID(certBytes []byte) (string, error) {
+func computeCertID(certBytes []byte) (string, error) {
 	digest, err := certificate.DigestPemContent(certBytes, bccsp.SHA256)
 	if err != nil {
 		return "", fmt.Errorf("failed computing cert ID: %w", err)
@@ -268,7 +268,7 @@ func certID(certBytes []byte) (string, error) {
 func createSignedStructuredPayloadWithCertID(data []byte, certBytes []byte, org string) *common.Payload {
 	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)
 
-	certID, err := certID(certBytes)
+	certID, err := computeCertID(certBytes)
 	if err != nil {
 		panic(err)
 	}
