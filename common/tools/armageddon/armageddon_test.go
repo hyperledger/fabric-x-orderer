@@ -667,6 +667,10 @@ func checkConfigDir(outputDir string) error {
 			return fmt.Errorf("error reading party dir, party %s does not describe a directory\n", party.Name())
 		}
 
+		if !strings.HasPrefix(party.Name(), "party") {
+			continue
+		}
+
 		partyDir := filepath.Join(configPath, party.Name())
 
 		for _, file := range requiredPartyFiles {

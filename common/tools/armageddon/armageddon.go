@@ -381,6 +381,31 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 			os.Exit(-1)
 		}
 	}
+
+	// generate user config yaml file for peers
+	for _, peer := range profile.Application.Organizations {
+		userTLSPrivateKeyPath := filepath.Join(*outputDir, "crypto", "peerOrganizations", peer.Name, "users", fmt.Sprintf("client@%s", peer.Name), "tls", "client.key")
+		userTLSCertPath := filepath.Join(*outputDir, "crypto", "peerOrganizations", peer.Name, "users", fmt.Sprintf("client@%s", peer.Name), "tls", "client.crt")
+
+		userMSPDir := filepath.Join(*outputDir, "crypto", "peerOrganizations", peer.Name, "users", fmt.Sprintf("client@%s", peer.Name), "msp")
+		userConfig, err := NewUserConfig(userMSPDir, userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating user config: %s", err)
+			os.Exit(-1)
+		}
+
+		peerConfigDir := filepath.Join(*outputDir, "config", peer.Name)
+		if err := os.MkdirAll(peerConfigDir, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating peer config dir: %s", err)
+			os.Exit(-1)
+		}
+
+		err = utils.WriteToYAML(userConfig, filepath.Join(peerConfigDir, "user_config.yaml"))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating user config yaml: %s", err)
+			os.Exit(-1)
+		}
+	}
 }
 
 func getConfigFileContent(genConfigFile **os.File) (*genconfig.Network, error) {
