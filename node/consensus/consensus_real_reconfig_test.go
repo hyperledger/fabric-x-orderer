@@ -626,14 +626,14 @@ func sendConfigAcks(t *testing.T, consensusNodes []*consensus_node.Consensus, co
 		err := node.ConfigAckReceiver.AddAck(&protos.ConfigAck{
 			NodeType:  protos.NodeType_ROUTER,
 			Shard:     0,
-			ConfigSeq: uint32(configSeq),
+			ConfigSeq: uint64(configSeq),
 		})
 		require.NoError(t, err)
 		// one assembler ack
 		err = node.ConfigAckReceiver.AddAck(&protos.ConfigAck{
 			NodeType:  protos.NodeType_ASSEMBLER,
 			Shard:     0,
-			ConfigSeq: uint32(configSeq),
+			ConfigSeq: uint64(configSeq),
 		})
 		require.NoError(t, err)
 		// one batcher ack per shard
@@ -641,7 +641,7 @@ func sendConfigAcks(t *testing.T, consensusNodes []*consensus_node.Consensus, co
 			err = node.ConfigAckReceiver.AddAck(&protos.ConfigAck{
 				NodeType:  protos.NodeType_BATCHER,
 				Shard:     uint32(shard.ShardId),
-				ConfigSeq: uint32(configSeq),
+				ConfigSeq: uint64(configSeq),
 			})
 			require.NoError(t, err)
 		}
