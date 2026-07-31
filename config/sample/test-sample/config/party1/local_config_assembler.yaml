@@ -34,10 +34,8 @@ General:
     BCCSP:
         Default: SW
         SW:
-            Hash: SHA2
             Security: 256
-            FileKeyStore:
-                KeyStore:
+            Hash: SHA2
     LogSpec: info
 FileStore:
     Location: /var/dec-trust/production/orderer/store
@@ -48,3 +46,11 @@ Assembler:
     PopWaitMonitorTimeout: 1s
     ReplicationChannelSize: 100
     BatchRequestsChannelSize: 1000
+Operations:
+    ListenAddress: 127.0.0.1
+    TLS:
+        Enabled: false
+        ClientAuthRequired: false
+Metrics:
+    Provider: prometheus
+    MetricsLogInterval: 10s
