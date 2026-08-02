@@ -11,17 +11,19 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/msp"
-
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	"github.com/hyperledger/fabric-x-common/utils/certificate"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
@@ -230,11 +232,57 @@ func PrepareSignedEnvelopeWithCertificate(txNumber int, envSize int, sessionNumb
 	return CreateSignedStructuredEnvelope(data, signer, certBytes, org)
 }
 
-// TODO: implement the following method:
-// PrepareSignedEnvelopeWithCertificateID prepares an signed envelope using known certificates which are referenced by hash.
-// this method will be used for creating signed envelope for short signing mode.
+// PrepareSignedEnvelopeWithCertificateID is used for creating signed envelopes for the "short" (known-identity) signing mode.
 func PrepareSignedEnvelopeWithCertificateID(txNumber int, envSize int, sessionNumber []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
-	return nil
+	data := PrepareTxWithTimestamp(txNumber, envSize, sessionNumber)
+	return CreateSignedStructuredEnvelopeWithCertID(data, signer, certBytes, org)
+}
+
+// CreateSignedStructuredEnvelopeWithCertID creates an envelope whose SignatureHeader.Creator carries a
+// certificate-ID (hex SHA256 of the DER-encoded cert) rather than the full PEM certificate.
+// The verifying MSP must have the corresponding certificate registered in its known-identities list.
+func CreateSignedStructuredEnvelopeWithCertID(data []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
+	payload := createSignedStructuredPayloadWithCertID(data, certBytes, org)
+	payloadBytes := deterministicMarshall(payload)
+
+	signature, err := signer.Sign(payloadBytes)
+	if err != nil {
+		return nil
+	}
+	return &common.Envelope{
+		Payload:   payloadBytes,
+		Signature: signature,
+	}
+}
+
+func computeCertID(certBytes []byte) (string, error) {
+	digest, err := certificate.DigestPemContent(certBytes, bccsp.SHA256)
+	if err != nil {
+		return "", fmt.Errorf("failed computing cert ID: %w", err)
+	}
+	return hex.EncodeToString(digest), nil
+}
+
+// createSignedStructuredPayloadWithCertID builds a Payload whose creator identity uses a certificate-ID
+// (hash) instead of the full certificate PEM.
+func createSignedStructuredPayloadWithCertID(data []byte, certBytes []byte, org string) *common.Payload {
+	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)
+
+	certID, err := computeCertID(certBytes)
+	if err != nil {
+		panic(err)
+	}
+
+	sId := msppb.NewIdentityWithIDOfCert(org, certID)
+
+	payloadSignatureHeader := &common.SignatureHeader{
+		Creator: deterministicMarshall(sId),
+		Nonce:   []byte("nonce"),
+	}
+	return &common.Payload{
+		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
+		Data:   data,
+	}
 }
 
 func CreateSignedStructuredEnvelope(data []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {

@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package basic
 
 import (
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
@@ -201,5 +204,96 @@ func TestSubmitTXWithVerification(t *testing.T) {
 		ErrString:  "cancelled pull from assembler: %d",
 		Signer:     pullRequestSigner,
 		Timeout:    90,
+	})
+}
+
+// TestSubmitTXWithKnownCertID verifies that a router enforcing client signature verification
+// correctly handles transactions that reference the creator by certificate-ID (known-identity mode)
+// rather than embedding the full certificate.
+//
+// The test performs the following steps:
+//  1. Builds the ARMA binary and sets up a temporary directory for test artifacts.
+//  2. Generates a network configuration for a specified number of parties and shards.
+//  3. Starts ARMA nodes and waits for them to become ready.
+//  4. Submit a transaction whose SignatureHeader.Creator carries the cert-ID and - expect successful submission.
+//  5. Submit a transaction whose SignatureHeader.Creator carries an unknown cert-ID – expect rejection.
+//  6. Pull blocks from assembler and verify that the correct TX was committed.
+func TestSubmitTXWithKnownCertID(t *testing.T) {
+	t.Log("Compile Arma")
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	t.Log("Generate the configuration with clientSignatureVerificationRequired = True")
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	numOfShards := 2
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
+	require.NotNil(t, netInfo)
+	numOfArmaNodes := len(netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
+
+	t.Log("Run Arma nodes")
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	// Obtain user config for party 1 (the submitting party).
+	uc, err := testutil.GetUserConfig(dir, types.PartyID(1))
+	require.NoError(t, err)
+	require.NotNil(t, uc)
+
+	// Load the client signer (private key + cert).
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+	require.NotNil(t, signer)
+	require.NotNil(t, certBytes)
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	defer broadcastClient.Stop()
+
+	t.Log("Submit TX with known certID – expect success")
+	mspID := "org1"
+	txContent := tx.PrepareTxWithTimestamp(1, 64, []byte("knownCertIDTx"))
+	envWithCertID := tx.CreateSignedStructuredEnvelopeWithCertID(txContent, signer, certBytes, mspID)
+	require.NotNil(t, envWithCertID)
+	err = broadcastClient.SendTx(envWithCertID)
+	require.NoError(t, err, "TX with a known cert-ID should be accepted")
+
+	t.Log("Submit TX with unknown certID – expect rejection")
+	unknownCA, err := tlsgen.NewCA()
+	require.NoError(t, err)
+	unknownClientPair, err := unknownCA.NewClientCertKeyPair()
+	require.NoError(t, err)
+	block, _ := pem.Decode(unknownClientPair.Key)
+	require.NotNil(t, block)
+	privKeyBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: block.Bytes})
+	unknownPrivKey, err := tx.CreateECDSAPrivateKey(privKeyBytes)
+	require.NoError(t, err)
+	unknownSigner := (*crypto.ECDSASigner)(unknownPrivKey)
+
+	txContent2 := tx.PrepareTxWithTimestamp(2, 64, []byte("unknownCertIDTx"))
+	envUnknown := tx.CreateSignedStructuredEnvelopeWithCertID(txContent2, unknownSigner, unknownClientPair.Cert, mspID)
+	require.NotNil(t, envUnknown)
+	err = broadcastClient.SendTx(envUnknown)
+	require.Error(t, err, "TX with an unknown cert-ID should be rejected")
+	require.ErrorContains(t, err, "signature did not satisfy policy /Channel/Writers")
+
+	t.Log("Pull block from assembler to confirm the valid TX was committed")
+	pullRequestSigner := signutil.CreateTestSigner(t, "org1", dir)
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig: uc,
+		Parties:    []types.PartyID{1},
+		StartBlock: 0,
+		EndBlock:   uint64(1),
+		Blocks:     2, // genesis + block with one tx
+		ErrString:  "cancelled pull from assembler: %d",
+		Signer:     pullRequestSigner,
 	})
 }
