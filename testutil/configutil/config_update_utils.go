@@ -53,6 +53,7 @@ type (
 	batchSizeConfigName     string
 	batchTimeoutsConfigName string
 	smartBFTConfigName      string
+	channelGroupNameType    string
 )
 
 var BatchSizeConfigName = struct {
@@ -117,6 +118,14 @@ var SmartBFTConfigName = struct {
 	SyncOnStart:                   smartBFTConfigName("SyncOnStart"),
 	ViewChangeResendInterval:      smartBFTConfigName("ViewChangeResendInterval"),
 	ViewChangeTimeout:             smartBFTConfigName("ViewChangeTimeout"),
+}
+
+var ChannelGroupName = struct {
+	Orderer     channelGroupNameType
+	Application channelGroupNameType
+}{
+	Orderer:     channelGroupNameType("ordererOrganizations"),
+	Application: channelGroupNameType("peerOrganizations"),
 }
 
 type batchSizeConfig struct {
@@ -190,7 +199,6 @@ type ConfigUpdateBuilder struct {
 	configDir      string
 	jsonConfigPath string
 	configData     map[string]any
-	maxPartiesNum  int
 }
 
 func NewConfigUpdateBuilder(t *testing.T, configDir string, lastConfigBlockPath string) *ConfigUpdateBuilder {
@@ -1089,10 +1097,6 @@ func (c *ConfigUpdateBuilder) RemoveParty(t *testing.T, partyID types.PartyID) [
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
 	partiesConfigList := partiesConfig.([]any)
 
-	if c.maxPartiesNum == 0 {
-		c.maxPartiesNum = len(partiesConfigList)
-	}
-
 	found := false
 	for i, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
@@ -1156,6 +1160,16 @@ func (c *ConfigUpdateBuilder) ConfigUpdatePBData(t *testing.T) []byte {
 // CreateConfigTX creates a config transaction signed by the specified administrators.
 // To satisfy majority requirement, the signingParties list must explicitly include the IDs of all participating parties necessary to reach that majority.
 func CreateConfigTX(t *testing.T, dir string, signingParties []types.PartyID, submittingParty int, configUpdateBytes []byte) *common.Envelope {
+	var orgs []string
+	for _, partyID := range signingParties {
+		orgs = append(orgs, fmt.Sprintf("org%d", partyID))
+	}
+	return CreateConfigTXSignedByOrgs(t, dir, ChannelGroupName.Orderer, orgs, submittingParty, configUpdateBytes)
+}
+
+// / CreateConfigTXSignedByOrgs creates a config transaction signed by the specified organization administrators.
+// To satisfy the relevant signature policy, signingOrgs must include the MSP IDs of all orgs required by that policy (e.g. "org1", "peer1").
+func CreateConfigTXSignedByOrgs(t *testing.T, dir string, channelGroup channelGroupNameType, signingOrgs []string, submittingParty int, configUpdateBytes []byte) *common.Envelope {
 	// Create ConfigUpdateBytes
 	require.NotNil(t, configUpdateBytes)
 
@@ -1166,13 +1180,21 @@ func CreateConfigTX(t *testing.T, dir string, signingParties []types.PartyID, su
 	}
 
 	// sign with admins
-	for _, partyID := range signingParties {
-		adminSigner, adminCertBytes, err := createAdminCertAndSigner(dir, int(partyID))
+	for _, orgID := range signingOrgs {
+		// var channelGroup string
+		// if strings.HasPrefix(orgID, "org") {
+		// 	channelGroup = "ordererOrganizations"
+		// } else if strings.HasPrefix(orgID, "peer") {
+		// 	channelGroup = "peerOrganizations"
+		// } else {
+		// 	require.FailNow(t, fmt.Sprintf("invalid orgID %s", orgID))
+		// }
+		adminSigner, adminCertBytes, err := createAdminCertAndSigner(dir, string(channelGroup), orgID)
 		require.NoError(t, err)
 		require.NotNil(t, adminSigner)
 		require.NotNil(t, adminCertBytes)
 
-		sId := msppb.NewIdentity(fmt.Sprintf("org%d", partyID), adminCertBytes)
+		sId := msppb.NewIdentity(orgID, adminCertBytes)
 
 		sigHeader, err := protoutil.NewSignatureHeader(adminSigner)
 		require.NoError(t, err)
@@ -1192,7 +1214,7 @@ func CreateConfigTX(t *testing.T, dir string, signingParties []types.PartyID, su
 	require.NoError(t, err)
 
 	// Wrap the ConfigUpdateEnvelope with an Envelope signed by the admin of the submitting party
-	submittingAdminSigner, submittingAdminCert, err := createAdminCertAndSigner(dir, submittingParty)
+	submittingAdminSigner, submittingAdminCert, err := createAdminCertAndSigner(dir, "ordererOrganizations", fmt.Sprintf("org%d", submittingParty))
 	require.NoError(t, err)
 	require.NotNil(t, submittingAdminSigner)
 	require.NotNil(t, submittingAdminCert)
@@ -1206,14 +1228,14 @@ func CreateConfigTX(t *testing.T, dir string, signingParties []types.PartyID, su
 	return env
 }
 
-func createAdminCertAndSigner(dir string, submittingParty int) (*crypto.ECDSASigner, []byte, error) {
-	keyPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", submittingParty), "users", fmt.Sprintf("Admin@org%d", submittingParty), "msp", "keystore", "priv_sk")
+func createAdminCertAndSigner(dir string, channelGroup string, org string) (*crypto.ECDSASigner, []byte, error) {
+	keyPath := filepath.Join(dir, "crypto", channelGroup, org, "users", fmt.Sprintf("Admin@%s", org), "msp", "keystore", "priv_sk")
 	submittingAdminSigner, err := createSigner(keyPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating a signer, err: %s", err)
 	}
 
-	certPath := filepath.Join(dir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", submittingParty), "users", fmt.Sprintf("Admin@org%d", submittingParty), "msp", "signcerts", fmt.Sprintf("Admin@org%d-cert.pem", submittingParty))
+	certPath := filepath.Join(dir, "crypto", channelGroup, org, "users", fmt.Sprintf("Admin@%s", org), "msp", "signcerts", fmt.Sprintf("Admin@%s-cert.pem", org))
 	submittingAdminCert, err := os.ReadFile(certPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating a certificate, err: %s", err)

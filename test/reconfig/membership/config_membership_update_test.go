@@ -9,6 +9,7 @@ package membership
 import (
 	"fmt"
 	"maps"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -26,6 +27,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
@@ -33,6 +35,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/onsi/gomega/gexec"
+	"github.com/stretchr/testify/assert/yaml"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -1350,6 +1353,225 @@ func TestJoinMultipleParties(t *testing.T) {
 		Timeout:      60,
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
+	})
+}
+
+// TestAddRemoveApplicationClient verifies that an application client can be added to the network configuration and
+// removed through configuration updates, and that the network continues to operate correctly with the updated configuration.
+func TestAddRemoveApplicationClient(t *testing.T) {
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	t.Cleanup(func() {
+		gexec.CleanupBuildArtifacts()
+	})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Number of parties in the test
+	numOfParties := 4
+	numOfShards := 1
+
+	t.Logf("Running test with %d parties and %d shards", numOfParties, numOfShards)
+
+	// create a temporary directory for the test.
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
+
+	// create a config YAML file in the temporary directory.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
+
+	numOfArmaNodes := len(netInfo)
+
+	// generate the config files in the temporary directory using the armageddon generate command.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	// run the arma nodes.
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	parties := make([]types.PartyID, 0, numOfParties)
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	// extend the network configuration to add a new peer (peer2) and generate its crypto materials
+	network := generate.Network{}
+	configFileContent, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+
+	err = yaml.Unmarshal([]byte(configFileContent), &network)
+	require.NoError(t, err)
+
+	network.Peers = append(network.Peers, "peer2")
+	testutil.ExtendConfigAndCrypto(&network, dir, true)
+
+	caCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "cacerts", "peer2-CA-cert.pem"))
+	require.NoError(t, err)
+	tlsCaCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "tlscacerts", "tlspeer2-CA-cert.pem"))
+	require.NoError(t, err)
+	adminCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "admincerts", "Admin@peer2-cert.pem"))
+	require.NoError(t, err)
+
+	knownCertPaths, err := utils.PemFilesFromDir(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "knowncerts"))
+	require.NoError(t, err)
+
+	var knownCerts [][]byte
+	for _, knownCertPath := range knownCertPaths {
+		knownCert, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "knowncerts", knownCertPath))
+		require.NoError(t, err)
+		knownCerts = append(knownCerts, knownCert)
+	}
+
+	// Create a config update to add the new peer (peer2) to the network configuration and submit it
+	configBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
+	builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+	builder.AddNewPeer(t, &configutil.PeerConfig{
+		Name:       "peer2",
+		CACerts:    [][]byte{caCerts},
+		TLSCACerts: [][]byte{tlsCaCerts},
+		AdminCerts: [][]byte{adminCerts},
+		KnownCerts: knownCerts,
+	})
+
+	uc, err := testutil.GetUserConfig(dir, 1)
+	require.NoError(t, err)
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	// Send the config tx
+	env := configutil.CreateConfigTXSignedByOrgs(t, dir, configutil.ChannelGroupName.Application, []string{"peer1"}, 1, builder.ConfigUpdatePBData(t))
+	require.NotNil(t, env)
+
+	var totalTxNumber int
+	var configSeq uint64
+
+	err = broadcastClient.SendTxTo(env, 1)
+	require.NoError(t, err)
+	totalTxNumber++
+	configSeq++
+
+	broadcastClient.Stop()
+
+	// Wait for the network to relaunch with the updated configuration
+	testutil.WaitForNetworkRelaunch(t, netInfo, configSeq)
+
+	// Load the user config for peer2 to send transactions from it
+	f, err := os.Open(filepath.Join(dir, "config", "peer2", "user_config.yaml"))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = f.Close()
+	})
+
+	puc, err := armageddon.ReadUserConfig(&f)
+	require.NoError(t, err)
+
+	// Send transactions to the routers.
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	require.NoError(t, err)
+
+	broadcastClient = client.NewBroadcastTxClient(puc, 10*time.Second)
+
+	// Send transactions to the new peer (peer2) to ensure it can process transactions after being added to the network
+	for i := range 10 {
+		status := rl.GetToken()
+		require.True(t, status, "failed to send tx %d", i+1)
+		txContent := tx.PrepareTxWithTimestamp(i, 64, []byte("sessionNumber"))
+		env := tx.CreateStructuredEnvelope(txContent)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+		totalTxNumber++
+	}
+
+	broadcastClient.Stop()
+
+	configBlockPath = filepath.Join(dir, "config_store", fmt.Sprintf("config_%d.block", configSeq))
+	// sign the pull request with the new peer's (peer2) credentials to verify that it can pull blocks from the assembler after being added to the network
+	pullRequestSigner, err := signutil.CreateSignerForUser(puc.MSPDir)
+	require.NoError(t, err)
+
+	// Pull blocks from the assembler to verify that the pull request signed by the new peer (peer2) is accepted and that it can successfully pull blocks from the assembler
+	statusUnknown := common.Status_UNKNOWN
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig:   puc,
+		Status:       &statusUnknown,
+		Parties:      parties,
+		StartBlock:   0,
+		EndBlock:     math.MaxUint64,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d",
+		Signer:       pullRequestSigner,
+		Timeout:      120,
+		BlockHandler: &exportConfigBlockToFile{configSeq: configSeq, path: configBlockPath},
+	})
+
+	t.Logf("Verify the config block %d file was created", configSeq)
+	require.FileExists(t, configBlockPath, "Config block file should exist after pulling from assembler")
+	t.Logf("Config block %d successfully written to: %s", configSeq, configBlockPath)
+
+	//	 Create a config update to remove the new peer (peer2) from the network configuration and submit it
+	builder = configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+	builder.RemovePeer(t, "peer2")
+
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	// Send the config tx
+	env = configutil.CreateConfigTXSignedByOrgs(t, dir, configutil.ChannelGroupName.Application, []string{"peer1", "peer2"}, 1, builder.ConfigUpdatePBData(t))
+	require.NotNil(t, env)
+
+	err = broadcastClient.SendTxTo(env, 1)
+	require.NoError(t, err)
+	totalTxNumber++
+	configSeq++
+
+	broadcastClient.Stop()
+
+	// Wait for the network to relaunch with the updated configuration after removing peer2
+	testutil.WaitForNetworkRelaunch(t, netInfo, configSeq)
+
+	broadcastClient = client.NewBroadcastTxClient(puc, 10*time.Second)
+
+	// Attempt to send a transaction after network relaunch
+	txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+	env = tx.CreateStructuredEnvelope(txContent)
+	err = broadcastClient.SendTx(env)
+	// Expect an error because peer2 has been removed from the network configuration and should not be able to send transactions
+	require.Error(t, err)
+
+	broadcastClient.Stop()
+
+	// Attempt to pull blocks from the assembler after removing peer2 and expect failure due to the pull request being signed by a client that is no longer part of the network configuration
+	statusForbidden := common.Status_FORBIDDEN
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig: uc,
+		Parties:    parties,
+		ErrString:  "pull from assembler: %d ended: received a non block message: status:FORBIDDEN",
+		Status:     &statusForbidden,
+		Signer:     pullRequestSigner,
+	})
+
+	// Attempt to pull blocks from the assembler with a new signer that is not part of the network configuration and expect failure due to mTLS verification
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig: puc,
+		Parties:    parties,
+		ErrString:  "failed to create a gRPC client connection to assembler: %d:",
 	})
 }
 
