@@ -312,6 +312,30 @@ func ExtendConfigAndCrypto(networkConfig *genconfig.Network, outputDir string, c
 			os.Exit(-1)
 		}
 	}
+
+	for _, peer := range networkConfig.Peers {
+		userTLSPrivateKeyPath := filepath.Join(outputDir, "crypto", "peerOrganizations", peer, "users", fmt.Sprintf("client@%s", peer), "tls", "client.key")
+		userTLSCertPath := filepath.Join(outputDir, "crypto", "peerOrganizations", peer, "users", fmt.Sprintf("client@%s", peer), "tls", "client.crt")
+
+		userMSPDir := filepath.Join(outputDir, "crypto", "peerOrganizations", peer, "users", fmt.Sprintf("client@%s", peer), "msp")
+		userConfig, err := armageddon.NewUserConfig(userMSPDir, userTLSPrivateKeyPath, userTLSCertPath, tlsCACertsBytesPartiesCollection, networkConfig)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating user config: %s", err)
+			os.Exit(-1)
+		}
+
+		peerConfigDir := filepath.Join(outputDir, "config", peer)
+		if err := os.MkdirAll(peerConfigDir, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating peer config dir: %s", err)
+			os.Exit(-1)
+		}
+
+		err = utils.WriteToYAML(userConfig, filepath.Join(peerConfigDir, "user_config.yaml"))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating user config yaml: %s", err)
+			os.Exit(-1)
+		}
+	}
 }
 
 // PrepareSharedConfigBinary generates a shared configuration and writes the encoded configuration to a file.
