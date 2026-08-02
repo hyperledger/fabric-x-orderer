@@ -123,6 +123,53 @@ func TestValidateBlockValidationPolicy(t *testing.T) {
 		err := validateBlockValidationPolicy(buildBlockValidationPolicy(wrongConsenters), consenters)
 		require.ErrorContains(t, err, "unexpected identity in policy")
 	})
+
+	t.Run("nested NOutOf is rejected", func(t *testing.T) {
+		policy := buildBlockValidationPolicy(
+			consenters,
+			policydsl.SignedBy(0),
+			policydsl.SignedBy(1),
+			policydsl.SignedBy(2),
+			policydsl.NOutOf(0, nil),
+		)
+		err := validateBlockValidationPolicy(policy, consenters)
+		require.ErrorContains(t, err, "policy rule 3 is not SignedBy")
+	})
+
+	t.Run("duplicate SignedBy is rejected", func(t *testing.T) {
+		policy := buildBlockValidationPolicy(
+			consenters,
+			policydsl.SignedBy(0),
+			policydsl.SignedBy(1),
+			policydsl.SignedBy(2),
+			policydsl.SignedBy(2),
+		)
+		err := validateBlockValidationPolicy(policy, consenters)
+		require.ErrorContains(t, err, "duplicate SignedBy index 2")
+	})
+
+	t.Run("short rule list is rejected", func(t *testing.T) {
+		policy := buildBlockValidationPolicy(
+			consenters,
+			policydsl.SignedBy(0),
+			policydsl.SignedBy(1),
+			policydsl.SignedBy(2),
+		)
+		err := validateBlockValidationPolicy(policy, consenters)
+		require.ErrorContains(t, err, "unexpected number of policy rules: expected 4 got 3")
+	})
+
+	t.Run("out-of-range SignedBy index is rejected", func(t *testing.T) {
+		policy := buildBlockValidationPolicy(
+			consenters,
+			policydsl.SignedBy(0),
+			policydsl.SignedBy(1),
+			policydsl.SignedBy(2),
+			policydsl.SignedBy(4),
+		)
+		err := validateBlockValidationPolicy(policy, consenters)
+		require.ErrorContains(t, err, "invalid SignedBy index 4")
+	})
 }
 
 func TestValidateTLSCACertsConsistency(t *testing.T) {
@@ -194,15 +241,12 @@ func (o *testOrdererOrg) MSPID() string       { return "" }
 func (o *testOrdererOrg) MSP() fabmsp.MSP     { return o.mspImpl }
 func (o *testOrdererOrg) Endpoints() []string { return nil }
 
-func buildBlockValidationPolicy(consenters []*common.Consenter) *common.ConfigPolicy {
+func buildBlockValidationPolicy(consenters []*common.Consenter, rules ...*common.SignaturePolicy) *common.ConfigPolicy {
 	n := len(consenters)
 	f := (n - 1) / 3
 
 	identities := make([]*msp.MSPPrincipal, 0, n)
-	signedBy := make([]*common.SignaturePolicy, 0, n)
-
-	for i, consenter := range consenters {
-		signedBy = append(signedBy, policydsl.SignedBy(int32(i)))
+	for _, consenter := range consenters {
 		identities = append(identities, &msp.MSPPrincipal{
 			PrincipalClassification: msp.MSPPrincipal_IDENTITY,
 			Principal: protoutil.MarshalOrPanic(
@@ -211,11 +255,18 @@ func buildBlockValidationPolicy(consenters []*common.Consenter) *common.ConfigPo
 		})
 	}
 
+	if len(rules) == 0 {
+		rules = make([]*common.SignaturePolicy, n)
+		for i := range consenters {
+			rules[i] = policydsl.SignedBy(int32(i))
+		}
+	}
+
 	return &common.ConfigPolicy{
 		Policy: &common.Policy{
 			Type: int32(common.Policy_SIGNATURE),
 			Value: protoutil.MarshalOrPanic(&common.SignaturePolicyEnvelope{
-				Rule:       policydsl.NOutOf(int32(policies.ComputeBFTQuorum(n, f)), signedBy),
+				Rule:       policydsl.NOutOf(int32(policies.ComputeBFTQuorum(n, f)), rules),
 				Identities: identities,
 			}),
 		},

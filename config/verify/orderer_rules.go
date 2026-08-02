@@ -549,8 +549,37 @@ func validateBlockValidationPolicy(policy *common.ConfigPolicy, consenters []*co
 	expectedQuorum := int32(policies.ComputeBFTQuorum(n, f))
 
 	nOutOf := envelope.GetRule().GetNOutOf()
-	if nOutOf == nil || nOutOf.N != expectedQuorum {
-		return errors.Errorf("quorum mismatch expected %d got %d", expectedQuorum, nOutOf.GetN())
+	if nOutOf == nil {
+		return errors.New("block validation policy rule is not NOutOf")
+	}
+	if nOutOf.N != expectedQuorum {
+		return errors.Errorf("quorum mismatch expected %d got %d", expectedQuorum, nOutOf.N)
+	}
+
+	// verify that the policy has one SignedBy rule for each consenter
+	if len(nOutOf.Rules) != n {
+		return errors.Errorf("unexpected number of policy rules: expected %d got %d", n, len(nOutOf.Rules))
+	}
+
+	seenSignedBy := make([]bool, n)
+	for i, rule := range nOutOf.Rules {
+		if rule == nil {
+			return errors.Errorf("policy rule %d is nil", i)
+		}
+
+		signedBy, ok := rule.Type.(*common.SignaturePolicy_SignedBy)
+		if !ok {
+			return errors.Errorf("policy rule %d is not SignedBy", i)
+		}
+
+		idx := signedBy.SignedBy
+		if idx < 0 || int(idx) >= n {
+			return errors.Errorf("invalid SignedBy index %d", idx)
+		}
+		if seenSignedBy[idx] {
+			return errors.Errorf("duplicate SignedBy index %d", idx)
+		}
+		seenSignedBy[idx] = true
 	}
 
 	// verify policy identities match consenter identities
