@@ -11,7 +11,6 @@ import (
 	"slices"
 	"sort"
 	"sync"
-	"time"
 
 	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
@@ -146,7 +145,10 @@ func (s *BFTSynchronizer) synchronize() (*smartbft_types.Decision, error) {
 	}
 
 	// === Create a buffer to accept the blocks delivered from the BFTDeliverer.
-	capacityBlocks := uint(100) // TODO max(uint(s.LocalConfigCluster.ReplicationBufferSize)/uint(s.Support.SharedConfig().BatchSize().AbsoluteMaxBytes), 100)
+	capacityBlocks := uint(100)
+	if absMax := s.Support.SharedConfig().BatchSize().AbsoluteMaxBytes; absMax > 0 {
+		capacityBlocks = max(uint(s.LocalConfigCluster.ReplicationBufferSize)/uint(absMax), 100)
+	}
 	s.mutex.Lock()
 	s.syncBuff = commonsync.NewSyncBuffer(capacityBlocks)
 	s.mutex.Unlock()
@@ -266,11 +268,11 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 	clientConfig.SecOpts.VerifyCertificate = nil
 
 	// The maximal amount of time to wait before retrying to connect.
-	maxRetryInterval := 10 * time.Second // TODO s.LocalConfigCluster.ReplicationRetryTimeout
+	maxRetryInterval := s.LocalConfigCluster.ReplicationMaxRetryInterval
 	// The minimal amount of time to wait before retrying. The retry interval doubles after every unsuccessful attempt.
-	minRetryInterval := maxRetryInterval / 50
+	minRetryInterval := s.LocalConfigCluster.ReplicationMinRetryInterval
 	// The maximal duration of a Sync. After this time Sync returns with whatever it had pulled until that point.
-	maxRetryDuration := time.Minute // TODO s.LocalConfigCluster.ReplicationPullTimeout * time.Duration(s.LocalConfigCluster.ReplicationMaxRetries)
+	maxRetryDuration := s.LocalConfigCluster.ReplicationMaxRetryDuration
 	// If a remote orderer does not deliver blocks for this amount of time, even though it can do so, it is replaced as the block deliverer.
 	blockCensorshipTimeOut := maxRetryDuration / 3
 

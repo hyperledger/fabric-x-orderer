@@ -195,6 +195,12 @@ func TestLoadLocalConfigAppliesGeneralDefaults(t *testing.T) {
 	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.LogSpec, loadedConfig.NodeLocalConfig.GeneralConfig.LogSpec)
 	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.SendBufferSize, loadedConfig.ClusterConfig.SendBufferSize)
 	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy, loadedConfig.ClusterConfig.ReplicationPolicy)
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.RPCTimeout, loadedConfig.ClusterConfig.RPCTimeout)
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationBufferSize, loadedConfig.ClusterConfig.ReplicationBufferSize)
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMaxRetryInterval, loadedConfig.ClusterConfig.ReplicationMaxRetryInterval)
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMinRetryInterval, loadedConfig.ClusterConfig.ReplicationMinRetryInterval)
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMaxRetryDuration, loadedConfig.ClusterConfig.ReplicationMaxRetryDuration)
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.CertExpirationWarningThreshold, loadedConfig.ClusterConfig.CertExpirationWarningThreshold)
 	require.Equal(t, loadedConfig.TLSConfig.Certificate, loadedConfig.ClusterConfig.ClientCertificate)
 	require.Equal(t, loadedConfig.TLSConfig.PrivateKey, loadedConfig.ClusterConfig.ClientPrivateKey)
 }

@@ -17,8 +17,14 @@ var DefaultNodeLocalConfig = NodeLocalConfig{
 	GeneralConfig: &GeneralConfig{
 		LogSpec: "info",
 		Cluster: ClusterYaml{
-			SendBufferSize:    100,
-			ReplicationPolicy: "consensus",
+			SendBufferSize:                 100,
+			ReplicationPolicy:              "consensus",
+			RPCTimeout:                     time.Minute,
+			ReplicationBufferSize:          20971520,
+			ReplicationMaxRetryInterval:    10 * time.Second,
+			ReplicationMinRetryInterval:    200 * time.Millisecond,
+			ReplicationMaxRetryDuration:    time.Minute,
+			CertExpirationWarningThreshold: time.Hour * 24 * 7,
 		},
 	},
 	OperationsConfig: &Operations{

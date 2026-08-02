@@ -287,7 +287,7 @@ func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-		c := consensus.CreateConsensus(conf, nil, genesisBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
+		c := consensus.CreateConsensus(conf, configurationWithDefaultCluster(), genesisBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
 		c.Net = net
 		mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 		mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
@@ -511,7 +511,7 @@ func RecoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-	consenter := consensus.CreateConsensus(conf, nil, lastConfigBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
+	consenter := consensus.CreateConsensus(conf, configurationWithDefaultCluster(), lastConfigBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
 	consenter.Net = newConsenterNode.GRPCServer
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
@@ -926,4 +926,25 @@ func SendTransactions(t *testing.T, routers []*router.Router, assembler *assembl
 	}
 
 	t.Logf("%f (totalTxn / elapsed)\n", float32(totalTxn)/float32(elapsed))
+}
+
+// configurationWithDefaultCluster returns a configuration with the default cluster settings.
+func configurationWithDefaultCluster() *config.Configuration {
+	clusterDefaults := config.DefaultNodeLocalConfig.GeneralConfig.Cluster
+
+	return &config.Configuration{
+		LocalConfig: &config.LocalConfig{
+			ClusterConfig: &config.Cluster{
+				SendBufferSize:                 clusterDefaults.SendBufferSize,
+				ReplicationPolicy:              clusterDefaults.ReplicationPolicy,
+				RPCTimeout:                     clusterDefaults.RPCTimeout,
+				ReplicationBufferSize:          clusterDefaults.ReplicationBufferSize,
+				ReplicationMaxRetryInterval:    clusterDefaults.ReplicationMaxRetryInterval,
+				ReplicationMinRetryInterval:    clusterDefaults.ReplicationMinRetryInterval,
+				ReplicationMaxRetryDuration:    clusterDefaults.ReplicationMaxRetryDuration,
+				CertExpirationWarningThreshold: clusterDefaults.CertExpirationWarningThreshold,
+				TLSHandshakeTimeShift:          clusterDefaults.TLSHandshakeTimeShift,
+			},
+		},
+	}
 }

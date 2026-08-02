@@ -214,10 +214,16 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 
 	if generalConfigParams.role == "consenter" {
 		generalConfig.Cluster = config.ClusterYaml{
-			SendBufferSize:    DefaultSendBufferSize,
-			ClientCertificate: filepath.Join(partyPath, nodeRole, "tls", "server.crt"),
-			ClientPrivateKey:  filepath.Join(partyPath, nodeRole, "tls", "server.key"),
-			ReplicationPolicy: "",
+			SendBufferSize:                 DefaultSendBufferSize,
+			ClientCertificate:              filepath.Join(partyPath, nodeRole, "tls", "server.crt"),
+			ClientPrivateKey:               filepath.Join(partyPath, nodeRole, "tls", "server.key"),
+			ReplicationPolicy:              "",
+			RPCTimeout:                     config.DefaultNodeLocalConfig.GeneralConfig.Cluster.RPCTimeout,
+			ReplicationBufferSize:          config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationBufferSize,
+			ReplicationMaxRetryInterval:    config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMaxRetryInterval,
+			ReplicationMinRetryInterval:    config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMinRetryInterval,
+			ReplicationMaxRetryDuration:    config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMaxRetryDuration,
+			CertExpirationWarningThreshold: config.DefaultNodeLocalConfig.GeneralConfig.Cluster.CertExpirationWarningThreshold,
 		}
 	}
 	return generalConfig
