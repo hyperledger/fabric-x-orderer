@@ -85,10 +85,10 @@ func NewBlockPuller(
 		MyOwnTLSCert:        myCert,
 		VerifyBlockSequence: verifyBlockSequenceNoOp,
 		Logger:              logger,
-		RetryTimeout:        time.Second * 5, // clusterConfig.ReplicationRetryTimeout,
+		RetryTimeout:        time.Second * 5,
 		MaxTotalBufferBytes: clusterConfig.ReplicationBufferSize,
-		FetchTimeout:        time.Second * 5, // clusterConfig.ReplicationPullTimeout,
-		Endpoints:           endpoints,       // TODO the block puller is not party aware yet
+		FetchTimeout:        time.Second * 5,
+		Endpoints:           endpoints, // TODO the block puller is not party aware yet
 		Signer:              support,
 		TLSCert:             der.Bytes,
 		Channel:             support.ChannelID(),
