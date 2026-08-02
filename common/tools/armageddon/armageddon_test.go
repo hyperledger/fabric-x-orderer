@@ -285,7 +285,7 @@ func TestLoadAndReceive(t *testing.T) {
 //
 // This test verifies that the --signedMode flag works correctly with the load and receive commands.
 // It also verifies cryptographic signature correctness.
-func TestLoadAndReceiveSignedModeAsFull(t *testing.T) {
+func TestLoadAndReceiveSignedModeAsShort(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
@@ -342,7 +342,7 @@ func TestLoadAndReceiveSignedModeAsFull(t *testing.T) {
 //
 // This test verifies that the --signedMode flag works correctly with the load and receive commands.
 // It does NOT verify cryptographic signature correctness, and test only the full option
-func TestLoadAndReceiveSignedModeAsShort(t *testing.T) {
+func TestLoadAndReceiveSignedModeAsFull(t *testing.T) {
 	dir, err := os.MkdirTemp("", t.Name())
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
