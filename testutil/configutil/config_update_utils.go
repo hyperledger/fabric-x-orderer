@@ -941,6 +941,14 @@ type PartyConfig struct {
 	AdminCerts [][]byte
 }
 
+type PeerConfig struct {
+	Name       string
+	CACerts    [][]byte
+	TLSCACerts [][]byte
+	AdminCerts [][]byte
+	KnownCerts [][]byte
+}
+
 // AddNewParty adds a new party to the config with the given configuration and returns the config update bytes
 func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, knownCerts [][]byte) []byte {
 	sharedConfig := getNestedJSONValue(t, c.configData, sharedConfigPath...)
@@ -987,8 +995,10 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, k
 			"BatchersConfig": batchersConfig,
 		})
 
-	sharedConfig.(map[string]any)["MaxPartyID"] = maxPartyID
-	sharedConfig.(map[string]any)["PartiesConfig"] = partiesConfig
+	sharedMap, ok := sharedConfig.(map[string]any)
+	require.True(t, ok)
+	sharedMap["MaxPartyID"] = maxPartyID
+	sharedMap["PartiesConfig"] = partiesConfig
 
 	// Update consenter mapping
 	consenterMapping := getNestedJSONValue(t, c.configData, consenterMappingPath...)
@@ -1015,10 +1025,8 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, k
 	}
 	require.NotNil(t, tmpl, "orderer org not found")
 
-	data, err := json.Marshal(tmpl)
+	newOrg, err := deepCopyMap(tmpl)
 	require.NoError(t, err)
-	var newOrg map[string]any
-	require.NoError(t, json.Unmarshal(data, &newOrg))
 
 	orgName := fmt.Sprintf("org%d", uint32(maxPartyID))
 
@@ -1047,6 +1055,35 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, k
 	return c.createConfigUpdate(t, c.configData)
 }
 
+func (c *ConfigUpdateBuilder) AddNewPeer(t *testing.T, newPeer *PeerConfig) []byte {
+	// Update Organization
+	orgs := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Application", "groups").(map[string]any)
+
+	// use an existing org as a template
+	var tmpl map[string]any
+	for _, v := range orgs {
+		tmpl = v.(map[string]any)
+		break
+	}
+	require.NotNil(t, tmpl, "application org not found")
+
+	newOrg, err := deepCopyMap(tmpl)
+	require.NoError(t, err)
+
+	overwriteNestedJSONValue(t, newOrg, newPeer.Name, "values", "MSP", "value", "config", "name")
+	overwriteNestedJSONValue(t, newOrg, newPeer.Name, "policies", "Admins", "policy", "value", "identities", "principal", "msp_identifier")
+	overwriteNestedJSONValue(t, newOrg, newPeer.Name, "policies", "Endorsement", "policy", "value", "identities", "principal", "msp_identifier")
+	overwriteNestedJSONValue(t, newOrg, newPeer.Name, "policies", "Readers", "policy", "value", "identities", "principal", "msp_identifier")
+	overwriteNestedJSONValue(t, newOrg, newPeer.Name, "policies", "Writers", "policy", "value", "identities", "principal", "msp_identifier")
+	overwriteNestedJSONValue(t, newOrg, newPeer.CACerts, "values", "MSP", "value", "config", "root_certs")
+	overwriteNestedJSONValue(t, newOrg, newPeer.TLSCACerts, "values", "MSP", "value", "config", "tls_root_certs")
+	overwriteNestedJSONValue(t, newOrg, newPeer.AdminCerts, "values", "MSP", "value", "config", "admins")
+	overwriteNestedJSONValue(t, newOrg, newPeer.KnownCerts, "values", "MSP", "value", "config", "known_certs")
+	orgs[newPeer.Name] = newOrg
+
+	return c.createConfigUpdate(t, c.configData)
+}
+
 func (c *ConfigUpdateBuilder) RemoveParty(t *testing.T, partyID types.PartyID) []byte {
 	// Remove the party from parties config
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
@@ -1059,7 +1096,9 @@ func (c *ConfigUpdateBuilder) RemoveParty(t *testing.T, partyID types.PartyID) [
 	found := false
 	for i, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
-		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+		val, ok := partyMap["PartyID"].(float64)
+		require.True(t, ok)
+		if uint32(partyID) == uint32(val) {
 			found = true
 			partiesConfigList = append(partiesConfigList[:i], partiesConfigList[i+1:]...)
 			break
@@ -1083,15 +1122,30 @@ func (c *ConfigUpdateBuilder) RemoveParty(t *testing.T, partyID types.PartyID) [
 
 	// Remove the party from organization
 	orgName := fmt.Sprintf("org%d", partyID)
-	orgs := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Orderer", "groups").(map[string]any)
-	_, ok := orgs[orgName]
+	ordererGroupsPath := []string{"channel_group", "groups", "Orderer", "groups"}
+	orgs, ok := getNestedJSONValue(t, c.configData, ordererGroupsPath...).(map[string]any)
+	require.True(t, ok)
+	_, ok = orgs[orgName]
 	require.True(t, ok, "org %s not found", orgName)
 	delete(orgs, orgName)
 
 	overwriteNestedJSONValue(t, c.configData, partiesConfigList, partiesConfigPath...)
 	overwriteNestedJSONValue(t, c.configData, consenterMappingList, consenterMappingPath...)
-	overwriteNestedJSONValue(t, c.configData, orgs, "channel_group", "groups", "Orderer", "groups")
+	overwriteNestedJSONValue(t, c.configData, orgs, ordererGroupsPath...)
 	c.syncBlockValidationPolicy(t, consenterMappingList)
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) RemovePeer(t *testing.T, peerName string) []byte {
+	// Remove the peer from organization
+	applicationGroupsPath := []string{"channel_group", "groups", "Application", "groups"}
+	orgs, ok := getNestedJSONValue(t, c.configData, applicationGroupsPath...).(map[string]any)
+	require.True(t, ok)
+	_, ok = orgs[peerName]
+	require.True(t, ok, "org %s not found", peerName)
+	delete(orgs, peerName)
+
+	overwriteNestedJSONValue(t, c.configData, orgs, applicationGroupsPath...)
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -1425,4 +1479,18 @@ func (c *ConfigUpdateBuilder) syncBlockValidationPolicy(t *testing.T, consenterM
 	}
 
 	overwriteNestedJSONValue(t, c.configData, policyValue, blockValidationPolicyValuePath...)
+}
+
+func deepCopyMap(m map[string]any) (map[string]any, error) {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	var copy map[string]any
+	err = json.Unmarshal(data, &copy)
+	if err != nil {
+		return nil, err
+	}
+
+	return copy, err
 }

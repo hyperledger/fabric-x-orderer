@@ -120,13 +120,15 @@ func GenerateCryptoConfigWithProfile(networkConfig *generate.Network, outputDir 
 		})
 	}
 
-	orgs = append(orgs, cryptogen.OrganizationParameters{
-		Name:   "peer1",
-		Domain: "peer1",
-		PeerNodes: []cryptogen.Node{
-			newPeer("peer1"),
-		},
-	})
+	for _, peer := range networkConfig.Peers {
+		orgs = append(orgs, cryptogen.OrganizationParameters{
+			Name:   peer,
+			Domain: peer,
+			PeerNodes: []cryptogen.Node{
+				newPeer(peer),
+			},
+		})
+	}
 
 	targetPath := filepath.Join(outputDir, "crypto")
 	err := os.MkdirAll(targetPath, 0o750)
