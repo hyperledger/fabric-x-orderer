@@ -182,7 +182,7 @@ func TestValidateBlockValidationPolicy(t *testing.T) {
 		)
 
 		err := validateBlockValidationPolicy(policy, consenters)
-		require.ErrorContains(t, err, "policy rule 3 is nil")
+		require.ErrorContains(t, err, "policy rule 3 is not SignedBy")
 	})
 
 	t.Run("root rule not NOutOf is rejected", func(t *testing.T) {
