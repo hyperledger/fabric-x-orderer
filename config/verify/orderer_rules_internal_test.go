@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	mspmock "github.com/hyperledger/fabric-x-orderer/common/msputils/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestValidatePartyModification(t *testing.T) {
@@ -169,6 +170,32 @@ func TestValidateBlockValidationPolicy(t *testing.T) {
 		)
 		err := validateBlockValidationPolicy(policy, consenters)
 		require.ErrorContains(t, err, "invalid SignedBy index 4")
+	})
+
+	t.Run("nil policy rule is rejected", func(t *testing.T) {
+		policy := buildBlockValidationPolicy(
+			consenters,
+			policydsl.SignedBy(0),
+			policydsl.SignedBy(1),
+			policydsl.SignedBy(2),
+			nil,
+		)
+
+		err := validateBlockValidationPolicy(policy, consenters)
+		require.ErrorContains(t, err, "policy rule 3 is nil")
+	})
+
+	t.Run("root rule not NOutOf is rejected", func(t *testing.T) {
+		policy := buildBlockValidationPolicy(consenters)
+
+		envelope := &common.SignaturePolicyEnvelope{}
+		require.NoError(t, proto.Unmarshal(policy.Policy.Value, envelope))
+
+		envelope.Rule = policydsl.SignedBy(0)
+		policy.Policy.Value = protoutil.MarshalOrPanic(envelope)
+
+		err := validateBlockValidationPolicy(policy, consenters)
+		require.ErrorContains(t, err, "block validation policy rule is not NOutOf")
 	})
 }
 
