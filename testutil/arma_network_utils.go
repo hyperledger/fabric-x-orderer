@@ -50,6 +50,7 @@ func GenerateNetworkConfig(t *testing.T, useTLSRouter string, useTLSAssembler st
 		Parties:         parties,
 		UseTLSRouter:    useTLSRouter,
 		UseTLSAssembler: useTLSAssembler,
+		Peers:           []string{"peer1"},
 	}
 
 	for _, ll := range listeners {

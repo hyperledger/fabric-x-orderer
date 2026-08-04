@@ -45,6 +45,7 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	newCACerts := [][]byte{[]byte("newCACert")}
 	newTLSCACerts := [][]byte{[]byte("newTLSCACert")}
 	newKnownCerts := [][]byte{[]byte("newKnownCert")}
+	newAdminCerts := [][]byte{[]byte("newAdminCert")}
 
 	configUpdateBuilder.UpdateBatchSizeConfig(t, cfgutil.NewBatchSizeConfig(cfgutil.BatchSizeConfigName.MaxMessageCount, 500))
 	configUpdateBuilder.UpdateOrderingEndpoint(t, types.PartyID(1), "newIP", 1212)
@@ -84,7 +85,7 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 				},
 			},
 		},
-		AdminCerts: [][]byte{[]byte("newAdminCert")},
+		AdminCerts: newAdminCerts,
 	}, [][]byte{[]byte("knownCerts")})
 
 	configUpdateBuilder.UpdateBatcherSignCert(t, types.PartyID(1), types.ShardID(1), []byte("newSignCert"))
@@ -93,6 +94,13 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	configUpdateBuilder.UpdatePartyCACerts(t, types.PartyID(1), newCACerts)
 	configUpdateBuilder.UpdateOrgKnownCerts(t, "org1", newKnownCerts)
 	configUpdateBuilder.AppendOrgKnownCerts(t, "org1", [][]byte{[]byte("additionalKnownCert")})
+	configUpdateBuilder.AddNewPeer(t, &cfgutil.PeerConfig{
+		Name:       "peer2",
+		TLSCACerts: [][]byte{[]byte("peerTLSCert")}, AdminCerts: [][]byte{[]byte("peerAdminCert")},
+		CACerts:    [][]byte{[]byte("peerCACert")},
+		KnownCerts: [][]byte{[]byte("peerKnownCert")},
+	})
+	configUpdateBuilder.RemovePeer(t, "peer1")
 
 	configUpdatePbData := configUpdateBuilder.ConfigUpdatePBData(t)
 
@@ -120,15 +128,25 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	require.Equal(t, newCACerts, partiesConfig[0].CACerts)
 	require.Equal(t, newTLSCACerts, partiesConfig[0].TLSCACerts)
 	msp := configUpdate.WriteSet.Groups["Orderer"].Groups["org1"].Values["MSP"].Value
-	mspKnownCerts := getKnownCertsFromMSPValue(msp)
+	mspKnownCerts := getFabricMSPConfigFromMSPValue(msp).KnownCerts
 	require.Equal(t, append(newKnownCerts, []byte("additionalKnownCert")), mspKnownCerts)
 
 	// Further checks can be added here to verify other updates
 	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetBatchersConfig()[0].GetSignCert())
 	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetConsenterConfig().GetSignCert())
+
+	_, ok := configUpdate.WriteSet.Groups["Application"].Groups["peer1"]
+	require.False(t, ok)
+	peer, ok := configUpdate.WriteSet.Groups["Application"].Groups["peer2"]
+	require.True(t, ok)
+	peerMspConfig := getFabricMSPConfigFromMSPValue(peer.Values["MSP"].Value)
+	require.Equal(t, peerMspConfig.TlsRootCerts, [][]byte{[]byte("peerTLSCert")})
+	require.Equal(t, peerMspConfig.RootCerts, [][]byte{[]byte("peerCACert")})
+	require.Equal(t, peerMspConfig.Admins, [][]byte{[]byte("peerAdminCert")})
+	require.Equal(t, peerMspConfig.KnownCerts, [][]byte{[]byte("peerKnownCert")})
 }
 
-func getKnownCertsFromMSPValue(mspValue []byte) [][]byte {
+func getFabricMSPConfigFromMSPValue(mspValue []byte) *msppb.FabricMSPConfig {
 	// mspValue is a serialised msp.MSPConfig (outer wrapper)
 	mspConfig := &msp.MSPConfig{}
 	if err := proto.Unmarshal(mspValue, mspConfig); err != nil {
@@ -139,5 +157,5 @@ func getKnownCertsFromMSPValue(mspValue []byte) [][]byte {
 	if err := proto.Unmarshal(mspConfig.GetConfig(), fabricConfig); err != nil {
 		panic(err)
 	}
-	return fabricConfig.GetKnownCerts()
+	return fabricConfig
 }
