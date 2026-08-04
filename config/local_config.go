@@ -136,6 +136,20 @@ type ClusterYaml struct {
 	ClientPrivateKey string `yaml:"ClientPrivateKey,omitempty"`
 	// ReplicationPolicy defines how blocks are replicated between orderers.
 	ReplicationPolicy string `yaml:"ReplicationPolicy,omitempty"`
+	// RPCTimeout is the timeout for RPC calls between orderers.
+	RPCTimeout time.Duration `yaml:"RPCTimeout,omitempty"`
+	// ReplicationBufferSize is the size of the buffer that is used to store blocks that are being replicated from other orderers.
+	ReplicationBufferSize int `yaml:"ReplicationBufferSize,omitempty"`
+	// ReplicationMaxRetryInterval is the maximal amount of time to wait before retrying to connect.
+	ReplicationMaxRetryInterval time.Duration `yaml:"ReplicationMaxRetryInterval,omitempty"`
+	// ReplicationMinRetryInterval is the minimal amount of time to wait before retrying to connect.
+	ReplicationMinRetryInterval time.Duration `yaml:"ReplicationMinRetryInterval,omitempty"`
+	// ReplicationMaxRetryDuration is the maximal amount of time to retry connecting before giving up.
+	ReplicationMaxRetryDuration time.Duration `yaml:"ReplicationMaxRetryDuration,omitempty"`
+	// CertExpirationWarningThreshold is the amount of time before TLS certificate expiration to start warning about impending expiration.
+	CertExpirationWarningThreshold time.Duration `yaml:"CertExpirationWarningThreshold,omitempty"`
+	// TLSHandshakeTimeShift is the duration by which to shift TLS handshakes time sampling to the past.
+	TLSHandshakeTimeShift time.Duration `yaml:"TLSHandshakeTimeShift,omitempty"`
 }
 
 // FileStore sets the configuration of the file store.
@@ -201,6 +215,20 @@ type Cluster struct {
 	ClientPrivateKey []byte
 	// ReplicationPolicy defines how blocks are replicated between orderers.
 	ReplicationPolicy string
+	// RPCTimeout is the timeout for RPC calls between orderers.
+	RPCTimeout time.Duration
+	// ReplicationBufferSize is the size of the buffer that is used to store blocks that are being replicated from other orderers.
+	ReplicationBufferSize int
+	// ReplicationMaxRetryInterval is the maximal amount of time to wait before retrying to connect.
+	ReplicationMaxRetryInterval time.Duration
+	// ReplicationMinRetryInterval is the minimal amount of time to wait before retrying to connect.
+	ReplicationMinRetryInterval time.Duration
+	// ReplicationMaxRetryDuration is the maximal amount of time to retry connecting before giving up.
+	ReplicationMaxRetryDuration time.Duration
+	// CertExpirationWarningThreshold is the amount of time before TLS certificate expiration to start warning about impending expiration.
+	CertExpirationWarningThreshold time.Duration
+	// TLSHandshakeTimeShift is the duration by which to shift TLS handshakes time sampling to the past.
+	TLSHandshakeTimeShift time.Duration
 }
 
 // LoadLocalConfig reads the local config yaml and certs and returns the local configuration.
@@ -399,10 +427,17 @@ func loadClusterCryptoConfig(cluster *ClusterYaml) (*Cluster, error) {
 	}
 
 	return &Cluster{
-		SendBufferSize:    cluster.SendBufferSize,
-		ClientCertificate: clientCertificate,
-		ClientPrivateKey:  clientPrivateKey,
-		ReplicationPolicy: cluster.ReplicationPolicy,
+		SendBufferSize:                 cluster.SendBufferSize,
+		ClientCertificate:              clientCertificate,
+		ClientPrivateKey:               clientPrivateKey,
+		ReplicationPolicy:              cluster.ReplicationPolicy,
+		RPCTimeout:                     cluster.RPCTimeout,
+		ReplicationBufferSize:          cluster.ReplicationBufferSize,
+		ReplicationMaxRetryInterval:    cluster.ReplicationMaxRetryInterval,
+		ReplicationMinRetryInterval:    cluster.ReplicationMinRetryInterval,
+		ReplicationMaxRetryDuration:    cluster.ReplicationMaxRetryDuration,
+		CertExpirationWarningThreshold: cluster.CertExpirationWarningThreshold,
+		TLSHandshakeTimeShift:          cluster.TLSHandshakeTimeShift,
 	}, nil
 }
 
@@ -432,6 +467,36 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig, logger *flogging.Fab
 	if generalConfig.Cluster.ReplicationPolicy == "" {
 		generalConfig.Cluster.ReplicationPolicy = DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy
 		logger.Infof("General.Cluster.ReplicationPolicy is not set, using default value: %s", generalConfig.Cluster.ReplicationPolicy)
+	}
+
+	if generalConfig.Cluster.RPCTimeout == 0 {
+		generalConfig.Cluster.RPCTimeout = DefaultNodeLocalConfig.GeneralConfig.Cluster.RPCTimeout
+		logger.Infof("General.Cluster.RPCTimeout is not set, using default value: %s", generalConfig.Cluster.RPCTimeout)
+	}
+
+	if generalConfig.Cluster.ReplicationBufferSize == 0 {
+		generalConfig.Cluster.ReplicationBufferSize = DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationBufferSize
+		logger.Infof("General.Cluster.ReplicationBufferSize is not set, using default value: %d", generalConfig.Cluster.ReplicationBufferSize)
+	}
+
+	if generalConfig.Cluster.ReplicationMaxRetryInterval == 0 {
+		generalConfig.Cluster.ReplicationMaxRetryInterval = DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMaxRetryInterval
+		logger.Infof("General.Cluster.ReplicationMaxRetryInterval is not set, using default value: %s", generalConfig.Cluster.ReplicationMaxRetryInterval)
+	}
+
+	if generalConfig.Cluster.ReplicationMinRetryInterval == 0 {
+		generalConfig.Cluster.ReplicationMinRetryInterval = DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMinRetryInterval
+		logger.Infof("General.Cluster.ReplicationMinRetryInterval is not set, using default value: %s", generalConfig.Cluster.ReplicationMinRetryInterval)
+	}
+
+	if generalConfig.Cluster.ReplicationMaxRetryDuration == 0 {
+		generalConfig.Cluster.ReplicationMaxRetryDuration = DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMaxRetryDuration
+		logger.Infof("General.Cluster.ReplicationMaxRetryDuration is not set, using default value: %s", generalConfig.Cluster.ReplicationMaxRetryDuration)
+	}
+
+	if generalConfig.Cluster.CertExpirationWarningThreshold == 0 {
+		generalConfig.Cluster.CertExpirationWarningThreshold = DefaultNodeLocalConfig.GeneralConfig.Cluster.CertExpirationWarningThreshold
+		logger.Infof("General.Cluster.CertExpirationWarningThreshold is not set, using default value: %s", generalConfig.Cluster.CertExpirationWarningThreshold)
 	}
 
 	if generalConfig.Cluster.ClientCertificate == "" &&
