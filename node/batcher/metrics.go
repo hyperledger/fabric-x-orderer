@@ -213,8 +213,15 @@ func (m *BatcherMetrics) StopMetricsTracker() {
 }
 
 func (m *BatcherMetrics) trackMetrics() {
-	prevC, prevP, prevR := float64(0), float64(0), float64(0)
+	prevC := monitoring.GetMetricValue(m.batchesCreatedTotal.(prometheus.Metric), m.logger)
+	prevP := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
+	prevR := monitoring.GetMetricValue(m.firstResendsTotal.(prometheus.Metric), m.logger)
 	sec := m.interval.Seconds()
+
+	prevMempoolSum, prevMempoolCount := monitoring.GetHistogramSumAndCount(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger)
+	prevVerifySum, prevVerifyCount := monitoring.GetHistogramSumAndCount(m.batchVerifyLatency.(prometheus.Metric), m.logger)
+	prevLedgerSum, prevLedgerCount := monitoring.GetHistogramSumAndCount(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
+
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
 
@@ -225,25 +232,36 @@ func (m *BatcherMetrics) trackMetrics() {
 			pulled := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
 			resends := monitoring.GetMetricValue(m.firstResendsTotal.(prometheus.Metric), m.logger)
 
+			mempoolSum, mempoolCount := monitoring.GetHistogramSumAndCount(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger)
+			verifySum, verifyCount := monitoring.GetHistogramSumAndCount(m.batchVerifyLatency.(prometheus.Metric), m.logger)
+			ledgerSum, ledgerCount := monitoring.GetHistogramSumAndCount(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
+
+			mempoolIntervalAvg := histogramIntervalAverage(mempoolSum-prevMempoolSum, mempoolCount-prevMempoolCount)
+			verifyIntervalAvg := histogramIntervalAverage(verifySum-prevVerifySum, verifyCount-prevVerifyCount)
+			ledgerIntervalAvg := histogramIntervalAverage(ledgerSum-prevLedgerSum, ledgerCount-prevLedgerCount)
+
 			m.logger.Infof(
-				"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resend_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_avg_seconds=%.6f, batch_verify_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f",
+				"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resend_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_interval_avg_seconds=%.6f, batch_verify_latency_interval_avg_seconds=%.6f, batch_ledger_append_latency_interval_avg_seconds=%.6f",
 				m.partyID,
 				m.shardID,
 				m.role(),
 				sec,
-				uint64(created-prevC), created-prevC/sec, uint64(created),
-				uint64(pulled-prevP), pulled-prevP/sec, uint64(pulled),
-				uint64(resends-prevR), resends-prevR/sec, uint64(resends),
+				uint64(created-prevC), (created-prevC)/sec, uint64(created),
+				uint64(pulled-prevP), (pulled-prevP)/sec, uint64(pulled),
+				uint64(resends-prevR), (resends-prevR)/sec, uint64(resends),
 				uint64(monitoring.GetMetricValue(m.batchedTxsTotal.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.memPoolSize.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.routerTxsTotal.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.roleChangesTotal.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.complaintsTotal.(prometheus.Metric), m.logger)),
-				monitoring.GetHistogramAverage(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger),
-				monitoring.GetHistogramAverage(m.batchVerifyLatency.(prometheus.Metric), m.logger),
-				monitoring.GetHistogramAverage(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger),
+				mempoolIntervalAvg,
+				verifyIntervalAvg,
+				ledgerIntervalAvg,
 			)
 			prevC, prevP, prevR = created, pulled, resends
+			prevMempoolSum, prevMempoolCount = mempoolSum, mempoolCount
+			prevVerifySum, prevVerifyCount = verifySum, verifyCount
+			prevLedgerSum, prevLedgerCount = ledgerSum, ledgerCount
 
 		case <-m.stopChan:
 			return
@@ -257,4 +275,11 @@ func (m *BatcherMetrics) role() string {
 		return "primary"
 	}
 	return "secondary"
+}
+
+func histogramIntervalAverage(deltaSum float64, deltaCount uint64) float64 {
+	if deltaCount == 0 {
+		return 0
+	}
+	return deltaSum / float64(deltaCount)
 }

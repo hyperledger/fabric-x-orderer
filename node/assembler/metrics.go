@@ -123,14 +123,20 @@ func (m *Metrics) StopMetricsTracker() {
 		attestationToBatchCollationLatencyAvg := monitoring.GetHistogramAverage(m.attestationToBatchCollationLatency.(prometheus.Metric), m.logger)
 		batchLedgerAppendLatencyAvg := monitoring.GetHistogramAverage(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
 
-		m.logger.Infof("ASSEMBLER_METRICS: party_id=%d, total: TXs=%d, blocks=%d, estimated_block_size=%d, batch_unary_fetch_latency_avg_seconds=%.6f, attestation_to_batch_collation_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f", m.partyID, txCommitted, blocksCommitted, blocksSizeCommitted, batchUnaryFetchLatencyAvg, attestationToBatchCollationLatencyAvg, batchLedgerAppendLatencyAvg)
+		m.logger.Infof("ASSEMBLER_METRICS: party_id=%d, total: TXs=%d, blocks=%d, estimated_block_size_total=%d, batch_unary_fetch_latency_avg_seconds=%.6f, attestation_to_batch_collation_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f", m.partyID, txCommitted, blocksCommitted, blocksSizeCommitted, batchUnaryFetchLatencyAvg, attestationToBatchCollationLatencyAvg, batchLedgerAppendLatencyAvg)
 	})
 }
 
 func (m *Metrics) trackMetrics() {
 	lastTxCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionCount.(prometheus.Counter), m.logger))
 	lastBlocksCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksCount.(prometheus.Counter), m.logger))
+	lastBlocksSizeCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksSize.(prometheus.Counter), m.logger))
 	sec := m.interval.Seconds()
+
+	prevFetchSum, prevFetchCount := monitoring.GetHistogramSumAndCount(m.batchUnaryFetchLatency.(prometheus.Metric), m.logger)
+	prevCollationSum, prevCollationCount := monitoring.GetHistogramSumAndCount(m.attestationToBatchCollationLatency.(prometheus.Metric), m.logger)
+	prevLedgerSum, prevLedgerCount := monitoring.GetHistogramSumAndCount(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
+
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
 
@@ -151,12 +157,25 @@ func (m *Metrics) trackMetrics() {
 				newTXs = txCommitted - lastTxCommitted
 			}
 
-			batchUnaryFetchLatencyAvg := monitoring.GetHistogramAverage(m.batchUnaryFetchLatency.(prometheus.Metric), m.logger)
-			attestationToBatchCollationLatencyAvg := monitoring.GetHistogramAverage(m.attestationToBatchCollationLatency.(prometheus.Metric), m.logger)
-			batchLedgerAppendLatencyAvg := monitoring.GetHistogramAverage(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
+			blocksSizeInterval := uint64(0)
+			if blocksSizeCommitted > lastBlocksSizeCommitted {
+				blocksSizeInterval = blocksSizeCommitted - lastBlocksSizeCommitted
+			}
 
-			m.logger.Infof("ASSEMBLER_METRICS: total: party_id=%d, TXs=%d, blocks=%d, estimated_block_size=%d, batch_unary_fetch_latency_avg_seconds=%.6f, attestation_to_batch_collation_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f, in the last %.2f seconds: TXs=%d, blocks=%d", m.partyID, txCommitted, blocksCommitted, blocksSizeCommitted, batchUnaryFetchLatencyAvg, attestationToBatchCollationLatencyAvg, batchLedgerAppendLatencyAvg, sec, newTXs, newBlocks)
+			fetchSum, fetchCount := monitoring.GetHistogramSumAndCount(m.batchUnaryFetchLatency.(prometheus.Metric), m.logger)
+			collationSum, collationCount := monitoring.GetHistogramSumAndCount(m.attestationToBatchCollationLatency.(prometheus.Metric), m.logger)
+			ledgerSum, ledgerCount := monitoring.GetHistogramSumAndCount(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
+
+			batchUnaryFetchLatencyAvg := histogramIntervalAverage(fetchSum-prevFetchSum, fetchCount-prevFetchCount)
+			attestationToBatchCollationLatencyAvg := histogramIntervalAverage(collationSum-prevCollationSum, collationCount-prevCollationCount)
+			batchLedgerAppendLatencyAvg := histogramIntervalAverage(ledgerSum-prevLedgerSum, ledgerCount-prevLedgerCount)
+
+			m.logger.Infof("ASSEMBLER_METRICS: total: party_id=%d, TXs=%d, blocks=%d, estimated_block_size_total=%d, in the last %.2f seconds: TXs=%d, blocks=%d, estimated_block_size_interval=%d, batch_unary_fetch_latency_interval_avg_seconds=%.6f, attestation_to_batch_collation_latency_interval_avg_seconds=%.6f, batch_ledger_append_latency_interval_avg_seconds=%.6f", m.partyID, txCommitted, blocksCommitted, blocksSizeCommitted, sec, newTXs, newBlocks, blocksSizeInterval, batchUnaryFetchLatencyAvg, attestationToBatchCollationLatencyAvg, batchLedgerAppendLatencyAvg)
 			lastTxCommitted, lastBlocksCommitted = txCommitted, blocksCommitted
+			lastBlocksSizeCommitted = blocksSizeCommitted
+			prevFetchSum, prevFetchCount = fetchSum, fetchCount
+			prevCollationSum, prevCollationCount = collationSum, collationCount
+			prevLedgerSum, prevLedgerCount = ledgerSum, ledgerCount
 		case <-m.stopChan:
 			return
 		}
@@ -169,4 +188,11 @@ func (m *Metrics) updatePrefetchIndexSize(shardID arma_types.ShardID, deltaBytes
 
 func (m *Metrics) resetPrefetchIndexSize(shardID arma_types.ShardID) {
 	m.prefetchIndexSize.With(fmt.Sprintf("%d", m.partyID), fmt.Sprintf("%d", shardID)).Set(0)
+}
+
+func histogramIntervalAverage(deltaSum float64, deltaCount uint64) float64 {
+	if deltaCount == 0 {
+		return 0
+	}
+	return deltaSum / float64(deltaCount)
 }
