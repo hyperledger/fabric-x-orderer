@@ -61,7 +61,6 @@ type AssemblerLedger struct {
 	cancellationContext  context.Context
 	cancelContextFunc    context.CancelFunc
 	metrics              AssemblerLedgerMetrics
-	blockHeaderSize      uint64
 }
 
 func NewAssemblerLedger(logger *flogging.FabricLogger, ledgerPath string) (*AssemblerLedger, error) {
@@ -93,7 +92,6 @@ func NewAssemblerLedger(logger *flogging.FabricLogger, ledgerPath string) (*Asse
 		cancelContextFunc:    cancel,
 	}
 
-	al.blockHeaderSize = uint64(0)
 	return al, nil
 }
 
@@ -119,16 +117,14 @@ func (l *AssemblerLedger) estimatedBlockSize(block *common.Block) uint64 {
 		}
 		blockSize += uint64(len(data))
 	}
-	if l.blockHeaderSize != 0 {
-		l.blockHeaderSize += uint64(len(protoutil.MarshalOrPanic(block.Header)))
-	}
 	for _, md := range block.GetMetadata().GetMetadata() {
 		if len(md) == 0 {
 			continue
 		}
 		blockSize += uint64(len(md))
 	}
-	return blockSize + l.blockHeaderSize
+	headerSize := uint64(len(protoutil.MarshalOrPanic(block.Header)))
+	return blockSize + headerSize
 }
 
 func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInformation) {
