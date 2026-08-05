@@ -113,10 +113,43 @@ func (cp *DefaultConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(envelope *
 }
 
 func BuildVerifiedConfigRequest(request *protos.Request, configEnvelope *cb.ConfigEnvelope, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error) {
+	// Extract tx_id from the original CONFIG_UPDATE request so we can
+	// propagate it into the resulting CONFIG envelope.  Downstream
+	// consumers (e.g. the committer sidecar) use the tx_id to
+	// correlate config blocks with the original submission.
+	var originalTxID string
+	if request != nil && len(request.Payload) > 0 {
+		payload, err := protoutil.UnmarshalPayload(request.Payload)
+		if err == nil && payload.Header != nil {
+			chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+			if err == nil && chdr != nil {
+				originalTxID = chdr.TxId
+			}
+		}
+	}
+
 	// Wrap the config envelope and sign, prepare a matching request
 	config, err := protoutil.CreateSignedEnvelope(cb.HeaderType_CONFIG, bundle.ConfigtxValidator().ChannelID(), signer, configEnvelope, int32(0), 0)
 	if err != nil {
 		return nil, fmt.Errorf("error creating a signed envelope, err: %s", err)
+	}
+
+	// Propagate the original tx_id into the new CONFIG envelope.
+	if originalTxID != "" {
+		payload, err := protoutil.UnmarshalPayload(config.Payload)
+		if err == nil && payload.Header != nil {
+			chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+			if err == nil && chdr != nil {
+				chdr.TxId = originalTxID
+				payload.Header.ChannelHeader = protoutil.MarshalOrPanic(chdr)
+				config.Payload = protoutil.MarshalOrPanic(payload)
+				// Re-sign with the modified payload so verifiers still pass.
+				sig, err := signer.Sign(config.Payload)
+				if err == nil {
+					config.Signature = sig
+				}
+			}
+		}
 	}
 
 	configRequest := &protos.Request{
