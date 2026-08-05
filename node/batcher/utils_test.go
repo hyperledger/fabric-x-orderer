@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package batcher_test
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -32,6 +33,7 @@ import (
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 )
@@ -98,6 +100,11 @@ func createBatchersInfo(num int, nodes []*node, ca tlsgen.CA) []node_config.Batc
 	return batchersInfo
 }
 
+// routerContext returns a context that mimics an incoming connection from the router holding kp.
+func routerContext(t *testing.T, kp *tlsgen.CertKeyPair) context.Context {
+	return testutil.ContextWithClientTLSCert(t, kp.Cert)
+}
+
 func createConsentersInfo(num int, nodes []*node, ca tlsgen.CA) []node_config.ConsenterInfo {
 	var consentersInfo []node_config.ConsenterInfo
 	for i := 0; i < num; i++ {
@@ -115,11 +122,11 @@ func createConsenterInfo(partyID types.PartyID, n *node, ca tlsgen.CA) node_conf
 	}
 }
 
-func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []node_config.BatcherInfo, consentersInfo []node_config.ConsenterInfo, stubConsenters []*stubConsenter) ([]*batcher.Batcher, []*flogging.FabricLogger, []*node_config.BatcherNodeConfig, func()) {
-	return createBatchersWithConfigNumber(t, num, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters, 0)
+func createBatchers(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []node_config.BatcherInfo, consentersInfo []node_config.ConsenterInfo, routerKeyPairs []*tlsgen.CertKeyPair, stubConsenters []*stubConsenter) ([]*batcher.Batcher, []*flogging.FabricLogger, []*node_config.BatcherNodeConfig, func()) {
+	return createBatchersWithConfigNumber(t, num, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters, 0)
 }
 
-func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []node_config.BatcherInfo, consentersInfo []node_config.ConsenterInfo, stubConsenters []*stubConsenter, configBlockNum uint64) ([]*batcher.Batcher, []*flogging.FabricLogger, []*node_config.BatcherNodeConfig, func()) {
+func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID, batcherNodes []*node, batchersInfo []node_config.BatcherInfo, consentersInfo []node_config.ConsenterInfo, routerKeyPairs []*tlsgen.CertKeyPair, stubConsenters []*stubConsenter, configBlockNum uint64) ([]*batcher.Batcher, []*flogging.FabricLogger, []*node_config.BatcherNodeConfig, func()) {
 	var batchers []*batcher.Batcher
 	var loggers []*flogging.FabricLogger
 	var configs []*node_config.BatcherNodeConfig
@@ -181,7 +188,8 @@ func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID
 		}
 		configs = append(configs, conf)
 
-		batcher := batcher.CreateBatcher(conf, nil, logger, make(chan struct{}), stubConsenters[i], &batcher.ConsenterControlEventSenderFactory{}, signer)
+		fullConfig := pinning.ConfigurationWithRouters(parties[i], routerKeyPairs)
+		batcher := batcher.CreateBatcher(conf, fullConfig, logger, make(chan struct{}), stubConsenters[i], &batcher.ConsenterControlEventSenderFactory{}, signer)
 		batcher.Net = batcherNodes[i]
 		batchers = append(batchers, batcher)
 		batcher.Run()
@@ -211,7 +219,7 @@ func createConsenterStubs(t *testing.T, consenterNodes []*node, num int) ([]*stu
 	}
 }
 
-func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *flogging.FabricLogger, conf *node_config.BatcherNodeConfig, batcherNode *node, sc *stubConsenter) *batcher.Batcher {
+func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *flogging.FabricLogger, conf *node_config.BatcherNodeConfig, routerKeyPairs []*tlsgen.CertKeyPair, batcherNode *node, sc *stubConsenter) *batcher.Batcher {
 	newBatcherNode := &node{
 		TLSCert: batcherNode.TLSCert,
 		TLSKey:  batcherNode.TLSKey,
@@ -227,7 +235,7 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *flogging.FabricLogger, c
 
 	signer := crypto.ECDSASigner(*newBatcherNode.sk)
 
-	batcher := batcher.CreateBatcher(conf, nil, logger, make(chan struct{}), sc, &batcher.ConsenterControlEventSenderFactory{}, signer)
+	batcher := batcher.CreateBatcher(conf, pinning.ConfigurationWithRouters(conf.PartyId, routerKeyPairs), logger, make(chan struct{}), sc, &batcher.ConsenterControlEventSenderFactory{}, signer)
 	batcher.Net = newBatcherNode
 	batcher.Run()
 
