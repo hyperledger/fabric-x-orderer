@@ -141,10 +141,17 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 		c.Logger,
 		uint64(nodeConfig.PartyId),
 		ord_config.Cluster{
-			SendBufferSize:    100, // TODO get this from local config
-			ClientCertificate: nodeConfig.TLSCertificateFile,
-			ClientPrivateKey:  nodeConfig.TLSPrivateKeyFile,
-			ReplicationPolicy: "",
+			SendBufferSize:                 100, // TODO get this from local config
+			ClientCertificate:              nodeConfig.TLSCertificateFile,
+			ClientPrivateKey:               nodeConfig.TLSPrivateKeyFile,
+			ReplicationPolicy:              "",
+			RPCTimeout:                     c.fullConfig.LocalConfig.ClusterConfig.RPCTimeout,
+			ReplicationBufferSize:          c.fullConfig.LocalConfig.ClusterConfig.ReplicationBufferSize,
+			ReplicationMaxRetryInterval:    c.fullConfig.LocalConfig.ClusterConfig.ReplicationMaxRetryInterval,
+			ReplicationMinRetryInterval:    c.fullConfig.LocalConfig.ClusterConfig.ReplicationMinRetryInterval,
+			ReplicationMaxRetryDuration:    c.fullConfig.LocalConfig.ClusterConfig.ReplicationMaxRetryDuration,
+			CertExpirationWarningThreshold: c.fullConfig.LocalConfig.ClusterConfig.CertExpirationWarningThreshold,
+			TLSHandshakeTimeShift:          c.fullConfig.LocalConfig.ClusterConfig.TLSHandshakeTimeShift,
 		},
 		c,                                      // implements synchronizer.BFTConfigGetter,
 		state.ConsenterBlockToDecision,         // func(block *cb.Block) *types.Decision
@@ -387,6 +394,7 @@ func (c *Consensus) clientConfig() comm.ClientConfig {
 			RequireClientCert: true,
 			UseTLS:            true,
 			ServerRootCAs:     tlsCAs,
+			TimeShift:         c.fullConfig.LocalConfig.ClusterConfig.TLSHandshakeTimeShift,
 		},
 		DialTimeout: time.Second * 5,
 		BaOpts:      comm.DefaultBackoffOptions,
@@ -398,7 +406,7 @@ func setupComm(c *Consensus) {
 	selfID := getSelfID(c.Config.Consenters, c.PartyID)
 	c.ClusterService = &comm.ClusterService{
 		Logger:                           c.Logger,
-		CertExpWarningThreshold:          time.Hour,
+		CertExpWarningThreshold:          c.fullConfig.LocalConfig.ClusterConfig.CertExpirationWarningThreshold,
 		NodeIdentity:                     selfID,
 		StepLogger:                       c.Logger,
 		MinimumExpirationWarningInterval: time.Hour,
@@ -447,7 +455,7 @@ func setupComm(c *Consensus) {
 		Logger:   c.Logger,
 		RPC: &comm.RPC{
 			StreamsByType: comm.NewStreamsByType(),
-			Timeout:       time.Minute,
+			Timeout:       c.fullConfig.LocalConfig.ClusterConfig.RPCTimeout,
 			Logger:        c.Logger,
 			Comm:          commAuth,
 		},

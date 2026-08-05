@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package generate
 
 import (
+	"gopkg.in/yaml.v3"
+
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
 )
@@ -20,6 +22,23 @@ type Network struct {
 	UseTLSRouter    string        `yaml:"UseTLSRouter"`
 	UseTLSAssembler string        `yaml:"UseTLSAssembler"`
 	MaxPartyID      types.PartyID `yaml:"MaxPartyID"`
+	Peers           []string      `yaml:"Peers"`
+}
+
+// UnmarshalYAML defaults Peers to ["peer1"] when the field is absent or empty in the YAML source.
+// It is called implicitly by the gopkg.in/yaml.v3 library whenever a *Network is the target of
+// yaml.Unmarshal or decoder.Decode.
+func (n *Network) UnmarshalYAML(value *yaml.Node) error {
+	type networkAlias Network // alias avoids infinite recursion
+	alias := &networkAlias{Peers: []string{"peer1"}}
+	if err := value.Decode(alias); err != nil {
+		return err
+	}
+	if len(alias.Peers) == 0 {
+		alias.Peers = []string{"peer1"}
+	}
+	*n = Network(*alias)
+	return nil
 }
 
 type Party struct {

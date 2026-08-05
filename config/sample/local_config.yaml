@@ -108,6 +108,33 @@ General:
     # TBD
     ReplicationPolicy:
 
+    # RPCTimeout is the timeout for RPC calls between orderers.
+    RPCTimeout: 1m
+
+    # ReplicationBufferSize is the size of the buffer used to store blocks
+    # that are being replicated from other orderers.
+    ReplicationBufferSize: 20971520
+
+    # ReplicationMaxRetryInterval is the maximal amount of time to wait
+    # before retrying to connect.
+    ReplicationMaxRetryInterval: 10s
+
+    # ReplicationMinRetryInterval is the minimal amount of time to wait
+    # before retrying to connect.
+    ReplicationMinRetryInterval: 200ms
+
+    # ReplicationMaxRetryDuration is the maximal amount of time to retry
+    # connecting before giving up.
+    ReplicationMaxRetryDuration: 1m
+
+    # CertExpirationWarningThreshold is the amount of time before TLS
+    # certificate expiration to start warning about impending expiration.
+    CertExpirationWarningThreshold: 168h
+
+    # TLSHandshakeTimeShift is the duration by which to shift TLS handshake
+    # time sampling into the past.
+    TLSHandshakeTimeShift: 0s
+    
   # LocalMSPDir is where to find the private crypto material needed by the
   # orderer. It is set relative here as a default for dev environments but
   # should be changed to the real location in production.

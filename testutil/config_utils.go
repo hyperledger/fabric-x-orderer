@@ -142,3 +142,24 @@ func CreateTestAssemblerLocalConfig() *config.NodeLocalConfig {
 	}
 	return assemblerLocalConfig
 }
+
+// ConfigurationWithDefaultCluster returns a configuration with the default cluster settings.
+func ConfigurationWithDefaultCluster() *config.Configuration {
+	clusterDefaults := config.DefaultNodeLocalConfig.GeneralConfig.Cluster
+
+	return &config.Configuration{
+		LocalConfig: &config.LocalConfig{
+			ClusterConfig: &config.Cluster{
+				SendBufferSize:                 clusterDefaults.SendBufferSize,
+				ReplicationPolicy:              clusterDefaults.ReplicationPolicy,
+				RPCTimeout:                     clusterDefaults.RPCTimeout,
+				ReplicationBufferSize:          clusterDefaults.ReplicationBufferSize,
+				ReplicationMaxRetryInterval:    clusterDefaults.ReplicationMaxRetryInterval,
+				ReplicationMinRetryInterval:    clusterDefaults.ReplicationMinRetryInterval,
+				ReplicationMaxRetryDuration:    clusterDefaults.ReplicationMaxRetryDuration,
+				CertExpirationWarningThreshold: clusterDefaults.CertExpirationWarningThreshold,
+				TLSHandshakeTimeShift:          clusterDefaults.TLSHandshakeTimeShift,
+			},
+		},
+	}
+}

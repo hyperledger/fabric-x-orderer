@@ -33,6 +33,12 @@ General:
         SendBufferSize: 2000
         ClientCertificate: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/tls/tls-cert.pem
         ClientPrivateKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/tls/key.pem
+        RPCTimeout: 1m0s
+        ReplicationBufferSize: 20971520
+        ReplicationMaxRetryInterval: 10s
+        ReplicationMinRetryInterval: 200ms
+        ReplicationMaxRetryDuration: 1m0s
+        CertExpirationWarningThreshold: 168h0m0s
     LocalMSPDir: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/msp
     LocalMSPID: OrdererOrg1
     BCCSP:
