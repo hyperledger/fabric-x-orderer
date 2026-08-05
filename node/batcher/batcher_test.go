@@ -8,7 +8,6 @@ package batcher_test
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"regexp"
 	"testing"
@@ -22,6 +21,7 @@ import (
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/block"
+	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/stretchr/testify/require"
@@ -45,7 +45,8 @@ func TestBatcherRun(t *testing.T) {
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
 	defer cleanConsenters()
 
-	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters)
 	defer cleanBatchers()
 
 	// running batchers report a running status carrying the bootstrap config sequence
@@ -55,7 +56,7 @@ func TestBatcherRun(t *testing.T) {
 		require.Equal(t, uint64(0), status.ConfigSequenceNumber)
 	}
 
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{1}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
@@ -69,7 +70,7 @@ func TestBatcherRun(t *testing.T) {
 	require.Equal(t, types.PartyID(1), ce.BAF.Primary())
 	require.Equal(t, types.BatchSequence(0), ce.BAF.Seq())
 
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{2}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{2}))
 
 	require.Eventually(t, func() bool {
 		return batchers[2].Ledger.Height(1) == uint64(2) && batchers[3].Ledger.Height(1) == uint64(2)
@@ -105,10 +106,10 @@ func TestBatcherRun(t *testing.T) {
 	t.Logf("Stop and recover secondary")
 	batchers[3].Stop()
 	require.Equal(t, node_utils.StateStopped, batchers[3].GetStatus().GetState())
-	batchers[3] = recoverBatcher(t, ca, loggers[3], configs[3], batcherNodes[3], stubConsenters[3])
+	batchers[3] = recoverBatcher(t, ca, loggers[3], configs[3], routerKeyPairs, batcherNodes[3], stubConsenters[3])
 	stubConsenters[3].UpdateState(termChangeState)
 
-	batchers[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+	batchers[1].Submit(routerContext(t, routerKeyPairs[1]), tx.CreateStructuredRequest([]byte{3}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(2) == uint64(1) && batchers[1].Ledger.Height(2) == uint64(1)
@@ -129,10 +130,10 @@ func TestBatcherRun(t *testing.T) {
 	t.Logf("Stop and recover primary")
 	batchers[1].Stop()
 	time.Sleep(500 * time.Millisecond)
-	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], batcherNodes[1], stubConsenters[1])
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], routerKeyPairs, batcherNodes[1], stubConsenters[1])
 	stubConsenters[1].UpdateState(termChangeState)
 
-	batchers[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{4}))
+	batchers[1].Submit(routerContext(t, routerKeyPairs[1]), tx.CreateStructuredRequest([]byte{4}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(2) == uint64(2) && batchers[1].Ledger.Height(2) == uint64(2) && batchers[3].Ledger.Height(2) == uint64(2)
@@ -149,14 +150,14 @@ func TestBatcherRun(t *testing.T) {
 	// stop secondary and recover after a batch
 	batchers[2].Stop()
 
-	batchers[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{5}))
+	batchers[1].Submit(routerContext(t, routerKeyPairs[1]), tx.CreateStructuredRequest([]byte{5}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(2) == uint64(3) && batchers[1].Ledger.Height(2) == uint64(3) && batchers[3].Ledger.Height(2) == uint64(3)
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// now recover the secondary
-	batchers[2] = recoverBatcher(t, ca, loggers[2], configs[2], batcherNodes[2], stubConsenters[2])
+	batchers[2] = recoverBatcher(t, ca, loggers[2], configs[2], routerKeyPairs, batcherNodes[2], stubConsenters[2])
 	stubConsenters[2].UpdateState(termChangeState)
 	require.Eventually(t, func() bool {
 		return batchers[2].Ledger.Height(2) == uint64(3)
@@ -184,14 +185,14 @@ func TestBatcherRun(t *testing.T) {
 	require.Equal(t, uint64(0), batchers[2].Ledger.Height(3))
 	require.Equal(t, uint64(0), batchers[3].Ledger.Height(3))
 
-	batchers[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{6}))
+	batchers[2].Submit(routerContext(t, routerKeyPairs[2]), tx.CreateStructuredRequest([]byte{6}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(3) == uint64(1) && batchers[2].Ledger.Height(3) == uint64(1) && batchers[3].Ledger.Height(3) == uint64(1)
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// now recover the previous primary
-	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], batcherNodes[1], stubConsenters[1])
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], routerKeyPairs, batcherNodes[1], stubConsenters[1])
 	stubConsenters[1].UpdateState(termChangeAgainState)
 	require.Eventually(t, func() bool {
 		return batchers[1].Ledger.Height(3) == uint64(1)
@@ -212,14 +213,15 @@ func TestRunBatchersGetMetrics(t *testing.T) {
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
 	defer cleanConsenters()
 
-	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters)
 	defer cleanBatchers()
 
 	totalTxNumber := 10
 	url := batchers[0].MonitoringServiceAddress()
 
 	for range totalTxNumber {
-		batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{byte(64)}))
+		batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{byte(64)}))
 	}
 
 	pattern := fmt.Sprintf(`batcher_router_txs_total\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), types.ShardID(1))
@@ -244,10 +246,11 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
 	defer cleanConsenters()
 
-	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters)
 	defer cleanBatchers()
 
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{1}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
@@ -269,8 +272,8 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 
 	// submit request to other batchers
 	req2 := tx.CreateStructuredRequest([]byte{2})
-	batchers[1].Submit(context.Background(), req2)
-	batchers[2].Submit(context.Background(), req2)
+	batchers[1].Submit(routerContext(t, routerKeyPairs[1]), req2)
+	batchers[2].Submit(routerContext(t, routerKeyPairs[2]), req2)
 
 	// wait for complaints
 	require.Eventually(t, func() bool {
@@ -303,7 +306,7 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	require.Equal(t, rawReq, batchers[1].Ledger.RetrieveBatchByNumber(2, 0).Requests()[0])
 
 	// now recover old primary
-	batchers[0] = recoverBatcher(t, ca, loggers[0], configs[0], batcherNodes[0], stubConsenters[0])
+	batchers[0] = recoverBatcher(t, ca, loggers[0], configs[0], routerKeyPairs, batcherNodes[0], stubConsenters[0])
 	stubConsenters[0].UpdateState(termChangeState)
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(2) == uint64(1)
@@ -314,7 +317,7 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	}
 
 	// submit another request only to a secondary
-	batchers[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+	batchers[2].Submit(routerContext(t, routerKeyPairs[2]), tx.CreateStructuredRequest([]byte{3}))
 
 	// after a timeout the request is forwarded
 	require.Eventually(t, func() bool {
@@ -341,11 +344,12 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
 	defer cleanConsenters()
 
-	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters)
 	defer cleanBatchers()
 
 	// submit the first request and verify it was received
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{1}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
@@ -359,7 +363,7 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	stubConsenters[0].StopNet()
 
 	// submit the second request
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{2}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{2}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(2) && batchers[1].Ledger.Height(1) == uint64(2)
@@ -373,7 +377,7 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	stubConsenters[1].StopNet()
 
 	// submit another request, batch will be created but waiting for quorum
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{3}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(3) && batchers[1].Ledger.Height(1) == uint64(3)
@@ -384,7 +388,7 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// submit a fourth request – batcher should wait until the previous batch reaches quorum
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{4}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{4}))
 
 	time.Sleep(5 * time.Second)
 
@@ -409,7 +413,7 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	stubConsenters[3].StopNet()
 
 	// submit another request, batch will be created but waiting for quorum
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{5}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{5}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(5) && batchers[1].Ledger.Height(1) == uint64(5)
@@ -420,7 +424,7 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// submit another request – batcher should wait until the previous batch reaches quorum
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{6}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{6}))
 
 	time.Sleep(5 * time.Second)
 
@@ -472,7 +476,8 @@ func TestBatchedRequestsHasEnvelopeBytes(t *testing.T) {
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
 	defer cleanConsenters()
 
-	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters)
 	defer cleanBatchers()
 
 	req := tx.CreateStructuredRequest([]byte{1})
@@ -480,7 +485,7 @@ func TestBatchedRequestsHasEnvelopeBytes(t *testing.T) {
 	req.Identity = []byte("123")
 	req.IdentityId = 123
 
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{1}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(1)
@@ -521,7 +526,8 @@ func TestBatcherJoin(t *testing.T) {
 	defer cleanConsenters()
 
 	configBlockNum := uint64(2)
-	batchers, _, _, cleanBatchers := createBatchersWithConfigNumber(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters, configBlockNum)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, _, _, cleanBatchers := createBatchersWithConfigNumber(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters, configBlockNum)
 	defer cleanBatchers()
 
 	blocks, err := batchers[0].ConfigStore.ListBlockNumbers()
@@ -594,11 +600,12 @@ func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
 	defer cleanConsenters()
 
-	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters)
 	defer cleanBatchers()
 
 	// submit the first request and verify it was received
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{1}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
@@ -608,7 +615,7 @@ func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
 	batchers[1].Stop()
 
 	// submit another request
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{2}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{2}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(2)
@@ -623,7 +630,7 @@ func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
 	}
 
 	// recover batcher 2
-	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], batcherNodes[1], stubConsenters[1])
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], routerKeyPairs, batcherNodes[1], stubConsenters[1])
 
 	// batcher 2 should pull the missing batch
 	require.Eventually(t, func() bool {
@@ -631,7 +638,7 @@ func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// submit another request during soft-stop, should fail
-	_, err = batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+	_, err = batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{3}))
 	require.Error(t, err)
 }
 
@@ -649,12 +656,13 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
 	defer cleanConsenters()
 
-	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters)
 	defer cleanBatchers()
 
 	// submit the first request and verify it was received
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
-	batchers[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{1}))
+	batchers[1].Submit(routerContext(t, routerKeyPairs[1]), tx.CreateStructuredRequest([]byte{1}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(1) && batchers[1].Ledger.Height(1) == uint64(1)
@@ -681,7 +689,7 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	}
 
 	// submit another request and verify it was received
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{2}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{2}))
 
 	require.Eventually(t, func() bool {
 		return batchers[0].Ledger.Height(1) == uint64(2) && batchers[1].Ledger.Height(1) == uint64(2)

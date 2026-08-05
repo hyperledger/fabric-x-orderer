@@ -14,6 +14,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
 
 	_ "github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
@@ -40,9 +41,11 @@ func TestABCR(t *testing.T) {
 
 	_, _, _, cleanConsenters := test_utils.CreateConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
 
-	_, _, _, cleanBatchers := test_utils.CreateBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, shards[0].ShardId, genesisBlock)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
 
-	routers, _, _, _ := test_utils.CreateRouters(t, numParties, batcherInfos, ca, shards[0].ShardId, make([]string, numParties), genesisBlock)
+	_, _, _, cleanBatchers := test_utils.CreateBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, routerKeyPairs, shards[0].ShardId, genesisBlock)
+
+	routers, _, _, _ := test_utils.CreateRouters(t, numParties, batcherInfos, ca, routerKeyPairs, shards[0].ShardId, make([]string, numParties), genesisBlock)
 
 	for i := range routers {
 		routers[i].StartRouterService()

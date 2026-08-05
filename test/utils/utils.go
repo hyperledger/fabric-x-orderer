@@ -56,6 +56,7 @@ import (
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -101,7 +102,7 @@ func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	return sk, rawPK
 }
 
-func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, shardId types.ShardID, consenterEndpoint []string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*flogging.FabricLogger) {
+func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, routerKeyPairs []*tlsgen.CertKeyPair, shardId types.ShardID, consenterEndpoint []string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*flogging.FabricLogger) {
 	var routers []*router.Router
 	var certs []node_config.RawBytes
 	var configs []*node_config.RouterNodeConfig
@@ -109,8 +110,7 @@ func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 	for i := 0; i < num; i++ {
 		l := testutil.CreateLogger(t, i)
 		loggers = append(loggers, l)
-		kp, err := ca.NewServerCertKeyPair("127.0.0.1")
-		require.NoError(t, err)
+		kp := routerKeyPairs[i]
 
 		bundle := &configMocks.FakeConfigResources{}
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
@@ -315,7 +315,7 @@ func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 	}
 }
 
-func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, shardID types.ShardID, genesisBlock *common.Block) ([]*batcher.Batcher, []*node_config.BatcherNodeConfig, []*flogging.FabricLogger, func()) {
+func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, routerKeyPairs []*tlsgen.CertKeyPair, shardID types.ShardID, genesisBlock *common.Block) ([]*batcher.Batcher, []*node_config.BatcherNodeConfig, []*flogging.FabricLogger, func()) {
 	var batchers []*batcher.Batcher
 	var loggers []*flogging.FabricLogger
 	var configs []*node_config.BatcherNodeConfig
@@ -375,7 +375,9 @@ func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 		loggers = append(loggers, logger)
 		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
 
-		batcher := batcher.CreateBatcher(batcherConf, nil, logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		fullConfig := pinning.ConfigurationWithRouters(types.PartyID(i+1), routerKeyPairs)
+
+		batcher := batcher.CreateBatcher(batcherConf, fullConfig, logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
 		batcher.Net = batcherNodes[i]
 		batchers = append(batchers, batcher)
 		batcher.Run()
@@ -457,7 +459,7 @@ func createNodes(t *testing.T, num int, ca tlsgen.CA) []*node {
 	return result
 }
 
-func RecoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeConfig, batcherNode *node, logger *flogging.FabricLogger) *batcher.Batcher {
+func RecoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeConfig, routerKeyPairs []*tlsgen.CertKeyPair, batcherNode *node, logger *flogging.FabricLogger) *batcher.Batcher {
 	newBatcherNode := &node{
 		TLSCert: batcherNode.TLSCert,
 		TLSKey:  batcherNode.TLSKey,
@@ -475,7 +477,7 @@ func RecoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeCon
 	require.NoError(t, err)
 	signer := crypto.ECDSASigner(*newBatcherNode.sk)
 
-	batcher := batcher.CreateBatcher(conf, nil, logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+	batcher := batcher.CreateBatcher(conf, pinning.ConfigurationWithRouters(conf.PartyId, routerKeyPairs), logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
 	batcher.Net = newBatcherNode
 	batcher.Run()
 
