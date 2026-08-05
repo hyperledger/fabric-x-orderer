@@ -51,11 +51,6 @@ on:
         required: true
         default: true
         type: boolean
-      failure_runner_initial_wait:
-        description: 'Wait before starting deterministic failure runner (seconds)'
-        required: true
-        default: '300'
-        type: string
       failure_runner_stop_duration:
         description: 'How long to keep component down (seconds)'
         required: true
@@ -79,7 +74,7 @@ jobs:
     name: Deterministic Failure Test
     runs-on: ubuntu-latest
     timeout-minutes: 350
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.repository == 'hyperledger/fabric-x-orderer'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.repository == 'hyperledger/fabric-x-orderer'
 
     steps:
       - name: Checkout Fabric-X Code
@@ -124,7 +119,6 @@ jobs:
           NUM_PARTIES: ${{ inputs.num_parties || '4' }}
           NUM_SHARDS: ${{ inputs.num_shards || '2' }}
           FAILURE_RUNNER_ENABLED: ${{ inputs.failure_runner_enabled != false }}
-          FAILURE_RUNNER_INITIAL_WAIT: ${{ inputs.failure_runner_initial_wait || '300' }}
           FAILURE_RUNNER_STOP_DURATION: ${{ inputs.failure_runner_stop_duration || '60' }}
           FAILURE_RUNNER_RESTART_WAIT: ${{ inputs.failure_runner_restart_wait || '60' }}
         run: |
@@ -157,3 +151,42 @@ jobs:
           path: test-results/logs/
           retention-days: 30
           if-no-files-found: ignore
+
+      - name: Detect startup failure reason
+        if: failure()
+        id: failure_reason
+        run: |
+          if [ -f test-results/startup_failure.txt ]; then
+            echo "reason=$(cat test-results/startup_failure.txt)" >> $GITHUB_OUTPUT
+          else
+            echo "reason=The test job failed to run (possibly due to insufficient runner resources or an infrastructure issue)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify Slack on failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          REASON: ${{ steps.failure_reason.outputs.reason }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL is not set — skipping notification"
+            exit 0
+          fi
+          TEXT=":red_circle: *Deterministic Failure Test FAILED* — Run #${{ github.run_number }}\n>$REASON"
+          curl -s --fail -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            --data "{
+              \"text\": \"$TEXT\",
+              \"attachments\": [{
+                \"color\": \"danger\",
+                \"fields\": [
+                  { \"title\": \"Repository\", \"value\": \"${{ github.repository }}\", \"short\": true },
+                  { \"title\": \"Branch\",     \"value\": \"${{ github.ref_name }}\",   \"short\": true }
+                ],
+                \"actions\": [{
+                  \"type\": \"button\",
+                  \"text\": \"View Run\",
+                  \"url\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                }]
+              }]
+            }" || true
