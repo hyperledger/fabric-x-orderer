@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -35,7 +36,8 @@ func TestPrimaryConnector(t *testing.T) {
 	stubConsenters, clean := createConsenterStubs(t, consenterNodes, numParties)
 	defer clean()
 
-	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, loggers, configs, clean := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters)
 	defer clean()
 
 	require.Equal(t, types.PartyID(1), batchers[1].GetPrimaryID())
@@ -45,7 +47,7 @@ func TestPrimaryConnector(t *testing.T) {
 	connector.ConnectToPrimary()
 
 	// send request via normal submit
-	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+	batchers[0].Submit(routerContext(t, routerKeyPairs[0]), tx.CreateStructuredRequest([]byte{1}))
 
 	// make sure request was batched
 	require.Eventually(t, func() bool {
@@ -81,7 +83,7 @@ func TestPrimaryConnector(t *testing.T) {
 	connector.ConnectToNewPrimary(2)
 
 	// send request via normal submit
-	batchers[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+	batchers[1].Submit(routerContext(t, routerKeyPairs[1]), tx.CreateStructuredRequest([]byte{3}))
 
 	// make sure request was batched
 	require.Eventually(t, func() bool {

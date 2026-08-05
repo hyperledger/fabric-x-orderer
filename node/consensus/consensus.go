@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/asn1"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"sync"
@@ -1214,22 +1213,10 @@ func (c *Consensus) validateBatcherFromContext(ctx context.Context, shardID arma
 // validateClientFromContext validates that the client certificate extracted from the context matches the expected
 // certificate from the configuration. expectedRawCert is the TLS cert from ConsenterNodeConfig.
 func validateClientFromContext(ctx context.Context, expectedRawCert []byte, name string, logger *flogging.FabricLogger) error {
-	// extract the client certificate from the context
-	cert := utils.ExtractCertificateFromContext(ctx)
-	if cert == nil {
-		return errors.New("error: access denied; could not extract certificate from context")
-	}
-
-	// extract the certificate from the expectedRawCert
-	pemBlock, _ := pem.Decode(expectedRawCert)
-	if pemBlock == nil || pemBlock.Bytes == nil {
-		return errors.Errorf("error decoding %s TLS certificate", name)
-	}
-
-	// compare the two certificates
-	if !bytes.Equal(pemBlock.Bytes, cert.Raw) {
-		logger.Errorf("error: access denied. The client certificate does not match the %s's certificate. \n client's certificate: \n %s \n %x \n ", name, utils.CertificateToString(cert), cert.Raw)
-		return errors.Errorf("error: access denied. The client certificate does not match the %s's certificate", name)
+	if err := utils.ValidateClientCertFromContext(ctx, expectedRawCert); err != nil {
+		err = errors.Wrapf(err, "access denied; only the %s of the consenter's own party is served", name)
+		logger.Errorf("Rejecting a request from a %s: %s", name, err)
+		return err
 	}
 	return nil
 }

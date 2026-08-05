@@ -471,7 +471,10 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 	default:
 	}
 
-	// TODO: certificate pinning (bathcer trust router from his own party.)
+	if err := b.validateRouterFromContext(ctx); err != nil {
+		return nil, err
+	}
+
 	b.logger.Debugf("Received request %x", req.Payload)
 
 	b.metrics.routerTxsTotal.Add(1)
@@ -500,7 +503,10 @@ func (b *Batcher) Submit(ctx context.Context, req *protos.Request) (*protos.Subm
 }
 
 func (b *Batcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
-	// TODO: certificate pinning (bathcer trust router form his own party.)
+	if err := b.validateRouterFromContext(stream.Context()); err != nil {
+		return err
+	}
+
 	stop := make(chan struct{})
 	defer close(stop)
 
@@ -513,6 +519,31 @@ func (b *Batcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer)
 	go b.sendResponses(stream, responses, stop)
 
 	return b.dispatchRequests(stream, responses)
+}
+
+// validateRouterFromContext makes sure the request is coming from the router of the batcher's party,
+// by checking the TLS certificate in the context against the expected certificate of the router of this party.
+func (b *Batcher) validateRouterFromContext(ctx context.Context) error {
+	b.lock.Lock()
+	currentFullConfig := b.fullConfig
+	partyID := b.config.PartyId
+	b.lock.Unlock()
+
+	if currentFullConfig == nil {
+		err := errors.Errorf("access denied; the configuration holding the certificate of the router of party %d is nil", partyID)
+		b.logger.Errorf("Rejecting a request: %s", err)
+		return err
+	}
+
+	expectedRouterCert := currentFullConfig.ExtractRouterInParty().TLSCert
+
+	if err := utils.ValidateClientCertFromContext(ctx, expectedRouterCert); err != nil {
+		err = errors.Wrapf(err, "access denied; only the router of party %d is served", partyID)
+		b.logger.Errorf("Rejecting a request: %s", err)
+		return err
+	}
+
+	return nil
 }
 
 func (b *Batcher) dispatchRequests(stream protos.RequestTransmit_SubmitStreamServer, responses chan *protos.SubmitResponse) error {
