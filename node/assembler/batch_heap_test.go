@@ -211,6 +211,61 @@ func TestHeap_Pop(t *testing.T) {
 			assertSameHeapItems(t, heapItems[i], item)
 		}
 	})
+
+	t.Run("PoppedBatchIsNoLongerInTheHeap", func(t *testing.T) {
+		// Arrange
+		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
+		heap := assembler.NewBatchHeap(partition, sequenceComparator)
+		heapItems := fillHeapWithBatches(t, heap, partition, 10)
+
+		// Act & Assert
+		for i := 0; i < 10; i++ {
+			require.True(t, heap.Has(heapItems[i].Batch))
+			heap.Pop()
+			require.False(t, heap.Has(heapItems[i].Batch))
+			// the batches that were not popped yet are still there
+			for j := i + 1; j < 10; j++ {
+				require.True(t, heap.Has(heapItems[j].Batch))
+			}
+		}
+	})
+
+	t.Run("PoppedBatchCanBePushedAgain", func(t *testing.T) {
+		// Arrange
+		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
+		heap := assembler.NewBatchHeap(partition, sequenceComparator)
+		heapItems := fillHeapWithBatches(t, heap, partition, 3)
+
+		// Act
+		// pop the min item, and push it back
+		popedItem := heap.Pop()
+		assertSameHeapItems(t, heapItems[0], popedItem)
+		require.NoError(t, heap.Push(popedItem))
+
+		// Assert
+		require.True(t, heap.Has(popedItem.Batch))
+		assertSameHeapItems(t, heapItems[0], heap.Peek())
+		for i := 0; i < 3; i++ {
+			assertSameHeapItems(t, heapItems[i], heap.Pop())
+		}
+	})
+
+	t.Run("PoppedBatchCanBeRePushedAndRePopped", func(t *testing.T) {
+		// Arrange
+		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
+		heap := assembler.NewBatchHeap(partition, sequenceComparator)
+		heapItems := fillHeapWithBatches(t, heap, partition, 5)
+
+		// Act & Assert
+		for i := 0; i < 5; i++ {
+			item := heap.Pop()
+			assertSameHeapItems(t, heapItems[i], item)
+			require.NoError(t, heap.Push(item))
+			assertSameHeapItems(t, heapItems[i], heap.Pop())
+			require.False(t, heap.Has(heapItems[i].Batch))
+		}
+		require.Nil(t, heap.Peek())
+	})
 }
 
 func TestHeap_Remove(t *testing.T) {
@@ -250,6 +305,42 @@ func TestHeap_Remove(t *testing.T) {
 			item := heap.Pop()
 			assertSameHeapItems(t, heapItems[i], item)
 		}
+	})
+
+	t.Run("RemovingAPoppedBatchReturnsAnError", func(t *testing.T) {
+		// Arrange
+		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
+		heap := assembler.NewBatchHeap(partition, sequenceComparator)
+		heapItems := fillHeapWithBatches(t, heap, partition, 10)
+		popedItem := heap.Pop()
+		assertSameHeapItems(t, heapItems[0], popedItem)
+
+		// Act
+		item, err := heap.Remove(popedItem.Batch)
+
+		// Assert
+		require.ErrorIs(t, err, assembler.ErrBatchDoesNotExist)
+		require.Nil(t, item)
+	})
+
+	t.Run("RemovingAfterAPopKeepsTheRemainingItemsOrdered", func(t *testing.T) {
+		// Arrange
+		partition := assembler.ShardPrimary{Shard: 1, Primary: 1}
+		heap := assembler.NewBatchHeap(partition, sequenceComparator)
+		heapItems := fillHeapWithBatches(t, heap, partition, 10)
+		require.NotNil(t, heap.Pop()) // pops item 0, and swaps item 9 into its place
+		removedIdx := 9
+
+		// Act
+		item, err := heap.Remove(heapItems[removedIdx].Batch)
+
+		// Assert
+		require.NoError(t, err)
+		assertSameHeapItems(t, heapItems[removedIdx], item)
+		for i := 1; i < removedIdx; i++ {
+			assertSameHeapItems(t, heapItems[i], heap.Pop())
+		}
+		require.Nil(t, heap.Pop())
 	})
 
 	t.Run("RemovingBatchThatDoesNotExist", func(t *testing.T) {

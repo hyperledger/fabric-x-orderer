@@ -284,9 +284,7 @@ func (pi *PartitionPrefetchIndex) saveOrdinaryBatch(batch types.Batch) error {
 	if err != nil {
 		return err
 	}
-	var timer StoppableTimer
-	pi.lastPutSeq = batch.Seq()
-	timer = pi.timerFactory.Create(pi.defaultTtl, func() {
+	timer := pi.timerFactory.Create(pi.defaultTtl, func() {
 		pi.logger.Infof("TTL handler executed for batch %s", BatchToString(batch))
 
 		pi.stateCond.L.Lock()
@@ -300,7 +298,16 @@ func (pi *PartitionPrefetchIndex) saveOrdinaryBatch(batch types.Batch) error {
 
 		pi.metrics.updatePrefetchIndexSize(pi.partition.Shard, -batchSizeBytes(batch))
 	})
-	pi.sequenceHeap.Push(&BatchHeapItem[StoppableTimer]{Batch: batch, Value: timer})
+	if err := pi.sequenceHeap.Push(&BatchHeapItem[StoppableTimer]{Batch: batch, Value: timer}); err != nil {
+		// The heap and the cache must stay in sync: a batch the heap does not know about would
+		// never be evicted, and it would keep occupying space in the cache forever.
+		timer.Stop()
+		if _, popErr := pi.cache.Pop(batch); popErr != nil {
+			pi.logger.Errorf("failed to roll back cached batch %s after the heap rejected it: %v", BatchToString(batch), popErr)
+		}
+		return fmt.Errorf("failed to push batch %s to the sequence heap: %w", BatchToString(batch), err)
+	}
+	pi.lastPutSeq = batch.Seq()
 	pi.stateCond.Broadcast()
 	return nil
 }
@@ -367,6 +374,9 @@ func (bs *PartitionPrefetchIndex) PutForce(batch types.Batch) error {
 
 func (pi *PartitionPrefetchIndex) evictOldestBatch() error {
 	batchAndTimer := pi.sequenceHeap.Pop()
+	if batchAndTimer == nil {
+		return errors.New("there is nothing to evict, the sequence heap is empty")
+	}
 	batchAndTimer.Value.Stop()
 	batch, err := pi.cache.Pop(batchAndTimer.Batch)
 	if err != nil {
