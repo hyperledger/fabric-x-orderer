@@ -1885,3 +1885,228 @@ func TestAddRemoveApplicationClient(t *testing.T) {
 		ErrString:  "failed to create a gRPC client connection to assembler: %d:",
 	})
 }
+
+// TestAddRemoveKnownCertsFromApp verifies that known certificates can be added and removed from the application configuration,
+// and that the network continues to operate correctly with the updated configuration.
+func TestAddRemoveKnownCertsFromApp(t *testing.T) {
+	// compile arma
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	t.Cleanup(func() {
+		gexec.CleanupBuildArtifacts()
+	})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Number of parties in the test
+	numOfParties := 4
+	numOfShards := 1
+
+	t.Logf("Running test with %d parties and %d shards", numOfParties, numOfShards)
+
+	// create a temporary directory for the test.
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
+
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
+
+	numOfArmaNodes := len(netInfo)
+
+	// generate the config files in the temporary directory using the armageddon generate command, but this time with the --clientSignatureVerificationRequired flag to enforce client signature verification.
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir, "--clientSignatureVerificationRequired"})
+
+	// run the arma nodes.
+	// NOTE: if one of the nodes is not started within 10 seconds, there is no point in continuing the test, so fail it
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	parties := make([]types.PartyID, 0, numOfParties)
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	// Load the user config for peer1 to send transactions from it
+	f, err := os.Open(filepath.Join(dir, "config", "peer1", "user_config.yaml"))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = f.Close()
+	})
+
+	puc, err := armageddon.ReadUserConfig(&f)
+	require.NoError(t, err)
+
+	uc, err := testutil.GetUserConfig(dir, 1)
+	require.NoError(t, err)
+
+	// Send transactions to the routers.
+	// rate limiter parameters
+	fillInterval := 10 * time.Millisecond
+	fillFrequency := 1000 / int(fillInterval.Milliseconds())
+	rate := 500
+	var totalTxNumber int
+
+	capacity := rate / fillFrequency
+	rl, err := armageddon.NewRateLimiter(rate, fillInterval, capacity)
+	require.NoError(t, err)
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	// Load the crypto material for the signer to sign transactions
+	signer, certBytes, err := signutil.LoadCryptoMaterialForSigner(puc.MSPDir)
+	require.NoError(t, err)
+
+	//	Send transactions to the network
+	for i := range 10 {
+		status := rl.GetToken()
+		require.True(t, status, "failed to send tx %d", i+1)
+		env := tx.PrepareSignedEnvelopeWithCertificateID(i, 64, []byte("sessionNumber"), signer, certBytes, "peer1")
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+		totalTxNumber++
+	}
+
+	// Verify that the network can process transactions with the initial configuration by pulling blocks from the assembler
+	pullRequestSigner, err := signutil.CreateSignerForUser(uc.MSPDir)
+	require.NoError(t, err)
+
+	statusUnknown := common.Status_UNKNOWN
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig:   uc,
+		Status:       &statusUnknown,
+		Parties:      parties,
+		StartBlock:   0,
+		EndBlock:     math.MaxUint64,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d",
+		Signer:       pullRequestSigner,
+		Timeout:      120,
+	})
+
+	knownCertPaths, err := utils.PemFilesFromDir(filepath.Join(dir, "crypto", "peerOrganizations", "peer1", "msp", "knowncerts"))
+	require.NoError(t, err)
+
+	var knownCerts [][]byte
+	for _, knownCertPath := range knownCertPaths {
+		if knownCertPath == "client@peer1-cert.pem" {
+			continue // Skip the client certificate to simulate removing it from the known certs
+		}
+		knownCert, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer1", "msp", "knowncerts", knownCertPath))
+		require.NoError(t, err)
+		knownCerts = append(knownCerts, knownCert)
+	}
+
+	// Create a config update to remove the client certificate from the known certs of peer1 and submit it
+	configBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
+	builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+	builder.UpdateApplicationOrgKnownCerts(t, "peer1", knownCerts)
+
+	// Send the config tx to update the known certs of peer1
+	env := configutil.CreateConfigTXSignedByOrgs(t, dir, configutil.ChannelGroupName.Application, []string{"peer1"}, 1, builder.ConfigUpdatePBData(t))
+	require.NotNil(t, env)
+
+	var configSeq uint64
+
+	// Send the config tx
+	err = broadcastClient.SendTxTo(env, 1)
+	require.NoError(t, err)
+	totalTxNumber++
+	configSeq++
+
+	broadcastClient.Stop()
+
+	// Wait for the network to relaunch with the updated configuration after removing the client certificate from the known certs of peer1
+	testutil.WaitForNetworkRelaunch(t, netInfo, configSeq)
+
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	// Send transactions to verify that the client certificate has been removed from the known certs of peer1
+	for i := range 10 {
+		status := rl.GetToken()
+		require.True(t, status, "failed to send tx %d", i+1)
+		env := tx.PrepareSignedEnvelopeWithCertificateID(i, 64, []byte("sessionNumber"), signer, certBytes, "peer1")
+		err = broadcastClient.SendTx(env)
+		require.ErrorContains(t, err, "signature did not satisfy policy /Channel/Writers") // Expect an error because the client certificate has been removed from the known certs of peer1
+	}
+
+	configBlockPath = filepath.Join(dir, "config_store", fmt.Sprintf("config_%d.block", configSeq))
+
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig:   uc,
+		Status:       &statusUnknown,
+		Parties:      parties,
+		StartBlock:   0,
+		EndBlock:     math.MaxUint64,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d",
+		Signer:       pullRequestSigner,
+		Timeout:      120,
+		BlockHandler: &exportConfigBlockToFile{configSeq: configSeq, path: configBlockPath},
+	})
+
+	t.Logf("Verify the config block %d file was created", configSeq)
+	require.FileExists(t, configBlockPath, "Config block file should exist after pulling from assembler")
+	t.Logf("Config block %d successfully written to: %s", configSeq, configBlockPath)
+
+	knownCerts = [][]byte{}
+	for _, knownCertPath := range knownCertPaths {
+		knownCert, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer1", "msp", "knowncerts", knownCertPath))
+		require.NoError(t, err)
+		knownCerts = append(knownCerts, knownCert)
+	}
+
+	// Create a config update to add the client certificate back to the known certs of peer1 and submit it
+	builder = configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+	builder.UpdateApplicationOrgKnownCerts(t, "peer1", knownCerts)
+
+	// Send the config tx
+	env = configutil.CreateConfigTXSignedByOrgs(t, dir, configutil.ChannelGroupName.Application, []string{"peer1"}, 1, builder.ConfigUpdatePBData(t))
+	require.NotNil(t, env)
+
+	err = broadcastClient.SendTxTo(env, 1)
+	require.NoError(t, err)
+	totalTxNumber++
+	configSeq++
+
+	broadcastClient.Stop()
+
+	// Wait for the network to relaunch with the updated configuration after adding the client certificate back to the known certs of peer1
+	testutil.WaitForNetworkRelaunch(t, netInfo, configSeq)
+
+	broadcastClient = client.NewBroadcastTxClient(uc, 10*time.Second)
+
+	// Send transactions to verify that the client certificate has been added back to the known certs of peer1
+	for i := range 10 {
+		status := rl.GetToken()
+		require.True(t, status, "failed to send tx %d", i+1)
+		env := tx.PrepareSignedEnvelopeWithCertificateID(i, 64, []byte("sessionNumber"), signer, certBytes, "peer1")
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err) // Expect no error because the client certificate has been added back to the known certs of peer1
+		totalTxNumber++
+	}
+
+	broadcastClient.Stop()
+
+	// Verify that the network can process transactions with the updated configuration by pulling blocks from the assembler
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig:   uc,
+		Status:       &statusUnknown,
+		Parties:      parties,
+		StartBlock:   0,
+		EndBlock:     math.MaxUint64,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d",
+		Signer:       pullRequestSigner,
+		Timeout:      120,
+	})
+}

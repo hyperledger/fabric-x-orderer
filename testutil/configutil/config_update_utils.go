@@ -47,6 +47,7 @@ var (
 	consenterMappingPath           = []string{"channel_group", "groups", "Orderer", "values", "Orderers", "value", "consenter_mapping"}
 	blockValidationPolicyValuePath = []string{"channel_group", "groups", "Orderer", "policies", "BlockValidation", "policy", "value"}
 	ordererGroupsMapPath           = []string{"channel_group", "groups", "Orderer", "groups"}
+	applicationGroupsMapPath       = []string{"channel_group", "groups", "Application", "groups"}
 )
 
 type (
@@ -616,21 +617,34 @@ func (c *ConfigUpdateBuilder) AppendPartyCACerts(t *testing.T, partyID types.Par
 	return c.createConfigUpdate(t, c.configData)
 }
 
-func (c *ConfigUpdateBuilder) UpdateOrgKnownCerts(t *testing.T, orgID string, knownCerts [][]byte) []byte {
-	require.NotEmpty(t, knownCerts, "knownCerts cannot be empty")
-	groupsList := getNestedJSONValue(t, c.configData, ordererGroupsMapPath...).(map[string]any)
-	org, exists := groupsList[orgID].(map[string]any)
-	require.True(t, exists, "OrgID %s not found in Orderer groups", orgID)
+func (c *ConfigUpdateBuilder) UpdateOrdererOrgKnownCerts(t *testing.T, orgID string, knownCerts [][]byte) []byte {
+	return c.updateGroupsOrgKnownCerts(t, ordererGroupsMapPath, orgID, knownCerts)
+}
 
+func (c *ConfigUpdateBuilder) UpdateApplicationOrgKnownCerts(t *testing.T, orgID string, knownCerts [][]byte) []byte {
+	return c.updateGroupsOrgKnownCerts(t, applicationGroupsMapPath, orgID, knownCerts)
+}
+
+func (c *ConfigUpdateBuilder) updateGroupsOrgKnownCerts(t *testing.T, groupsMapPath []string, orgID string, knownCerts [][]byte) []byte {
+	require.NotEmpty(t, knownCerts, "knownCerts cannot be empty")
+	groupsList, ok := getNestedJSONValue(t, c.configData, groupsMapPath...).(map[string]any)
+	require.True(t, ok, "Failed to get groups list from config data")
+	org, exists := groupsList[orgID].(map[string]any)
+	require.True(t, exists, "OrgID %s not found in groups", orgID)
 	overwriteNestedJSONValue(t, org, knownCerts, "values", "MSP", "value", "config", "known_certs")
 	return c.createConfigUpdate(t, c.configData)
 }
 
-func (c *ConfigUpdateBuilder) AppendOrgKnownCerts(t *testing.T, orgID string, knownCerts [][]byte) []byte {
+func (c *ConfigUpdateBuilder) AppendOrdererOrgKnownCerts(t *testing.T, orgID string, knownCerts [][]byte) []byte {
+	return c.appendGroupsOrgKnownCerts(t, ordererGroupsMapPath, orgID, knownCerts)
+}
+
+func (c *ConfigUpdateBuilder) appendGroupsOrgKnownCerts(t *testing.T, groupsMapPath []string, orgID string, knownCerts [][]byte) []byte {
 	require.NotEmpty(t, knownCerts, "knownCerts cannot be empty")
-	groupsList := getNestedJSONValue(t, c.configData, ordererGroupsMapPath...).(map[string]any)
+	groupsList, ok := getNestedJSONValue(t, c.configData, groupsMapPath...).(map[string]any)
+	require.True(t, ok, "Failed to get groups list from config data")
 	org, exists := groupsList[orgID].(map[string]any)
-	require.True(t, exists, "OrgID %s not found in Orderer groups", orgID)
+	require.True(t, exists, "OrgID %s not found in groups", orgID)
 
 	orgKnownCerts, ok := getNestedJSONValue(t, org, "values", "MSP", "value", "config", "known_certs").([][]byte)
 	require.True(t, ok, "Failed to get org known certs")

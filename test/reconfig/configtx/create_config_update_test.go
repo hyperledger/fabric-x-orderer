@@ -92,8 +92,8 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	configUpdateBuilder.UpdateConsenterSignCert(t, types.PartyID(1), []byte("newSignCert"))
 	configUpdateBuilder.UpdatePartyTLSCACerts(t, types.PartyID(1), newTLSCACerts)
 	configUpdateBuilder.UpdatePartyCACerts(t, types.PartyID(1), newCACerts)
-	configUpdateBuilder.UpdateOrgKnownCerts(t, "org1", newKnownCerts)
-	configUpdateBuilder.AppendOrgKnownCerts(t, "org1", [][]byte{[]byte("additionalKnownCert")})
+	configUpdateBuilder.UpdateOrdererOrgKnownCerts(t, "org1", newKnownCerts)
+	configUpdateBuilder.AppendOrdererOrgKnownCerts(t, "org1", [][]byte{[]byte("additionalKnownCert")})
 	configUpdateBuilder.AddNewPeer(t, &cfgutil.PeerConfig{
 		Name:       "peer2",
 		TLSCACerts: [][]byte{[]byte("peerTLSCert")}, AdminCerts: [][]byte{[]byte("peerAdminCert")},
