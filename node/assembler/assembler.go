@@ -291,10 +291,17 @@ func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_confi
 	} else if configBlockNumber >= ledgerHeight {
 		a.logger.Infof("Creating assembler synchronizer to sync to config block number %d, current ledger height is %d", configBlockNumber, ledgerHeight)
 		targetHeight := configBlockNumber + 1
+		clusterConfig := a.configuration.LocalConfig.ClusterConfig
 		synchronizer := synchronizerFactory.CreateSynchronizer(
 			a.logger,
 			uint64(nodeConfig.PartyId),
-			config.Cluster{SendBufferSize: 100, ClientCertificate: nodeConfig.TLSCertificateFile, ClientPrivateKey: nodeConfig.TLSPrivateKeyFile, ReplicationPolicy: "assemblerSync"},
+			config.Cluster{
+				ReplicationPolicy:           "assemblerSync",
+				ReplicationBufferSize:       clusterConfig.ReplicationBufferSize,
+				ReplicationMaxRetryInterval: clusterConfig.ReplicationMaxRetryInterval,
+				ReplicationMinRetryInterval: clusterConfig.ReplicationMinRetryInterval,
+				ReplicationMaxRetryDuration: clusterConfig.ReplicationMaxRetryDuration,
+			},
 			&AssemblerSupportAdapter{assembler: a},
 			factory.GetDefault(),
 			targetHeight,

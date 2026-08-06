@@ -68,19 +68,7 @@ func NewBlockPuller(
 		logger.Warnf("Failed parsing my own TLS certificate: %v, therefore we may connect to our own endpoint when pulling blocks", err)
 	}
 
-	// TODO Fabric defaults. Extend the config to have these values, and use the config values instead of hardcoding them here.
-	// Cluster: Cluster{
-	// 	ReplicationMaxRetries:          12,
-	// 	RPCTimeout:                     time.Second * 7,
-	// 	DialTimeout:                    time.Second * 5,
-	// 	ReplicationBufferSize:          20971520,
-	// 	SendBufferSize:                 100,
-	// 	ReplicationRetryTimeout:        time.Second * 5,
-	// 	ReplicationPullTimeout:         time.Second * 5,
-	// 	CertExpirationWarningThreshold: time.Hour * 24 * 7,
-	// 	ReplicationPolicy:              "consensus", // BFT default; on etcdraft it is ignored
-	// },
-
+	// TODO: RetryTimeout and FetchTimeout are hardcoded; add matching Cluster fields if needed.
 	bp := &comm.BlockPuller{
 		MyOwnTLSCert:        myCert,
 		VerifyBlockSequence: verifyBlockSequenceNoOp,
