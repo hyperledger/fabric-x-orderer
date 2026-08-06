@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
+	"time"
+
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -28,6 +30,7 @@ type BatchLedgerPart struct {
 	ledger         blockledger.ReadWriter // The fabric block ledger that holds batches.
 	prevHash       []byte                 // The header hash of the last block; we need this because the Fabric ledger enforces a hash chain.
 	logger         *flogging.FabricLogger
+	metrics        *BatchLedgerMetrics
 }
 
 // newBatchLedgerPart creates a new BatchLedgerPart.
@@ -37,6 +40,7 @@ func newBatchLedgerPart(
 	partyID, primaryPartyID types.PartyID,
 	channelID string,
 	logger *flogging.FabricLogger,
+	metrics *BatchLedgerMetrics,
 ) (*BatchLedgerPart, error) {
 	name := ShardPartyChannelIDToChannelName(shardID, primaryPartyID, channelID)
 	ledger, err := provider.Open(name)
@@ -51,6 +55,7 @@ func newBatchLedgerPart(
 		ledger:         fl,
 		prevHash:       nil,
 		logger:         logger,
+		metrics:        metrics,
 	}
 
 	// compute prev hash
@@ -72,14 +77,17 @@ func newBatchLedgerPart(
 func (b *BatchLedgerPart) Append(seq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests, digest []byte, primarySignature []byte) {
 	b.logger.Debugf("Party %d, Shard: %d, is appending batch with sequence %d and config sequence %d of size %d bytes, from Primary: %d", b.partyID, b.shardID, seq, configSeq, batchedRequests.SizeBytes(), b.primaryPartyID)
 
+	hashingStart := time.Now()
 	block := NewFabricBatchFromRequests(b.shardID, b.primaryPartyID, seq, batchedRequests, digest, configSeq, b.prevHash, primarySignature)
-
 	// Note: We do this only because we reuse the Fabric ledger, we don't really need a hash chain here.
 	b.prevHash = protoutil.BlockHeaderHash(block.Header)
+	b.metrics.HashingLatency.Observe(time.Since(hashingStart).Seconds())
 
+	appendStart := time.Now()
 	if err := b.ledger.Append((*common.Block)(block)); err != nil {
 		panic(err)
 	}
+	b.metrics.AppendLatency.Observe(time.Since(appendStart).Seconds())
 }
 
 // Height returns the number of batches in the ledger.

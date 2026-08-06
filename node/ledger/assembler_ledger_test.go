@@ -453,8 +453,10 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 		ordInfo1 := &state.OrderingInformation{
 			CommonBlock: block1,
 		}
-		reqs := types.BatchedRequests{[]byte("tx1"), []byte("tx2")}
-		batch1 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, reqs, reqs.Digest(), 0, []byte(""), nil)
+		batch1Reqs := types.BatchedRequests{
+			[]byte("tx1"), []byte("tx2"),
+		}
+		batch1 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, batch1Reqs, 0, []byte(""), nil)
 
 		al.Append(batch1, ordInfo1)
 		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
