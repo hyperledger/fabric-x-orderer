@@ -214,7 +214,7 @@ func (at *assemblerTest) StartAssembler() {
 		at.logger,
 		&dummyAssemblerStopper{},
 		at.nodeConfig,
-		&orderer_config.Configuration{},
+		testutil.ConfigurationWithDefaultCluster(),
 		at.genesisBlock,
 		make(chan struct{}),
 		&node_ledger.DefaultAssemblerLedgerFactory{},
@@ -455,9 +455,10 @@ func TestAssembler_InitLedgerSyncsWhenConfigBlockAheadOfLedger(t *testing.T) {
 	require.Equal(t, configBlock, passedConfigBlock)
 	require.NotNil(t, support)
 	require.Equal(t, "assemblerSync", cluster.ReplicationPolicy)
-	require.Equal(t, 100, cluster.SendBufferSize)
-	require.Equal(t, []byte(test.nodeConfig.TLSCertificateFile), cluster.ClientCertificate)
-	require.Equal(t, []byte(test.nodeConfig.TLSPrivateKeyFile), cluster.ClientPrivateKey)
+	require.Equal(t, orderer_config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationBufferSize, cluster.ReplicationBufferSize)
+	require.Equal(t, orderer_config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMaxRetryInterval, cluster.ReplicationMaxRetryInterval)
+	require.Equal(t, orderer_config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMinRetryInterval, cluster.ReplicationMinRetryInterval)
+	require.Equal(t, orderer_config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMaxRetryDuration, cluster.ReplicationMaxRetryDuration)
 	require.NotNil(t, fakeSync)
 	require.Equal(t, 1, fakeSync.SyncCallCount())
 
