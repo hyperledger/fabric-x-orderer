@@ -6,6 +6,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 )
 
 type FakeBatchLedger struct {
@@ -28,6 +29,16 @@ type FakeBatchLedger struct {
 	}
 	heightReturnsOnCall map[int]struct {
 		result1 uint64
+	}
+	MetricsStub        func() *ledger.BatchLedgerMetrics
+	metricsMutex       sync.RWMutex
+	metricsArgsForCall []struct {
+	}
+	metricsReturns struct {
+		result1 *ledger.BatchLedgerMetrics
+	}
+	metricsReturnsOnCall map[int]struct {
+		result1 *ledger.BatchLedgerMetrics
 	}
 	RetrieveBatchByNumberStub        func(types.PartyID, uint64) types.Batch
 	retrieveBatchByNumberMutex       sync.RWMutex
@@ -147,6 +158,62 @@ func (fake *FakeBatchLedger) HeightReturnsOnCall(i int, result1 uint64) {
 	}{result1}
 }
 
+func (fake *FakeBatchLedger) Metrics() *ledger.BatchLedgerMetrics {
+	fake.metricsMutex.Lock()
+	ret, specificReturn := fake.metricsReturnsOnCall[len(fake.metricsArgsForCall)]
+	fake.metricsArgsForCall = append(fake.metricsArgsForCall, struct {
+	}{})
+	stub := fake.MetricsStub
+	fakeReturns := fake.metricsReturns
+	fake.recordInvocation("Metrics", []interface{}{})
+	fake.metricsMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	if fakeReturns.result1 != nil {
+		return fakeReturns.result1
+	}
+	return &ledger.BatchLedgerMetrics{}
+}
+
+func (fake *FakeBatchLedger) MetricsCallCount() int {
+	fake.metricsMutex.RLock()
+	defer fake.metricsMutex.RUnlock()
+	return len(fake.metricsArgsForCall)
+}
+
+func (fake *FakeBatchLedger) MetricsCalls(stub func() *ledger.BatchLedgerMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = stub
+}
+
+func (fake *FakeBatchLedger) MetricsReturns(result1 *ledger.BatchLedgerMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = nil
+	fake.metricsReturns = struct {
+		result1 *ledger.BatchLedgerMetrics
+	}{result1}
+}
+
+func (fake *FakeBatchLedger) MetricsReturnsOnCall(i int, result1 *ledger.BatchLedgerMetrics) {
+	fake.metricsMutex.Lock()
+	defer fake.metricsMutex.Unlock()
+	fake.MetricsStub = nil
+	if fake.metricsReturnsOnCall == nil {
+		fake.metricsReturnsOnCall = make(map[int]struct {
+			result1 *ledger.BatchLedgerMetrics
+		})
+	}
+	fake.metricsReturnsOnCall[i] = struct {
+		result1 *ledger.BatchLedgerMetrics
+	}{result1}
+}
+
 func (fake *FakeBatchLedger) RetrieveBatchByNumber(arg1 types.PartyID, arg2 uint64) types.Batch {
 	fake.retrieveBatchByNumberMutex.Lock()
 	ret, specificReturn := fake.retrieveBatchByNumberReturnsOnCall[len(fake.retrieveBatchByNumberArgsForCall)]
@@ -216,6 +283,8 @@ func (fake *FakeBatchLedger) Invocations() map[string][][]interface{} {
 	defer fake.appendMutex.RUnlock()
 	fake.heightMutex.RLock()
 	defer fake.heightMutex.RUnlock()
+	fake.metricsMutex.RLock()
+	defer fake.metricsMutex.RUnlock()
 	fake.retrieveBatchByNumberMutex.RLock()
 	defer fake.retrieveBatchByNumberMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}

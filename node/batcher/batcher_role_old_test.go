@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/request"
 	request_mocks "github.com/hyperledger/fabric-x-orderer/request/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -36,6 +37,10 @@ func (ri *reqInspector) RequestID(req []byte) string {
 type noopLedger struct{}
 
 func (*noopLedger) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, configSeq arma_types.ConfigSequence, batchedRequests arma_types.BatchedRequests, primarySignature []byte) {
+}
+
+func (*noopLedger) Metrics() *ledger.BatchLedgerMetrics {
+	return &ledger.BatchLedgerMetrics{}
 }
 
 func (*noopLedger) Height(partyID arma_types.PartyID) uint64 {
@@ -70,6 +75,10 @@ func (r *naiveReplication) Append(partyID arma_types.PartyID, batchSeq arma_type
 	for _, s := range r.subscribers {
 		s <- arma_types.NewSimpleBatch(0, partyID, batchSeq, batchedRequests, 0, primarySignature)
 	}
+}
+
+func (r *naiveReplication) Metrics() *ledger.BatchLedgerMetrics {
+	return &ledger.BatchLedgerMetrics{}
 }
 
 func (r *naiveReplication) Height(partyID arma_types.PartyID) uint64 {
@@ -251,7 +260,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 				Provider:           "disabled",
 				MetricsLogInterval: 0 * time.Second,
 			},
-		}, batchersInfo, ledger, sugaredLogger),
+		}, batchersInfo, ledger.Metrics(), ledger, sugaredLogger),
 	}
 
 	return batcher
@@ -420,7 +429,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 				Provider:           "disabled",
 				MetricsLogInterval: 0 * time.Second,
 			},
-		}, batchersInfo, ledger, sugaredLogger),
+		}, batchersInfo, ledger.Metrics(), ledger, sugaredLogger),
 	}
 
 	return b
