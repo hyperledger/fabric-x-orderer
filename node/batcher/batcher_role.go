@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/pkg/errors"
 )
 
@@ -95,6 +96,7 @@ type BatchLedgeReader interface {
 type BatchLedger interface {
 	BatchLedgerWriter
 	BatchLedgeReader
+	Metrics() *ledger.BatchLedgerMetrics
 }
 
 type BatcherRole struct {
@@ -353,9 +355,7 @@ func (b *BatcherRole) runPrimary() {
 		// (this BAF is a declaration that the batch is stored in the ledger)
 		// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
-		appendStart := time.Now()
 		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch, baf.Signature())
-		b.Metrics.batchLedgerAppendLatency.Observe(time.Since(appendStart).Seconds())
 		sendBAFDone := make(chan struct{})
 		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
 		defer sendBafCancel()
@@ -436,9 +436,7 @@ func (b *BatcherRole) runSecondary() {
 			// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
-			appendStart := time.Now()
 			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests, batch.PrimarySignature())
-			b.Metrics.batchLedgerAppendLatency.Observe(time.Since(appendStart).Seconds())
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest(), uint64(len(requests)), batch.PrimarySignature())
 
 			sendBAFDone := make(chan struct{})
