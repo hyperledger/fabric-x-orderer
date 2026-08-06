@@ -138,7 +138,7 @@ type ClusterYaml struct {
 	ReplicationPolicy string `yaml:"ReplicationPolicy,omitempty"`
 	// RPCTimeout is the timeout for RPC calls between orderers.
 	RPCTimeout time.Duration `yaml:"RPCTimeout,omitempty"`
-	// ReplicationBufferSize is the size of the buffer that is used to store blocks that are being replicated from other orderers.
+	// ReplicationBufferSize is the size in bytes of the buffer that is used to store blocks that are being replicated from other orderers.
 	ReplicationBufferSize int `yaml:"ReplicationBufferSize,omitempty"`
 	// ReplicationMaxRetryInterval is the maximal amount of time to wait before retrying to connect.
 	ReplicationMaxRetryInterval time.Duration `yaml:"ReplicationMaxRetryInterval,omitempty"`
@@ -217,7 +217,7 @@ type Cluster struct {
 	ReplicationPolicy string
 	// RPCTimeout is the timeout for RPC calls between orderers.
 	RPCTimeout time.Duration
-	// ReplicationBufferSize is the size of the buffer that is used to store blocks that are being replicated from other orderers.
+	// ReplicationBufferSize is the size in bytes of the buffer that is used to store blocks that are being replicated from other orderers.
 	ReplicationBufferSize int
 	// ReplicationMaxRetryInterval is the maximal amount of time to wait before retrying to connect.
 	ReplicationMaxRetryInterval time.Duration
@@ -462,11 +462,6 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig, logger *flogging.Fab
 	if generalConfig.Cluster.SendBufferSize == 0 {
 		generalConfig.Cluster.SendBufferSize = DefaultNodeLocalConfig.GeneralConfig.Cluster.SendBufferSize
 		logger.Infof("General.Cluster.SendBufferSize is not set, using default value: %d", generalConfig.Cluster.SendBufferSize)
-	}
-
-	if generalConfig.Cluster.ReplicationPolicy == "" {
-		generalConfig.Cluster.ReplicationPolicy = DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy
-		logger.Infof("General.Cluster.ReplicationPolicy is not set, using default value: %s", generalConfig.Cluster.ReplicationPolicy)
 	}
 
 	if generalConfig.Cluster.RPCTimeout == 0 {

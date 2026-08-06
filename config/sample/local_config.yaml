@@ -111,9 +111,9 @@ General:
     # RPCTimeout is the timeout for RPC calls between orderers.
     RPCTimeout: 1m
 
-    # ReplicationBufferSize is the size of the buffer used to store blocks
-    # that are being replicated from other orderers.
-    ReplicationBufferSize: 20971520
+    # ReplicationBufferSize is the size in bytes of the buffer used to store
+    # blocks that are being replicated from other orderers.
+    ReplicationBufferSize: 52428800
 
     # ReplicationMaxRetryInterval is the maximal amount of time to wait
     # before retrying to connect.
