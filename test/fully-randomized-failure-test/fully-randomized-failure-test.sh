@@ -3,18 +3,29 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Deterministic failure test — single entry-point script.
+# Fully randomized failure test — single entry-point script.
 #
 # Previously split across five files:
-#   deterministic-failure-test.sh   (main orchestration)
-#   start-arma-network.sh           (network startup)
-#   deterministic-failure-runner.sh (failure injection loop)
-#   monitor-completion.sh           (progress monitor)
-#   collect-results.sh              (result collection)
+#   fully-randomized-failure-test.sh   (main orchestration)
+#   start-arma-network.sh              (network startup)
+#   fully-randomized-failure-runner.sh (failure injection loop)
+#   monitor-completion.sh              (progress monitor)
+#   collect-results.sh                 (result collection)
 #
 # All functions are now defined here and called from the main() function at the
 # bottom of this file.  The GitHub Actions workflow and local usage are
 # unchanged — just run this script directly.
+#
+# The key difference from the deterministic test: instead of cycling through
+# parties and components in a fixed order, the failure runner picks a victim
+# completely at random from the full pool of all components (all assemblers,
+# consenters, routers, and batchers across every party).  Any component can be
+# selected multiple times in a row; there is no guaranteed ordering.
+#
+# A status snapshot is printed after every N = (3 + NUM_SHARDS) kills, which
+# corresponds roughly to one "equivalent party's worth" of kills — matching
+# the conceptual reporting cadence of the deterministic test without imposing
+# any ordering on which components are actually killed.
 
 # Exit on error
 set -e
@@ -188,12 +199,21 @@ start_arma_network() {
 
 # ---------------------------------------------------------------------------
 # run_failure_runner
-#   Stops and restarts ARMA components one party at a time in a continuous
-#   loop until the stop signal file is created by monitor_completion.
+#   Picks a random ARMA component from the full pool of all components on
+#   every iteration and kills + restarts it, until the stop signal file is
+#   created by monitor_completion.
 #
-#   For each party it kills and restarts: assembler, consenter, router, then
-#   all batchers in shard order.  After each full party cycle it writes a
-#   signal file so monitor_completion knows to print a status snapshot.
+#   The pool is built from NUM_PARTIES × (3 + NUM_SHARDS) entries:
+#     assembler, consenter, router, batcher-shard-1 … batcher-shard-N
+#   for every party.  Any component can be selected any number of times;
+#   there is no guaranteed ordering.
+#
+#   A status snapshot signal is written to TEST_DIR after every
+#   KILLS_PER_REPORT = (3 + NUM_SHARDS) kills, mirroring the per-party
+#   reporting cadence of the deterministic test without enforcing order.
+#
+#   A running kill counter is maintained in ${TEST_DIR}/kill_counter so
+#   monitor_completion can display cumulative totals in each snapshot.
 #
 # Args: TEST_DIR  NUM_PARTIES  NUM_SHARDS
 # ---------------------------------------------------------------------------
@@ -213,12 +233,16 @@ run_failure_runner() {
   # Stop signal file created by monitor_completion when the test ends
   local STOP_SIGNAL="${TEST_DIR}/failure_runner_stop_signal"
 
+  # Number of kills between status snapshots: one "equivalent party's worth"
+  local KILLS_PER_REPORT=$((3 + NUM_SHARDS))
+
   echo "=========================================="
-  echo "Failure Runner Started"
+  echo "Fully Randomized Failure Runner Started"
   echo "=========================================="
   echo "Configuration:"
   echo "  Stop duration: ${STOP_WAIT}s"
   echo "  Restart wait: ${START_WAIT}s"
+  echo "  Kills per report: ${KILLS_PER_REPORT}"
   echo "  PID directory: ${PID_DIR}"
   echo "  Working directory: ${WORK_DIR}"
   echo "  Stop signal file: ${STOP_SIGNAL}"
@@ -288,56 +312,77 @@ run_failure_runner() {
     sleep $START_WAIT
   }
 
+  # Build flat pool of all components across all parties.
+  # Each entry is a space-separated string: "type party [shard]"
+  # Examples: "assembler 1"  "consensus 2"  "batcher 3 2"
+  local POOL=()
+  for p in $(seq 1 $NUM_PARTIES); do
+    POOL+=("assembler $p")
+    POOL+=("consensus $p")
+    POOL+=("router $p")
+    for s in $(seq 1 $NUM_SHARDS); do
+      POOL+=("batcher $p $s")
+    done
+  done
+
+  local POOL_SIZE=${#POOL[@]}
+  echo "Component pool size: ${POOL_SIZE} (${NUM_PARTIES} parties × $((3 + NUM_SHARDS)) components each)"
+
+  # Initialise kill counter
+  echo "0" > "${TEST_DIR}/kill_counter"
+  local kill_count=0
+
   # Main failure loop — run until stop signal is received
   while true; do
     # Check if we should stop (test completed)
     if [ -f "${STOP_SIGNAL}" ]; then
       echo "=========================================="
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stop signal received - failure runner exiting"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stop signal received - fully randomized failure runner exiting"
       echo "=========================================="
       break
     fi
 
-    for party in $(seq 1 $NUM_PARTIES); do
-      # Check stop signal before each party
-      if [ -f "${STOP_SIGNAL}" ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stop signal received - exiting failure loop"
-        break 2
-      fi
+    # Pick a random component from the pool
+    local idx=$(($RANDOM % POOL_SIZE))
+    local entry="${POOL[$idx]}"
 
-      echo "----------------------------------------------------"
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] PARTY ${party} — starting failure sequence"
-      echo "----------------------------------------------------"
+    # Parse the entry: "type party [shard]"
+    local comp party shard
+    read -r comp party shard <<< "$entry"
 
-      # 1. Assembler
-      _kill_and_restart "assembler" ${party} "" \
-        "${TEST_DIR}/config/party${party}/local_config_assembler.yaml" \
-        "assembler${party}.log"
+    # Resolve config file and log file for this component
+    local config_file log_file
+    if [ "$comp" = "batcher" ]; then
+      config_file="${TEST_DIR}/config/party${party}/local_config_batcher${shard}.yaml"
+      log_file="batcher${party}-${shard}.log"
+    elif [ "$comp" = "assembler" ]; then
+      config_file="${TEST_DIR}/config/party${party}/local_config_assembler.yaml"
+      log_file="assembler${party}.log"
+    elif [ "$comp" = "consensus" ]; then
+      config_file="${TEST_DIR}/config/party${party}/local_config_consenter.yaml"
+      log_file="consenter${party}.log"
+    elif [ "$comp" = "router" ]; then
+      config_file="${TEST_DIR}/config/party${party}/local_config_router.yaml"
+      log_file="router${party}.log"
+    fi
 
-      # 2. Consenter
-      _kill_and_restart "consensus" ${party} "" \
-        "${TEST_DIR}/config/party${party}/local_config_consenter.yaml" \
-        "consenter${party}.log"
+    echo "----------------------------------------------------"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🎲 Random pick: ${comp} party ${party}${shard:+ shard ${shard}}"
+    echo "----------------------------------------------------"
 
-      # 3. Router
-      _kill_and_restart "router" ${party} "" \
-        "${TEST_DIR}/config/party${party}/local_config_router.yaml" \
-        "router${party}.log"
+    _kill_and_restart "$comp" "$party" "$shard" "$config_file" "$log_file"
 
-      # 4. Batchers (in shard order)
-      for shard in $(seq 1 $NUM_SHARDS); do
-        _kill_and_restart "batcher" ${party} ${shard} \
-          "${TEST_DIR}/config/party${party}/local_config_batcher${shard}.yaml" \
-          "batcher${party}-${shard}.log"
-      done
+    # Increment kill counter
+    kill_count=$((kill_count + 1))
+    echo "${kill_count}" > "${TEST_DIR}/kill_counter"
 
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] PARTY ${party} — failure sequence DONE"
-      # Signal monitor that this party's failure cycle is complete
-      touch "${TEST_DIR}/failure_runner_party${party}_done"
-    done
+    # Signal monitor every KILLS_PER_REPORT kills
+    if [ $((kill_count % KILLS_PER_REPORT)) -eq 0 ]; then
+      touch "${TEST_DIR}/failure_runner_batch_done"
+    fi
   done
 
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failure runner finished"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fully randomized failure runner finished (total kills: ${kill_count})"
 }
 
 # ---------------------------------------------------------------------------
@@ -345,8 +390,8 @@ run_failure_runner() {
 #   Monitors test execution until the configured duration is reached or all
 #   components finish early.
 #
-#   - In failure runner mode: prints a status snapshot after each party's full
-#     failure cycle completes.
+#   - In failure runner mode: prints a status snapshot after every
+#     KILLS_PER_REPORT = (3 + NUM_SHARDS) kills.
 #   - Without failure runner: prints a status snapshot every 5 minutes.
 #   - Always: stops when the configured duration is reached or when the loader
 #     and all receivers finish early.
@@ -366,11 +411,15 @@ monitor_completion() {
   local START_TIME=$(date +%s)
   local END_TIME=$((START_TIME + DURATION_MINUTES * 60))
 
+  # Kills per report matches the runner's cadence
+  local KILLS_PER_REPORT=$((3 + NUM_SHARDS))
+
   echo "=========================================="
   echo "Monitoring Test Completion"
   echo "=========================================="
   echo "Test will run for ${DURATION_MINUTES} minutes"
   echo "Expected TXs: ${TOTAL_TXS}"
+  echo "Status snapshot every ${KILLS_PER_REPORT} kills"
   echo "Start time: $(date -d @${START_TIME} '+%Y-%m-%d %H:%M:%S')"
   echo "End time: $(date -d @${END_TIME} '+%Y-%m-%d %H:%M:%S')"
   echo "=========================================="
@@ -484,18 +533,17 @@ monitor_completion() {
     fi
 
     if [ "$FAILURE_RUNNER_MODE" = "true" ]; then
-      # In failure runner mode: print stats after each party's full failure cycle completes
-      for party in $(seq 1 $NUM_PARTIES); do
-        local SIGNAL_FILE="${TEST_DIR}/failure_runner_party${party}_done"
-        if [ -f "$SIGNAL_FILE" ]; then
-          echo ""
-          echo "=========================================="
-          echo "🔥 Party ${party} failure cycle complete"
-          echo "=========================================="
-          _get_current_stats
-          rm -f "$SIGNAL_FILE"
-        fi
-      done
+      # In fully randomized mode: print stats after every KILLS_PER_REPORT kills
+      local BATCH_SIGNAL="${TEST_DIR}/failure_runner_batch_done"
+      if [ -f "$BATCH_SIGNAL" ]; then
+        local TOTAL_KILLS=$(cat "${TEST_DIR}/kill_counter" 2>/dev/null || echo "?")
+        echo ""
+        echo "=========================================="
+        echo "🎲 Randomized batch of ${KILLS_PER_REPORT} kills complete (total kills so far: ${TOTAL_KILLS})"
+        echo "=========================================="
+        _get_current_stats
+        rm -f "$BATCH_SIGNAL"
+      fi
     else
       # No failure runner: print stats every 5 minutes
       if [ $((CURRENT_TIME - LAST_STATS_TIME)) -ge 300 ]; then
@@ -583,6 +631,9 @@ monitor_completion() {
 #   logs into test-results/logs/ and compresses them with gzip, collects
 #   receiver statistics CSV files, and creates a summary report.
 #
+#   In addition to summary.txt, writes summary-kills.txt that details how
+#   many times each component was killed during the run, plus a total.
+#
 # Args: TEST_DIR  NUM_PARTIES  DURATION
 # ---------------------------------------------------------------------------
 collect_results() {
@@ -617,15 +668,15 @@ collect_results() {
   declare -a RECEIVER_STATUS
   for i in $(seq 1 $NUM_PARTIES); do
     if grep -q "Receive command finished" receiver${i}.log 2>/dev/null; then
-      # Extract from "1800000 txs were expected and overall 1800186 were successfully received" example from the log
+      # Extract from "1800000 txs were expected and overall 1800186 were successfully received"
       local RECEIVED=$(grep "were successfully received" receiver${i}.log 2>/dev/null | tail -1 | grep -oP 'overall \K\d+(?= were successfully received)')
       RECEIVER_STATS[$i]="${RECEIVED:-unknown}"
       RECEIVER_STATUS[$i]="completed"
     else
       # For stopped receivers, check the statistics CSV file
       if [ -f "${TEST_DIR}/output${i}/statistics.csv" ]; then
-        local BLOCKS=$(tail -n +2 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | wc -l)
-        local RECEIVED=$(tail -n +2 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | awk -F',' '{sum+=$3} END {print sum}')
+        local BLOCKS=$(tail -n +3 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | wc -l)
+        local RECEIVED=$(tail -n +3 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | awk -F',' '{sum+=$2} END {print sum}')
         RECEIVER_STATS[$i]="${RECEIVED:-0}"
         RECEIVER_STATUS[$i]="timeout"
       else
@@ -640,6 +691,48 @@ collect_results() {
     echo "  Party ${i}: ${RECEIVER_STATS[$i]} txs (${RECEIVER_STATUS[$i]})"
   done
 
+  # ---------------------------------------------------------------------------
+  # Build per-component kill counts from failure_runner.log BEFORE logs are
+  # compressed.  The _kill_and_restart helper writes its output to that file,
+  # emitting lines like:
+  #   "Stopping assembler (party 1) - was PID ..."
+  #   "Stopping batcher (party 2 shard 1) - was PID ..."
+  # ---------------------------------------------------------------------------
+  echo "Counting per-component kills from failure_runner.log..."
+
+  declare -A KILL_COUNTS
+  local TOTAL_KILLS=0
+
+  for i in $(seq 1 $NUM_PARTIES); do
+    # Assembler
+    local key="assembler_party${i}"
+    local count; count=$(grep -c "Stopping assembler (party ${i})" failure_runner.log 2>/dev/null) || count=0
+    KILL_COUNTS[$key]=$count
+    TOTAL_KILLS=$((TOTAL_KILLS + count))
+
+    # Consenter
+    key="consenter_party${i}"
+    count=$(grep -c "Stopping consensus (party ${i})" failure_runner.log 2>/dev/null) || count=0
+    KILL_COUNTS[$key]=$count
+    TOTAL_KILLS=$((TOTAL_KILLS + count))
+
+    # Router
+    key="router_party${i}"
+    count=$(grep -c "Stopping router (party ${i})" failure_runner.log 2>/dev/null) || count=0
+    KILL_COUNTS[$key]=$count
+    TOTAL_KILLS=$((TOTAL_KILLS + count))
+
+    # Batchers
+    for j in $(seq 1 $NUM_SHARDS); do
+      key="batcher_party${i}_shard${j}"
+      count=$(grep -c "Stopping batcher (party ${i} shard ${j})" failure_runner.log 2>/dev/null) || count=0
+      KILL_COUNTS[$key]=$count
+      TOTAL_KILLS=$((TOTAL_KILLS + count))
+    done
+  done
+
+  echo "  Total kills recorded: ${TOTAL_KILLS}"
+
   # Collect all logs — always, regardless of duration — and gzip them
   echo "Collecting and compressing logs..."
   cp consenter*.log test-results/logs/ 2>/dev/null || true
@@ -648,6 +741,7 @@ collect_results() {
   cp router*.log test-results/logs/ 2>/dev/null || true
   cp loader.log test-results/logs/ 2>/dev/null || true
   cp receiver*.log test-results/logs/ 2>/dev/null || true
+  cp failure_runner.log test-results/logs/ 2>/dev/null || true
   gzip test-results/logs/*.log 2>/dev/null || true
   echo "  All logs collected and compressed"
 
@@ -660,11 +754,13 @@ collect_results() {
     fi
   done
 
-  # Create summary report
+  # ---------------------------------------------------------------------------
+  # Create main summary report
+  # ---------------------------------------------------------------------------
   echo "Creating summary report..."
   cat > test-results/summary.txt <<EOF
 ========================================
-Deterministic Failure Test Summary
+Fully Randomized Failure Test Summary
 ========================================
 Date: $(date)
 Duration: ${DURATION} minutes
@@ -680,7 +776,6 @@ Loader Results
 ========================================
 EOF
 
-  # Use pre-extracted statistics
   if [ "$LOADER_STATUS" = "completed" ]; then
     echo "✅ Loader completed" >> test-results/summary.txt
     echo "Sent: ${SENT:-unknown} transactions" >> test-results/summary.txt
@@ -696,7 +791,6 @@ Receiver Results
 ========================================
 EOF
 
-  # Use pre-extracted receiver statistics
   local TOTAL_RECEIVED=0
   local REPRESENTATIVE_RECEIVED
   for i in $(seq 1 $NUM_PARTIES); do
@@ -711,9 +805,8 @@ EOF
         TOTAL_RECEIVED=$((TOTAL_RECEIVED + RECEIVED))
       fi
     elif [ "$STATUS" = "timeout" ]; then
-      # Get block count from CSV
       if [ -f "${TEST_DIR}/output${i}/statistics.csv" ]; then
-        local BLOCKS=$(tail -n +2 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | wc -l)
+        local BLOCKS=$(tail -n +3 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | wc -l)
         echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs in ${BLOCKS} blocks" >> test-results/summary.txt
       else
         echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs" >> test-results/summary.txt
@@ -726,13 +819,19 @@ EOF
     fi
   done
 
-  # Overall statistics: each party independently receives all sent txs, so the
-  # meaningful metric is per-party success rate, not a cross-party sum.
+  # Overall statistics: use the first party that has a non-zero received count
+  # as the representative value (party 1 may have no data if it was mid-kill).
   local PARTY_SUCCESS_RATE=0
-  REPRESENTATIVE_RECEIVED=${RECEIVER_STATS[1]:-0}
+  local REPRESENTATIVE_RECEIVED=0
+  for i in $(seq 1 $NUM_PARTIES); do
+    local cand="${RECEIVER_STATS[$i]:-0}"
+    if [ -n "$cand" ] && [ "$cand" != "unknown" ] && [ "$cand" -gt 0 ] 2>/dev/null; then
+      REPRESENTATIVE_RECEIVED=$cand
+      break
+    fi
+  done
   if [ -n "$SENT" ] && [ "$SENT" -gt 0 ]; then
-    # Use the first party as representative received count
-    if [ -n "$REPRESENTATIVE_RECEIVED" ] && [ "$REPRESENTATIVE_RECEIVED" -gt 0 ] 2>/dev/null; then
+    if [ "$REPRESENTATIVE_RECEIVED" -gt 0 ] 2>/dev/null; then
       PARTY_SUCCESS_RATE=$((REPRESENTATIVE_RECEIVED * 100 / SENT))
     fi
   fi
@@ -748,7 +847,12 @@ Received per party: ${REPRESENTATIVE_RECEIVED:-0} transactions
 Success Rate: ${PARTY_SUCCESS_RATE}%
 EOF
 
-  # Create a simple pass/fail indicator
+  echo "" >> test-results/summary.txt
+  echo "========================================" >> test-results/summary.txt
+  echo "Kill Summary (see summary-kills.txt for full detail)" >> test-results/summary.txt
+  echo "========================================" >> test-results/summary.txt
+  echo "Total kills during run: ${TOTAL_KILLS}" >> test-results/summary.txt
+
   echo "" >> test-results/summary.txt
   echo "========================================" >> test-results/summary.txt
   echo "Test Status" >> test-results/summary.txt
@@ -756,32 +860,70 @@ EOF
 
   if [ -n "$SENT" ] && [ "$SENT" -gt 0 ] && [ "${REPRESENTATIVE_RECEIVED:-0}" -gt 0 ] 2>/dev/null; then
     echo "✅ PASSED - Test ran for ${DURATION} minutes" >> test-results/summary.txt
-    echo "   Sent: ${SENT} txs, each party received: ${REPRESENTATIVE_RECEIVED} txs (${PARTY_SUCCESS_RATE}%)" >> test-results/summary.txt
+    echo "   Sent: ${SENT} txs, representative party received: ${REPRESENTATIVE_RECEIVED} txs (${PARTY_SUCCESS_RATE}%)" >> test-results/summary.txt
+  elif [ -n "$SENT" ] && [ "$SENT" -gt 0 ]; then
+    echo "⚠️  PARTIAL - Loader sent ${SENT} txs but no receiver completed (all were mid-kill at drain time)" >> test-results/summary.txt
   else
     echo "❌ FAILED - No transactions processed" >> test-results/summary.txt
   fi
+
+  # ---------------------------------------------------------------------------
+  # Create kill report: summary-kills.txt
+  # ---------------------------------------------------------------------------
+  echo "Creating kill report..."
+  cat > test-results/summary-kills.txt <<EOF
+========================================
+Fully Randomized Failure Test — Kill Report
+========================================
+Date: $(date)
+Duration: ${DURATION} minutes
+Total components in pool: $((NUM_PARTIES * (3 + NUM_SHARDS))) (${NUM_PARTIES} parties × $((3 + NUM_SHARDS)) components each)
+
+========================================
+Per-Component Kill Counts
+========================================
+EOF
+
+  for i in $(seq 1 $NUM_PARTIES); do
+    echo "Party ${i}:" >> test-results/summary-kills.txt
+    echo "  assembler  party ${i}:          ${KILL_COUNTS[assembler_party${i}]:-0} kills" >> test-results/summary-kills.txt
+    echo "  consenter  party ${i}:          ${KILL_COUNTS[consenter_party${i}]:-0} kills" >> test-results/summary-kills.txt
+    echo "  router     party ${i}:          ${KILL_COUNTS[router_party${i}]:-0} kills" >> test-results/summary-kills.txt
+    for j in $(seq 1 $NUM_SHARDS); do
+      echo "  batcher    party ${i} shard ${j}: ${KILL_COUNTS[batcher_party${i}_shard${j}]:-0} kills" >> test-results/summary-kills.txt
+    done
+  done
+
+  cat >> test-results/summary-kills.txt <<EOF
+
+========================================
+Total kills: ${TOTAL_KILLS}
+========================================
+EOF
 
   echo "=========================================="
   echo "✅ Results collected in test-results/"
   echo "=========================================="
 
-  # Display summary
+  # Display both summaries
   cat test-results/summary.txt
+  echo ""
+  cat test-results/summary-kills.txt
 }
 
 # ---------------------------------------------------------------------------
 # main — orchestrates the full test run
 # ---------------------------------------------------------------------------
 main() {
-  # Ensure arma/armageddon processes are cleaned up even if the script exits early
-  # (e.g. due to set -e tripping on an unexpected error before the final pkill lines).
+  # Ensure all arma/armageddon processes are killed when the script exits for
+  # any reason — normal completion, error, or external signal (Ctrl-C, SIGTERM).
   trap 'pkill -f "arma " 2>/dev/null || true; pkill -f armageddon 2>/dev/null || true' EXIT
 
   # Calculate total transactions
   local TOTAL_TXS=$((DURATION * 60 * TX_RATE))
 
   echo "=========================================="
-  echo "Deterministic Failure Test Configuration"
+  echo "Fully Randomized Failure Test Configuration"
   echo "=========================================="
   echo "Duration: ${DURATION} minutes"
   echo "TX Rate: ${TX_RATE} tx/s"
@@ -793,7 +935,7 @@ main() {
   echo "=========================================="
 
   # Create temp directory for test
-  local TEST_DIR=$(mktemp -d -t deterministic-failure-test-XXXXXX)
+  local TEST_DIR=$(mktemp -d -t fully-randomized-failure-test-XXXXXX)
   echo "Test directory: ${TEST_DIR}"
 
   # Generate config YAML
@@ -840,20 +982,14 @@ EOF
   echo "Updating FileStore Location in generated configs..."
   for config_file in ${TEST_DIR}/config/party*/local_config_*.yaml; do
     if [ -f "$config_file" ]; then
-      # Extract component type and party from filename
-      # e.g., local_config_assembler.yaml → assembler
-      # e.g., local_config_batcher1.yaml → batcher1
       local filename=$(basename "$config_file")
       local component=$(echo "$filename" | sed 's/local_config_//; s/\.yaml//')
       local party=$(echo "$config_file" | grep -oP 'party\K[0-9]+')
 
-      # Create unique data path for this component
       local component_data="${DATA_DIR}/${component}_party${party}"
       mkdir -p "$component_data"
 
-      # Replace the Location line under FileStore section
       sed -i "s|Location: /var/dec-trust.*|Location: ${component_data}|g" "$config_file"
-      # Replace the WALDir line under ConsensusParams (consenter only, no-op on others)
       sed -i "s|WALDir: /var/dec-trust.*|WALDir: ${component_data}/wal|g" "$config_file"
       echo "  Updated: $config_file → $component_data"
     fi
@@ -862,7 +998,7 @@ EOF
 
   # Remove log files from any previous run so the monitor does not read stale data
   echo "Cleaning up log files from previous runs..."
-  rm -f loader.log
+  rm -f loader.log failure_runner.log
   for i in $(seq 1 $NUM_PARTIES); do
     rm -f receiver${i}.log
   done
@@ -873,6 +1009,14 @@ EOF
     done
   done
   echo "Log files cleaned up"
+
+  # Kill any stale arma/armageddon processes from previous runs before starting
+  # new ones.  The fixed ports 8011-8045 mean any survivor will block startup.
+  echo "Killing any stale arma/armageddon processes from previous runs..."
+  pkill -f "/bin/arma " 2>/dev/null || true
+  pkill -f "armageddon" 2>/dev/null || true
+  sleep 1
+  echo "Stale processes cleared"
 
   # Start ARMA network
   echo "Starting ARMA network..."
@@ -911,10 +1055,10 @@ EOF
   # Start failure runner (if enabled)
   local FAILURE_RUNNER_PID=""
   if [ "$FAILURE_RUNNER_ENABLED" = "true" ]; then
-    echo "Starting failure runner..."
+    echo "Starting fully randomized failure runner..."
     # Write marker so monitor_completion knows failure runner mode is active
     touch "${TEST_DIR}/failure_runner_enabled"
-    run_failure_runner "${TEST_DIR}" "${NUM_PARTIES}" "${NUM_SHARDS}" &
+    { run_failure_runner "${TEST_DIR}" "${NUM_PARTIES}" "${NUM_SHARDS}" 2>&1 | tee -a failure_runner.log; true; } &
     FAILURE_RUNNER_PID=$!
     echo "Started failure runner (PID: ${FAILURE_RUNNER_PID})"
   fi
@@ -928,7 +1072,6 @@ EOF
     echo "Waiting for failure runner to stop gracefully..."
     sleep 5
 
-    # Check if it's still running and force kill if needed
     if kill -0 ${FAILURE_RUNNER_PID} 2>/dev/null; then
       echo "Force stopping failure runner..."
       kill ${FAILURE_RUNNER_PID} 2>/dev/null || true
@@ -941,14 +1084,19 @@ EOF
   echo "Collecting results..."
   collect_results "${TEST_DIR}" "${NUM_PARTIES}" "${DURATION}"
 
+  # Disable exit-on-error for cleanup — background process exits are non-zero
+  # by design (they are killed) and must not abort the script.
+  set +e
+
   # Cleanup processes
   echo "Cleaning up processes..."
-  pkill -f "arma " || true
-  pkill -f "armageddon" || true
+  pkill -f "/bin/arma " 2>/dev/null
+  pkill -f "armageddon" 2>/dev/null
 
   echo "=========================================="
-  echo "✅ Deterministic failure test completed successfully!"
+  echo "✅ Fully randomized failure test completed successfully!"
   echo "=========================================="
+  exit 0
 }
 
 main
