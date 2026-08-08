@@ -83,7 +83,8 @@ type BAFCreator interface {
 }
 
 type BatchLedgerWriter interface {
-	Append(partyID types.PartyID, batchSeq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests, primarySignature []byte)
+	// Append adds a batch to the ledger. The `digest` must be the digest of `batchedRequests`.
+	Append(partyID types.PartyID, batchSeq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests, digest []byte, primarySignature []byte)
 }
 
 type BatchLedgeReader interface {
@@ -354,7 +355,8 @@ func (b *BatcherRole) runPrimary() {
 		// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
 		appendStart := time.Now()
-		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch, baf.Signature())
+		// The digest was already computed for the BAF above. pass it so the ledger does not recompute it.
+		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch, digest, baf.Signature())
 		b.Metrics.batchLedgerAppendLatency.Observe(time.Since(appendStart).Seconds())
 		sendBAFDone := make(chan struct{})
 		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
@@ -430,6 +432,9 @@ func (b *BatcherRole) runSecondary() {
 
 			b.Metrics.batchesPulledTotal.Add(1)
 			requests := batch.Requests()
+			// verifyBatch verified that the digest the primary declared in the batch header is
+			// indeed the digest of the requests. So reuse it for both the ledger append and the BAF.
+			digest := batch.Digest()
 
 			// After the batch is appended to the ledger the batcher sends the BAF to the consenters
 			// (this BAF is a declaration that the batch is stored in the ledger)
@@ -437,9 +442,9 @@ func (b *BatcherRole) runSecondary() {
 
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
 			appendStart := time.Now()
-			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests, batch.PrimarySignature())
+			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests, digest, batch.PrimarySignature())
 			b.Metrics.batchLedgerAppendLatency.Observe(time.Since(appendStart).Seconds())
-			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, requests.Digest(), uint64(len(requests)), batch.PrimarySignature())
+			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, digest, uint64(len(requests)), batch.PrimarySignature())
 
 			sendBAFDone := make(chan struct{})
 			ctx, sendBafCancel := context.WithCancel(b.stopCtx)

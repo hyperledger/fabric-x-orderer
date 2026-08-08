@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"testing"
 
@@ -47,7 +49,7 @@ func TestBatchLedgerPart(t *testing.T) {
 	for seq := uint64(0); seq < batches; seq++ {
 		batchedRequests := types.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
 		primarySig := []byte(fmt.Sprintf("sig-%d", seq))
-		part.Append(types.BatchSequence(seq), types.ConfigSequence(seq*10), batchedRequests, primarySig)
+		part.Append(types.BatchSequence(seq), types.ConfigSequence(seq*10), batchedRequests, batchedRequests.Digest(), primarySig)
 		require.Equal(t, seq+1, part.Height())
 		batch := part.RetrieveBatchByNumber(seq)
 		require.NotNil(t, batch)
@@ -57,7 +59,7 @@ func TestBatchLedgerPart(t *testing.T) {
 		require.Equal(t, types.BatchSequence(seq), batch.Seq())
 		require.Equal(t, types.ConfigSequence(seq*10), batch.ConfigSequence())
 		require.Equal(t, primarySig, batch.PrimarySignature())
-		require.NotNil(t, batch.Digest())
+		require.Equal(t, batchedRequests.Digest(), batch.Digest())
 	}
 	require.Nil(t, part.RetrieveBatchByNumber(100))
 
@@ -66,6 +68,34 @@ func TestBatchLedgerPart(t *testing.T) {
 	require.NotNil(t, part)
 	require.Equal(t, batches, part.Height())
 	require.NotNil(t, part.RetrieveBatchByNumber(0))
+}
+
+// TestBatchLedgerPart_AppendWithDigest verifies that Append persists the digest it was given rather than
+// recomputing one over the payload;.
+func TestBatchLedgerPart_AppendWithDigest(t *testing.T) {
+	logger := flogging.MustGetLogger("test")
+
+	provider, err := blkstorage.NewProvider(
+		blkstorage.NewConf(t.TempDir(), -1),
+		&blkstorage.IndexConfig{
+			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
+		}, &disabled.Provider{},
+	)
+	require.NoError(t, err)
+	t.Cleanup(provider.Close)
+
+	part, err := newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger)
+	require.NoError(t, err)
+
+	fakeDigest := bytes.Repeat([]byte{0xAB}, sha256.Size)
+	reqs := types.BatchedRequests{[]byte("tx1"), []byte("tx2")}
+	part.Append(0, 0, reqs, fakeDigest, nil)
+
+	stored := part.RetrieveBatchByNumber(0)
+	require.NotNil(t, stored)
+	require.Equal(t, fakeDigest, stored.Digest())
+	require.NotEqual(t, reqs.Digest(), stored.Digest())
+	require.Equal(t, reqs, stored.Requests())
 }
 
 func TestBatchLedgerPart_Iterator(t *testing.T) {
@@ -86,7 +116,7 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 
 	for seq := uint64(0); seq < 10; seq++ {
 		batchedRequests := types.BatchedRequests{[]byte(fmt.Sprintf("tx1-%d", seq)), []byte(fmt.Sprintf("tx2-%d", seq))}
-		part.Append(types.BatchSequence(seq), 0, batchedRequests, nil)
+		part.Append(types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), nil)
 	}
 
 	ledger := part.Ledger()

@@ -93,11 +93,16 @@ func (b *FabricBatch) Seq() types.BatchSequence {
 	return types.BatchSequence((*common.Block)(b).GetHeader().GetNumber())
 }
 
+// NewFabricBatchFromRequests encodes the given requests in a Fabric block.
+//
+// The `digest` is the batch digest and MUST be equal to batchedRequests.Digest(); it is stored in the
+// block header as-is and is never recomputed here.
 func NewFabricBatchFromRequests(
 	shardID types.ShardID,
 	partyID types.PartyID,
 	seq types.BatchSequence,
 	batchedRequests types.BatchedRequests,
+	digest []byte,
 	configSeq types.ConfigSequence,
 	prevHash []byte,
 	primarySignature []byte,
@@ -111,7 +116,7 @@ func NewFabricBatchFromRequests(
 		Header: &common.BlockHeader{
 			Number:       uint64(seq),
 			PreviousHash: prevHash,
-			DataHash:     batchedRequests.Digest(),
+			DataHash:     digest,
 		},
 		Data: &common.BlockData{
 			Data: batchedRequests,

@@ -453,9 +453,8 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 		ordInfo1 := &state.OrderingInformation{
 			CommonBlock: block1,
 		}
-		batch1 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, types.BatchedRequests{
-			[]byte("tx1"), []byte("tx2"),
-		}, 0, []byte(""), nil)
+		reqs := types.BatchedRequests{[]byte("tx1"), []byte("tx2")}
+		batch1 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, reqs, reqs.Digest(), 0, []byte(""), nil)
 
 		al.Append(batch1, ordInfo1)
 		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
@@ -477,9 +476,7 @@ func TestAssemblerLedger_LastConfig(t *testing.T) {
 		ordInfo2 := &state.OrderingInformation{
 			CommonBlock: block2,
 		}
-		batch2 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, types.BatchedRequests{
-			[]byte("tx1"), []byte("tx2"),
-		}, 0, []byte(""), nil)
+		batch2 := node_ledger.NewFabricBatchFromRequests(2, 1, 3, reqs, reqs.Digest(), 0, []byte(""), nil)
 
 		al.Append(batch2, ordInfo2)
 		idx, err = node_ledger.GetLastConfigIndexFromAssemblerLedger(al)
@@ -702,7 +699,7 @@ func createBatchesAndOrdInfo(t *testing.T, num int) ([]types.Batch, []*state.Ord
 		seq := seqArray[sIdx][pIdx]
 		seqArray[sIdx][pIdx] = seq + 1
 
-		fb := node_ledger.NewFabricBatchFromRequests(shard, party, types.BatchSequence(seq), batchedRequests, 0, nil, nil)
+		fb := node_ledger.NewFabricBatchFromRequests(shard, party, types.BatchSequence(seq), batchedRequests, batchedRequests.Digest(), 0, nil, nil)
 		require.NotNil(t, fb)
 
 		transactionCount += len(batchedRequests)

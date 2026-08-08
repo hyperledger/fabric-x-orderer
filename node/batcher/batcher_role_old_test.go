@@ -35,7 +35,7 @@ func (ri *reqInspector) RequestID(req []byte) string {
 
 type noopLedger struct{}
 
-func (*noopLedger) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, configSeq arma_types.ConfigSequence, batchedRequests arma_types.BatchedRequests, primarySignature []byte) {
+func (*noopLedger) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, configSeq arma_types.ConfigSequence, batchedRequests arma_types.BatchedRequests, digest []byte, primarySignature []byte) {
 }
 
 func (*noopLedger) Height(partyID arma_types.PartyID) uint64 {
@@ -66,7 +66,7 @@ func (r *naiveReplication) Stop() {
 	atomic.StoreInt32(&r.stopped, 0x1)
 }
 
-func (r *naiveReplication) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, configSeq arma_types.ConfigSequence, batchedRequests arma_types.BatchedRequests, primarySignature []byte) {
+func (r *naiveReplication) Append(partyID arma_types.PartyID, batchSeq arma_types.BatchSequence, configSeq arma_types.ConfigSequence, batchedRequests arma_types.BatchedRequests, digest []byte, primarySignature []byte) {
 	for _, s := range r.subscribers {
 		s <- arma_types.NewSimpleBatch(0, partyID, batchSeq, batchedRequests, 0, primarySignature)
 	}

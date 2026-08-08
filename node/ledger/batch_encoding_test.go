@@ -8,6 +8,7 @@ package ledger_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"testing"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -225,7 +226,7 @@ func TestNewFabricBatchFromBlock(t *testing.T) {
 func TestNewFabricBatchFromRequests(t *testing.T) {
 	bReqs := types.BatchedRequests([][]byte{{0x08}, {0x09}})
 	primarySig := []byte{0x01, 0x02, 0x03}
-	fb := ledger.NewFabricBatchFromRequests(2, 3, 4, bReqs, 5, []byte{0x06}, primarySig)
+	fb := ledger.NewFabricBatchFromRequests(2, 3, 4, bReqs, bReqs.Digest(), 5, []byte{0x06}, primarySig)
 	require.NotNil(t, fb)
 	require.Equal(t, types.ShardID(2), fb.Shard())
 	require.Equal(t, types.PartyID(3), fb.Primary())
@@ -239,4 +240,10 @@ func TestNewFabricBatchFromRequests(t *testing.T) {
 
 	require.Equal(t, "Sh,Pr,Sq,Dg: <2,3,4,f99be8ba3f263229e64cd89aded97556d208a7650bfd06be5979fbf748f94cbe>", types.BatchIDToString(fb))
 	require.True(t, types.BatchIDEqual(fb, state.NewAvailableBatch(3, 2, 4, bReqs.Digest())))
+
+	// check that the digest is not the same as the digest of the requests when we pass in a different value
+	fakeDigest := bytes.Repeat([]byte{0xAB}, sha256.Size)
+	fb = ledger.NewFabricBatchFromRequests(2, 3, 4, bReqs, fakeDigest, 5, []byte{0x06}, primarySig)
+	require.Equal(t, fakeDigest, fb.Digest())
+	require.NotEqual(t, bReqs.Digest(), fb.Digest())
 }
