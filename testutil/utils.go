@@ -89,6 +89,14 @@ func EditLocalMSPDirForNode(t *testing.T, path string, localMSPPath string) {
 	require.NoError(t, err)
 }
 
+// UpdateBootstrapFilePathForNode overrides the local bootstrap file path of node.
+func UpdateBootstrapFilePathForNode(t *testing.T, path string, bootstrapFilePath string) {
+	nodeConfig := ReadNodeConfigFromYaml(t, path)
+	nodeConfig.GeneralConfig.Bootstrap.File = bootstrapFilePath
+	err := nodeconfig.NodeConfigToYAML(nodeConfig, path)
+	require.NoError(t, err)
+}
+
 func ReadNodeConfigFromYaml(t *testing.T, path string) *config.NodeLocalConfig {
 	configBytes, err := os.ReadFile(path)
 	require.NoError(t, err)

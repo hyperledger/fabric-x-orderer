@@ -35,6 +35,7 @@ import (
 	"github.com/onsi/gomega/gexec"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // TestRemovePartyRunAll verifies that removing a party via a config update
@@ -1351,6 +1352,291 @@ func TestJoinMultipleParties(t *testing.T) {
 		Status:       &statusUnknown,
 		Signer:       pullRequestSigner,
 	})
+}
+
+// TestReJoinSingleParty verifies that a party that has been stopped can rejoin the network through a configuration update.
+func TestReJoinSingleParty(t *testing.T) {
+	// Prepare Arma config and crypto and get the genesis block
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		os.RemoveAll(dir)
+	})
+
+	configPath := filepath.Join(dir, "config.yaml")
+	numOfParties := 4
+	numOfShards := 1
+	nodesPerParty := 3 + numOfShards
+	submittingPartyID := types.PartyID(2)
+
+	netInfo := testutil.CreateNetwork(t, configPath, numOfParties, numOfShards, "mTLS", "mTLS")
+	require.NotNil(t, netInfo)
+	t.Cleanup(func() {
+		netInfo.CleanUp()
+	})
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	configFilePath := filepath.Join(dir, fmt.Sprintf("config/party%d/local_config_router.yaml", types.PartyID(submittingPartyID)))
+	conf, _, err := config.LoadLocalConfig(configFilePath, testutil.CreateLoggerForModule(t, "LoadLocalConfigRouter", zap.DebugLevel))
+	require.NoError(t, err)
+
+	// Modify the router configuration to require client signature verification.
+	conf.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = true
+	err = utils.WriteToYAML(conf.NodeLocalConfig, configFilePath)
+	require.NoError(t, err)
+
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	defer gexec.CleanupBuildArtifacts()
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	// Start Arma nodes
+	numOfArmaNodes := len(netInfo)
+	readyChan := make(chan string, numOfArmaNodes)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	t.Cleanup(func() {
+		armaNetwork.Stop()
+	})
+
+	testutil.WaitReady(t, readyChan, numOfArmaNodes, 10)
+
+	parties := make([]types.PartyID, 0, numOfParties)
+	for i := 1; i <= numOfParties; i++ {
+		parties = append(parties, types.PartyID(i))
+	}
+
+	uc, err := testutil.GetUserConfig(dir, submittingPartyID)
+	require.NoError(t, err)
+
+	txNumber := 10
+	totalTxNumber := 0
+	// Send transactions to all parties to ensure network is operational before config update
+	signer, certBytes, err := testutil.LoadCryptoMaterialsFromDir(t, uc.MSPDir)
+	require.NoError(t, err)
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	submittingOrg := fmt.Sprintf("org%d", submittingPartyID)
+
+	for range txNumber {
+		txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, submittingOrg)
+		err = broadcastClient.SendTx(env)
+		require.NoError(t, err)
+		totalTxNumber++
+	}
+	pullRequestSigner := signutil.CreateTestSigner(t, submittingOrg, dir)
+	statusUnknown := common.Status_UNKNOWN
+	// Pull blocks to verify all transactions are included
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Timeout:      60,
+		Status:       &statusUnknown,
+		Signer:       pullRequestSigner,
+	})
+
+	broadcastClient.Stop()
+
+	partyToRejoin := types.PartyID(1)
+	armaNetwork.StopParties([]types.PartyID{partyToRejoin})
+
+	remainingParties := []types.PartyID{}
+	for _, partyID := range parties {
+		if partyID != partyToRejoin {
+			remainingParties = append(remainingParties, partyID)
+		}
+	}
+
+	netToRejoin := maps.Collect(filterMap(netInfo, func(k testutil.NodeName, v *testutil.ArmaNodeInfo) bool {
+		return k.PartyID == partyToRejoin
+	}))
+	maps.DeleteFunc(netInfo, func(nodeName testutil.NodeName, _ *testutil.ArmaNodeInfo) bool {
+		return nodeName.PartyID == partyToRejoin
+	})
+
+	configBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
+	require.NotEqual(t, submittingPartyID, partyToRejoin, "Submitting party should not be the same as the party being rejoined")
+	var configSeq uint64
+	fileStorePath := filepath.Join(dir, "config_block_store")
+
+	for _, partyID := range remainingParties {
+		// Create config update to update the endpoints of the party's consenter and batcher nodes
+		newConsenterHostName, newConsenterPortUint := utils.ParseEndpoint(testutil.AllocateLocalhostAddress(t))
+		newBatcherHostName, newBatcherPortUint := utils.ParseEndpoint(testutil.AllocateLocalhostAddress(t))
+
+		// Create a config update to update the endpoints of the party's consenter and batcher nodes
+		builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
+		builder.UpdateOrderingEndpoint(t, partyID, newConsenterHostName, int(newConsenterPortUint))
+		builder.UpdateBatcherEndpoint(t, partyID, types.ShardID(1), newBatcherHostName, int(newBatcherPortUint))
+
+		env := configutil.CreateConfigTX(t, dir, remainingParties, int(submittingPartyID), builder.ConfigUpdatePBData(t))
+		require.NotNil(t, env)
+
+		// Send the config tx to the remaining parties
+		err = broadcastTxWithRetry(t, uc, env, remainingParties, 5)
+		require.NoError(t, err)
+
+		totalTxNumber++
+		configSeq++
+
+		updatedNet := maps.Collect(filterMap(netInfo, func(k testutil.NodeName, v *testutil.ArmaNodeInfo) bool {
+			return k.PartyID == partyID
+		}))
+		testutil.WaitForPendingAdminByTypeAndParty(t, updatedNet, []testutil.NodeType{testutil.Batcher, testutil.Consensus}, []types.PartyID{partyID})
+		armaNetwork.GetConsenter(t, partyID).StopArmaNode()
+		armaNetwork.GetBatcher(t, partyID, types.ShardID(1)).StopArmaNode()
+
+		// Exclude only the nodes that were just stopped (Batcher and Consensus for partyID).
+		// All other nodes — including Router and Assembler of partyID — are still running and must be relaunch-waited.
+		netToRelaunch := maps.Collect(filterMap(netInfo, func(k testutil.NodeName, _ *testutil.ArmaNodeInfo) bool {
+			stoppedForParty := k.PartyID == partyID && (k.NodeType == testutil.Batcher || k.NodeType == testutil.Consensus)
+			return !stoppedForParty
+		}))
+
+		testutil.WaitForNetworkRelaunch(t, netToRelaunch, configSeq)
+
+		// Read the last config block to get the updated config
+		logger := flogging.MustGetLogger("TestReJoinSingleParty")
+		consenterNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyID), "local_config_consenter.yaml")
+		_, lastConfigBlock, err := config.ReadConfig(consenterNodeConfigPath, logger)
+		require.NoError(t, err)
+		// Write the last config block to a separate location to be used for starting the Arma nodes with the updated config
+		configBlockPath = filepath.Join(fileStorePath, fmt.Sprintf("config.block.%d", configSeq))
+		err = configtxgen.WriteOutputBlock(lastConfigBlock, configBlockPath)
+		require.NoError(t, err)
+
+		// Update the nodes endpoints in the local config files to use the new endpoints from the config update
+		localConfig, _, err := config.LoadLocalConfig(consenterNodeConfigPath, logger)
+		require.NoError(t, err)
+		localConfig.NodeLocalConfig.GeneralConfig.ListenAddress = newConsenterHostName
+		localConfig.NodeLocalConfig.GeneralConfig.ListenPort = newConsenterPortUint
+		err = utils.WriteToYAML(localConfig.NodeLocalConfig, consenterNodeConfigPath)
+		require.NoError(t, err)
+
+		batcherNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyID), "local_config_batcher1.yaml")
+		localConfig, _, err = config.LoadLocalConfig(batcherNodeConfigPath, logger)
+		require.NoError(t, err)
+		localConfig.NodeLocalConfig.GeneralConfig.ListenAddress = newBatcherHostName
+		localConfig.NodeLocalConfig.GeneralConfig.ListenPort = newBatcherPortUint
+		err = utils.WriteToYAML(localConfig.NodeLocalConfig, batcherNodeConfigPath)
+		require.NoError(t, err)
+
+		// Restart the consenter and batcher nodes with the updated config block
+		armaNetwork.GetConsenter(t, partyID).RestartArmaNode(t, readyChan)
+		armaNetwork.GetBatcher(t, partyID, types.ShardID(1)).RestartArmaNode(t, readyChan)
+		testutil.WaitReady(t, readyChan, 2, 10)
+	}
+
+	// Restart the rejoining party's nodes with the outdated config block
+	armaNetwork.RestartParties(t, []types.PartyID{partyToRejoin}, readyChan)
+	testutil.WaitReady(t, readyChan, nodesPerParty, 10)
+
+	consenterToRejoin := armaNetwork.GetConsenter(t, partyToRejoin)
+	detectCh := consenterToRejoin.RunInfo.Session.Err.Detect("Failed submitting request: mismatch config sequence")
+	defer consenterToRejoin.RunInfo.Session.Err.CancelDetects()
+
+	// Send transactions to all parties
+	for range txNumber {
+		txContent := tx.PrepareTxWithTimestamp(totalTxNumber, 64, []byte("sessionNumber"))
+		env := tx.CreateSignedStructuredEnvelope(txContent, signer, certBytes, submittingOrg)
+		err = broadcastTxWithRetry(t, uc, env, parties, 5)
+		require.NoError(t, err)
+		totalTxNumber++
+	}
+
+	// Verify that the rejoining party detects a config sequence mismatch when trying to rejoin with an outdated config block
+	select {
+	case <-detectCh:
+	case <-time.After(20 * time.Second):
+		require.Fail(t, "consenter rejoined successfully without detecting config sequence mismatch")
+	}
+
+	// Update the config block path for the rejoining party's nodes to use the latest config block
+	for _, net := range netToRejoin {
+		testutil.UpdateBootstrapFilePathForNode(t, net.RunInfo.NodeConfigPath, configBlockPath)
+	}
+
+	// Restart the rejoining party's nodes with the updated config block
+	armaNetwork.StopParties([]types.PartyID{partyToRejoin})
+	armaNetwork.RestartParties(t, []types.PartyID{partyToRejoin}, readyChan)
+	testutil.WaitReady(t, readyChan, nodesPerParty, 10)
+
+	// After rejoining, verify that the network can process transactions with the updated config
+	test_utils.PullFromAssemblers(t, &test_utils.BlockPullerOptions{
+		UserConfig:   uc,
+		Parties:      parties,
+		Transactions: totalTxNumber,
+		ErrString:    "cancelled pull from assembler: %d; pull ended: failed to receive a deliver response: rpc error: code = Canceled desc = grpc: the client connection is closing",
+		Status:       &statusUnknown,
+		Timeout:      240,
+		Signer:       pullRequestSigner,
+	})
+}
+
+// broadcastTxWithRetry sends a transaction envelope to multiple parties with retry logic.
+func broadcastTxWithRetry(t *testing.T, uc *armageddon.UserConfig, env *common.Envelope, parties []types.PartyID, numOfTries int) error {
+	t.Helper()
+
+	require.NotNil(t, uc)
+	require.NotNil(t, env)
+	require.NotEmpty(t, parties)
+	require.Greater(t, numOfTries, 0)
+
+	broadcastClient := client.NewBroadcastTxClient(uc, 10*time.Second)
+	t.Cleanup(func() {
+		broadcastClient.Stop()
+	})
+
+	failedChan := make(chan types.PartyID, len(parties))
+	var g errgroup.Group
+
+	g.Go(func() error {
+		for pid := range failedChan {
+			var err error
+			for attempt := range numOfTries {
+				if attempt > 0 {
+					time.Sleep(time.Duration(attempt) * time.Second)
+				}
+				t.Logf("retrying party %v, attempt %d/%d", pid, attempt+1, numOfTries)
+				err = broadcastClient.SendTxTo(env, pid)
+				if err == nil {
+					t.Logf("successfully sent tx to party %v on attempt %d", pid, attempt+1)
+					break
+				}
+			}
+			if err != nil {
+				return fmt.Errorf("failed to send tx to party %v after %d retries: %v", pid, numOfTries, err)
+			}
+		}
+		return nil
+	})
+
+	// Send to all parties; queue failures for retry
+	for _, pid := range parties {
+		err := broadcastClient.SendTxTo(env, pid)
+		if err != nil {
+			t.Logf("initial send to party %v failed, queuing for retry: %v", pid, err)
+			failedChan <- pid
+		}
+	}
+
+	close(failedChan)
+
+	return g.Wait()
+}
+
+func filterMap[K comparable, V any](m map[K]V, keep func(K, V) bool) func(yield func(K, V) bool) {
+	return func(yield func(K, V) bool) {
+		for k, v := range m {
+			if keep(k, v) {
+				if !yield(k, v) {
+					return
+				}
+			}
+		}
+	}
 }
 
 type exportConfigBlockToFile struct {
