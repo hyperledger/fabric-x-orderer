@@ -106,12 +106,14 @@ func (bla *BatchLedgerArray) Height(partyID types.PartyID) uint64 {
 	return part.Height()
 }
 
-func (bla *BatchLedgerArray) Append(partyID types.PartyID, batchSeq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests, primarySignature []byte) {
+// Append adds a batch to the end of the ledger part that belongs to the given party.
+// The `digest` is required and must be the digest of `batchedRequests`, see NewFabricBatchFromRequests.
+func (bla *BatchLedgerArray) Append(partyID types.PartyID, batchSeq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests, digest []byte, primarySignature []byte) {
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {
 		bla.logger.Panicf("partyID does not exist: %d", partyID)
 	}
-	part.Append(batchSeq, configSeq, batchedRequests, primarySignature)
+	part.Append(batchSeq, configSeq, batchedRequests, digest, primarySignature)
 }
 
 func (bla *BatchLedgerArray) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) types.Batch {

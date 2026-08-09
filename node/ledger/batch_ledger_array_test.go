@@ -49,7 +49,7 @@ func TestBatchLedgerArray(t *testing.T) {
 			batchedRequests = types.BatchedRequests{
 				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 			}
-			a.Append(pID, types.BatchSequence(seq), 0, batchedRequests, nil)
+			a.Append(pID, types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), nil)
 			require.Equal(t, seq+1, a.Height(pID))
 			batch := a.RetrieveBatchByNumber(pID, seq)
 			require.NotNil(t, batch)
@@ -79,7 +79,7 @@ func TestBatchLedgerArray(t *testing.T) {
 			batchedRequests = types.BatchedRequests{
 				[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 			}
-			a.Append(pID, types.BatchSequence(seq), 0, batchedRequests, nil)
+			a.Append(pID, types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), nil)
 			require.Equal(t, seq+1, a.Height(pID))
 			batch := a.RetrieveBatchByNumber(pID, seq)
 			require.NotNil(t, batch)
@@ -116,7 +116,7 @@ func TestBatchLedgerArray(t *testing.T) {
 		batchedRequests = types.BatchedRequests{
 			[]byte(fmt.Sprintf("tx1%d", seq)), []byte(fmt.Sprintf("tx2%d", seq)),
 		}
-		a.Append(5, types.BatchSequence(seq), 0, batchedRequests, nil)
+		a.Append(5, types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), nil)
 		require.Equal(t, seq+1, a.Height(newParty))
 		batch := a.RetrieveBatchByNumber(newParty, seq)
 		require.NotNil(t, batch)
@@ -143,7 +143,7 @@ func TestBatchLedgerArrayPart(t *testing.T) {
 	for _, pID := range parties {
 		part := a.Part(pID)
 		for seq := uint64(0); seq < 10; seq++ {
-			part.Append(types.BatchSequence(seq), 0, batchedRequests, nil)
+			part.Append(types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), nil)
 			require.Equal(t, seq+1, part.Height())
 			batch := part.RetrieveBatchByNumber(seq)
 			require.NotNil(t, batch)
@@ -173,7 +173,7 @@ func TestBatchLedgerArrayMissingPartyID(t *testing.T) {
 	require.Panics(t, func() { _ = a.Height(missing) })
 
 	require.Panics(t, func() {
-		a.Append(missing, types.BatchSequence(0), 0, types.BatchedRequests{[]byte("x")}, nil)
+		a.Append(missing, types.BatchSequence(0), 0, types.BatchedRequests{[]byte("x")}, []byte("digest"), nil)
 	})
 
 	require.Panics(t, func() { _ = a.RetrieveBatchByNumber(missing, 0) })
@@ -197,7 +197,7 @@ func TestBatchLedgerArrayWithPrimarySignature(t *testing.T) {
 	seq := uint64(0)
 
 	// Append batch with primary signature
-	a.Append(partyID, types.BatchSequence(seq), 0, batchedRequests, primarySignature)
+	a.Append(partyID, types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), primarySignature)
 	require.Equal(t, uint64(1), a.Height(partyID))
 
 	// Retrieve the batch and verify the primary signature
@@ -217,7 +217,7 @@ func TestBatchLedgerArrayWithPrimarySignature(t *testing.T) {
 	batchedRequests2 := types.BatchedRequests{[]byte("tx4"), []byte("tx5")}
 	seq2 := uint64(1)
 
-	a.Append(partyID, types.BatchSequence(seq2), 0, batchedRequests2, primarySignature2)
+	a.Append(partyID, types.BatchSequence(seq2), 0, batchedRequests2, batchedRequests2.Digest(), primarySignature2)
 	require.Equal(t, uint64(2), a.Height(partyID))
 
 	// Retrieve the second batch and verify its signature
