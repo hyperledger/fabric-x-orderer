@@ -83,37 +83,26 @@ func bafKey(baf types.BatchAttestationFragment) bafGroupKey {
 	return bafGroupKey{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary(), digest: string(baf.Digest())}
 }
 
+// aggregateFragments groups fragments by batch identity (bafGroupKey), preserving the order in
+// which each group's key first appears. Each returned group holds all fragments of one batch.
 func aggregateFragments(batchAttestationFragments []types.BatchAttestationFragment) [][]types.BatchAttestationFragment {
-	index := indexBAFs(batchAttestationFragments)
-
-	var attestations [][]types.BatchAttestationFragment
-
-	added := make(map[bafGroupKey]struct{})
+	groups := make(map[bafGroupKey][]types.BatchAttestationFragment)
+	var order []bafGroupKey // keys in first-seen order (map iteration is unordered)
 
 	for _, baf := range batchAttestationFragments {
 		key := bafKey(baf)
-
-		if _, added := added[key]; added {
-			continue
+		if _, seen := groups[key]; !seen {
+			order = append(order, key)
 		}
+		groups[key] = append(groups[key], baf)
+	}
 
-		added[key] = struct{}{}
-
-		fragments := index[key]
-		attestations = append(attestations, fragments)
+	attestations := make([][]types.BatchAttestationFragment, 0, len(order))
+	for _, key := range order {
+		attestations = append(attestations, groups[key])
 	}
 
 	return attestations
-}
-
-func indexBAFs(batchAttestationFragments []types.BatchAttestationFragment) map[bafGroupKey][]types.BatchAttestationFragment {
-	index := make(map[bafGroupKey][]types.BatchAttestationFragment)
-
-	for _, baf := range batchAttestationFragments {
-		key := bafKey(baf)
-		index[key] = append(index[key], baf)
-	}
-	return index
 }
 
 func requestsToControlEvents(requests [][]byte) ([]state.ControlEvent, error) {
