@@ -87,7 +87,10 @@ func TestBatchLedgerPart_AppendWithDigest(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(provider.Close)
 
-	part, err := newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger)
+	metrics := &BatchLedgerMetrics{}
+	metrics.NewBatchLedgerMetrics(&disabled.Provider{}, "1", "5", logger)
+
+	part, err := newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger, metrics)
 	require.NoError(t, err)
 
 	fakeDigest := bytes.Repeat([]byte{0xAB}, sha256.Size)

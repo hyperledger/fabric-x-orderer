@@ -77,11 +77,11 @@ func newBatchLedgerPart(
 func (b *BatchLedgerPart) Append(seq types.BatchSequence, configSeq types.ConfigSequence, batchedRequests types.BatchedRequests, digest []byte, primarySignature []byte) {
 	b.logger.Debugf("Party %d, Shard: %d, is appending batch with sequence %d and config sequence %d of size %d bytes, from Primary: %d", b.partyID, b.shardID, seq, configSeq, batchedRequests.SizeBytes(), b.primaryPartyID)
 
-	hashingStart := time.Now()
 	block := NewFabricBatchFromRequests(b.shardID, b.primaryPartyID, seq, batchedRequests, digest, configSeq, b.prevHash, primarySignature)
 	// Note: We do this only because we reuse the Fabric ledger, we don't really need a hash chain here.
+	hashingStart := time.Now()
 	b.prevHash = protoutil.BlockHeaderHash(block.Header)
-	b.metrics.HashingLatency.Observe(time.Since(hashingStart).Seconds())
+	b.metrics.HeaderHashingLatency.Observe(time.Since(hashingStart).Seconds())
 
 	appendStart := time.Now()
 	if err := b.ledger.Append((*common.Block)(block)); err != nil {

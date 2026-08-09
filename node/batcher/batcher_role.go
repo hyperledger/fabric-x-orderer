@@ -345,7 +345,9 @@ func (b *BatcherRole) runPrimary() {
 			}
 
 			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.seq)
+			digestStart := time.Now()
 			digest = currentBatch.Digest()
+			b.Metrics.batchHashingLatency.Observe(time.Since(digestStart).Seconds())
 			cancel()
 			break
 		}
