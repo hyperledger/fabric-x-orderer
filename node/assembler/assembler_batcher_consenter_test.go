@@ -331,7 +331,9 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 		Bundle:        testutil.CreateAssemblerBundleForTest(0),
 	}
 
-	a := assembler.NewAssembler(nodeConfig, &orderer_config.Configuration{}, genesisBlock, make(chan struct{}), testutil.CreateLogger(t, int(partyID)), &mocks.SignerSerializer{})
+	configuration := testutil.ConfigurationWithDefaultCluster()
+	configuration.LocalConfig.ClusterConfig.ReplicationPolicy = orderer_config.ReplicationPolicyAssembler
+	a := assembler.NewAssembler(nodeConfig, configuration, genesisBlock, make(chan struct{}), testutil.CreateLogger(t, int(partyID)), &mocks.SignerSerializer{})
 	a.StartAssemblerService()
 	return a, a.Address()
 }

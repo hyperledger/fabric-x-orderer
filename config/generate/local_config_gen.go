@@ -23,7 +23,6 @@ import (
 const (
 	DefaultMaxRecvMsgSize      = 100 * 1024 * 1024
 	DefaultMaxSendMsgSize      = 100 * 1024 * 1024
-	DefaultSendBufferSize      = 2000
 	DefaultMetricsLogInterval  = time.Duration(10) * time.Second
 	DefaultMetricsProviderType = "prometheus"
 )
@@ -214,7 +213,7 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 
 	if generalConfigParams.role == "consenter" {
 		generalConfig.Cluster = config.ClusterYaml{
-			SendBufferSize:                 DefaultSendBufferSize,
+			SendBufferSize:                 config.DefaultNodeLocalConfig.GeneralConfig.Cluster.SendBufferSize,
 			ClientCertificate:              filepath.Join(partyPath, nodeRole, "tls", "server.crt"),
 			ClientPrivateKey:               filepath.Join(partyPath, nodeRole, "tls", "server.key"),
 			ReplicationPolicy:              "",

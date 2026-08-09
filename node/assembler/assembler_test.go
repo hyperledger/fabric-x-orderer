@@ -211,7 +211,7 @@ func (at *assemblerTest) StartAssembler() {
 	})
 
 	configuration := testutil.ConfigurationWithDefaultCluster()
-	configuration.LocalConfig.ClusterConfig.ReplicationPolicy = "assemblerSync"
+	configuration.LocalConfig.ClusterConfig.ReplicationPolicy = orderer_config.ReplicationPolicyAssembler
 
 	at.assembler = assembler.NewDefaultAssembler(
 		at.logger,
@@ -457,7 +457,7 @@ func TestAssembler_InitLedgerSyncsWhenConfigBlockAheadOfLedger(t *testing.T) {
 	require.Equal(t, configBlockNumber+1, targetHeight)
 	require.Equal(t, configBlock, passedConfigBlock)
 	require.NotNil(t, support)
-	require.Equal(t, "assemblerSync", cluster.ReplicationPolicy)
+	require.Equal(t, orderer_config.ReplicationPolicyAssembler, cluster.ReplicationPolicy)
 	require.Equal(t, orderer_config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationBufferSize, cluster.ReplicationBufferSize)
 	require.Equal(t, orderer_config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMaxRetryInterval, cluster.ReplicationMaxRetryInterval)
 	require.Equal(t, orderer_config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMinRetryInterval, cluster.ReplicationMinRetryInterval)

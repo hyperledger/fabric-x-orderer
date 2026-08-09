@@ -95,7 +95,7 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 		require.Equal(t, assemblerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.Enabled, true)
 		require.Equal(t, assemblerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.ClientAuthRequired, true)
 		require.Equal(t, role, config.AssemblerStr)
-		require.Equal(t, "assemblerSync", assemblerLocalConfigLoaded.ClusterConfig.ReplicationPolicy)
+		require.Equal(t, config.ReplicationPolicyAssembler, assemblerLocalConfigLoaded.ClusterConfig.ReplicationPolicy)
 		require.Equal(t, "", consenterLocalConfigLoaded.ClusterConfig.ReplicationPolicy)
 	}
 }

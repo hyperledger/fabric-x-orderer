@@ -79,8 +79,8 @@ func newSynchronizer(
 	verifierFactory commonsync.VerifierFactory,
 ) SynchronizerWithStop {
 	switch localConfigCluster.ReplicationPolicy {
-	case "assemblerSync":
-		logger.Debug("Creating an assembler BFT Synchronizer for replication policy 'assemblerSync'")
+	case config.ReplicationPolicyAssembler:
+		logger.Debugf("Creating an assembler BFT Synchronizer for replication policy '%s'", config.ReplicationPolicyAssembler)
 		return &AssemblerBFTSynchronizer{
 			SelfPartyID:         selfID,
 			TargetHeight:        targetHeight,

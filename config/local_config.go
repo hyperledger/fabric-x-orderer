@@ -22,6 +22,9 @@ const (
 	BatcherStr   = "Batcher"
 	ConsensusStr = "Consensus"
 	AssemblerStr = "Assembler"
+
+	ReplicationPolicyConsensus = "consensus"
+	ReplicationPolicyAssembler = "assembler"
 )
 
 // NodeLocalConfig controls the local configuration of an Arma node.
@@ -620,7 +623,7 @@ func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *fl
 		}
 
 		if nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy == "" {
-			nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy = "assemblerSync"
+			nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy = ReplicationPolicyAssembler
 			logger.Infof("General.Cluster.ReplicationPolicy is not set, using default value: %s", nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy)
 		}
 	}
