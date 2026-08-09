@@ -294,7 +294,7 @@ func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_confi
 		synchronizer := synchronizerFactory.CreateSynchronizer(
 			a.logger,
 			uint64(nodeConfig.PartyId),
-			config.Cluster{SendBufferSize: 100, ClientCertificate: nodeConfig.TLSCertificateFile, ClientPrivateKey: nodeConfig.TLSPrivateKeyFile, ReplicationPolicy: "assemblerSync"},
+			*a.configuration.LocalConfig.ClusterConfig,
 			&AssemblerSupportAdapter{assembler: a},
 			factory.GetDefault(),
 			targetHeight,

@@ -22,6 +22,9 @@ const (
 	BatcherStr   = "Batcher"
 	ConsensusStr = "Consensus"
 	AssemblerStr = "Assembler"
+
+	ReplicationPolicyConsensus = "consensus"
+	ReplicationPolicyAssembler = "assembler"
 )
 
 // NodeLocalConfig controls the local configuration of an Arma node.
@@ -138,7 +141,7 @@ type ClusterYaml struct {
 	ReplicationPolicy string `yaml:"ReplicationPolicy,omitempty"`
 	// RPCTimeout is the timeout for RPC calls between orderers.
 	RPCTimeout time.Duration `yaml:"RPCTimeout,omitempty"`
-	// ReplicationBufferSize is the size of the buffer that is used to store blocks that are being replicated from other orderers.
+	// ReplicationBufferSize is the size in bytes of the buffer that is used to store blocks that are being replicated from other orderers.
 	ReplicationBufferSize int `yaml:"ReplicationBufferSize,omitempty"`
 	// ReplicationMaxRetryInterval is the maximal amount of time to wait before retrying to connect.
 	ReplicationMaxRetryInterval time.Duration `yaml:"ReplicationMaxRetryInterval,omitempty"`
@@ -217,7 +220,7 @@ type Cluster struct {
 	ReplicationPolicy string
 	// RPCTimeout is the timeout for RPC calls between orderers.
 	RPCTimeout time.Duration
-	// ReplicationBufferSize is the size of the buffer that is used to store blocks that are being replicated from other orderers.
+	// ReplicationBufferSize is the size in bytes of the buffer that is used to store blocks that are being replicated from other orderers.
 	ReplicationBufferSize int
 	// ReplicationMaxRetryInterval is the maximal amount of time to wait before retrying to connect.
 	ReplicationMaxRetryInterval time.Duration
@@ -464,11 +467,6 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig, logger *flogging.Fab
 		logger.Infof("General.Cluster.SendBufferSize is not set, using default value: %d", generalConfig.Cluster.SendBufferSize)
 	}
 
-	if generalConfig.Cluster.ReplicationPolicy == "" {
-		generalConfig.Cluster.ReplicationPolicy = DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy
-		logger.Infof("General.Cluster.ReplicationPolicy is not set, using default value: %s", generalConfig.Cluster.ReplicationPolicy)
-	}
-
 	if generalConfig.Cluster.RPCTimeout == 0 {
 		generalConfig.Cluster.RPCTimeout = DefaultNodeLocalConfig.GeneralConfig.Cluster.RPCTimeout
 		logger.Infof("General.Cluster.RPCTimeout is not set, using default value: %s", generalConfig.Cluster.RPCTimeout)
@@ -622,6 +620,11 @@ func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *fl
 		if nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize == 0 {
 			nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize = DefaultAssemblerParams.BatchRequestsChannelSize
 			logger.Infof("Assembler.BatchRequestsChannelSize is not set, using default value: %d", nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize)
+		}
+
+		if nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy == "" {
+			nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy = ReplicationPolicyAssembler
+			logger.Infof("General.Cluster.ReplicationPolicy is not set, using default value: %s", nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy)
 		}
 	}
 }

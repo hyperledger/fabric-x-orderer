@@ -116,7 +116,7 @@ func newSynchronizer(
 	joinConfigBlock *cb.Block,
 ) SynchronizerWithStop {
 	switch localConfigCluster.ReplicationPolicy {
-	case "consensus", "":
+	case config.ReplicationPolicyConsensus, "":
 		logger.Debug("Creating a BFTSynchronizer")
 		return &BFTSynchronizer{
 			selfID:          selfID,

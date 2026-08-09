@@ -12,7 +12,6 @@ import (
 	"maps"
 	"slices"
 	"sync"
-	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -242,11 +241,11 @@ func (a *AssemblerBFTSynchronizer) createBFTDeliverer(startHeight uint64, myPart
 	tlsCertHash := util.ComputeSHA256(block.Bytes)
 
 	// The maximal amount of time to wait before retrying to connect.
-	maxRetryInterval := 10 * time.Second // TODO s.LocalConfigCluster.ReplicationRetryTimeout
+	maxRetryInterval := a.LocalConfigCluster.ReplicationMaxRetryInterval
 	// The minimal amount of time to wait before retrying. The retry interval doubles after every unsuccessful attempt.
-	minRetryInterval := maxRetryInterval / 50
+	minRetryInterval := a.LocalConfigCluster.ReplicationMinRetryInterval
 	// The maximal duration of a Sync. After this time Sync returns with whatever it had pulled until that point.
-	maxRetryDuration := time.Minute // TODO s.LocalConfigCluster.ReplicationPullTimeout * time.Duration(s.LocalConfigCluster.ReplicationMaxRetries)
+	maxRetryDuration := a.LocalConfigCluster.ReplicationMaxRetryDuration
 	// If a remote orderer does not deliver blocks for this amount of time, even though it can do so, it is replaced as the block deliverer.
 	blockCensorshipTimeOut := maxRetryDuration / 3
 

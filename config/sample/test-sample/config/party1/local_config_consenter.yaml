@@ -34,7 +34,7 @@ General:
         ClientCertificate: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/tls/tls-cert.pem
         ClientPrivateKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/tls/key.pem
         RPCTimeout: 1m0s
-        ReplicationBufferSize: 20971520
+        ReplicationBufferSize: 52428800
         ReplicationMaxRetryInterval: 10s
         ReplicationMinRetryInterval: 200ms
         ReplicationMaxRetryDuration: 1m0s

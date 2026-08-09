@@ -82,6 +82,11 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 		require.Equal(t, role, config.ConsensusStr)
 
 		configPath = path.Join(dir, "config", fmt.Sprintf("party%d", i), "local_config_assembler.yaml")
+		assemblerLocalConfig := networkLocalConfig.PartiesLocalConfig[i-1].AssemblerLocalConfig
+		assemblerLocalConfig.GeneralConfig.Cluster.ReplicationPolicy = ""
+		err = utils.WriteToYAML(assemblerLocalConfig, configPath)
+		require.NoError(t, err)
+
 		assemblerLocalConfigLoaded, role, err := config.LoadLocalConfig(configPath, logger)
 		require.NoError(t, err)
 		require.NotNil(t, assemblerLocalConfigLoaded.NodeLocalConfig)
@@ -90,6 +95,8 @@ func TestLoadARMALocalConfigAndCrypto(t *testing.T) {
 		require.Equal(t, assemblerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.Enabled, true)
 		require.Equal(t, assemblerLocalConfigLoaded.NodeLocalConfig.GeneralConfig.TLSConfig.ClientAuthRequired, true)
 		require.Equal(t, role, config.AssemblerStr)
+		require.Equal(t, config.ReplicationPolicyAssembler, assemblerLocalConfigLoaded.ClusterConfig.ReplicationPolicy)
+		require.Equal(t, "", consenterLocalConfigLoaded.ClusterConfig.ReplicationPolicy)
 	}
 }
 

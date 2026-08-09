@@ -94,7 +94,7 @@ General:
     # SendBufferSize is the maximum number of messages in the egress buffer.
     # Consensus messages are dropped if the buffer is full, and transaction
     # messages are waiting for space to be freed.
-    SendBufferSize: 100
+    SendBufferSize: 2000
 
     # ClientCertificate governs the file location of the client TLS certificate
     # used to establish mutual TLS connections with other ordering service nodes.
@@ -111,9 +111,9 @@ General:
     # RPCTimeout is the timeout for RPC calls between orderers.
     RPCTimeout: 1m
 
-    # ReplicationBufferSize is the size of the buffer used to store blocks
-    # that are being replicated from other orderers.
-    ReplicationBufferSize: 20971520
+    # ReplicationBufferSize is the size in bytes of the buffer used to store
+    # blocks that are being replicated from other orderers.
+    ReplicationBufferSize: 52428800
 
     # ReplicationMaxRetryInterval is the maximal amount of time to wait
     # before retrying to connect.

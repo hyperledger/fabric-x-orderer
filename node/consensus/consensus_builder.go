@@ -140,19 +140,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	bftSynch := c.synchronizerFactory.CreateSynchronizer(
 		c.Logger,
 		uint64(nodeConfig.PartyId),
-		ord_config.Cluster{
-			SendBufferSize:                 100, // TODO get this from local config
-			ClientCertificate:              nodeConfig.TLSCertificateFile,
-			ClientPrivateKey:               nodeConfig.TLSPrivateKeyFile,
-			ReplicationPolicy:              "",
-			RPCTimeout:                     c.fullConfig.LocalConfig.ClusterConfig.RPCTimeout,
-			ReplicationBufferSize:          c.fullConfig.LocalConfig.ClusterConfig.ReplicationBufferSize,
-			ReplicationMaxRetryInterval:    c.fullConfig.LocalConfig.ClusterConfig.ReplicationMaxRetryInterval,
-			ReplicationMinRetryInterval:    c.fullConfig.LocalConfig.ClusterConfig.ReplicationMinRetryInterval,
-			ReplicationMaxRetryDuration:    c.fullConfig.LocalConfig.ClusterConfig.ReplicationMaxRetryDuration,
-			CertExpirationWarningThreshold: c.fullConfig.LocalConfig.ClusterConfig.CertExpirationWarningThreshold,
-			TLSHandshakeTimeShift:          c.fullConfig.LocalConfig.ClusterConfig.TLSHandshakeTimeShift,
-		},
+		*c.fullConfig.LocalConfig.ClusterConfig,
 		c,                                      // implements synchronizer.BFTConfigGetter,
 		state.ConsenterBlockToDecision,         // func(block *cb.Block) *types.Decision
 		c.PruneRequestsFromMemPool,             // pruneCommittedRequests func(block *cb.Block),
@@ -443,7 +431,7 @@ func setupComm(c *Consensus) {
 	commAuth := &comm.AuthCommMgr{
 		Logger:         c.Logger,
 		Signer:         c.Signer,
-		SendBufferSize: 2000,
+		SendBufferSize: c.fullConfig.LocalConfig.ClusterConfig.SendBufferSize,
 		NodeIdentity:   selfID,
 		Connections:    comm.NewConnectionMgr(c.clientConfig()),
 	}
