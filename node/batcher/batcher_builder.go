@@ -72,7 +72,8 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 		break
 	}
 
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(b.config.ShardId, b.config.PartyId, parties, b.config.GetChannelID(), b.config.Directory, b.logger)
+	ledgerMetrics := &node_ledger.BatchLedgerMetrics{}
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(b.config.ShardId, b.config.PartyId, parties, b.config.GetChannelID(), b.config.Directory, b.logger, ledgerMetrics)
 	if err != nil {
 		b.logger.Panicf("Failed creating BatchLedgerArray: %s", err.Error())
 	}
@@ -99,7 +100,7 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 	b.batchers = batchers
 	b.Ledger = ledgerArray
 	b.batcherCerts2IDs = make(map[string]types.PartyID)
-	b.metrics = NewBatcherMetrics(b.config, batchers, ledgerArray, b.logger)
+	b.metrics = NewBatcherMetrics(b.config, batchers, ledgerMetrics, ledgerArray, b.logger)
 	b.opsSystem = operations.NewOperationsSystem(*b.config.Operations, *b.config.Metrics)
 
 	b.controlEventSenders = make([]ConsenterControlEventSender, len(b.config.Consenters))

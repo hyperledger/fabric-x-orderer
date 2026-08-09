@@ -109,7 +109,15 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Help:** "The latency from receiving a batch on the secondary until it is verified."
 
 - **Namespace:** "batcher"  
-  **Name:** "batch_ledger_append_latency_seconds"  
+  **Name:** "batch_hashing_latency_seconds"  
+  **Help:** "The latency of computing the digest of the batch requests."
+
+- **Namespace:** "batch_ledger"  
+  **Name:** "header_hashing_latency_seconds"  
+  **Help:** "The latency to compute the block header hash."
+
+- **Namespace:** "batch_ledger"  
+  **Name:** "append_latency_seconds"  
   **Help:** "The latency to append a batch to the ledger."
 
 ---

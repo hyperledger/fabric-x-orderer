@@ -33,13 +33,16 @@ func TestBatchLedgerPart(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	part, err := newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger)
+	metrics := &BatchLedgerMetrics{}
+	metrics.NewBatchLedgerMetrics(&disabled.Provider{}, "1", "5", logger)
+
+	part, err := newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger, metrics)
 	require.NoError(t, err)
 	require.NotNil(t, part)
 	require.Equal(t, uint64(0), part.Height())
 	require.Nil(t, part.RetrieveBatchByNumber(0))
 
-	part, err = newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger) // no problem reopening the same part
+	part, err = newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger, metrics) // no problem reopening the same part
 	require.NoError(t, err)
 	require.NotNil(t, part)
 	require.Equal(t, uint64(0), part.Height())
@@ -63,7 +66,7 @@ func TestBatchLedgerPart(t *testing.T) {
 	}
 	require.Nil(t, part.RetrieveBatchByNumber(100))
 
-	part, err = newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger) // no problem reopening the same part without loosing its content
+	part, err = newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger, metrics) // no problem reopening the same part without loosing its content
 	require.NoError(t, err)
 	require.NotNil(t, part)
 	require.Equal(t, batches, part.Height())
@@ -84,7 +87,10 @@ func TestBatchLedgerPart_AppendWithDigest(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(provider.Close)
 
-	part, err := newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger)
+	metrics := &BatchLedgerMetrics{}
+	metrics.NewBatchLedgerMetrics(&disabled.Provider{}, "1", "5", logger)
+
+	part, err := newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger, metrics)
 	require.NoError(t, err)
 
 	fakeDigest := bytes.Repeat([]byte{0xAB}, sha256.Size)
@@ -110,7 +116,10 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	part, err := newBatchLedgerPart(provider, 1, 1, 2, "test-channel", logger)
+	metrics := &BatchLedgerMetrics{}
+	metrics.NewBatchLedgerMetrics(&disabled.Provider{}, "1", "1", logger)
+
+	part, err := newBatchLedgerPart(provider, 1, 1, 2, "test-channel", logger, metrics)
 	require.NoError(t, err)
 	require.NotNil(t, part)
 

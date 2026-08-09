@@ -858,7 +858,7 @@ func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_type
 				Provider:           "disabled",
 				MetricsLogInterval: 10 * time.Second,
 			},
-		}, batchersInfo, ledger, logger),
+		}, batchersInfo, ledger.Metrics(), ledger, logger),
 	}
 
 	return batcher
