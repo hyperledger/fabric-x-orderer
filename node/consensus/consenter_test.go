@@ -104,6 +104,72 @@ func TestConsenter(t *testing.T) {
 	assert.Equal(t, cr.Envelope.Signature, configRequests[0].Envelope.Signature)
 }
 
+// TestConsenterAggregateFragmentsHonest exercises the full SimulateStateTransition path (which
+// calls aggregateFragments) on honest, threshold-reaching input: distinct batches each attested
+// by a threshold of signers, with no equivocation. It pins the grouping/ordering contract that
+// downstream relies on: fragments are grouped by batch identity (one group per batch), every
+// fragment in a group shares that batch's digest, and groups appear in the order their batch's
+// key is first seen in Pending.
+func TestConsenterAggregateFragmentsHonest(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+
+	// newBAF builds a serialized BAF control event for the given batch <shard, primary, seq, digest> and signer.
+	newBAF := func(shard arma_types.ShardID, primary arma_types.PartyID, seq arma_types.BatchSequence, digest []byte, signer arma_types.PartyID) []byte {
+		baf := arma_types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, signer, 0, 0, nil)
+		baf.SetSignature([]byte{1})
+		return (&state.ControlEvent{BAF: baf}).Bytes()
+	}
+
+	newState := func() *state.State {
+		return &state.State{
+			N:         7,
+			Shards:    []state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
+			Threshold: 2,
+			Pending:   []arma_types.BatchAttestationFragment{},
+			Quorum:    5,
+		}
+	}
+
+	db := &mocks.FakeBatchAttestationDB{}
+	db.ExistsReturns(false)
+	consenter := createConsenter(logger)
+	consenter.DB = db
+
+	// Two distinct honest batches, each attested by two signers (>= threshold). Batch A appears
+	// first in the event stream; the two batches interleave to prove grouping is by identity,
+	// not adjacency, and that ordering follows first-seen key.
+	digestA := []byte{1}
+	digestB := []byte{2}
+	events := [][]byte{
+		newBAF(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), digestA, arma_types.PartyID(2)),
+		newBAF(arma_types.ShardID(2), arma_types.PartyID(3), arma_types.BatchSequence(1), digestB, arma_types.PartyID(4)),
+		newBAF(arma_types.ShardID(1), arma_types.PartyID(1), arma_types.BatchSequence(1), digestA, arma_types.PartyID(5)),
+		newBAF(arma_types.ShardID(2), arma_types.PartyID(3), arma_types.BatchSequence(1), digestB, arma_types.PartyID(6)),
+	}
+
+	_, batchAttestations, _ := consenter.SimulateStateTransition(newState(), 0, events)
+
+	// One group per batch, in first-seen order: batch A (shard 1) then batch B (shard 2).
+	assert.Len(t, batchAttestations, 2)
+
+	assert.Equal(t, arma_types.ShardID(1), batchAttestations[0][0].Shard())
+	assert.Equal(t, arma_types.ShardID(2), batchAttestations[1][0].Shard())
+
+	// Each group holds both fragments of its batch, all sharing that batch's digest.
+	for _, group := range batchAttestations {
+		assert.Len(t, group, 2)
+		d := group[0].Digest()
+		for _, baf := range group {
+			assert.Equal(t, d, baf.Digest(), "every fragment in a group must share the batch digest")
+			assert.Equal(t, group[0].Shard(), baf.Shard())
+			assert.Equal(t, group[0].Primary(), baf.Primary())
+			assert.Equal(t, group[0].Seq(), baf.Seq())
+		}
+	}
+	assert.Equal(t, digestA, batchAttestations[0][0].Digest())
+	assert.Equal(t, digestB, batchAttestations[1][0].Digest())
+}
+
 // TestConsenterEquivocatingDigests exercises the full SimulateStateTransition path (which calls
 // aggregateFragments) when a primary equivocates: emits multiple digests for the same
 // <seq, shard, primary>. It verifies that (1) a below-threshold digest never becomes a block, and
