@@ -140,13 +140,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	bftSynch := c.synchronizerFactory.CreateSynchronizer(
 		c.Logger,
 		uint64(nodeConfig.PartyId),
-		ord_config.Cluster{
-			ReplicationPolicy:           c.fullConfig.LocalConfig.ClusterConfig.ReplicationPolicy,
-			ReplicationBufferSize:       c.fullConfig.LocalConfig.ClusterConfig.ReplicationBufferSize,
-			ReplicationMaxRetryInterval: c.fullConfig.LocalConfig.ClusterConfig.ReplicationMaxRetryInterval,
-			ReplicationMinRetryInterval: c.fullConfig.LocalConfig.ClusterConfig.ReplicationMinRetryInterval,
-			ReplicationMaxRetryDuration: c.fullConfig.LocalConfig.ClusterConfig.ReplicationMaxRetryDuration,
-		},
+		*c.fullConfig.LocalConfig.ClusterConfig,
 		c,                                      // implements synchronizer.BFTConfigGetter,
 		state.ConsenterBlockToDecision,         // func(block *cb.Block) *types.Decision
 		c.PruneRequestsFromMemPool,             // pruneCommittedRequests func(block *cb.Block),

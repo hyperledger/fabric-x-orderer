@@ -134,6 +134,7 @@ func CreateTestAssemblerLocalConfig() *config.NodeLocalConfig {
 				SendBufferSize:    0,
 				ClientCertificate: "path/to/client_certificate.crt",
 				ClientPrivateKey:  "path/to/client_private_key.key",
+				ReplicationPolicy: "assemblerSync",
 			},
 			LogSpec: "info",
 		},

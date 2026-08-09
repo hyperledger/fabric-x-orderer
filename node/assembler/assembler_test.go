@@ -210,11 +210,14 @@ func (at *assemblerTest) StartAssembler() {
 		return at.consensusBAChan
 	})
 
+	configuration := testutil.ConfigurationWithDefaultCluster()
+	configuration.LocalConfig.ClusterConfig.ReplicationPolicy = "assemblerSync"
+
 	at.assembler = assembler.NewDefaultAssembler(
 		at.logger,
 		&dummyAssemblerStopper{},
 		at.nodeConfig,
-		testutil.ConfigurationWithDefaultCluster(),
+		configuration,
 		at.genesisBlock,
 		make(chan struct{}),
 		&node_ledger.DefaultAssemblerLedgerFactory{},

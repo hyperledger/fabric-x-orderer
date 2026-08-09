@@ -618,5 +618,10 @@ func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *fl
 			nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize = DefaultAssemblerParams.BatchRequestsChannelSize
 			logger.Infof("Assembler.BatchRequestsChannelSize is not set, using default value: %d", nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize)
 		}
+
+		if nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy == "" {
+			nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy = "assemblerSync"
+			logger.Infof("General.Cluster.ReplicationPolicy is not set, using default value: %s", nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy)
+		}
 	}
 }
