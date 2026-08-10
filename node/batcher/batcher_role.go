@@ -355,7 +355,7 @@ func (b *BatcherRole) runPrimary() {
 		// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
 		appendStart := time.Now()
-		// The digest was already computed for the BAF above. pass it so the ledger does not recompute it.
+		// The digest was already computed for the BAF above.
 		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch, digest, baf.Signature())
 		b.Metrics.batchLedgerAppendLatency.Observe(time.Since(appendStart).Seconds())
 		sendBAFDone := make(chan struct{})

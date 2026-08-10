@@ -71,7 +71,7 @@ func TestBatchLedgerPart(t *testing.T) {
 }
 
 // TestBatchLedgerPart_AppendWithDigest verifies that Append persists the digest it was given rather than
-// recomputing one over the payload;.
+// recomputing one over the payload.
 func TestBatchLedgerPart_AppendWithDigest(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
