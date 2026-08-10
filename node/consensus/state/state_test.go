@@ -450,6 +450,54 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	assert.Equal(t, state, expectedState)
 }
 
+// TestCollectAndDeduplicateEvents_SameSignerDifferentDigests pins the dedup unit at
+// <shard, primary, seq, signer, digest>. A single secondary that reports two different digests
+// for the same <shard, primary, seq> — the on-wire evidence that the primary equivocated (each
+// BAF carries the primary's verified signature over its digest) — must NOT be treated as a
+// duplicate: both BAFs must be retained so DetectEquivocation can see the conflict and rotate.
+// An exact duplicate (same signer AND same digest) is still dropped.
+//
+// Before the fix, dedup keyed on <shard, primary, seq, signer> alone, so the signer's second
+// digest was silently discarded and the equivocation went undetected. This test fails then.
+func TestCollectAndDeduplicateEvents_SameSignerDifferentDigests(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+
+	shard := types.ShardID(1)
+	primary := types.PartyID(1)
+	seq := types.BatchSequence(1)
+	signer := types.PartyID(2)
+
+	newBAF := func(digest []byte) consensus_state.ControlEvent {
+		baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, signer, 0, 0, nil)
+		baf.SetSignature([]byte{1})
+		return consensus_state.ControlEvent{BAF: baf}
+	}
+
+	state := consensus_state.State{
+		N:         4,
+		Threshold: 2,
+		Quorum:    3,
+		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+	}
+
+	// Round 1: the signer reports digest X.
+	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, newBAF([]byte{1, 2, 3}))
+	assert.Len(t, state.Pending, 1)
+
+	// Round 2: the same signer reports a re-send of X (must be dropped as a true duplicate: same
+	// <shard, primary, seq, signer, digest> already pending) and a different digest Y (must be
+	// retained: it is equivocation evidence, not a duplicate).
+	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, newBAF([]byte{1, 2, 3}), newBAF([]byte{4, 5, 6}))
+
+	assert.Len(t, state.Pending, 2)
+	assert.Equal(t, []byte{1, 2, 3}, state.Pending[0].Digest())
+	assert.Equal(t, []byte{4, 5, 6}, state.Pending[1].Digest())
+
+	// The retained conflict is now visible to equivocation detection, which rotates the primary.
+	consensus_state.DetectEquivocation(&state, 0, logger)
+	assert.Equal(t, uint64(2), state.Shards[0].Term)
+}
+
 func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 	state := consensus_state.State{
 		N:         4,

@@ -43,11 +43,16 @@ type batchKey struct {
 	primary types.PartyID
 }
 
-// attestationKey identifies one signer's attestation of a batch: a batchKey plus the signer.
-// It is the deduplication unit — a signer may attest a given batch at most once.
+// attestationKey identifies one signer's attestation of a specific digest of a batch: a batchKey
+// plus the signer and the hex-encoded digest. It is the deduplication unit — a signer may attest
+// a given (batch, digest) at most once, but the same signer reporting two different digests for
+// one batch is NOT a duplicate: those two BAFs are the evidence that the primary equivocated
+// (each carries the primary's verified signature over its digest), and both must be retained so
+// DetectEquivocation can see them.
 type attestationKey struct {
 	batch  batchKey
 	signer types.PartyID
+	digest string
 }
 
 // thresholdDigestKey identifies a specific digest of a batch that reached the signature
@@ -64,7 +69,7 @@ func batchKeyOf(baf types.BatchAttestationFragment) batchKey {
 }
 
 func attestationKeyOf(baf types.BatchAttestationFragment) attestationKey {
-	return attestationKey{batch: batchKeyOf(baf), signer: baf.Signer()}
+	return attestationKey{batch: batchKeyOf(baf), signer: baf.Signer(), digest: hex.EncodeToString(baf.Digest())}
 }
 
 type State struct {
@@ -470,6 +475,12 @@ func PrimaryRotateDueToComplaints(s *State, configSeq types.ConfigSequence, l *f
 }
 
 func CollectAndDeduplicateEvents(s *State, configSeq types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent) {
+	// shardsAndSequences dedups incoming BAFs against ones already in Pending. It is seeded from
+	// Pending and, unlike the complaints set below, is not updated as BAFs are appended in this
+	// loop — so two identical BAFs arriving in the same round would both be kept here. That case
+	// is prevented upstream: ControlEvent.ID() hashes the full <seq, configSeq, signer, primary,
+	// shard, digest> tuple, and SmartBFT's request pool rejects a duplicate RequestInfo before it
+	// ever reaches a proposal, so identical BAFs cannot co-occur in one round's events.
 	shardsAndSequences := make(map[attestationKey]struct{}, len(s.Pending))
 	complaints := make(map[ShardTerm]map[types.PartyID]struct{})
 
