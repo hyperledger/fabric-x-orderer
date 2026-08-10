@@ -855,7 +855,7 @@ func TestExtractBatchAttestationsFromPending_EquivocationDigestLeak(t *testing.T
 
 	consensus_state.DetectEquivocation(&state2, 0, logger)
 	// Equivocation is detected: term must be incremented.
-	assert.Equal(t, uint64(2), state.Shards[0].Term)
+	assert.Equal(t, uint64(2), state2.Shards[0].Term)
 
 	extracted2 := consensus_state.ExtractBatchAttestationsFromPending(&state2, logger)
 	assert.Len(t, extracted2, 4, "expected all fragments to be extracted")
