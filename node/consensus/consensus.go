@@ -232,6 +232,17 @@ func (c *Consensus) Stop() {
 	close(c.MainExitChan)
 }
 
+// isReconfigAborted reports whether Stop has signaled that in-flight reconfiguration
+// should be abandoned (ReconfigAbort closed).
+func (c *Consensus) isReconfigAborted() bool {
+	select {
+	case <-c.ReconfigAbort:
+		return true
+	default:
+		return false
+	}
+}
+
 func (c *Consensus) GetStatus() node_utils.NodeStatus {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -1072,6 +1083,15 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		c.Logger.Warnf("consenter did not receive acknowledgments from all nodes on sequence %d", configSeq)
 	} else {
 		c.Logger.Infof("all acknowledgement have been received, it is safe to apply the new configuration")
+	}
+
+	// If the node is being stopped, abort the reconfiguration. Stop closes ReconfigAbort and
+	// then, later, stops the ConfigAckReceiver, which is what just released WaitForAllAcks.
+	// Without this guard we would proceed into stopAndReconfigure and re-open storage/BADB/
+	// network on a node that is shutting down, resurrecting it (and racing Stop's teardown).
+	if c.isReconfigAborted() {
+		c.Logger.Infof("consensus is stopping, aborting dynamic reconfiguration on sequence %d", configSeq)
+		return false, nil
 	}
 
 	// check if party is removed

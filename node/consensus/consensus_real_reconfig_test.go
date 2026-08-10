@@ -701,6 +701,21 @@ func TestConsensusStopDuringReconfigAckWait(t *testing.T) {
 		}
 	}
 
+	// After Stop, the released reconfiguration goroutine must abort rather than proceed into
+	// stopAndReconfigure (which would re-open storage/network and flip the node back to Running,
+	// resurrecting a stopped node). Assert every node reaches StateStopped and stays there.
+	for _, node := range consensusNodes {
+		require.Equal(t, node_utils.StateStopped, node.GetStatus().State)
+	}
+	require.Never(t, func() bool {
+		for _, node := range consensusNodes {
+			if node.GetStatus().State != node_utils.StateStopped {
+				return true
+			}
+		}
+		return false
+	}, 3*time.Second, 100*time.Millisecond, "a stopped node was resurrected by an in-flight reconfiguration")
+
 	for _, server := range servers {
 		server.Stop()
 	}
