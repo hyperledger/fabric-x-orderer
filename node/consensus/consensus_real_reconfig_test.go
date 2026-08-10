@@ -620,6 +620,92 @@ func waitForPendingAdminState(t *testing.T, consenter *consensus_node.Consensus,
 	}, 120*time.Second, 100*time.Millisecond)
 }
 
+// waitForSoftStoppedState polls the consensus node status until it reaches the SoftStopped
+// state, which is where a node parks while its reconfiguration goroutine waits for config acks.
+func waitForSoftStoppedState(t *testing.T, consenter *consensus_node.Consensus) {
+	require.Eventually(t, func() bool {
+		return consenter.GetStatus().State == node_utils.StateSoftStopped
+	}, 120*time.Second, 100*time.Millisecond)
+}
+
+// TestConsensusStopDuringReconfigAckWait verifies that Stop() does not deadlock when a Deliver
+// is parked waiting for a dynamic reconfiguration to complete.
+//
+// When a config block is delivered, Deliver spawns processNewConfigBlock and blocks on
+// reconfigDone (on SmartBFT's controller goroutine). processNewConfigBlock soft-stops and then
+// waits in ApplyConfig for config acks from the party's other roles. If those acks never
+// arrive (as here — we deliberately do not call sendConfigAcks), the node stays parked.
+//
+// Stop() must still return: it closes ReconfigAbort before bft.Stop(), which releases the parked
+// Deliver via its abort branch (returning InLatestDecision:false) so bft.Stop()'s goroutine-join
+// can complete. Without that abort branch, bft.Stop() would wait forever on the parked Deliver
+// goroutine, since ConfigAckReceiver.Stop() (which would unblock the ack wait) only runs later in
+// Stop(), after bft.Stop().
+func TestConsensusStopDuringReconfigAckWait(t *testing.T) {
+	parties := []types.PartyID{1, 2, 3, 4}
+	numOfShards := 1
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetworkWithPortAllocator(t, configPath, len(parties), numOfShards, "TLS", "none", testutil.SharedTestPortAllocator())
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	updateFileStoreAndMonitoringPort(t, dir, netInfo)
+
+	netInfo.CleanUp()
+	consensusNodes, servers, _ := createConsensusNodesAndGRPCServers(t, dir, parties)
+	startConsensusNodesAndRegisterGRPCServers(t, parties, consensusNodes, servers)
+
+	// build a router context so SubmitConfig accepts the request
+	routerCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto/ordererOrganizations/org1/orderers/party1/router/tls/server.crt"))
+	require.NoError(t, err)
+	pemBlock, _ := pem.Decode(routerCertBytes)
+	require.NotNil(t, pemBlock)
+	routerCert, err := x509.ParseCertificate(pemBlock.Bytes)
+	require.NoError(t, err)
+	routerCtx, err := createContextForSubmitConfig(routerCert)
+	require.NoError(t, err)
+
+	// submit a valid config update, but never send the acks; the nodes will decide the config
+	// block and then park in ApplyConfig waiting for acks, with Deliver blocked on reconfigDone.
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
+	env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+	configReq := &protos.Request{
+		Payload:   env.Payload,
+		Signature: env.Signature,
+		ConfigSeq: uint32(0),
+	}
+	_, err = consensusNodes[0].SubmitConfig(routerCtx, configReq)
+	require.NoError(t, err)
+
+	// wait until every node is parked in soft stop (waiting for acks that will not come)
+	for _, node := range consensusNodes {
+		waitForSoftStoppedState(t, node)
+	}
+
+	// Stopping each node must return promptly despite the parked Deliver; a hang here means the
+	// abort branch is broken and bft.Stop() is deadlocked on the parked goroutine.
+	for i, node := range consensusNodes {
+		done := make(chan struct{})
+		go func() {
+			node.Stop()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(60 * time.Second):
+			t.Fatalf("Stop() for consensus node %d did not return; Deliver is likely deadlocked waiting on reconfig", parties[i])
+		}
+	}
+
+	for _, server := range servers {
+		server.Stop()
+	}
+}
+
 func sendConfigAcks(t *testing.T, consensusNodes []*consensus_node.Consensus, configSeq types.ConfigSequence) {
 	for _, node := range consensusNodes {
 		// one router ack
