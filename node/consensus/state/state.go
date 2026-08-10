@@ -591,13 +591,12 @@ func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogg
 	// It does not include BAFs that reached the threshold of f+1 in previous rounds
 	// and their digest was added to the BatchAttestationDB.
 
-	// <seq, shard, primary> --> { digest -->  signer }
 	// Only count BAFs where Signer != Primary: a BAF where the signer claims to be
 	// the primary (Signer == Primary) is self-signed and can be forged by any node to
 	// manufacture false equivocation evidence.  Genuine attestations from secondaries
 	// always have Signer != Primary (the primary's own participation is captured by the
 	// empty PrimarySignature field, not by it re-broadcasting its own BAF as a voter).
-	m := batchAttestationVotesByDigestsExcludingSelfSigned(s)
+	m := batchAttestationVotesByDigests(s, isNotSelfSigned)
 
 	// Sort batches for deterministic processing: by shard, then primary, then seq.
 	batches := make([]batchKey, 0, len(m))
@@ -668,54 +667,38 @@ func getDigestSummary(digest2signers map[string][]types.PartyID) string {
 	return summary.String()
 }
 
-func batchAttestationVotesByDigests(s *State) map[batchKey]map[string][]types.PartyID {
+// batchAttestationVotesByDigests groups pending BAFs as <batchKey> --> { digest --> signers },
+// including only fragments for which include(baf) is true. Digests are hex-encoded so they are
+// map-comparable.
+func batchAttestationVotesByDigests(s *State, include func(baf types.BatchAttestationFragment) bool) map[batchKey]map[string][]types.PartyID {
 	m := make(map[batchKey]map[string][]types.PartyID)
 
 	for _, baf := range s.Pending {
-		batch := batchKeyOf(baf)
-
-		digests2signers, exists := m[batch]
-		if !exists {
-			digests2signers = make(map[string][]types.PartyID)
-			m[batch] = digests2signers
-		}
-
-		hexDigest := hex.EncodeToString(baf.Digest())
-		digests2signers[hexDigest] = append(digests2signers[hexDigest], baf.Signer())
-	}
-	return m
-}
-
-// batchAttestationVotesByDigestsExcludingSelfSigned is like batchAttestationVotesByDigests
-// but skips BAFs where Signer() == Primary().  Such self-signed BAFs cannot serve as
-// secondary attestations and are filtered here to prevent a non-primary from
-// manufacturing equivocation evidence by sending two BAFs with the same Primary() == Signer()
-// but different digests.
-func batchAttestationVotesByDigestsExcludingSelfSigned(s *State) map[batchKey]map[string][]types.PartyID {
-	m := make(map[batchKey]map[string][]types.PartyID)
-
-	for _, baf := range s.Pending {
-		if baf.Signer() == baf.Primary() {
+		if !include(baf) {
 			continue
 		}
 
 		batch := batchKeyOf(baf)
-
-		digests2signers, exists := m[batch]
-		if !exists {
-			digests2signers = make(map[string][]types.PartyID)
-			m[batch] = digests2signers
+		if m[batch] == nil {
+			m[batch] = make(map[string][]types.PartyID)
 		}
 
 		hexDigest := hex.EncodeToString(baf.Digest())
-		digests2signers[hexDigest] = append(digests2signers[hexDigest], baf.Signer())
+		m[batch][hexDigest] = append(m[batch][hexDigest], baf.Signer())
 	}
 	return m
 }
 
+// allBAFs includes every pending BAF (used when tallying signatures toward the threshold).
+func allBAFs(_ types.BatchAttestationFragment) bool { return true }
+
+// isNotSelfSigned excludes BAFs where Signer() == Primary(). Such self-signed BAFs cannot serve
+// as secondary attestations; excluding them prevents a non-primary from manufacturing
+// equivocation evidence by sending two BAFs with Primary() == Signer() but different digests.
+func isNotSelfSigned(baf types.BatchAttestationFragment) bool { return baf.Signer() != baf.Primary() }
+
 func ExtractBatchAttestationsFromPending(s *State, l *flogging.FabricLogger) []types.BatchAttestationFragment {
-	// <seq, shard, primary> --> { digest -->  signer }
-	m := batchAttestationVotesByDigests(s)
+	m := batchAttestationVotesByDigests(s, allBAFs)
 
 	// decidedBatches holds the <seq, shard, primary> batches for which at least one digest
 	// reached threshold. It governs which pending BAFs are removed: once a batch is decided,
