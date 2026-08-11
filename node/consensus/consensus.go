@@ -694,6 +694,8 @@ func verifyBlockMessageToSign(msg *protoutil.MessageToSign, msgBytes []byte, sig
 // VerifySignature verifies the signature
 // (from SmartBFT API)
 func (c *Consensus) VerifySignature(signature smartbft_types.Signature) error {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
 	return c.SigVerifier.VerifySignature(arma_types.PartyID(signature.ID), arma_types.ShardIDConsensus, signature.Msg, signature.Value)
 }
 
