@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -858,7 +859,7 @@ func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_type
 				Provider:           "disabled",
 				MetricsLogInterval: 10 * time.Second,
 			},
-		}, batchersInfo, ledger, logger),
+		}, batchersInfo, &node_ledger.BatchLedgerMetrics{}, ledger, logger),
 	}
 
 	return batcher
