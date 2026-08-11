@@ -59,7 +59,7 @@ func (c *ConnectionsMgr) Connect(endpoint string, serverRootCACert [][]byte) (*g
 	}
 
 	c.lock.Lock()
-	// check again if someother goroutine successful meanwhile
+	// check again if some other goroutine successful meanwhile
 	conn, alreadyConnected = c.Connections.Lookup(endpoint)
 	if alreadyConnected {
 		c.lock.Unlock()

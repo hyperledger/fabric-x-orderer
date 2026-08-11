@@ -7,8 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package comm
 
 import (
+	"bytes"
 	"context"
 	"encoding/asn1"
+	"slices"
 	"strconv"
 	"sync"
 
@@ -136,9 +138,18 @@ func (ac *AuthCommMgr) getOrCreateMapping() MemberMapping {
 func (ac *AuthCommMgr) updateStubInMapping(mapping MemberMapping, node RemoteNode) {
 	stub := mapping.ByID(node.ID)
 	if stub == nil {
-		ac.Logger.Infof("Allocating a new stub for node %v with endpoint %v", node.ID, node.Endpoint)
+		ac.Logger.Infof("Allocating a new stub for node %d with endpoint %v", node.ID, node.Endpoint)
 		stub = &Stub{}
+	} else if stub.Active() && sameRemoteNode(stub.RemoteNode, node) {
+		// The node's data is unchanged and its connection is already active; leave it
+		// untouched so we don't needlessly tear down and rebuild a healthy connection.
+		ac.Logger.Debugf("Stub for node %d with endpoint %v is unchanged; leaving it active", node.ID, node.Endpoint)
+		return
 	}
+
+	// First disconnect and deactivate the stub
+	ac.Connections.Disconnect(stub.Endpoint)
+	stub.Deactivate()
 
 	// Overwrite the stub Node data with the new data
 	stub.RemoteNode = node
@@ -146,13 +157,21 @@ func (ac *AuthCommMgr) updateStubInMapping(mapping MemberMapping, node RemoteNod
 	// Put the stub into the mapping
 	mapping.Put(stub)
 
-	// Check if the stub needs activation.
-	if stub.Active() {
-		return
+	// Now activate the stub
+	if err := stub.Activate(ac.createRemoteContext(stub)); err != nil {
+		ac.Logger.Warnf("Unable to activate stub for node %d: %v", node.ID, err)
 	}
+}
 
-	// Activate the stub
-	stub.Activate(ac.createRemoteContext(stub))
+// sameRemoteNode reports whether two RemoteNodes carry identical address and certificate
+// data, i.e. reconfiguring to b would not change how we connect to or authenticate a.
+func sameRemoteNode(a, b RemoteNode) bool {
+	return a.ID == b.ID &&
+		a.Endpoint == b.Endpoint &&
+		bytes.Equal(a.ServerTLSCert, b.ServerTLSCert) &&
+		bytes.Equal(a.ClientTLSCert, b.ClientTLSCert) &&
+		bytes.Equal(a.Identity, b.Identity) &&
+		slices.EqualFunc(a.ServerRootCA, b.ServerRootCA, bytes.Equal)
 }
 
 func (ac *AuthCommMgr) createRemoteContext(stub *Stub) func() (*RemoteContext, error) {

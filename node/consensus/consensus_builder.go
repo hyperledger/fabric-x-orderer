@@ -45,7 +45,8 @@ import (
 
 func CreateConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, logger *flogging.FabricLogger, mainExitChan chan struct{}, signer Signer, configUpdateProposer policy.ConfigUpdateProposer) *Consensus {
 	c := &Consensus{
-		MainExitChan: mainExitChan,
+		MainExitChan:  mainExitChan,
+		ReconfigAbort: make(chan struct{}),
 		status: node_utils.NodeStatus{
 			State:                node_utils.StateInitializing,
 			ConfigSequenceNumber: nodeConfig.Bundle.ConfigtxValidator().Sequence(),
@@ -55,12 +56,20 @@ func CreateConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_co
 		PartyID: nodeConfig.PartyId,
 	}
 
-	c.configureConsensus(nodeConfig, config, lastConfigBlock, configUpdateProposer)
+	c.configureConsensus(nodeConfig, config, lastConfigBlock, configUpdateProposer, true)
 
 	return c
 }
 
-func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, configUpdateProposer policy.ConfigUpdateProposer) {
+// configureConsensus wires up the consensus node's runtime state from the given config:
+// the ledger, batch-attestation DB, verifiers, metrics, config appliers, comm layer and BFT
+// synchronizer. It is used both for initial node creation and for dynamic reconfiguration.
+//
+// createNewBFT selects between those two modes:
+//   - true  (initial creation): build a fresh BFT instance and set up the comm layer.
+//   - false (dynamic reconfig): the existing BFT instance keeps running, so only reconfigure
+//     the comm layer rather than recreating the BFT.
+func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, configUpdateProposer policy.ConfigUpdateProposer, createNewBFT bool) {
 	if lastConfigBlock == nil {
 		c.Logger.Panicf("Error creating Consensus%d, last config block is nil", nodeConfig.PartyId)
 	}
@@ -134,8 +143,12 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	}
 	c.ConfigAckReceiver = configack.NewReceiver(c.Logger, shards)
 
-	c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)
-	setupComm(c)
+	if createNewBFT {
+		c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)
+		setupComm(c)
+	} else {
+		configureComm(c)
+	}
 
 	bftSynch := c.synchronizerFactory.CreateSynchronizer(
 		c.Logger,
@@ -390,17 +403,7 @@ func (c *Consensus) clientConfig() comm.ClientConfig {
 	return cc
 }
 
-func setupComm(c *Consensus) {
-	selfID := getSelfID(c.Config.Consenters, c.PartyID)
-	c.ClusterService = &comm.ClusterService{
-		Logger:                           c.Logger,
-		CertExpWarningThreshold:          c.fullConfig.LocalConfig.ClusterConfig.CertExpirationWarningThreshold,
-		NodeIdentity:                     selfID,
-		StepLogger:                       c.Logger,
-		MinimumExpirationWarningInterval: time.Hour,
-		RequestHandler:                   c,
-	}
-
+func configureComm(c *Consensus) {
 	var consenterConfigs []*common.Consenter
 	var remotesNodes []comm.RemoteNode
 	for _, node := range c.Config.Consenters {
@@ -426,9 +429,22 @@ func setupComm(c *Consensus) {
 			Id:       uint32(node.PartyID),
 		})
 	}
-	c.ConfigureNodeCerts(consenterConfigs)
+	c.ClusterService.ConfigureNodeCerts(consenterConfigs)
+	c.Egress.Reconfigure(c.CurrentNodes, remotesNodes)
+}
 
-	commAuth := &comm.AuthCommMgr{
+func setupComm(c *Consensus) {
+	selfID := getSelfID(c.Config.Consenters, c.PartyID)
+	c.ClusterService = &comm.ClusterService{
+		Logger:                           c.Logger,
+		CertExpWarningThreshold:          c.fullConfig.LocalConfig.ClusterConfig.CertExpirationWarningThreshold,
+		NodeIdentity:                     selfID,
+		StepLogger:                       c.Logger,
+		MinimumExpirationWarningInterval: time.Hour,
+		RequestHandler:                   c,
+	}
+
+	authCommMgr := &comm.AuthCommMgr{
 		Logger:         c.Logger,
 		Signer:         c.Signer,
 		SendBufferSize: c.fullConfig.LocalConfig.ClusterConfig.SendBufferSize,
@@ -436,18 +452,20 @@ func setupComm(c *Consensus) {
 		Connections:    comm.NewConnectionMgr(c.clientConfig()),
 	}
 
-	commAuth.Configure(remotesNodes)
-
-	c.BFT.Comm = &comm.Egress{
+	c.Egress = &comm.Egress{
 		NodeList: c.CurrentNodes,
 		Logger:   c.Logger,
 		RPC: &comm.RPC{
 			StreamsByType: comm.NewStreamsByType(),
 			Timeout:       c.fullConfig.LocalConfig.ClusterConfig.RPCTimeout,
 			Logger:        c.Logger,
-			Comm:          commAuth,
+			Comm:          authCommMgr,
 		},
 	}
+
+	configureComm(c)
+
+	c.BFT.Comm = c
 }
 
 func getSelfID(consenterInfos []node_config.ConsenterInfo, partyID arma_types.PartyID) []byte {

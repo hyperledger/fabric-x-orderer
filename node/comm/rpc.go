@@ -72,11 +72,21 @@ func (ot OperationType) String() string {
 	return "consensus"
 }
 
-// SendConsensus passes the given ConsensusRequest message to the raft.Node instance.
+// Reconfigure configures the communicator of the RPC and replaces the stream map.
+// The previous streams are abandoned here; they are aborted out-of-band by
+// Comm.Configure, which deactivates stubs and aborts their RemoteContext.
+func (s *RPC) Reconfigure(members []RemoteNode) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.StreamsByType = NewStreamsByType()
+	s.Comm.Configure(members)
+}
+
+// SendConsensus passes the given ConsensusRequest message to the given destination node.
 func (s *RPC) SendConsensus(destination uint64, msg *orderer.ConsensusRequest) error {
 	stream, err := s.getOrCreateStream(destination, ConsensusOperation)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to get or create stream")
 	}
 
 	req := &orderer.StepRequest{
@@ -93,7 +103,7 @@ func (s *RPC) SendConsensus(destination uint64, msg *orderer.ConsensusRequest) e
 		s.unMapStream(destination, ConsensusOperation, stream.ID)
 	}
 
-	return err
+	return errors.Wrap(err, "failed to send consensus request")
 }
 
 // SendSubmit sends a SubmitRequest to the given destination node.
