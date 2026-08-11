@@ -277,6 +277,7 @@ func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_confi
 	configBlockNumber := configBlock.GetHeader().GetNumber()
 	a.logger.Infof("Initializing assembler ledger, current height: %d, config block number: %d", ledgerHeight, configBlockNumber)
 
+	ledgerUpdatedDuringInit := false
 	if configBlockNumber == 0 && ledgerHeight == 0 {
 		// append config block only if it is the genesis block and the ledger is empty.
 		configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = common_utils.GenesisBlockMetadataBytes()
@@ -287,6 +288,7 @@ func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_confi
 			BatchCount:  1,
 		}
 		a.ledger.AppendConfig(ordInfo)
+		ledgerUpdatedDuringInit = true
 		a.logger.Infof("Appended genesis block, header digest: %s", hex.EncodeToString(protoutil.BlockHeaderHash(configBlock.GetHeader())))
 	} else if configBlockNumber >= ledgerHeight {
 		a.logger.Infof("Creating assembler synchronizer to sync to config block number %d, current ledger height is %d", configBlockNumber, ledgerHeight)
@@ -306,6 +308,7 @@ func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_confi
 		if err := synchronizer.Sync(); err != nil {
 			a.logger.Panicf("error while syncing to config block %v", err)
 		}
+		ledgerUpdatedDuringInit = true
 	} else {
 		a.logger.Infof("Assembler is starting with config block already in the ledger, config block number: %d, current ledger height: %d", configBlockNumber, ledgerHeight)
 	}
@@ -315,10 +318,10 @@ func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_confi
 		a.logger.Panicf("Assembler ledger is empty after initialization, this should not happen")
 	}
 
-	// update metrics with current ledger state only if we didn't just append the genesis block
-	// (if we just appended genesis block, metrics were already updated in AppendConfig)
-	// This happens when the assembler is restarting with an existing ledger or after syncing
-	if ledgerHeight > 1 || configBlockNumber > 0 {
+	// update metrics with current ledger state only if we didn't append blocks during initialization
+	// (if we appended genesis or synced blocks, metrics were already updated in AppendConfig/AppendBlock)
+	// This happens when the assembler is restarting with an existing ledger
+	if !ledgerUpdatedDuringInit {
 		var transactionCount uint64
 		block, err := a.ledger.LedgerReader().RetrieveBlockByNumber(ledgerHeight - 1)
 		if err != nil {
