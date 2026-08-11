@@ -343,7 +343,9 @@ func (b *BatcherRole) runPrimary() {
 			}
 
 			b.Logger.Infof("Batcher batched a total of %d requests for sequence %d", len(currentBatch), b.seq)
+			digestStart := time.Now()
 			digest = currentBatch.Digest()
+			b.Metrics.batchHashingLatency.Observe(time.Since(digestStart).Seconds())
 			cancel()
 			break
 		}
@@ -354,10 +356,8 @@ func (b *BatcherRole) runPrimary() {
 		// (this BAF is a declaration that the batch is stored in the ledger)
 		// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
-		appendStart := time.Now()
 		// The digest was already computed for the BAF above.
 		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch, digest, baf.Signature())
-		b.Metrics.batchLedgerAppendLatency.Observe(time.Since(appendStart).Seconds())
 		sendBAFDone := make(chan struct{})
 		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
 		defer sendBafCancel()
@@ -441,9 +441,7 @@ func (b *BatcherRole) runSecondary() {
 			// Once the BAF reached the consenters it is considered safe to remove the requests from the mem pool
 
 			b.Logger.Infof("Secondary batcher %d (shard %d; current primary %d) appending to ledger batch with seq %d and %d requests", b.ID, b.Shard, b.primary, b.seq, len(requests))
-			appendStart := time.Now()
 			b.Ledger.Append(b.primary, b.seq, b.ConfigSequenceGetter.ConfigSequence(), requests, digest, batch.PrimarySignature())
-			b.Metrics.batchLedgerAppendLatency.Observe(time.Since(appendStart).Seconds())
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, digest, uint64(len(requests)), batch.PrimarySignature())
 
 			sendBAFDone := make(chan struct{})
