@@ -61,7 +61,15 @@ func CreateConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_co
 	return c
 }
 
-func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, configUpdateProposer policy.ConfigUpdateProposer, configureBFT bool) {
+// configureConsensus wires up the consensus node's runtime state from the given config:
+// the ledger, batch-attestation DB, verifiers, metrics, config appliers, comm layer and BFT
+// synchronizer. It is used both for initial node creation and for dynamic reconfiguration.
+//
+// createNewBFT selects between those two modes:
+//   - true  (initial creation): build a fresh BFT instance and set up the comm layer.
+//   - false (dynamic reconfig): the existing BFT instance keeps running, so only reconfigure
+//     the comm layer rather than recreating the BFT.
+func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConfig, config *ord_config.Configuration, lastConfigBlock *common.Block, configUpdateProposer policy.ConfigUpdateProposer, createNewBFT bool) {
 	if lastConfigBlock == nil {
 		c.Logger.Panicf("Error creating Consensus%d, last config block is nil", nodeConfig.PartyId)
 	}
@@ -135,7 +143,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	}
 	c.ConfigAckReceiver = configack.NewReceiver(c.Logger, shards)
 
-	if configureBFT {
+	if createNewBFT {
 		c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)
 		setupComm(c)
 	} else {
