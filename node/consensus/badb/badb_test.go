@@ -167,3 +167,30 @@ func TestCleanFailingWritePanics(t *testing.T) {
 		db.Clean(2)
 	})
 }
+
+// TestCleanFailingIterationPanics verifies that Clean fail-stops (panics) when
+// the iterator encounters an error (surfaced via iter.Error()), rather than
+// silently writing a partial/empty delete batch and masking the fault.
+func TestCleanFailingIterationPanics(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+	stor := newFaultyStorage()
+
+	// Disable the open-files cache so every table read re-opens the file
+	// through the (faulty) storage layer.
+	ldb, err := leveldb.Open(stor, &opt.Options{OpenFilesCacheCapacity: -1})
+	require.NoError(t, err)
+	db := &BatchAttestationDB{db: ldb, logger: logger}
+	defer db.Close()
+
+	// Store a digest and flush it to an on-disk table so iteration hits storage.Open.
+	db.Put([][]byte{{7}}, []uint64{1})
+	require.NoError(t, ldb.CompactRange(util.Range{}))
+
+	// Arm the fault: subsequent table opens fail with an IO error, so the
+	// iterator in Clean cannot read the table and accumulates an error.
+	stor.failOpen.Store(true)
+
+	assert.Panics(t, func() {
+		db.Clean(2)
+	})
+}

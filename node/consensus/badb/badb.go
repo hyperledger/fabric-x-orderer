@@ -103,6 +103,13 @@ func (db *BatchAttestationDB) Clean(epochToDelete uint64) {
 		batch.Delete(epochKey)
 	}
 
+	// Next stops returning pairs on error; the error is retrieved via Error().
+	// Without this check Clean could write a partial/empty delete batch and
+	// mask an underlying corruption/IO fault.
+	if err := iter.Error(); err != nil {
+		db.logger.Panicf("Failed iterating over database: %v", err)
+	}
+
 	if err := db.db.Write(batch, nil); err != nil {
 		db.logger.Panicf("Failed updating database: %v", err)
 	}
