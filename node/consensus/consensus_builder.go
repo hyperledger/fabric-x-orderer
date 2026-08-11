@@ -167,8 +167,18 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	)
 	c.Logger.Info("Created a BFT Synchronizer")
 
-	c.BFT.Synchronizer = bftSynch
-	c.Synchronizer = bftSynch
+	if createNewBFT {
+		// Initial creation: build the holder once and hand it to SmartBFT (and keep it as
+		// c.Synchronizer). It is never reassigned afterwards.
+		c.synchronizerHolder = bft_synch.NewHolder(bftSynch)
+		c.BFT.Synchronizer = c.synchronizerHolder
+		c.Synchronizer = c.synchronizerHolder
+	} else {
+		// Dynamic reconfig: the existing BFT keeps running and still holds the same holder, so we
+		// only swap the inner synchronizer under the holder's lock rather than reassigning the
+		// BFT.Synchronizer field (which SmartBFT reads without a lock).
+		c.synchronizerHolder.Swap(bftSynch)
+	}
 }
 
 func (c *Consensus) InitOperationSystem() {
