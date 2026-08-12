@@ -87,8 +87,7 @@ type Batcher struct {
 	running                            sync.WaitGroup // maybe change the name, it is only for state replicator
 	stopChan                           chan struct{}
 	mainExitChan                       chan struct{}
-	isStopped                          bool
-	isSoftStopped                      bool
+	status                             node_utils.NodeStatus
 	configAcker                        configack.Sender
 
 	primaryLock sync.RWMutex
@@ -144,9 +143,6 @@ func (b *Batcher) Run() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	b.isStopped = false
-	b.isSoftStopped = false
-
 	b.stopChan = make(chan struct{})
 	b.stateChan = make(chan *state.State, 1)
 
@@ -166,30 +162,27 @@ func (b *Batcher) Run() {
 	b.logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(b.opsSystem, b.logger))
 	b.logger.Infof("Logging spec service serving on URL: %s", operations.LogSpecServiceURL(b.opsSystem, b.logger))
 	b.logger.Infof("Version info serving on URL: %s", operations.VersionInfoServiceURL(b.opsSystem, b.logger))
+
+	b.status.Set(node_utils.StateRunning, b.config.Bundle.ConfigtxValidator().Sequence())
 }
 
-func (b *Batcher) GetStatus() string {
+func (b *Batcher) GetStatus() node_utils.NodeStatus {
 	b.lock.Lock()
 	defer b.lock.Unlock()
-	if b.isSoftStopped && !b.isStopped {
-		return "Soft Stopped"
-	}
-	if b.isSoftStopped && b.isStopped {
-		return "Stopped"
-	}
-	return "Running"
+	return b.status
 }
 
 func (b *Batcher) Stop() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	if b.isStopped {
+	state := b.status.GetState()
+	if state == node_utils.StateStopped {
 		return
 	}
 
 	b.logger.Infof("Stopping batcher node")
-	if !b.isSoftStopped {
+	if state != node_utils.StateSoftStopped && state != node_utils.StatePendingAdmin {
 		close(b.stopChan)
 		b.controlEventBroadcaster.Stop()
 		b.batcher.Stop()
@@ -210,19 +203,19 @@ func (b *Batcher) Stop() {
 
 	close(b.mainExitChan)
 
-	b.isStopped = true
-	b.isSoftStopped = true
+	b.status.SetState(node_utils.StateStopped)
 }
 
 func (b *Batcher) SoftStop() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	if b.isSoftStopped || b.isStopped {
+	state := b.status.GetState()
+	if state == node_utils.StateSoftStopped || state == node_utils.StateStopped || state == node_utils.StatePendingAdmin {
 		return
 	}
 
-	b.isSoftStopped = true
+	b.status.SetState(node_utils.StateSoftStopped)
 
 	b.logger.Infof("Soft stopping batcher node")
 	close(b.stopChan)
@@ -316,6 +309,9 @@ func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
 	}
 	if isAdminOperationRequired {
 		b.logger.Warnf("Pending admin action to apply new config")
+		b.lock.Lock()
+		b.status.SetState(node_utils.StatePendingAdmin)
+		b.lock.Unlock()
 		return
 	}
 }

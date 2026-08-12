@@ -96,7 +96,7 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 	// wait for the batcher to soft stop
 	for j := range parties {
 		require.Eventually(t, func() bool {
-			return batchers[j].GetStatus() == "Soft Stopped"
+			return batchers[j].GetStatus().GetState() == node_utils.StateSoftStopped
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
@@ -117,7 +117,7 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 	//// wait for the batcher to initialize
 	//for j := range parties {
 	//	require.Eventually(t, func() bool {
-	//		return batchers[j].GetStatus() == "Running"
+	//		return batchers[j].GetStatus().GetState() == node_utils.StateRunning
 	//	}, 60*time.Second, 10*time.Millisecond)
 	//}
 	//

@@ -28,6 +28,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
@@ -53,6 +54,10 @@ func CreateBatcher(nodeConfig *node_config.BatcherNodeConfig, fullConfig *config
 		ConfigStore:                        configStore,
 		wal:                                batcherWAL,
 		mainExitChan:                       mainExitChan,
+		status: node_utils.NodeStatus{
+			State:                node_utils.StateInitializing,
+			ConfigSequenceNumber: nodeConfig.Bundle.ConfigtxValidator().Sequence(),
+		},
 	}
 
 	b.configureBatcher(senderCreator, nil, lastKnownDecisionNum)

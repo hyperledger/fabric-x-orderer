@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/block"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -46,6 +47,13 @@ func TestBatcherRun(t *testing.T) {
 
 	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, stubConsenters)
 	defer cleanBatchers()
+
+	// running batchers report a running status carrying the bootstrap config sequence
+	for _, b := range batchers {
+		status := b.GetStatus()
+		require.Equal(t, node_utils.StateRunning, status.GetState())
+		require.Equal(t, uint64(0), status.ConfigSequenceNumber)
+	}
 
 	batchers[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
 
@@ -96,6 +104,7 @@ func TestBatcherRun(t *testing.T) {
 	// stop and recover secondary
 	t.Logf("Stop and recover secondary")
 	batchers[3].Stop()
+	require.Equal(t, node_utils.StateStopped, batchers[3].GetStatus().GetState())
 	batchers[3] = recoverBatcher(t, ca, loggers[3], configs[3], batcherNodes[3], stubConsenters[3])
 	stubConsenters[3].UpdateState(termChangeState)
 
@@ -609,6 +618,7 @@ func TestPullBatchFromSoftStoppedBatcher(t *testing.T) {
 	for i, b := range batchers {
 		if i != 1 {
 			b.SoftStop()
+			require.Equal(t, node_utils.StateSoftStopped, b.GetStatus().GetState())
 		}
 	}
 
