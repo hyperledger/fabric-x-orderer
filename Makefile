@@ -15,12 +15,16 @@
 # 	- check-dco: check that commits include Signed-off-by
 #	- docker-local: builds a single-platform image for the host's OS/architecture
 #   - docker-multiarch: wrapper that triggers docker builds for multiple platforms
+#   - build-test-node-image: builds the all-in-one test-node image for the host's OS/architecture
+#   - build-multiplatform-test-node-image: builds the all-in-one test-node image for multiple platforms
 #   - deterministic-failure-test: runs the deterministic failure test locally (5 min, 1000 tx/s, failure runner enabled)
 
 # Docker image vars
 DOCKERFILE ?= images/multi-platform/Dockerfile
+TEST_NODE_DOCKERFILE ?= node/examples/all-in-one/Dockerfile
 IMAGE_NAMESPACE = docker.io/hyperledger
 IMAGE_NAME = fabric-x-orderer
+TEST_NODE_IMAGE_NAME = fabric-x-orderer-test-node
 VERSION = latest
 ORDERER_REVISION = $(shell git rev-parse HEAD)
 ORDERER_CREATED = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -188,3 +192,15 @@ build-image:
 build-multiplatform-image:
 	@echo "Building the multiplatform image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
 	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
+
+# Build the all-in-one test-node image
+.PHONY: build-test-node-image
+build-test-node-image:
+	@echo "Building the image ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION}..."
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION} -f ${TEST_NODE_DOCKERFILE} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
+
+# Build the all-in-one test-node multiplatform image
+.PHONY: build-multiplatform-test-node-image
+build-multiplatform-test-node-image:
+	@echo "Building the multiplatform image ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION}..."
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION} -f ${TEST_NODE_DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
