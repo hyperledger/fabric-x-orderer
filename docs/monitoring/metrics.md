@@ -105,11 +105,11 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Help:** "The latency for the primary to retrieve the next batch from the mempool."
 
 - **Namespace:** "batcher"  
-  **Name:** "batch_verify_latency_seconds"
+  **Name:** "batch_verify_latency_seconds"  
   **Help:** "The latency from receiving a batch on the secondary until it is verified."
 
 - **Namespace:** "batcher"  
-  **Name:** "batch_hashing_latency_seconds"
+  **Name:** "batch_hashing_latency_seconds"  
   **Help:** "The latency to compute the batch requests digest on the primary."
 
 - **Namespace:** "batch_ledger"  

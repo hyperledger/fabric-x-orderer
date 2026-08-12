@@ -100,10 +100,6 @@ func (bla *BatchLedgerArray) ChannelID() string {
 	return bla.channelID
 }
 
-func (bla *BatchLedgerArray) Metrics() *BatchLedgerMetrics {
-	return bla.metrics
-}
-
 func (bla *BatchLedgerArray) Height(partyID types.PartyID) uint64 {
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {

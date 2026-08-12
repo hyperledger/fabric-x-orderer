@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 )
 
@@ -32,11 +31,9 @@ var (
 type BatchLedgerMetrics struct {
 	HeaderHashingLatency metrics.Histogram
 	AppendLatency        metrics.Histogram
-	logger               *flogging.FabricLogger
 }
 
-func (bl *BatchLedgerMetrics) NewBatchLedgerMetrics(p metrics.Provider, partyID, shardID string, logger *flogging.FabricLogger) {
+func (bl *BatchLedgerMetrics) NewBatchLedgerMetrics(p metrics.Provider, partyID, shardID string) {
 	bl.HeaderHashingLatency = p.NewHistogram(headerHashingLatencyOpts).With([]string{partyID, shardID}...)
 	bl.AppendLatency = p.NewHistogram(appendLatencyOpts).With([]string{partyID, shardID}...)
-	bl.logger = logger
 }

@@ -665,7 +665,7 @@ func createAssemblerLedger(t *testing.T, tmpDir string, logger *flogging.FabricL
 	al, err := node_ledger.NewAssemblerLedger(logger, tmpDir)
 	require.NoError(t, err)
 	require.NotNil(t, al)
-	al.Metrics().NewAssemblerLedgerMetrics(monitoring.NewProvider(generate.DefaultMetricsProviderType, logger), "party1", logger)
+	al.Metrics().NewAssemblerLedgerMetrics(monitoring.NewProvider(generate.DefaultMetricsProviderType, logger), "party1")
 	return al
 }
 
