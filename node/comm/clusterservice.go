@@ -37,8 +37,16 @@ type ClusterStepStream interface {
 
 type MembersConfig struct {
 	MemberMapping     map[uint64][]byte
-	AuthorizedStreams sync.Map // Stream ID --> node identifier
-	nextStreamID      uint64
+	AuthorizedStreams sync.Map // Stream ID --> authorizedStream
+	nextStreamID      atomic.Uint64
+}
+
+// authorizedStream records the node and the identity (cert) a stream
+// authenticated under, so a later identity rotation for that node can
+// invalidate the stream and force re-authentication.
+type authorizedStream struct {
+	nodeID   uint64
+	identity []byte
 }
 
 // ClusterService implements the server API for ClusterNodeService service
@@ -80,15 +88,18 @@ func (s *ClusterService) Step(stream orderer.ClusterNodeService_StepServer) erro
 	}
 
 	s.Lock.RLock()
-	authReq, err := s.VerifyAuthRequest(stream, request)
+	authReq, fromIdentity, err := s.VerifyAuthRequest(stream, request)
 	if err != nil {
 		s.Lock.RUnlock()
 		s.Logger.Warnf("service authentication of %s failed with error: %v", addr, err)
 		return status.Errorf(codes.Unauthenticated, "access denied")
 	}
 
-	streamID := atomic.AddUint64(&s.Membership.nextStreamID, 1)
-	s.Membership.AuthorizedStreams.Store(streamID, authReq.FromId)
+	streamID := s.Membership.nextStreamID.Add(1)
+	s.Membership.AuthorizedStreams.Store(streamID, authorizedStream{
+		nodeID:   authReq.FromId,
+		identity: fromIdentity,
+	})
 	s.Lock.RUnlock()
 
 	defer s.Logger.Debugf("Closing connection from %s(%s)", commonName, addr)
@@ -111,21 +122,21 @@ func (s *ClusterService) Step(stream orderer.ClusterNodeService_StepServer) erro
 	}
 }
 
-func (s *ClusterService) VerifyAuthRequest(stream orderer.ClusterNodeService_StepServer, request *orderer.ClusterNodeServiceStepRequest) (*orderer.NodeAuthRequest, error) {
+func (s *ClusterService) VerifyAuthRequest(stream orderer.ClusterNodeService_StepServer, request *orderer.ClusterNodeServiceStepRequest) (*orderer.NodeAuthRequest, []byte, error) {
 	authReq := request.GetNodeAuthrequest()
 	if authReq == nil {
-		return nil, errors.New("invalid request object")
+		return nil, nil, errors.New("invalid request object")
 	}
 
 	bindingFieldsHash := GetSessionBindingHash(authReq)
 
 	tlsBinding, err := GetTLSSessionBinding(stream.Context(), bindingFieldsHash)
 	if err != nil {
-		return nil, errors.Wrap(err, "session binding read failed")
+		return nil, nil, errors.Wrap(err, "session binding read failed")
 	}
 
 	if !bytes.Equal(tlsBinding, authReq.SessionBinding) {
-		return nil, errors.New("session binding mismatch")
+		return nil, nil, errors.New("session binding mismatch")
 	}
 
 	msg, err := asn1.Marshal(AuthRequestSignature{
@@ -136,34 +147,34 @@ func (s *ClusterService) VerifyAuthRequest(stream orderer.ClusterNodeService_Ste
 		SessionBinding: tlsBinding,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "ASN encoding failed")
+		return nil, nil, errors.Wrap(err, "ASN encoding failed")
 	}
 
 	membership := s.Membership
 	if membership == nil {
-		return nil, errors.Errorf("channel %s not found in config", authReq.Channel)
+		return nil, nil, errors.Errorf("channel %s not found in config", authReq.Channel)
 	}
 
 	fromIdentity := membership.MemberMapping[authReq.FromId]
 	if fromIdentity == nil {
-		return nil, errors.Errorf("node %d is not member of channel %s", authReq.FromId, authReq.Channel)
+		return nil, nil, errors.Errorf("node %d is not member of channel %s", authReq.FromId, authReq.Channel)
 	}
 
 	toIdentity := membership.MemberMapping[authReq.ToId]
 	if toIdentity == nil {
-		return nil, errors.Errorf("node %d is not member of channel %s", authReq.ToId, authReq.Channel)
+		return nil, nil, errors.Errorf("node %d is not member of channel %s", authReq.ToId, authReq.Channel)
 	}
 
 	if !bytes.Equal(toIdentity, s.NodeIdentity) {
-		return nil, errors.Errorf("node id mismatch")
+		return nil, nil, errors.Errorf("node id mismatch")
 	}
 
 	err = VerifySignature(fromIdentity, SHA256Digest(msg), authReq.Signature)
 	if err != nil {
-		return nil, errors.Wrap(err, "signature mismatch")
+		return nil, nil, errors.Wrap(err, "signature mismatch")
 	}
 
-	return authReq, nil
+	return authReq, fromIdentity, nil
 }
 
 func (s *ClusterService) handleMessage(stream ClusterStepStream, addr string, exp *certificateExpirationCheck, channel string, sender uint64, streamID uint64) error {
@@ -242,9 +253,18 @@ func (c *ClusterService) ConfigureNodeCerts(newNodes []*common.Consenter) error 
 		c.Membership.MemberMapping[uint64(nodeIdentity.Id)] = nodeIdentity.Identity
 	}
 
-	// Iterate over existing streams and prune those that should not be there anymore
-	c.Membership.AuthorizedStreams.Range(func(streamID, nodeID interface{}) bool {
-		if _, exists := c.Membership.MemberMapping[nodeID.(uint64)]; !exists {
+	// Iterate over existing streams and prune those that should not be there
+	// anymore: either the node ID was removed, or its identity (cert) was
+	// rotated. In the latter case the stream authenticated under the old cert
+	// and must re-authenticate against the new one.
+	c.Membership.AuthorizedStreams.Range(func(streamID, stream any) bool {
+		as, ok := stream.(authorizedStream)
+		if !ok {
+			c.Membership.AuthorizedStreams.Delete(streamID.(uint64))
+			return true
+		}
+		currentIdentity, exists := c.Membership.MemberMapping[as.nodeID]
+		if !exists || !bytes.Equal(currentIdentity, as.identity) {
 			c.Membership.AuthorizedStreams.Delete(streamID.(uint64))
 		}
 		return true
