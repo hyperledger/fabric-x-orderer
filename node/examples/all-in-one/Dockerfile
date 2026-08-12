@@ -38,18 +38,17 @@ ARG REVISION=1.0
 WORKDIR /src
 COPY --from=builder /src /src
 
-# binaries already cross-compiled → just move them
-RUN cp /src/bin/arma /usr/local/bin/arma && \
-    cp /src/bin/armageddon /usr/local/bin/armageddon
+# binaries already cross-compiled → place them directly (no RUN, so no foreign-arch
+# exec under QEMU: only RUN invokes a process in the emulated target platform)
+COPY --from=builder /src/bin/arma /usr/local/bin/arma
+COPY --from=builder /src/bin/armageddon /usr/local/bin/armageddon
 
 # scripts
-COPY node/examples/all-in-one/entrypoint.sh /entrypoint.sh
-COPY node/examples/all-in-one/run_all.sh /run_all.sh
+COPY --chmod=755 node/examples/all-in-one/entrypoint.sh /entrypoint.sh
+COPY --chmod=755 node/examples/all-in-one/run_all.sh /run_all.sh
 
 # network topology, so the image runs standalone without a /config mount
 COPY node/examples/all-in-one/config /config
-
-RUN chmod +x /entrypoint.sh /run_all.sh
 
 # OCI metadata labels
 LABEL org.opencontainers.image.created="${CREATED}" \
