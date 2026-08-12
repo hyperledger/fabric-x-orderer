@@ -78,3 +78,20 @@ jobs:
             docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:latest
             ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:${{ env.VERSION }}
             ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:latest
+
+      - name: Build and Push Multi-Platform All-In-One Test Node Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./node/examples/all-in-one/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/s390x
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            CREATED=${{ env.CREATED }}
+            REVISION=${{ env.REVISION }}
+          push: true
+          tags: |
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:${{ env.VERSION }}
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:latest
+            ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:${{ env.VERSION }}
+            ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:latest

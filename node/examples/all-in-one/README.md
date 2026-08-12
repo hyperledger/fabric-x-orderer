@@ -5,12 +5,14 @@
 This example builds a single Docker image that runs a full Arma network consisting of 4 parties and 1 shard within a single container.
 
 Each party includes:
+
 - Router
 - Batcher
 - Consenter
 - Assembler
 
 The container is responsible for:
+
 - running the Arma services
 - executing the test using `armageddon load` and `armageddon receive`
 
@@ -30,6 +32,30 @@ All communication is done via **localhost + ports**, without DNS or `/etc/hosts`
 
 - Docker installed
 - Linux environment (tested on RHEL)
+
+---
+
+## Published Image
+
+On every tagged release, this image is published to Docker Hub and GHCR for `linux/amd64`, `linux/arm64`, and `linux/s390x`:
+
+```text
+docker.io/hyperledger/fabric-x-orderer-test-node:<version>
+ghcr.io/hyperledger/fabric-x-orderer-test-node:<version>
+```
+
+(`:latest` is also published alongside each versioned tag.)
+
+The network topology config is baked into the image, so it runs standalone — no `/config` bind mount required:
+
+```bash
+docker run -d \
+  -p 6022:6022 -p 6023:6023 -p 6024:6024 -p 6025:6025 \
+  -p 6122:6122 -p 6123:6123 -p 6124:6124 -p 6125:6125 \
+  -p 6222:6222 -p 6223:6223 -p 6224:6224 -p 6225:6225 \
+  -p 6322:6322 -p 6323:6323 -p 6324:6324 -p 6325:6325 \
+  docker.io/hyperledger/fabric-x-orderer-test-node:<version>
+```
 
 ---
 
@@ -84,12 +110,12 @@ What the scripts do:
 
 Each party uses fixed ports:
 
-| Component   | Party 1 | Party 2 | Party 3 | Party 4 |
-|------------|--------|--------|--------|--------|
-| Router     | 6022   | 6122   | 6222   | 6322   |
-| Assembler  | 6023   | 6123   | 6223   | 6323   |
-| Batcher    | 6024   | 6124   | 6224   | 6324   |
-| Consenter  | 6025   | 6125   | 6225   | 6325   |
+| Component | Party 1 | Party 2 | Party 3 | Party 4 |
+| --------- | ------- | ------- | ------- | ------- |
+| Router    | 6022    | 6122    | 6222    | 6322    |
+| Assembler | 6023    | 6123    | 6223    | 6323    |
+| Batcher   | 6024    | 6124    | 6224    | 6324    |
+| Consenter | 6025    | 6125    | 6225    | 6325    |
 
 Ports are exposed from the container to the host to allow the test client (armageddon) to connect.
 
@@ -133,6 +159,7 @@ Container path:
 ```
 
 Roles:
+
 - router
 - assembler
 - batcher
@@ -155,6 +182,7 @@ Current test configuration:
 Equivalent commands executed inside container:
 
 ### Receiver
+
 ```bash
 armageddon receive \
   --config=/tmp/arma-all-in-one/config/party1/user_config.yaml \
@@ -164,6 +192,7 @@ armageddon receive \
 ```
 
 ### Loader
+
 ```bash
 armageddon load \
   --config=/tmp/arma-all-in-one/config/party1/user_config.yaml \
@@ -219,6 +248,7 @@ Important files:
 - All communication is done via localhost ports
 - Loader may print connection closing or retry messages — this is expected
 - Configuration is generated under:
+
 ```
 /tmp/arma-all-in-one/config/
 ```
