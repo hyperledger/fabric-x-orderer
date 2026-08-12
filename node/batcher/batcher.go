@@ -163,7 +163,7 @@ func (b *Batcher) Run() {
 	b.logger.Infof("Logging spec service serving on URL: %s", operations.LogSpecServiceURL(b.opsSystem, b.logger))
 	b.logger.Infof("Version info serving on URL: %s", operations.VersionInfoServiceURL(b.opsSystem, b.logger))
 
-	b.status.Set(node_utils.StateRunning, b.config.Bundle.ConfigtxValidator().Sequence())
+	b.status.SetState(node_utils.StateRunning)
 }
 
 func (b *Batcher) GetStatus() node_utils.NodeStatus {
@@ -176,13 +176,13 @@ func (b *Batcher) Stop() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	state := b.status.GetState()
-	if state == node_utils.StateStopped {
+	currentState := b.status.GetState()
+	if currentState == node_utils.StateStopped {
 		return
 	}
 
 	b.logger.Infof("Stopping batcher node")
-	if state != node_utils.StateSoftStopped && state != node_utils.StatePendingAdmin {
+	if currentState != node_utils.StateSoftStopped && currentState != node_utils.StatePendingAdmin {
 		close(b.stopChan)
 		b.controlEventBroadcaster.Stop()
 		b.batcher.Stop()
@@ -421,21 +421,22 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, newBatcher
 	b.fullConfig = newConfig
 	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum)
 	newConfigSeq := newBatcherConfig.Bundle.ConfigtxValidator().Sequence()
+	b.status.Set(node_utils.StateInitializing, newConfigSeq)
 	b.lock.Unlock()
 
 	// prune mempool
 	b.logger.Infof("Pruning memory pool")
-	var droppedTxCount uint32
+	var droppedTxCount atomic.Uint32
 	verifyOnReconfig := func(req []byte) error {
 		if err := b.requestsInspectorVerifier.VerifyRequest(req); err != nil {
-			atomic.AddUint32(&droppedTxCount, 1)
+			droppedTxCount.Add(1)
 			b.logger.Warnf("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
 			return err
 		}
 		return nil
 	}
 	b.batcher.MemPool.Prune(verifyOnReconfig)
-	b.logger.Infof("Mempool pruning completed: %d transactions were dropped", atomic.LoadUint32(&droppedTxCount))
+	b.logger.Infof("Mempool pruning completed: %d transactions were dropped", droppedTxCount.Load())
 
 	// init batcher again
 	b.logger.Infof("Initialize new batcher")
