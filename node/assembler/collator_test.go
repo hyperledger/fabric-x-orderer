@@ -257,7 +257,7 @@ func createCollator(t *testing.T, shardCount int, ConfigProcessor assembler.Conf
 	ledger, err := ledgerFactory.Create(logger, tempDir)
 	require.NoError(t, err)
 
-	ledger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewProvider(generate.DefaultMetricsProviderType, logger), "test_party", testutil.CreateLogger(t, 0))
+	ledger.Metrics().NewAssemblerLedgerMetrics(monitoring.NewProvider(generate.DefaultMetricsProviderType, logger), "test_party")
 
 	ledger.AppendConfig(&state.OrderingInformation{
 		CommonBlock: utils.EmptyGenesisBlock("test"),

@@ -6,7 +6,6 @@ SPDX-License-Identifier: Apache-2.0
 package ledger
 
 import (
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 )
 
@@ -37,13 +36,10 @@ type AssemblerLedgerMetrics struct {
 	TransactionCount metrics.Counter
 	BlocksSize       metrics.Counter
 	BlocksCount      metrics.Counter
-	logger           *flogging.FabricLogger
 }
 
-func (al *AssemblerLedgerMetrics) NewAssemblerLedgerMetrics(p metrics.Provider, partyID string, logger *flogging.FabricLogger) {
+func (al *AssemblerLedgerMetrics) NewAssemblerLedgerMetrics(p metrics.Provider, partyID string) {
 	al.TransactionCount = p.NewCounter(transactionCountOpts).With([]string{partyID}...)
 	al.BlocksSize = p.NewCounter(blocksSizeOpts).With([]string{partyID}...)
 	al.BlocksCount = p.NewCounter(blocksCountOpts).With([]string{partyID}...)
-
-	al.logger = logger
 }

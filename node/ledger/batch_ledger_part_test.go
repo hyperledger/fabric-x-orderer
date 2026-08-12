@@ -24,7 +24,7 @@ import (
 func TestBatchLedgerPart(t *testing.T) {
 	dir := t.TempDir()
 	logger := flogging.MustGetLogger("test")
-	metrics := newTestBatchLedgerMetrics(logger)
+	metrics := newTestBatchLedgerMetrics()
 
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(dir, -1),
@@ -75,7 +75,7 @@ func TestBatchLedgerPart(t *testing.T) {
 // recomputing one over the payload.
 func TestBatchLedgerPart_AppendWithDigest(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
-	metrics := newTestBatchLedgerMetrics(logger)
+	metrics := newTestBatchLedgerMetrics()
 
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(t.TempDir(), -1),
@@ -103,7 +103,7 @@ func TestBatchLedgerPart_AppendWithDigest(t *testing.T) {
 func TestBatchLedgerPart_Iterator(t *testing.T) {
 	dir := t.TempDir()
 	logger := flogging.MustGetLogger("test")
-	metrics := newTestBatchLedgerMetrics(logger)
+	metrics := newTestBatchLedgerMetrics()
 
 	provider, err := blkstorage.NewProvider(
 		blkstorage.NewConf(dir, -1),
@@ -137,8 +137,8 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 	require.Equal(t, uint64(6), block.GetHeader().GetNumber())
 }
 
-func newTestBatchLedgerMetrics(logger *flogging.FabricLogger) *BatchLedgerMetrics {
+func newTestBatchLedgerMetrics() *BatchLedgerMetrics {
 	m := &BatchLedgerMetrics{}
-	m.NewBatchLedgerMetrics(&disabled.Provider{}, "0", "0", logger)
+	m.NewBatchLedgerMetrics(&disabled.Provider{}, "0", "0")
 	return m
 }

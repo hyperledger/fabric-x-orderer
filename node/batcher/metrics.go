@@ -145,7 +145,7 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo
 	versionGauge := monitoring.VersionGauge(provider)
 	versionGauge.With(metadata.Version).Set(1)
 
-	ledgerMetrics.NewBatchLedgerMetrics(provider, partyID, shardID, logger)
+	ledgerMetrics.NewBatchLedgerMetrics(provider, partyID, shardID)
 
 	// initialize metrics from ledger
 	var batches, pulled uint64
