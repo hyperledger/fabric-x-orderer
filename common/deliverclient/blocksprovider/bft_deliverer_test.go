@@ -280,6 +280,15 @@ func (s *bftDelivererTestSetup) assertEventuallyMonitorCallCount(n int) {
 			s.mutex.Lock()
 			defer s.mutex.Unlock()
 
+			// The monitor is created asynchronously by the factory: the fake records the
+			// Create invocation (bumping CreateCallCount) before the stub assigns
+			// s.fakeCensorshipMon. A caller that only waited on CreateCallCount can reach
+			// here while the field is still nil, so return a sentinel and let Eventually
+			// retry rather than dereferencing nil and panicking.
+			if s.fakeCensorshipMon == nil {
+				return -1
+			}
+
 			return s.fakeCensorshipMon.MonitorCallCount()
 		}, eventuallyTO,
 	).Should(Equal(n))
