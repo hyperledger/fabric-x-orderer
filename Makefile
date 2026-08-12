@@ -22,7 +22,7 @@
 # Docker image vars
 DOCKERFILE ?= images/multi-platform/Dockerfile
 TEST_NODE_DOCKERFILE ?= node/examples/all-in-one/Dockerfile
-IMAGE_NAMESPACE = icr.io/cbdc
+IMAGE_NAMESPACE = docker.io/hyperledger
 IMAGE_NAME = fabric-x-orderer
 TEST_NODE_IMAGE_NAME = fabric-x-orderer-test-node
 VERSION = latest
