@@ -669,7 +669,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 		require.NoError(t, err)
 		knownCerts = append(knownCerts, certBytes)
 	}
-	configUpdateBuilder.UpdateOrgKnownCerts(t, updateOrg, knownCerts)
+	configUpdateBuilder.UpdateOrdererOrgKnownCerts(t, updateOrg, knownCerts)
 
 	// Submit a new config update
 	env = configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
