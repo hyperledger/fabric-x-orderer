@@ -108,7 +108,7 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 
 	t.Run("Expired consenter TLS certificate", func(t *testing.T) {
 		// expired consenter cert
-		expiredConsenterTLSCert := generateTestTLSCert(t, tlsCACert, tlsCAKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
+		expiredConsenterTLSCert := generateTestTLSCert(t, tlsCACert, tlsCAKey, now.Add(-12*time.Hour), now.Add(-1*time.Hour))
 
 		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
@@ -217,7 +217,7 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 	})
 
 	t.Run("Expired consenter signing certificate", func(t *testing.T) {
-		expiredSignCert := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
+		expiredSignCert := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-12*time.Hour), now.Add(-1*time.Hour))
 
 		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
@@ -277,7 +277,7 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 	})
 
 	t.Run("Expired batcher signing certificate", func(t *testing.T) {
-		expiredSignCert := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-48*time.Hour), now.Add(-24*time.Hour))
+		expiredSignCert := generateTestSigningCert(t, signCACert, signCAKey, now.Add(-12*time.Hour), now.Add(-1*time.Hour))
 
 		partyConfig := &ordererpb.PartyConfig{
 			TLSCACerts: [][]byte{tlsCACertPEM},
@@ -307,6 +307,54 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 		// Should succeed when expiration is ignored
 		err = validatePartyCertificates(partyConfig, true)
 		require.NoError(t, err)
+	})
+}
+
+func TestVerifyCert_IgnoreExpiration(t *testing.T) {
+	now := time.Now()
+	ca, caKey, caPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+	_, _, otherCAPEM := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+
+	trusted := x509.NewCertPool()
+	require.True(t, trusted.AppendCertsFromPEM(caPEM))
+	untrusted := x509.NewCertPool()
+	require.True(t, untrusted.AppendCertsFromPEM(otherCAPEM))
+
+	opts := x509.VerifyOptions{
+		Roots: trusted,
+		KeyUsages: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
+		},
+	}
+	untrustedOpts := opts
+	untrustedOpts.Roots = untrusted
+
+	expiredCert := generateTestTLSCert(t, ca, caKey, now.Add(-12*time.Hour), now.Add(-1*time.Hour))
+
+	t.Run("Expired TLS certificate", func(t *testing.T) {
+		err := verifyCert(expiredCert, opts, true)
+		require.NoError(t, err)
+	})
+
+	t.Run("TLS certificate with untrusted CA", func(t *testing.T) {
+		err := verifyCert(expiredCert, untrustedOpts, true)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "verifying certificate with serial number")
+	})
+
+	t.Run("Invalid TLS key usage", func(t *testing.T) {
+		cert := generateTestTLSCert(t, ca, caKey, now.Add(-12*time.Hour), now.Add(-1*time.Hour), x509.ExtKeyUsageEmailProtection)
+		err := verifyCert(cert, opts, true)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "verifying certificate with serial number")
+	})
+
+	t.Run("Not yet valid TLS certificate", func(t *testing.T) {
+		cert := generateTestTLSCert(t, ca, caKey, now.Add(24*time.Hour), now.Add(365*24*time.Hour))
+		err := verifyCert(cert, opts, true)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not yet valid")
 	})
 }
 
@@ -340,7 +388,11 @@ func generateTestCAWithKey(t *testing.T, notBefore, notAfter time.Time) (*x509.C
 	return cert, priv, certPEM
 }
 
-func generateTestTLSCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, notBefore, notAfter time.Time) []byte {
+func generateTestTLSCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, notBefore, notAfter time.Time, eku ...x509.ExtKeyUsage) []byte {
+	if len(eku) == 0 {
+		eku = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
+	}
+
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
@@ -356,7 +408,7 @@ func generateTestTLSCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.Pr
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		ExtKeyUsage:           eku,
 		BasicConstraintsValid: true,
 		IsCA:                  false,
 	}
@@ -364,8 +416,7 @@ func generateTestTLSCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.Pr
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, caCert, &priv.PublicKey, caKey)
 	require.NoError(t, err)
 
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	return certPEM
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 }
 
 func generateTestSigningCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, notBefore, notAfter time.Time) []byte {

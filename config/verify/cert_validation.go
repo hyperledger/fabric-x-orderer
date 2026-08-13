@@ -126,15 +126,22 @@ func verifyCert(raw []byte, opts x509.VerifyOptions, ignoreExpiration bool) erro
 	if len(raw) == 0 {
 		return errors.New("certificate is empty")
 	}
+
 	cert, err := parseCertificateFromBytes(raw)
 	if err != nil {
 		return err
 	}
 
-	if _, err = cert.Verify(opts); err != nil {
-		if validationRes, ok := err.(x509.CertificateInvalidError); !ok || (!ignoreExpiration || validationRes.Reason != x509.Expired) || time.Now().Before(cert.NotBefore) {
-			return errors.Wrapf(err, "verifying certificate with serial number %d", cert.SerialNumber)
-		}
+	if ignoreExpiration {
+		opts.CurrentTime = cert.NotBefore
+	}
+
+	if _, err := cert.Verify(opts); err != nil {
+		return errors.Wrapf(err, "verifying certificate with serial number %d", cert.SerialNumber)
+	}
+
+	if ignoreExpiration && time.Now().Before(cert.NotBefore) {
+		return errors.Errorf("certificate with serial number %d is not yet valid", cert.SerialNumber)
 	}
 
 	return nil
