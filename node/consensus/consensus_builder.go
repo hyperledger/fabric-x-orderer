@@ -233,13 +233,14 @@ func buildVerifier(consenterInfos []node_config.ConsenterInfo, shardInfo []node_
 
 // shouldSyncOnStart reports whether the node must synchronize with the cluster before it starts
 // participating in consensus, given the join config block it booted from and its current ledger
-// height. It returns true when the join config block's decision number is ahead of the ledger
-// height, which covers two cases:
+// height. The ledger height equals the last committed decision number plus one, so the node has
+// committed every decision below height. It returns true when the join config block's decision
+// number is at or beyond height (i.e. a decision the node has not yet committed), which covers:
 //   - a brand-new node joining with an empty ledger from a non-genesis config block, and
 //   - a node rejoining with a stale, non-empty ledger from a more-advanced config block.
 //
 // The genesis block (decision number 0) with an empty ledger yields false, as does a node whose
-// ledger is already current with (or ahead of) the join config block.
+// ledger already contains the join config block's decision.
 func shouldSyncOnStart(logger *flogging.FabricLogger, lastConfigBlock *common.Block, height uint64) bool {
 	if lastConfigBlock.Header.Number == 0 {
 		// Genesis config block: only a fresh node (empty ledger) could be here, and it starts
@@ -255,7 +256,7 @@ func shouldSyncOnStart(logger *flogging.FabricLogger, lastConfigBlock *common.Bl
 			lastConfigBlock.Header.Number, err)
 	}
 
-	return uint64(ordInfo.DecisionNum) > height
+	return uint64(ordInfo.DecisionNum) >= height
 }
 
 func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_config.ConsenterNodeConfig, lastConfigBlock *common.Block, consLedger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature, arma_types.DecisionNum, []byte) {

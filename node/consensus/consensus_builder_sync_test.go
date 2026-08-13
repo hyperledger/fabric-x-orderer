@@ -67,10 +67,19 @@ func TestShouldSyncOnStart(t *testing.T) {
 		require.True(t, shouldSyncOnStart(logger, joinConfigBlock, 14))
 	})
 
+	t.Run("rejoin behind by exactly one decision requires sync", func(t *testing.T) {
+		// The ledger height is 14, meaning the node has committed decisions up to number 13
+		// (height == last committed decision + 1). A join config block at decision 14 is the very
+		// next decision the node has NOT yet committed, so it is behind and must sync. This is the
+		// boundary between "behind" and "current".
+		joinConfigBlock := makeConfigBlockWithDecisionNum(t, 12, 14)
+		require.True(t, shouldSyncOnStart(logger, joinConfigBlock, 14))
+	})
+
 	t.Run("up-to-date node recovering from its own ledger does not sync", func(t *testing.T) {
-		// The join config block's decision number is not ahead of the ledger height, so the node
-		// is already current and must not force a sync on start.
-		joinConfigBlock := makeConfigBlockWithDecisionNum(t, 12, 10)
+		// The node has committed decisions up to 13 (height 14). The join config block's decision
+		// number (13) is one the node already has, so it is current and must not force a sync.
+		joinConfigBlock := makeConfigBlockWithDecisionNum(t, 12, 13)
 		require.False(t, shouldSyncOnStart(logger, joinConfigBlock, 14))
 	})
 
