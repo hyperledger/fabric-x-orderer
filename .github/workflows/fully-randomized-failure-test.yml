@@ -2,14 +2,15 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-name: Deterministic Failure Test
+name: Fully Randomized Failure Test
 
 on:
   schedule:
-    # Sun, Tue, Thu: 2-hour test at 03:00 UTC
-    - cron: '0 3 * * 0,2,4'
-    # Sat: extended 5.5-hour test at 03:00 UTC
-    - cron: '0 3 * * 6'
+    # Mon, Wed, Fri: 2-hour test at 03:00 UTC
+    - cron: '0 3 * * 1,3,5'
+    # Sat: extended 5.5-hour test at 09:00 UTC
+    #      (deterministic starts 03:00, runs 5.5h → ends 08:30, +30 min gap = 09:00)
+    - cron: '0 9 * * 6'
 
   workflow_dispatch:
     inputs:
@@ -47,7 +48,7 @@ on:
           - '2'
           - '4'
       failure_runner_enabled:
-        description: 'Enable deterministic failure runner'
+        description: 'Enable fully randomized failure runner'
         required: true
         default: true
         type: boolean
@@ -70,8 +71,8 @@ permissions:
   contents: read
 
 jobs:
-  deterministic-failure-test:
-    name: Deterministic Failure Test
+  fully-randomized-failure-test:
+    name: Fully Randomized Failure Test
     runs-on: ubuntu-latest
     timeout-minutes: 350
     if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.repository == 'hyperledger/fabric-x-orderer'
@@ -111,7 +112,7 @@ jobs:
             fi
           fi
 
-      - name: Run Deterministic Failure Test
+      - name: Run Fully Randomized Failure Test
         env:
           DURATION_MINUTES: ${{ steps.duration.outputs.minutes }}
           TX_RATE: ${{ inputs.tx_rate || '1000' }}
@@ -122,24 +123,28 @@ jobs:
           FAILURE_RUNNER_STOP_DURATION: ${{ inputs.failure_runner_stop_duration || '60' }}
           FAILURE_RUNNER_RESTART_WAIT: ${{ inputs.failure_runner_restart_wait || '60' }}
         run: |
-          chmod +x test/deterministic-failure-test/*.sh
-          test/deterministic-failure-test/deterministic-failure-test.sh
+          chmod +x test/fully-randomized-failure-test/*.sh
+          test/fully-randomized-failure-test/fully-randomized-failure-test.sh
 
       - name: Publish test summary
         if: always()
         run: |
-          echo "## Deterministic Failure Test — Run #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Fully Randomized Failure Test — Run #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           if [ -f test-results/summary.txt ]; then
             cat test-results/summary.txt >> $GITHUB_STEP_SUMMARY
           else
             echo "_No summary files were produced._" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f test-results/summary-kills.txt ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat test-results/summary-kills.txt >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload statistics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: deterministic-failure-test-statistics-${{ github.run_number }}
+          name: fully-randomized-failure-test-statistics-${{ github.run_number }}
           path: test-results/statistics/
           retention-days: 30
 
@@ -147,8 +152,17 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: deterministic-failure-test-logs-${{ github.run_number }}
+          name: fully-randomized-failure-test-logs-${{ github.run_number }}
           path: test-results/logs/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload kill report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fully-randomized-failure-test-kill-report-${{ github.run_number }}
+          path: test-results/summary-kills.txt
           retention-days: 30
           if-no-files-found: ignore
 
@@ -172,7 +186,7 @@ jobs:
             echo "SLACK_WEBHOOK_URL is not set — skipping notification"
             exit 0
           fi
-          TEXT=":red_circle: *Deterministic Failure Test FAILED* — Run #${{ github.run_number }}\n>$REASON"
+          TEXT=":red_circle: *Fully Randomized Failure Test FAILED* — Run #${{ github.run_number }}\n>$REASON"
           curl -s --fail -X POST "$SLACK_WEBHOOK_URL" \
             -H 'Content-type: application/json' \
             --data "{

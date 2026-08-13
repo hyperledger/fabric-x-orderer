@@ -181,7 +181,16 @@ test-results/
 
 The workflow is defined at `.github/workflows/deterministic-failure-test.yml`.
 
-It runs on a schedule (Sunday–Thursday: 2-hour test, Friday: 5.5-hour test) and can also be triggered manually via `workflow_dispatch`.
+Schedule:
+
+| Day | Time (UTC) | Duration |
+| --- | ---------- | -------- |
+| Sun | 03:00      | 2 hours  |
+| Tue | 03:00      | 2 hours  |
+| Thu | 03:00      | 2 hours  |
+| Sat | 03:00      | 5.5 hours |
+
+It alternates with the fully randomized failure test (Mon/Wed/Fri) so both tests run on separate days. The workflow can also be triggered manually via `workflow_dispatch`.
 
 Steps:
 1. Checks out the repository.
