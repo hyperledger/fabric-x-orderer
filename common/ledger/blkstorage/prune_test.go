@@ -8,6 +8,7 @@ package blkstorage
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
@@ -45,6 +46,28 @@ func newPrunableTestLedger(
 	}
 
 	return env, w, blocks
+}
+
+// pruneFilesUpTo advances the marker to the first block of firstStoredBlockfileNum and unlinks every block
+// file below it, producing the on-disk state that pruning leaves behind.
+func pruneFilesUpTo(t *testing.T, mgr *blockfileMgr, firstStoredBlockfileNum int) {
+	// Pruning never removes the file holding lastPersistedBlock, so neither may this fixture.
+	require.LessOrEqual(t, uint64(firstStoredBlockfileNum)*blocksPerFileForTest, mgr.blockfilesInfo.lastPersistedBlock,
+		"fixture would remove the file holding lastPersistedBlock")
+
+	require.NoError(t, mgr.pruner.setMarker(&pruneMarker{
+		firstReadableBlockNum:   uint64(firstStoredBlockfileNum * blocksPerFileForTest),
+		firstStoredBlockfileNum: firstStoredBlockfileNum,
+	}))
+	for f := 0; f < firstStoredBlockfileNum; f++ {
+		require.NoError(t, os.Remove(deriveBlockfilePath(mgr.rootDir, f)))
+	}
+}
+
+// rewindIndexSavepoint sets the index savepoint back to lastIndexedBlock, leaving the index behind the
+// block files. syncIndex rebuilds only in that state.
+func rewindIndexSavepoint(t *testing.T, mgr *blockfileMgr, lastIndexedBlock uint64) {
+	require.NoError(t, mgr.db.Put(indexSavePointKey, encodeBlockNum(lastIndexedBlock), true))
 }
 
 // Scenario:
@@ -305,4 +328,105 @@ func TestPruneMgrLoadsThePersistedMarker(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), reloaded.firstReadableBlockNum())
 	require.Equal(t, 1, reloaded.firstStoredBlockfileNum())
+}
+
+// Scenario:
+// 1. Store 50 blocks across 5 block files.
+// 2. Write a prune marker at block 20 / file 2 and delete block files 0 and 1.
+// 3. Rewind the index savepoint to block 45, so syncIndex has a tail to rebuild.
+// 4. Close the store and reopen it.
+// 5. Expect the open to succeed, the marker to be reported back, and Height to stay 50.
+// 6. Expect block 19 to fail with ErrPruned and blocks 20..49 to be returned.
+// 7. Append one more block and expect Height to become 51.
+func TestReopenPrunedLedgerRebuildsIndexFromSurvivingFiles(t *testing.T) {
+	path := t.TempDir()
+	const firstAvailableFile = 2
+	const firstAvailable = firstAvailableFile * blocksPerFileForTest
+
+	env, w, blocks := newPrunableTestLedger(t, path, 50)
+	pruneFilesUpTo(t, w.blockfileMgr, firstAvailableFile)
+	rewindIndexSavepoint(t, w.blockfileMgr, uint64(len(blocks)-5))
+	env.provider.Close()
+
+	reopened := newTestEnv(t, NewConf(path, 0))
+	defer reopened.Cleanup()
+	store, err := reopened.provider.Open("testLedger")
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(firstAvailable), store.FirstAvailableBlockNumber())
+	require.Equal(t, firstAvailableFile, store.fileMgr.pruner.firstStoredBlockfileNum())
+
+	info, err := store.GetBlockchainInfo()
+	require.NoError(t, err)
+	require.Equal(t, uint64(len(blocks)), info.Height)
+
+	_, err = store.RetrieveBlockByNumber(firstAvailable - 1)
+	require.ErrorIs(t, err, ErrPruned)
+
+	for i := firstAvailable; i < len(blocks); i++ {
+		got, err := store.RetrieveBlockByNumber(uint64(i))
+		require.NoError(t, err)
+		require.Equal(t, blocks[i], got)
+	}
+
+	next := testutil.ConstructTestBlock(t, info.Height, 1, 10)
+	next.Header.PreviousHash = info.CurrentBlockHash
+	require.NoError(t, store.AddBlock(next))
+	require.Equal(t, uint64(len(blocks)+1), store.fileMgr.getBlockchainInfo().Height)
+}
+
+// Scenario:
+// 1. Store 50 blocks across 5 block files.
+// 2. Write a prune marker at block 20 / file 2 and delete block files 0 and 1.
+// 3. Rewind the index savepoint to block 5, below the marker.
+// 4. Close the store and reopen it.
+// 5. Expect the open to succeed and blocks 20..49 to be returned.
+// 6. Expect block 19 to fail with ErrPruned.
+func TestReopenPrunedLedgerWithIndexBehindPruneFrontier(t *testing.T) {
+	path := t.TempDir()
+	const firstAvailableFile = 2
+	const firstAvailable = firstAvailableFile * blocksPerFileForTest
+
+	env, w, blocks := newPrunableTestLedger(t, path, 50)
+	pruneFilesUpTo(t, w.blockfileMgr, firstAvailableFile)
+	rewindIndexSavepoint(t, w.blockfileMgr, 5)
+	env.provider.Close()
+
+	reopened := newTestEnv(t, NewConf(path, 0))
+	defer reopened.Cleanup()
+	store, err := reopened.provider.Open("testLedger")
+	require.NoError(t, err)
+
+	for i := firstAvailable; i < len(blocks); i++ {
+		got, err := store.RetrieveBlockByNumber(uint64(i))
+		require.NoError(t, err)
+		require.Equal(t, blocks[i], got)
+	}
+	_, err = store.RetrieveBlockByNumber(firstAvailable - 1)
+	require.ErrorIs(t, err, ErrPruned)
+}
+
+// Scenario:
+// 1. Store 50 blocks across 5 block files.
+// 2. Write a prune marker at block 20 / file 2 and delete block files 0 and 1.
+// 3. Roll the marker back to block 10 / file 1, which has already been deleted.
+// 4. Rewind the index savepoint to block 45 and close the store.
+// 5. Expect reopening to fail with an error naming the missing block file and the prune point.
+func TestOpenPrunedLedgerWithStaleMarker(t *testing.T) {
+	path := t.TempDir()
+
+	env, w, blocks := newPrunableTestLedger(t, path, 50)
+	pruneFilesUpTo(t, w.blockfileMgr, 2)
+	require.NoError(t, w.blockfileMgr.pruner.setMarker(&pruneMarker{
+		firstReadableBlockNum:   blocksPerFileForTest,
+		firstStoredBlockfileNum: 1,
+	}))
+	rewindIndexSavepoint(t, w.blockfileMgr, uint64(len(blocks)-5))
+	env.provider.Close()
+
+	reopened := newTestEnv(t, NewConf(path, 0))
+	defer reopened.Cleanup()
+	_, err := reopened.provider.Open("testLedger")
+	require.ErrorContains(t, err, "block file [1] is missing")
+	require.ErrorContains(t, err, "pruned up to block [10]")
 }

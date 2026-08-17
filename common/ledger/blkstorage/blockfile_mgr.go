@@ -410,12 +410,29 @@ func (mgr *blockfileMgr) syncIndex() error {
 		return nil
 	}
 
-	startFileNum := 0
+	// On a pruned ledger the block files no longer start at blockfile_000000, so the rebuild scan has to
+	// begin at the first file that survived pruning.
+	startFileNum := mgr.pruner.firstStoredBlockfileNum()
 	startOffset := 0
 	skipFirstBlock := false
 	endFileNum := mgr.blockfilesInfo.latestFileNumber
 
-	firstAvailableBlkNum, err := retrieveFirstBlockNumFromFile(mgr.rootDir, 0)
+	// If that file is absent, the marker and the files disagree.  This is unrecoverable, the pruned blocks
+	// are gone, so return an error. Note the opposite skew is benign: files below the marker are orphans
+	// left by a crash mid-prune, and removing them again is the next prune's job.
+	exists, _, err := fileutil.FileExists(deriveBlockfilePath(mgr.rootDir, startFileNum))
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.Errorf(
+			"cannot sync index with block files. block file [%d] is missing; the blockstore is pruned "+
+				"up to block [%d] but its block files do not start there",
+			startFileNum, mgr.pruner.firstReadableBlockNum(),
+		)
+	}
+
+	firstAvailableBlkNum, err := retrieveFirstBlockNumFromFile(mgr.rootDir, startFileNum)
 	if err != nil {
 		return err
 	}
