@@ -107,13 +107,45 @@ func TestBinarySearchBlockFileNum(t *testing.T) {
 	require.Len(t, files, 11)
 
 	for i := uint64(0); i < 100; i++ {
-		fileNum, err := binarySearchFileNumForBlock(ledgerDir, i)
+		fileNum, err := binarySearchFileNumForBlock(ledgerDir, 0, i)
 		require.NoError(t, err)
 		locFromIndex, err := blkfileMgr.index.getBlockLocByBlockNum(i)
 		require.NoError(t, err)
 		expectedFileNum := locFromIndex.fileSuffixNum
 		require.Equal(t, expectedFileNum, fileNum)
 	}
+
+	// Scenario:
+	//  1. Delete block files 0..2, so the ledger starts at file 3.
+	//  2. For every block from the first one in file 3 onward, expect the bounded search to return the
+	//     file number the index reports.
+	//  3. For a block below the first surviving one, expect the bounded search to return file 3 and the
+	//     unbounded search to fail.
+	t.Run("with a lower bound after the lowest files are removed", func(t *testing.T) {
+		const firstFileNum = 3
+		firstSurvivingBlock, err := retrieveFirstBlockNumFromFile(ledgerDir, firstFileNum)
+		require.NoError(t, err)
+		for f := 0; f < firstFileNum; f++ {
+			require.NoError(t, os.Remove(deriveBlockfilePath(ledgerDir, f)))
+		}
+
+		for i := firstSurvivingBlock; i < 100; i++ {
+			fileNum, err := binarySearchFileNumForBlock(ledgerDir, firstFileNum, i)
+			require.NoError(t, err)
+			locFromIndex, err := blkfileMgr.index.getBlockLocByBlockNum(i)
+			require.NoError(t, err)
+			require.Equal(t, locFromIndex.fileSuffixNum, fileNum)
+		}
+
+		belowFrontier := firstSurvivingBlock - 1
+
+		fileNum, err := binarySearchFileNumForBlock(ledgerDir, firstFileNum, belowFrontier)
+		require.NoError(t, err)
+		require.Equal(t, firstFileNum, fileNum)
+
+		_, err = binarySearchFileNumForBlock(ledgerDir, 0, belowFrontier)
+		require.Error(t, err)
+	})
 }
 
 func TestIsBootstrappedFromSnapshot(t *testing.T) {
