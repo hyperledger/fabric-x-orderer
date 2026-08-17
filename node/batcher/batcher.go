@@ -87,8 +87,7 @@ type Batcher struct {
 	running                            sync.WaitGroup // maybe change the name, it is only for state replicator
 	stopChan                           chan struct{}
 	mainExitChan                       chan struct{}
-	isStopped                          bool
-	isSoftStopped                      bool
+	status                             node_utils.NodeStatus
 	configAcker                        configack.Sender
 
 	primaryLock sync.RWMutex
@@ -144,9 +143,6 @@ func (b *Batcher) Run() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	b.isStopped = false
-	b.isSoftStopped = false
-
 	b.stopChan = make(chan struct{})
 	b.stateChan = make(chan *state.State, 1)
 
@@ -166,30 +162,27 @@ func (b *Batcher) Run() {
 	b.logger.Infof("Health check serving on URL: %s", operations.HealthCheckServiceURL(b.opsSystem, b.logger))
 	b.logger.Infof("Logging spec service serving on URL: %s", operations.LogSpecServiceURL(b.opsSystem, b.logger))
 	b.logger.Infof("Version info serving on URL: %s", operations.VersionInfoServiceURL(b.opsSystem, b.logger))
+
+	b.status.SetState(node_utils.StateRunning)
 }
 
-func (b *Batcher) GetStatus() string {
+func (b *Batcher) GetStatus() node_utils.NodeStatus {
 	b.lock.Lock()
 	defer b.lock.Unlock()
-	if b.isSoftStopped && !b.isStopped {
-		return "Soft Stopped"
-	}
-	if b.isSoftStopped && b.isStopped {
-		return "Stopped"
-	}
-	return "Running"
+	return b.status
 }
 
 func (b *Batcher) Stop() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	if b.isStopped {
+	currentState := b.status.GetState()
+	if currentState == node_utils.StateStopped {
 		return
 	}
 
 	b.logger.Infof("Stopping batcher node")
-	if !b.isSoftStopped {
+	if currentState != node_utils.StateSoftStopped && currentState != node_utils.StatePendingAdmin {
 		close(b.stopChan)
 		b.controlEventBroadcaster.Stop()
 		b.batcher.Stop()
@@ -210,19 +203,19 @@ func (b *Batcher) Stop() {
 
 	close(b.mainExitChan)
 
-	b.isStopped = true
-	b.isSoftStopped = true
+	b.status.SetState(node_utils.StateStopped)
 }
 
 func (b *Batcher) SoftStop() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	if b.isSoftStopped || b.isStopped {
+	state := b.status.GetState()
+	if state == node_utils.StateSoftStopped || state == node_utils.StateStopped || state == node_utils.StatePendingAdmin {
 		return
 	}
 
-	b.isSoftStopped = true
+	b.status.SetState(node_utils.StateSoftStopped)
 
 	b.logger.Infof("Soft stopping batcher node")
 	close(b.stopChan)
@@ -316,6 +309,9 @@ func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
 	}
 	if isAdminOperationRequired {
 		b.logger.Warnf("Pending admin action to apply new config")
+		b.lock.Lock()
+		b.status.SetState(node_utils.StatePendingAdmin)
+		b.lock.Unlock()
 		return
 	}
 }
@@ -425,21 +421,22 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, newBatcher
 	b.fullConfig = newConfig
 	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum)
 	newConfigSeq := newBatcherConfig.Bundle.ConfigtxValidator().Sequence()
+	b.status.Set(node_utils.StateInitializing, newConfigSeq)
 	b.lock.Unlock()
 
 	// prune mempool
 	b.logger.Infof("Pruning memory pool")
-	var droppedTxCount uint32
+	var droppedTxCount atomic.Uint32
 	verifyOnReconfig := func(req []byte) error {
 		if err := b.requestsInspectorVerifier.VerifyRequest(req); err != nil {
-			atomic.AddUint32(&droppedTxCount, 1)
+			droppedTxCount.Add(1)
 			b.logger.Warnf("Mempool Pruning: failed verifying request with req ID: %s; err: %v", b.requestsInspectorVerifier.RequestID(req), err)
 			return err
 		}
 		return nil
 	}
 	b.batcher.MemPool.Prune(verifyOnReconfig)
-	b.logger.Infof("Mempool pruning completed: %d transactions were dropped", atomic.LoadUint32(&droppedTxCount))
+	b.logger.Infof("Mempool pruning completed: %d transactions were dropped", droppedTxCount.Load())
 
 	// init batcher again
 	b.logger.Infof("Initialize new batcher")
