@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"io"
 	"net"
@@ -24,7 +25,10 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging/httpadmin"
 	"github.com/hyperledger/fabric-lib-go/healthz"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 )
 
 type wrapListener struct {
@@ -289,4 +293,19 @@ func putJSON(url string, v any) (*http.Response, error) {
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Timeout: 5 * time.Second}
 	return client.Do(req)
+}
+
+// ContextWithClientTLSCert returns a context carrying the TLS peer information of an incoming
+// mutual-TLS gRPC connection whose client leaf certificate is pemCert.
+// It allows a test to invoke a server handler in process and still exercise the client certificate
+// checks that handler performs.
+func ContextWithClientTLSCert(t *testing.T, pemCert []byte) context.Context {
+	cert, err := utils.Parsex509Cert(pemCert)
+	require.NoError(t, err)
+
+	return peer.NewContext(context.Background(), &peer.Peer{
+		AuthInfo: credentials.TLSInfo{
+			State: tls.ConnectionState{PeerCertificates: []*x509.Certificate{cert}},
+		},
+	})
 }

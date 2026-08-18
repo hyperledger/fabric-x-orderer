@@ -16,6 +16,8 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 
 	"github.com/stretchr/testify/require"
@@ -41,11 +43,17 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	_, _, _, clean := test_utils.CreateConsenters(t, numParties, consenterNodes, consentersInfo, shards, genesisBlock)
 	defer clean()
 
-	batchers0, configs, loggers, clean := test_utils.CreateBatchersForShard(t, numParties, batcherNodesShard0, shards, consentersInfo, shards[0].ShardId, genesisBlock)
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+
+	batchers0, configs, loggers, clean := test_utils.CreateBatchersForShard(t, numParties, batcherNodesShard0, shards, consentersInfo, routerKeyPairs, shards[0].ShardId, genesisBlock)
 	defer clean()
 
-	batchers1, _, _, clean := test_utils.CreateBatchersForShard(t, numParties, batcherNodesShard1, shards, consentersInfo, shards[1].ShardId, genesisBlock)
+	batchers1, _, _, clean := test_utils.CreateBatchersForShard(t, numParties, batcherNodesShard1, shards, consentersInfo, routerKeyPairs, shards[1].ShardId, genesisBlock)
 	defer clean()
+
+	// requests only arrive at the batcher from the router of its own party, so a submit context must
+	// carry the TLS certificate of that router
+	routerCtx := func(i int) context.Context { return testutil.ContextWithClientTLSCert(t, routerKeyPairs[i].Cert) }
 
 	for i := 0; i < 4; i++ {
 		require.Equal(t, types.PartyID(1), batchers0[i].GetPrimaryID())
@@ -53,7 +61,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}
 
 	// Submit request to primary in shard 0
-	batchers0[0].Submit(context.Background(), tx.CreateStructuredRequest([]byte{1}))
+	batchers0[0].Submit(routerCtx(0), tx.CreateStructuredRequest([]byte{1}))
 
 	// Verify the batchers created a batch in shard 0
 	require.Eventually(t, func() bool {
@@ -61,7 +69,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Submit a request to primary of shard 1
-	batchers1[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{11}))
+	batchers1[1].Submit(routerCtx(1), tx.CreateStructuredRequest([]byte{11}))
 
 	// Verify the batchers created a batch in shard 1
 	require.Eventually(t, func() bool {
@@ -77,8 +85,8 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	batchers0[0].Stop()
 
 	// Submit request to other batchers in shard 0
-	batchers0[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{22}))
-	batchers0[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{22}))
+	batchers0[1].Submit(routerCtx(1), tx.CreateStructuredRequest([]byte{22}))
+	batchers0[2].Submit(routerCtx(2), tx.CreateStructuredRequest([]byte{22}))
 
 	// Validate a term change occurred in shard 0
 	require.Eventually(t, func() bool {
@@ -91,7 +99,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Submit a request to primary of shard 1
-	batchers1[1].Submit(context.Background(), tx.CreateStructuredRequest([]byte{3}))
+	batchers1[1].Submit(routerCtx(1), tx.CreateStructuredRequest([]byte{3}))
 
 	// Verify the batchers created a batch in shard 1
 	require.Eventually(t, func() bool {
@@ -99,7 +107,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Recover old primary in shard 0
-	batchers0[0] = test_utils.RecoverBatcher(t, ca, configs[0], batcherNodesShard0[0], loggers[0])
+	batchers0[0] = test_utils.RecoverBatcher(t, ca, configs[0], routerKeyPairs, batcherNodesShard0[0], loggers[0])
 
 	require.Eventually(t, func() bool {
 		return batchers0[0].Ledger.Height(2) == 1
@@ -111,8 +119,8 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 	}
 
 	// Submit another request only to a secondary in shard 0 and shard 1
-	batchers0[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{9}))
-	batchers1[2].Submit(context.Background(), tx.CreateStructuredRequest([]byte{8}))
+	batchers0[2].Submit(routerCtx(2), tx.CreateStructuredRequest([]byte{9}))
+	batchers1[2].Submit(routerCtx(2), tx.CreateStructuredRequest([]byte{8}))
 
 	// Verify the batchers created batches in shard 0 and shard 1
 	require.Eventually(t, func() bool {

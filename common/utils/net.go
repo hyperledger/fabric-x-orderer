@@ -46,6 +46,31 @@ func ExtractCertificateFromContext(ctx context.Context) *x509.Certificate {
 	return certs[0]
 }
 
+// ValidateClientCertFromContext pins the TLS certificate of the client that opened the connection
+// carried by ctx to expectedPEMCert, the PEM encoded certificate of the only client we are willing
+// to serve.
+//
+// Chain validation against the trusted CAs, performed during the TLS handshake, is not enough
+// whenever more than a single node holds a certificate issued by one of these CAs.
+func ValidateClientCertFromContext(ctx context.Context, expectedPEMCert []byte) error {
+	cert := ExtractCertificateFromContext(ctx)
+	if cert == nil {
+		return fmt.Errorf("could not extract the client certificate from the context")
+	}
+
+	expectedCert, err := Parsex509Cert(expectedPEMCert)
+	if err != nil {
+		return fmt.Errorf("could not parse the expected certificate: %v", err)
+	}
+
+	if !bytes.Equal(expectedCert.Raw, cert.Raw) {
+		return fmt.Errorf("the client certificate does not match the expected certificate; client certificate subject: %s, serial number: %s",
+			cert.Subject, cert.SerialNumber)
+	}
+
+	return nil
+}
+
 func ExtractClientAddressFromContext(ctx context.Context) (string, error) {
 	peer, ok := peer.FromContext(ctx)
 	if !ok {
