@@ -1255,7 +1255,9 @@ func TestBFTSynchronizer(t *testing.T) {
 			}
 		})
 
+		syncDoneCh := make(chan struct{})
 		go func() {
+			defer close(syncDoneCh)
 			resp := bftSynchronizer.Sync()
 			require.NotNil(t, resp)
 			require.Equal(t, *decision, resp)
@@ -1276,6 +1278,10 @@ func TestBFTSynchronizer(t *testing.T) {
 		close(pauseDeliverCh)
 		<-doneDeliverCh
 
+		// wait for the synchronizer goroutine to return, so no more WriteBlockSync
+		// calls can be in flight when we sample the ledger and the call count below.
+		<-syncDoneCh
+
 		require.Eventually(t, func() bool {
 			ledgerLock.Lock()
 			defer ledgerLock.Unlock()
@@ -1283,7 +1289,10 @@ func TestBFTSynchronizer(t *testing.T) {
 			return len(ledger) >= 101
 		}, 10*time.Second, 10*time.Millisecond)
 
-		require.Equal(t, len(ledger)-100, fakeCS.WriteBlockSyncCallCount())
+		ledgerLock.Lock()
+		ledgerLen := len(ledger)
+		ledgerLock.Unlock()
+		require.Equal(t, ledgerLen-100, fakeCS.WriteBlockSyncCallCount())
 		require.Equal(t, 0, fakeCS.WriteConfigBlockCallCount())
 		require.Eventually(t, func() bool { return fakeBFTDeliverer.StopCallCount() == 1 }, 10*time.Second, time.Millisecond)
 	})
