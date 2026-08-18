@@ -9,6 +9,7 @@ package blkstorage
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -164,6 +165,27 @@ func retrieveLastFileSuffix(rootDir string) (int, error) {
 	}
 	logger.Debugf("retrieveLastFileSuffix() - biggestFileNum = %d", biggestFileNum)
 	return biggestFileNum, err
+}
+
+// blockfileNumsIn returns the suffix numbers of the block files present in rootDir, ascending.
+func blockfileNumsIn(rootDir string) ([]int, error) {
+	entries, err := os.ReadDir(rootDir)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error reading dir %s", rootDir)
+	}
+	nums := make([]int, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !isBlockFileName(e.Name()) {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(e.Name(), blockfilePrefix))
+		if err != nil {
+			return nil, errors.Wrapf(err, "unexpected block file name %s", e.Name())
+		}
+		nums = append(nums, n)
+	}
+	sort.Ints(nums)
+	return nums, nil
 }
 
 func isBlockFileName(name string) bool {

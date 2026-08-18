@@ -45,7 +45,7 @@ type blockfileMgr struct {
 	bcInfo                    atomic.Value
 	cache                     *cache
 
-	// pruner owns the prune marker (see prune.go).
+	// pruner owns the prune marker and the reclamation operation (see prune.go).
 	pruner *pruneMgr
 }
 
@@ -146,7 +146,7 @@ func newBlockfileMgr(id string, conf *Conf, indexConfig *IndexConfig, indexStore
 
 	// Construct the pruner before syncIndex: on a pruned ledger the block files no longer start at
 	// blockfile_000000, and the recovery paths need to know where they do start.
-	if mgr.pruner, err = newPruneMgr(indexStore); err != nil {
+	if mgr.pruner, err = newPruneMgr(rootDir, indexStore, mgr.index); err != nil {
 		return nil, err
 	}
 
@@ -753,6 +753,22 @@ func (mgr *blockfileMgr) checkBlockAvailable(blockNum uint64) error {
 // trip the "bootstrapped from a snapshot" error path in syncIndex on every pruned ledger.
 func (mgr *blockfileMgr) firstAvailableBlockNum() uint64 {
 	return max(mgr.firstBlockNumAfterSnapshotBootstrap(), mgr.pruner.firstReadableBlockNum())
+}
+
+// pruneBefore snapshots the tail pointer and hands the reclamation to the pruner. The snapshot is taken
+// here because the lock that guards blockfilesInfo lives here, and it is released before any file I/O.
+func (mgr *blockfileMgr) pruneBefore(blockNum uint64) error {
+	return mgr.pruner.pruneBefore(blockNum, mgr.blockfilesInfoSnapshot())
+}
+
+// blockfilesInfoSnapshot copies the tail pointer so that a caller can reason about a stable view of it.
+// The lock is held only for the copy: appends update blockfilesInfo under it, and holding it across file
+// I/O would stall every blocking iterator.
+func (mgr *blockfileMgr) blockfilesInfoSnapshot() *blockfilesInfo {
+	mgr.blkfilesInfoCond.L.Lock()
+	defer mgr.blkfilesInfoCond.L.Unlock()
+	info := *mgr.blockfilesInfo
+	return &info
 }
 
 // firstBlockNumAfterSnapshotBootstrap is the lowest block number that a snapshot bootstrap left for
