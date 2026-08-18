@@ -214,3 +214,47 @@ func checkBlockfilesInfoFromFS(t *testing.T, blkStoreDir string, expected *block
 	require.NoError(t, err)
 	require.Equal(t, expected, blkfilesInfo)
 }
+
+// Scenario:
+//  1. Create a directory holding three block files, a subdirectory, and the four non-block artefacts the
+//     engine can leave in a ledger directory.
+//  2. Expect blockfileNumsIn to return only the block file numbers, ascending.
+//  3. Add a file whose name starts with the block file prefix but does not end in a number.
+//  4. Expect an error naming it, rather than that file being skipped.
+func TestBlockfileNumsIn(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{
+		blockfilePrefix + "000002",
+		blockfilePrefix + "000000",
+		blockfilePrefix + "000010",
+		bootstrappingSnapshotInfoFile,
+		bootstrappingSnapshotInfoTempFile,
+		"__backupGenesisBlockBytes",
+		fileNamePreRestHt,
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), nil, 0o644))
+	}
+	// Archive mode may move reclaimed files into a subdirectory of the ledger, so directories must be skipped.
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "pruned"), 0o755))
+
+	nums, err := blockfileNumsIn(dir)
+	require.NoError(t, err)
+	require.Equal(t, []int{0, 2, 10}, nums)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, blockfilePrefix+"bogus"), nil, 0o644))
+
+	_, err = blockfileNumsIn(dir)
+	require.ErrorContains(t, err, "unexpected block file name "+blockfilePrefix+"bogus")
+}
+
+// Scenario:
+//  1. Call blockfileNumsIn on an empty directory and expect no numbers and no error.
+//  2. Call it on a directory that does not exist and expect an error.
+func TestBlockfileNumsInEdgeCases(t *testing.T) {
+	nums, err := blockfileNumsIn(t.TempDir())
+	require.NoError(t, err)
+	require.Empty(t, nums)
+
+	_, err = blockfileNumsIn(filepath.Join(t.TempDir(), "missing"))
+	require.ErrorContains(t, err, "error reading dir")
+}
