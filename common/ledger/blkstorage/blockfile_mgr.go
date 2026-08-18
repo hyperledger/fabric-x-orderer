@@ -45,7 +45,7 @@ type blockfileMgr struct {
 	bcInfo                    atomic.Value
 	cache                     *cache
 
-	// pruner owns the prune marker (see prune.go).
+	// pruner owns the prune marker and the pruning operation (see prune.go).
 	pruner *pruneMgr
 }
 
@@ -146,7 +146,7 @@ func newBlockfileMgr(id string, conf *Conf, indexConfig *IndexConfig, indexStore
 
 	// Construct the pruner before syncIndex: on a pruned ledger the block files no longer start at
 	// blockfile_000000, and the recovery paths need to know where they do start.
-	if mgr.pruner, err = newPruneMgr(indexStore); err != nil {
+	if mgr.pruner, err = newPruneMgr(rootDir, indexStore, mgr.index); err != nil {
 		return nil, err
 	}
 
@@ -558,9 +558,13 @@ func (mgr *blockfileMgr) retrieveBlockByNumber(blockNum uint64) (*common.Block, 
 	}
 	loc, err := mgr.index.getBlockLocByBlockNum(blockNum)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
-	return mgr.fetchBlock(loc)
+	block, err := mgr.fetchBlock(loc)
+	if err != nil {
+		return nil, mgr.errAfterFailedRead(blockNum, err)
+	}
+	return block, nil
 }
 
 func (mgr *blockfileMgr) retrieveBlockByTxID(txID string) (*common.Block, error) {
@@ -597,11 +601,11 @@ func (mgr *blockfileMgr) retrieveBlockHeaderByNumber(blockNum uint64) (*common.B
 	}
 	loc, err := mgr.index.getBlockLocByBlockNum(blockNum)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
 	blockBytes, err := mgr.fetchBlockBytes(loc)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
 
 	return extractSerializedBlockHeader(blockBytes)
@@ -640,9 +644,13 @@ func (mgr *blockfileMgr) retrieveTransactionByBlockNumTranNum(blockNum uint64, t
 	}
 	loc, err := mgr.index.getTXLocByBlockNumTranNum(blockNum, tranNum)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
-	return mgr.fetchTransactionEnvelope(loc)
+	envelope, err := mgr.fetchTransactionEnvelope(loc)
+	if err != nil {
+		return nil, mgr.errAfterFailedRead(blockNum, err)
+	}
+	return envelope, nil
 }
 
 func (mgr *blockfileMgr) fetchBlock(lp *fileLocPointer) (*common.Block, error) {
@@ -721,6 +729,17 @@ func (mgr *blockfileMgr) saveBlkfilesInfo(i *blockfilesInfo, sync bool) error {
 	return nil
 }
 
+// errAfterFailedRead re-checks availability after a read that had already passed the availability check
+// failed. Pruning deletes index entries and unlinks block files while readers run, so a read can resolve
+// a block, lose a race, and trip over the debris; the caller must hear that the block was pruned rather
+// than that a file is missing.
+func (mgr *blockfileMgr) errAfterFailedRead(blockNum uint64, err error) error {
+	if unavailable := mgr.checkBlockAvailable(blockNum); unavailable != nil {
+		return unavailable
+	}
+	return err
+}
+
 // checkBlockAvailable reports whether the store can serve the given block number, returning nil when
 // it can. It distinguishes the two reasons a ledger may not start at block 0: pruning, which yields
 // ErrPruned, and a snapshot bootstrap. When both apply, the snapshot takes precedence for the range it explains.
@@ -753,6 +772,22 @@ func (mgr *blockfileMgr) checkBlockAvailable(blockNum uint64) error {
 // trip the "bootstrapped from a snapshot" error path in syncIndex on every pruned ledger.
 func (mgr *blockfileMgr) firstAvailableBlockNum() uint64 {
 	return max(mgr.firstBlockNumAfterSnapshotBootstrap(), mgr.pruner.firstReadableBlockNum())
+}
+
+// pruneBefore snapshots the tail pointer and hands the work to the pruner. The snapshot is taken
+// here because the lock that guards blockfilesInfo lives here, and it is released before any file I/O.
+func (mgr *blockfileMgr) pruneBefore(blockNum uint64) error {
+	return mgr.pruner.pruneBefore(blockNum, mgr.blockfilesInfoSnapshot())
+}
+
+// blockfilesInfoSnapshot copies the tail pointer so that a caller can reason about a stable view of it.
+// The lock is held only for the copy: appends update blockfilesInfo under it, and holding it across file
+// I/O would stall every blocking iterator.
+func (mgr *blockfileMgr) blockfilesInfoSnapshot() *blockfilesInfo {
+	mgr.blkfilesInfoCond.L.Lock()
+	defer mgr.blkfilesInfoCond.L.Unlock()
+	info := *mgr.blockfilesInfo
+	return &info
 }
 
 // firstBlockNumAfterSnapshotBootstrap is the lowest block number that a snapshot bootstrap left for
