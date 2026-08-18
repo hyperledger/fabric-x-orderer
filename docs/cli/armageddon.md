@@ -125,6 +125,9 @@ Flags:
   --signedMode=SIGNEDMODE      Signing mode has three option: none = unsigned,
                                full = sign including the full certificate,
                                short = sign using known certificate
+  --txidsFile=""               (Optional) path to write the binary TX-ID file —
+                               when set, the loader writes one 8-byte big-endian
+                               txNumber per TX after all transactions are sent
 ```
 
 
@@ -143,6 +146,10 @@ Flags:
   --output="."      The output directory in which to place statistics file
   --pullFromPartyId=PULLFROMPARTYID
                     The party id of the assembler to pull blocks from
+  --txidsFile=""    (Optional) path to the binary TX-ID file written by the
+                    loader — when set, the receiver verifies every TX-ID was
+                    received; exits 1 and writes missing_txids.txt if any are
+                    missing
 ```
 
 

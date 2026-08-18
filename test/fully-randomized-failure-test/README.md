@@ -27,7 +27,7 @@ It defines the following internal functions, then calls `main`:
 - **`start_arma_network`** — Starts all ARMA network components in the correct order: consenters first, then batchers, assemblers, and routers. Stores each process PID under the test directory.
 - **`run_failure_runner`** — Builds a flat pool of every component across all parties (`NUM_PARTIES × (3 + NUM_SHARDS)` entries). On each iteration, picks one entry at random using `$RANDOM`, kills it, waits `FAILURE_RUNNER_STOP_DURATION` seconds, restarts it, then waits `FAILURE_RUNNER_RESTART_WAIT` seconds. After every `N = 3 + NUM_SHARDS` kills a signal file is written so `monitor_completion` knows to print a status snapshot. A running kill counter is maintained in the test directory.
 - **`monitor_completion`** — Monitors test execution. In failure runner mode: prints a status snapshot after every `N = 3 + NUM_SHARDS` kills. Without failure runner: prints a status snapshot every 5 minutes. Always stops when the configured duration is reached or when the loader and all receivers finish early. After duration expires, stops the loader immediately then gives receivers a 30-second drain window to pull remaining blocks from the assemblers before killing them.
-- **`collect_results`** — Cleans the `test-results/` directory from any previous run, then extracts loader and receiver statistics, copies all component and loader/receiver logs into `test-results/logs/` and compresses them with gzip, collects receiver statistics CSV files, creates `summary.txt`, and creates `summary-kills.txt` with a per-component and total kill count report.
+- **`collect_results`** — Cleans the `test-results/` directory from any previous run, then extracts loader and receiver statistics, copies all component and loader/receiver logs into `test-results/logs/` and compresses them with gzip, collects receiver statistics CSV files, creates `summary.txt`, creates `summary-kills.txt` with a per-component and total kill count report, and performs TX-ID verification (see [TX-ID Verification](#tx-id-verification)).
 - **`main`** — Reads configuration from environment variables, removes stale log files from previous runs, generates the network config YAML, runs `armageddon generate` to produce all crypto and config files, patches the generated FileStore `Location` and consenter `WALDir` paths to writable temp directories, then calls the functions above in order.
 
 ## Prerequisites
@@ -187,11 +187,32 @@ Result artifacts are written to (cleaned at the start of each run):
 
 ```text
 test-results/
-├── logs/              # component and loader/receiver logs (gzipped)
-├── statistics/        # per-party statistics CSV files
-├── summary.txt        # pass/fail, tx counts, and total kill count
-└── summary-kills.txt  # per-component kill counts and overall total
+├── logs/                        # component and loader/receiver logs (gzipped)
+├── statistics/                  # per-party statistics CSV files
+├── summary.txt                  # pass/fail, tx counts, TX-ID verification results, and total kill count
+├── summary-kills.txt            # per-component kill counts and overall total
+└── missing_txids_party<N>.txt   # (only present on TX-ID verification failure) un-received TX numbers
 ```
+
+## TX-ID Verification
+
+At the end of each run the test verifies that every transaction sent by the loader was received by every party's assembler.
+
+**How it works:**
+
+- The loader writes a compact binary file (`txids.bin`) to the test directory after sending all transactions. The file contains one 8-byte big-endian integer per transaction (the 0-based transaction number), making it `N × 8` bytes total.
+- Each receiver pulls blocks immediately (concurrently with the loader, preserving latency statistics). After pulling finishes it waits up to 60 seconds for `txids.bin` to appear, then compares the set of received tx numbers against the expected set. Any tx number in the file but never seen in a block is reported as missing. If `txids.bin` never appears (e.g. the loader was killed before finishing), verification is skipped rather than blocking.
+- `collect_results` checks for `missing_txids.txt` per party and reports one of three outcomes:
+
+| Outcome | Condition | Summary line |
+| ------- | --------- | ------------ |
+| ✅ Verified | Receiver completed and no missing TXs | `TX-IDs verified` |
+| ❌ Failed | Receiver completed but missing TXs found | `N TX-IDs missing → see missing_txids_party<N>.txt` |
+| ⚠️ Unverified | Receiver was stopped by timeout before completing | `TX-IDs skipped` |
+
+A TX-ID verification failure overrides the overall test status to `❌ FAILED` regardless of transaction counts, and the `failure_reason.txt` file is written with the per-party detail so the Slack notification includes the exact cause.
+
+**This feature is opt-in for manual use:** the `--txidsFile` flag on both `armageddon load` and `armageddon receive` is optional with no default. Not passing it preserves identical behavior to previous versions.
 
 ### `summary-kills.txt`
 
