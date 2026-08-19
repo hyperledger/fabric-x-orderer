@@ -304,10 +304,12 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	// make sure req2 did not disappear
-	require.Equal(t, 1, len(batchers[1].Ledger.RetrieveBatchByNumber(2, 0).Requests()))
+	storedBatch, err := batchers[1].Ledger.RetrieveBatchByNumber(2, 0)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(storedBatch.Requests()))
 	rawReq, err := proto.Marshal(req2)
 	require.NoError(t, err)
-	require.Equal(t, rawReq, batchers[1].Ledger.RetrieveBatchByNumber(2, 0).Requests()[0])
+	require.Equal(t, rawReq, storedBatch.Requests()[0])
 
 	// now recover old primary
 	batchers[0] = recoverBatcher(t, ca, loggers[0], configs[0], routerKeyPairs, batcherNodes[0], stubConsenters[0])
@@ -495,7 +497,9 @@ func TestBatchedRequestsHasEnvelopeBytes(t *testing.T) {
 		return batchers[0].Ledger.Height(1) == uint64(1)
 	}, 30*time.Second, 10*time.Millisecond)
 
-	rawReq := batchers[0].Ledger.RetrieveBatchByNumber(1, 0).Requests()[0]
+	storedBatch, err := batchers[0].Ledger.RetrieveBatchByNumber(1, 0)
+	require.NoError(t, err)
+	rawReq := storedBatch.Requests()[0]
 
 	// Unmarshal as Envelope, and check that there are no unknown fields
 	env := &common.Envelope{}

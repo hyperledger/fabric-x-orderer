@@ -114,7 +114,9 @@ func (bla *BatchLedgerArray) Append(partyID types.PartyID, batchSeq types.BatchS
 	part.Append(batchSeq, configSeq, batchedRequests, digest, primarySignature)
 }
 
-func (bla *BatchLedgerArray) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) types.Batch {
+// RetrieveBatchByNumber retrieves the batch with a specific sequence from the ledger part of the given party,
+// and an error if the batch cannot be retrieved.
+func (bla *BatchLedgerArray) RetrieveBatchByNumber(partyID types.PartyID, seq uint64) (types.Batch, error) {
 	part, ok := bla.ledgerParts[partyID]
 	if !ok {
 		bla.logger.Panicf("partyID does not exist: %d", partyID)
