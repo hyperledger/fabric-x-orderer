@@ -29,9 +29,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestBatcherRun(t *testing.T) {
+func init() {
+	// grpclog.SetLoggerV2 mutates process-global state in gRPC and is not
+	// thread-safe, so it must run once before any gRPC code, not per test.
 	grpclog.SetLoggerV2(&testutil.SilentLogger{})
+}
 
+func TestBatcherRun(t *testing.T) {
 	shardID := types.ShardID(0)
 	numParties := 4
 	ca, err := tlsgen.NewCA()
