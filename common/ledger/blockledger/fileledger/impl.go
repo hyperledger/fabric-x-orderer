@@ -31,6 +31,7 @@ type FileLedgerBlockStore interface {
 	RetrieveBlocks(startBlockNumber uint64) (ledger.ResultsIterator, error)
 	Shutdown()
 	RetrieveBlockByNumber(blockNum uint64) (*cb.Block, error)
+	PruneBefore(blockNum uint64) error
 }
 
 // NewFileLedger creates a new FileLedger for interaction with the ledger
@@ -123,4 +124,9 @@ func (fl *FileLedger) Append(block *cb.Block) error {
 
 func (fl *FileLedger) RetrieveBlockByNumber(blockNumber uint64) (*cb.Block, error) {
 	return fl.blockStore.RetrieveBlockByNumber(blockNumber)
+}
+
+// PruneBefore prunes the blocks below seq, see blockledger.Writer.
+func (fl *FileLedger) PruneBefore(seq uint64) error {
+	return fl.blockStore.PruneBefore(seq)
 }
