@@ -662,104 +662,112 @@ collect_results() {
 
   # Create summary report
   echo "Creating summary report..."
-  cat > test-results/summary.txt <<EOF
-========================================
-Deterministic Failure Test Summary
-========================================
-Date: $(date)
-Duration: ${DURATION} minutes
-TX Rate: ${TX_RATE} tx/s
-TX Size: ${TX_SIZE} bytes
-Total TXs Expected: $((DURATION * 60 * TX_RATE))
-Parties: ${NUM_PARTIES}
-Shards: ${NUM_SHARDS}
-Failure Runner Enabled: ${FAILURE_RUNNER_ENABLED}
 
-========================================
-Loader Results
-========================================
-EOF
-
-  # Use pre-extracted statistics
-  if [ "$LOADER_STATUS" = "completed" ]; then
-    echo "✅ Loader completed" >> test-results/summary.txt
-    echo "Sent: ${SENT:-unknown} transactions" >> test-results/summary.txt
-  else
-    echo "⏰ Loader stopped by timeout" >> test-results/summary.txt
-    echo "Sent: ${SENT:-0} transactions (incomplete)" >> test-results/summary.txt
-  fi
-
-  cat >> test-results/summary.txt <<EOF
-
-========================================
-Receiver Results
-========================================
-EOF
-
-  # Use pre-extracted receiver statistics
-  local TOTAL_RECEIVED=0
-  local REPRESENTATIVE_RECEIVED
-  for i in $(seq 1 $NUM_PARTIES); do
-    echo "Party ${i}:" >> test-results/summary.txt
-
-    local RECEIVED="${RECEIVER_STATS[$i]}"
-    local STATUS="${RECEIVER_STATUS[$i]}"
-
-    if [ "$STATUS" = "completed" ]; then
-      echo "  ✅ Completed - Received: ${RECEIVED} txs" >> test-results/summary.txt
-      if [ -n "$RECEIVED" ] && [ "$RECEIVED" != "unknown" ] && [ "$RECEIVED" -gt 0 ] 2>/dev/null; then
-        TOTAL_RECEIVED=$((TOTAL_RECEIVED + RECEIVED))
-      fi
-    elif [ "$STATUS" = "timeout" ]; then
-      # Get block count from CSV
-      if [ -f "${TEST_DIR}/output${i}/statistics.csv" ]; then
-        local BLOCKS=$(tail -n +2 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | wc -l)
-        echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs in ${BLOCKS} blocks" >> test-results/summary.txt
-      else
-        echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs" >> test-results/summary.txt
-      fi
-      if [ -n "$RECEIVED" ] && [ "$RECEIVED" -gt 0 ] 2>/dev/null; then
-        TOTAL_RECEIVED=$((TOTAL_RECEIVED + RECEIVED))
-      fi
-    else
-      echo "  ❌ No statistics available" >> test-results/summary.txt
-    fi
-  done
-
-  # Overall statistics: each party independently receives all sent txs, so the
-  # meaningful metric is per-party success rate, not a cross-party sum.
+  # Compute representative received count (first party with non-zero data)
   local PARTY_SUCCESS_RATE=0
-  REPRESENTATIVE_RECEIVED=${RECEIVER_STATS[1]:-0}
+  local REPRESENTATIVE_RECEIVED=${RECEIVER_STATS[1]:-0}
   if [ -n "$SENT" ] && [ "$SENT" -gt 0 ]; then
-    # Use the first party as representative received count
     if [ -n "$REPRESENTATIVE_RECEIVED" ] && [ "$REPRESENTATIVE_RECEIVED" -gt 0 ] 2>/dev/null; then
       PARTY_SUCCESS_RATE=$((REPRESENTATIVE_RECEIVED * 100 / SENT))
     fi
   fi
 
-  cat >> test-results/summary.txt <<EOF
+  # TX-ID verification — check each party's missing_txids.txt written by armageddon
+  local TX_VERIFY_FAILED=false
+  declare -a TX_VERIFY_LINES
+  for i in $(seq 1 $NUM_PARTIES); do
+    local STATUS="${RECEIVER_STATUS[$i]}"
+    if [ "$STATUS" = "completed" ]; then
+      local MISSING_FILE="${TEST_DIR}/output${i}/missing_txids.txt"
+      if [ -f "$MISSING_FILE" ] && [ -s "$MISSING_FILE" ]; then
+        local MISSING_COUNT=$(wc -l < "$MISSING_FILE")
+        TX_VERIFY_FAILED=true
+        cp "$MISSING_FILE" test-results/missing_txids_party${i}.txt
+        TX_VERIFY_LINES[$i]="  ❌  ${MISSING_COUNT} TX-IDs missing → see missing_txids_party${i}.txt"
+      else
+        TX_VERIFY_LINES[$i]="verified"
+      fi
+    else
+      TX_VERIFY_LINES[$i]="skipped"
+    fi
+  done
 
-========================================
-Overall Statistics
-========================================
-Sent: ${SENT:-0} transactions
-Expected per party: ${SENT:-0} transactions
-Received per party: ${REPRESENTATIVE_RECEIVED:-0} transactions
-Success Rate: ${PARTY_SUCCESS_RATE}%
-EOF
-
-  # Create a simple pass/fail indicator
-  echo "" >> test-results/summary.txt
-  echo "========================================" >> test-results/summary.txt
-  echo "Test Status" >> test-results/summary.txt
-  echo "========================================" >> test-results/summary.txt
-
-  if [ -n "$SENT" ] && [ "$SENT" -gt 0 ] && [ "${REPRESENTATIVE_RECEIVED:-0}" -gt 0 ] 2>/dev/null; then
-    echo "✅ PASSED - Test ran for ${DURATION} minutes" >> test-results/summary.txt
-    echo "   Sent: ${SENT} txs, each party received: ${REPRESENTATIVE_RECEIVED} txs (${PARTY_SUCCESS_RATE}%)" >> test-results/summary.txt
-  else
-    echo "❌ FAILED - No transactions processed" >> test-results/summary.txt
+  # Write machine-readable failure reason when TX verification fails (consumed by Slack step)
+  if [ "$TX_VERIFY_FAILED" = "true" ]; then
+    local REASON_PARTS=""
+    for i in $(seq 1 $NUM_PARTIES); do
+      if [ -f "test-results/missing_txids_party${i}.txt" ]; then
+        local CNT=$(wc -l < "test-results/missing_txids_party${i}.txt")
+        REASON_PARTS="${REASON_PARTS}party ${i}: ${CNT} missing TXs; "
+      fi
+    done
+    echo "TX-ID verification failed: ${REASON_PARTS}(see missing_txids_party*.txt artifacts)" \
+      > test-results/failure_reason.txt
   fi
+
+  # Determine loader status label
+  local LOADER_LABEL
+  if [ "$LOADER_STATUS" = "completed" ]; then
+    LOADER_LABEL="✅ ${SENT:-unknown} transactions sent"
+  else
+    LOADER_LABEL="⏰ ${SENT:-0} transactions sent (incomplete)"
+  fi
+
+  # Determine final verdict line
+  local VERDICT_LINE
+  if [ "$TX_VERIFY_FAILED" = "true" ]; then
+    VERDICT_LINE="❌ FAILED — TX-ID verification failed (see missing_txids_party*.txt artifacts)"
+  elif [ -n "$SENT" ] && [ "$SENT" -gt 0 ] && [ "${REPRESENTATIVE_RECEIVED:-0}" -gt 0 ] 2>/dev/null; then
+    VERDICT_LINE="✅ PASSED — Test ran for ${DURATION} minutes"
+  else
+    VERDICT_LINE="❌ FAILED — No transactions processed"
+  fi
+
+  {
+    echo "=========================================="
+    echo "Deterministic Failure Test — Summary"
+    echo "=========================================="
+    echo "Date     : $(date)"
+    echo "Duration : ${DURATION} minutes  |  Rate: ${TX_RATE} tx/s  |  Size: ${TX_SIZE} bytes"
+    echo "Network  : ${NUM_PARTIES} parties, ${NUM_SHARDS} shards  |  Failure runner: ${FAILURE_RUNNER_ENABLED}"
+    echo ""
+    echo "Sent: ${SENT:-0} transactions"
+    echo ""
+    for i in $(seq 1 $NUM_PARTIES); do
+      local RECEIVED="${RECEIVER_STATS[$i]}"
+      local STATUS="${RECEIVER_STATUS[$i]}"
+      local TXID_LINE="${TX_VERIFY_LINES[$i]}"
+      local STATUS_ICON RECEIVED_LABEL TXID_SUFFIX
+      if [ "$STATUS" = "completed" ]; then
+        if [ "$TXID_LINE" = "verified" ] || [ "$TXID_LINE" = "skipped" ]; then
+          STATUS_ICON="✅"
+          RECEIVED_LABEL="received: ${RECEIVED}  sent: ${SENT:-0}  (${PARTY_SUCCESS_RATE}%)"
+          if [ "$TXID_LINE" = "verified" ]; then
+            TXID_SUFFIX="  TX-IDs verified"
+          else
+            TXID_SUFFIX="  TX-IDs skipped"
+          fi
+        else
+          # TX-ID verification failed — omit the misleading percentage
+          STATUS_ICON="❌"
+          RECEIVED_LABEL="received: ${RECEIVED}  sent: ${SENT:-0}"
+          TXID_SUFFIX="  ${TXID_LINE}"
+        fi
+      elif [ "$STATUS" = "timeout" ]; then
+        STATUS_ICON="⏰"
+        RECEIVED_LABEL="received: ${RECEIVED}  sent: ${SENT:-0}  (incomplete)"
+        TXID_SUFFIX="  TX-IDs skipped"
+      else
+        STATUS_ICON="❌"
+        RECEIVED_LABEL="no data"
+        TXID_SUFFIX=""
+      fi
+      echo "  Party ${i}  ${STATUS_ICON}  ${RECEIVED_LABEL}${TXID_SUFFIX}"
+    done
+    echo ""
+    echo "${VERDICT_LINE}"
+    echo "=========================================="
+  } > test-results/summary.txt
 
   echo "=========================================="
   echo "✅ Results collected in test-results/"
@@ -893,6 +901,7 @@ EOF
       --pullFromPartyId=${i} \
       --expectedTxs=${TOTAL_TXS} \
       --output=${TEST_DIR}/output${i} \
+      --txidsFile=${TEST_DIR}/txids.bin \
       >> receiver${i}.log 2>&1 &
     echo "Started receiver for party ${i} (PID: $!)"
   done
@@ -904,6 +913,7 @@ EOF
     --transactions=${TOTAL_TXS} \
     --rate=${TX_RATE} \
     --txSize=${TX_SIZE} \
+    --txidsFile=${TEST_DIR}/txids.bin \
     >> loader.log 2>&1 &
   local LOADER_PID=$!
   echo "Started loader (PID: ${LOADER_PID})"
@@ -945,6 +955,17 @@ EOF
   echo "Cleaning up processes..."
   pkill -f "arma " || true
   pkill -f "armageddon" || true
+
+  # Remove log files from the working directory — they are already preserved
+  # under test-results/logs/ (gzipped) so the originals are no longer needed.
+  rm -f loader.log
+  for i in $(seq 1 $NUM_PARTIES); do
+    rm -f receiver${i}.log
+    rm -f consenter${i}.log assembler${i}.log router${i}.log
+    for j in $(seq 1 $NUM_SHARDS); do
+      rm -f batcher${i}-${j}.log
+    done
+  done
 
   echo "=========================================="
   echo "✅ Deterministic failure test completed successfully!"
