@@ -40,6 +40,28 @@ func (nfei *NotFoundErrorIterator) ReadyChan() <-chan struct{} {
 // Close does nothing
 func (nfei *NotFoundErrorIterator) Close() {}
 
+// UnavailableErrorIterator always returns an error of cb.Status_BAD_REQUEST, for a request for blocks below
+// the first one a ledger can serve, whether they were reclaimed by pruning or covered by a snapshot
+// bootstrap.
+// It is deliberately distinct from NotFoundErrorIterator: a block that is not found may simply not exist
+// yet and is worth retrying, while these never arrive, so a consumer that has fallen behind has to be
+// re-seeded from elsewhere instead. Note the status is BAD_REQUEST rather than SERVICE_UNAVAILABLE, which
+// would suggest a transient condition.
+type UnavailableErrorIterator struct{}
+
+// Next returns nil, cb.Status_BAD_REQUEST
+func (*UnavailableErrorIterator) Next() (*cb.Block, cb.Status) {
+	return nil, cb.Status_BAD_REQUEST
+}
+
+// ReadyChan returns a closed channel
+func (*UnavailableErrorIterator) ReadyChan() <-chan struct{} {
+	return closedChan
+}
+
+// Close does nothing
+func (*UnavailableErrorIterator) Close() {}
+
 // CreateNextBlock provides a utility way to construct the next block from
 // contents and metadata for a given ledger
 // XXX This will need to be modified to accept marshaled envelopes
