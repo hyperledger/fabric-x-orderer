@@ -12,7 +12,7 @@ require (
 	github.com/tedsuo/ifrit v0.0.0-20260418191334-846868129986
 	go.uber.org/zap v1.28.0
 	golang.org/x/sync v0.22.0
-	google.golang.org/grpc v1.82.0
+	google.golang.org/grpc v1.82.1
 )
 
 require (
