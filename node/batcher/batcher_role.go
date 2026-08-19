@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
@@ -89,7 +90,7 @@ type BatchLedgerWriter interface {
 
 type BatchLedgeReader interface {
 	Height(partyID types.PartyID) uint64
-	RetrieveBatchByNumber(partyID types.PartyID, seq uint64) types.Batch
+	RetrieveBatchByNumber(partyID types.PartyID, seq uint64) (types.Batch, error)
 }
 
 //go:generate counterfeiter -o mocks/batch_ledger.go . BatchLedger
@@ -258,6 +259,8 @@ func (b *BatcherRole) getTermAndNotifyChange() {
 // to prevent a case where such a tx falls through the cracks, after a term change
 // all batchers resubmit to their pools txs in batches with their BAFs still in pending state
 // this will also be used after config update for resubmitting expired BAFs while ignoring the prev primary parameter
+// Batches already reclaimed by pruning are skipped, so this does not re-inject the requests of every
+// pending BAF signed by this node.
 func (b *BatcherRole) ResubmitPendingBAFs(state *state.State, prevPrimary types.PartyID, ignorePrevPrimary bool) {
 	for _, baf := range state.Pending {
 		if baf.Shard() == b.Shard && baf.Signer() == b.ID {
@@ -265,9 +268,17 @@ func (b *BatcherRole) ResubmitPendingBAFs(state *state.State, prevPrimary types.
 				continue
 			}
 			b.Logger.Debugf("found pending BAF signed by me (id: %d) from primary: %d ; %s", b.ID, baf.Primary(), baf.String())
-			batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
-			if batch == nil {
-				b.Logger.Panicf("Error: No such batch; pending BAF signed by me (id: %d) from primary: %d ; %s", b.ID, baf.Primary(), baf.String())
+			batch, err := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
+			if errors.Is(err, blkstorage.ErrPruned) {
+				// The batch was reclaimed, so its TXs are old enough that the censorship machinery has already
+				// had them re-batched and committed by another primary. Nothing to resubmit.
+				b.Logger.Warnf("Skipping pruned batch for pending BAF signed by me (id: %d) from primary: %d ; %s",
+					b.ID, baf.Primary(), baf.String())
+				continue
+			}
+			if err != nil {
+				b.Logger.Panicf("Error: No such batch; pending BAF signed by me (id: %d) from primary: %d ; %s: %s",
+					b.ID, baf.Primary(), baf.String(), err)
 			}
 			for _, req := range batch.Requests() {
 				if err := b.MemPool.Submit(req); err != nil {

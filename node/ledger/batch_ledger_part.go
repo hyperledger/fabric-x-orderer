@@ -87,15 +87,23 @@ func (b *BatchLedgerPart) Height() uint64 {
 	return b.ledger.Height()
 }
 
-// RetrieveBatchByNumber retrieves the batch with a specific sequence, or returns nil if not found.
-func (b *BatchLedgerPart) RetrieveBatchByNumber(seq uint64) types.Batch {
+// RetrieveBatchByNumber retrieves the batch with a specific sequence, and an error if the batch cannot be retrieved.
+func (b *BatchLedgerPart) RetrieveBatchByNumber(seq uint64) (types.Batch, error) {
 	block, err := b.ledger.RetrieveBlockByNumber(seq)
 	if err != nil {
-		b.logger.Errorf("Batch not found: %d, err: %s", seq, err)
-		return nil
+		return nil, errors.WithMessagef(err, "failed retrieving batch %d of primary %d in shard %d",
+			seq, b.primaryPartyID, b.shardID)
 	}
 
-	return (*FabricBatch)(block)
+	return (*FabricBatch)(block), nil
+}
+
+// PruneBefore reclaims the batches below seq. Retrieving a batch below seq fails afterwards
+// whether or not its bytes were reclaimed, and Height() is unaffected.
+func (b *BatchLedgerPart) PruneBefore(seq uint64) error {
+	b.logger.Debugf("Party %d, Shard: %d, is pruning batches below sequence %d from Primary: %d",
+		b.partyID, b.shardID, seq, b.primaryPartyID)
+	return b.ledger.PruneBefore(seq)
 }
 
 // Ledger returns the underlying ledger, which supports an iterator as well.
