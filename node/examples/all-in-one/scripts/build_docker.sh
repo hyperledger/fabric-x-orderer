@@ -12,6 +12,6 @@ cd ${REPO_ROOT}
 
 echo "Building Docker image..."
 
-docker build -t arma-4p1s -f node/examples/all-in-one/Dockerfile .
+docker build -t localhost/arma-4p1s -f node/examples/all-in-one/Dockerfile .
 
 echo "Build done."
