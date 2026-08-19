@@ -31,6 +31,8 @@ type FileLedgerBlockStore interface {
 	RetrieveBlocks(startBlockNumber uint64) (ledger.ResultsIterator, error)
 	Shutdown()
 	RetrieveBlockByNumber(blockNum uint64) (*cb.Block, error)
+	PruneBefore(blockNum uint64) error
+	FirstAvailableBlockNumber() uint64
 }
 
 // NewFileLedger creates a new FileLedger for interaction with the ledger
@@ -70,7 +72,9 @@ func (fl *FileLedger) Iterator(startPosition *ab.SeekPosition) (blockledger.Iter
 	var startingBlockNumber uint64
 	switch start := startPosition.Type.(type) {
 	case *ab.SeekPosition_Oldest:
-		startingBlockNumber = 0
+		// Oldest means the oldest block this ledger can still serve, which is not block 0 once the front has
+		// been pruned or the ledger was bootstrapped from a snapshot.
+		startingBlockNumber = fl.blockStore.FirstAvailableBlockNumber()
 	case *ab.SeekPosition_Newest:
 		info, err := fl.blockStore.GetBlockchainInfo()
 		if err != nil {
@@ -86,6 +90,11 @@ func (fl *FileLedger) Iterator(startPosition *ab.SeekPosition) (blockledger.Iter
 		height := fl.Height()
 		if startingBlockNumber > height {
 			return &blockledger.NotFoundErrorIterator{}, 0
+		}
+		if first := fl.blockStore.FirstAvailableBlockNumber(); startingBlockNumber < first {
+			logger.Warnw("Requested block is not available on this ledger and never will be",
+				"blockNum", startingBlockNumber, "firstAvailableBlockNum", first)
+			return &blockledger.UnavailableErrorIterator{}, 0
 		}
 	case *ab.SeekPosition_NextCommit:
 		startingBlockNumber = fl.Height()
@@ -123,4 +132,9 @@ func (fl *FileLedger) Append(block *cb.Block) error {
 
 func (fl *FileLedger) RetrieveBlockByNumber(blockNumber uint64) (*cb.Block, error) {
 	return fl.blockStore.RetrieveBlockByNumber(blockNumber)
+}
+
+// PruneBefore reclaims the blocks below seq, see blockledger.Writer.
+func (fl *FileLedger) PruneBefore(seq uint64) error {
+	return fl.blockStore.PruneBefore(seq)
 }
