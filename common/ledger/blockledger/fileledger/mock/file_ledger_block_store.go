@@ -20,6 +20,16 @@ type FileLedgerBlockStore struct {
 	addBlockReturnsOnCall map[int]struct {
 		result1 error
 	}
+	FirstAvailableBlockNumberStub        func() uint64
+	firstAvailableBlockNumberMutex       sync.RWMutex
+	firstAvailableBlockNumberArgsForCall []struct {
+	}
+	firstAvailableBlockNumberReturns struct {
+		result1 uint64
+	}
+	firstAvailableBlockNumberReturnsOnCall map[int]struct {
+		result1 uint64
+	}
 	GetBlockchainInfoStub        func() (*common.BlockchainInfo, error)
 	getBlockchainInfoMutex       sync.RWMutex
 	getBlockchainInfoArgsForCall []struct {
@@ -135,6 +145,59 @@ func (fake *FileLedgerBlockStore) AddBlockReturnsOnCall(i int, result1 error) {
 	}
 	fake.addBlockReturnsOnCall[i] = struct {
 		result1 error
+	}{result1}
+}
+
+func (fake *FileLedgerBlockStore) FirstAvailableBlockNumber() uint64 {
+	fake.firstAvailableBlockNumberMutex.Lock()
+	ret, specificReturn := fake.firstAvailableBlockNumberReturnsOnCall[len(fake.firstAvailableBlockNumberArgsForCall)]
+	fake.firstAvailableBlockNumberArgsForCall = append(fake.firstAvailableBlockNumberArgsForCall, struct {
+	}{})
+	stub := fake.FirstAvailableBlockNumberStub
+	fakeReturns := fake.firstAvailableBlockNumberReturns
+	fake.recordInvocation("FirstAvailableBlockNumber", []interface{}{})
+	fake.firstAvailableBlockNumberMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FileLedgerBlockStore) FirstAvailableBlockNumberCallCount() int {
+	fake.firstAvailableBlockNumberMutex.RLock()
+	defer fake.firstAvailableBlockNumberMutex.RUnlock()
+	return len(fake.firstAvailableBlockNumberArgsForCall)
+}
+
+func (fake *FileLedgerBlockStore) FirstAvailableBlockNumberCalls(stub func() uint64) {
+	fake.firstAvailableBlockNumberMutex.Lock()
+	defer fake.firstAvailableBlockNumberMutex.Unlock()
+	fake.FirstAvailableBlockNumberStub = stub
+}
+
+func (fake *FileLedgerBlockStore) FirstAvailableBlockNumberReturns(result1 uint64) {
+	fake.firstAvailableBlockNumberMutex.Lock()
+	defer fake.firstAvailableBlockNumberMutex.Unlock()
+	fake.FirstAvailableBlockNumberStub = nil
+	fake.firstAvailableBlockNumberReturns = struct {
+		result1 uint64
+	}{result1}
+}
+
+func (fake *FileLedgerBlockStore) FirstAvailableBlockNumberReturnsOnCall(i int, result1 uint64) {
+	fake.firstAvailableBlockNumberMutex.Lock()
+	defer fake.firstAvailableBlockNumberMutex.Unlock()
+	fake.FirstAvailableBlockNumberStub = nil
+	if fake.firstAvailableBlockNumberReturnsOnCall == nil {
+		fake.firstAvailableBlockNumberReturnsOnCall = make(map[int]struct {
+			result1 uint64
+		})
+	}
+	fake.firstAvailableBlockNumberReturnsOnCall[i] = struct {
+		result1 uint64
 	}{result1}
 }
 
