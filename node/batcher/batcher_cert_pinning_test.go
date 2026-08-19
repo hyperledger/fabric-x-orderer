@@ -91,7 +91,13 @@ func (s *pinningTestSetup) dial(t *testing.T, clientKP *tlsgen.CertKeyPair) prot
 func (s *pinningTestSetup) RequestsReceived() int {
 	var total int
 	for seq := range s.batcher.Ledger.Height(pinnedPartyID) {
-		total += len(s.batcher.Ledger.RetrieveBatchByNumber(pinnedPartyID, seq).Requests())
+		batch, err := s.batcher.Ledger.RetrieveBatchByNumber(pinnedPartyID, seq)
+		if err != nil {
+			// This helper is called from a require.Eventually closure, so it cannot fail the test
+			// itself without calling FailNow off the test goroutine.
+			panic(err)
+		}
+		total += len(batch.Requests())
 	}
 	return total
 }

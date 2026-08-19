@@ -51,7 +51,7 @@ func TestBatchLedgerArray(t *testing.T) {
 			}
 			a.Append(pID, types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), nil)
 			require.Equal(t, seq+1, a.Height(pID))
-			batch := a.RetrieveBatchByNumber(pID, seq)
+			batch := mustGetBatchOf(t, a, pID, seq)
 			require.NotNil(t, batch)
 			require.Equal(t, batchedRequests, batch.Requests())
 			require.Equal(t, pID, batch.Primary())
@@ -67,7 +67,7 @@ func TestBatchLedgerArray(t *testing.T) {
 
 	for _, pID := range parties {
 		require.Equal(t, numBatches, a.Height(pID))
-		batch := a.RetrieveBatchByNumber(pID, numBatches-1)
+		batch := mustGetBatchOf(t, a, pID, numBatches-1)
 		require.NotNil(t, batch)
 		require.Equal(t, batchedRequests, batch.Requests())
 		require.Equal(t, pID, batch.Primary())
@@ -81,7 +81,7 @@ func TestBatchLedgerArray(t *testing.T) {
 			}
 			a.Append(pID, types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), nil)
 			require.Equal(t, seq+1, a.Height(pID))
-			batch := a.RetrieveBatchByNumber(pID, seq)
+			batch := mustGetBatchOf(t, a, pID, seq)
 			require.NotNil(t, batch)
 			require.Equal(t, batchedRequests, batch.Requests())
 			require.Equal(t, pID, batch.Primary())
@@ -104,7 +104,7 @@ func TestBatchLedgerArray(t *testing.T) {
 
 	for _, pID := range oldParties {
 		require.Equal(t, 2*numBatches, a.Height(pID))
-		batch := a.RetrieveBatchByNumber(pID, 2*numBatches-1)
+		batch := mustGetBatchOf(t, a, pID, 2*numBatches-1)
 		require.NotNil(t, batch)
 		require.Equal(t, batchedRequests, batch.Requests())
 		require.Equal(t, pID, batch.Primary())
@@ -118,7 +118,7 @@ func TestBatchLedgerArray(t *testing.T) {
 		}
 		a.Append(5, types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), nil)
 		require.Equal(t, seq+1, a.Height(newParty))
-		batch := a.RetrieveBatchByNumber(newParty, seq)
+		batch := mustGetBatchOf(t, a, newParty, seq)
 		require.NotNil(t, batch)
 		require.Equal(t, batchedRequests, batch.Requests())
 		require.Equal(t, newParty, batch.Primary())
@@ -145,7 +145,7 @@ func TestBatchLedgerArrayPart(t *testing.T) {
 		for seq := uint64(0); seq < 10; seq++ {
 			part.Append(types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), nil)
 			require.Equal(t, seq+1, part.Height())
-			batch := part.RetrieveBatchByNumber(seq)
+			batch := mustGetBatch(t, part, seq)
 			require.NotNil(t, batch)
 			require.Equal(t, batchedRequests, batch.Requests())
 			require.Equal(t, pID, batch.Primary())
@@ -176,7 +176,7 @@ func TestBatchLedgerArrayMissingPartyID(t *testing.T) {
 		a.Append(missing, types.BatchSequence(0), 0, types.BatchedRequests{[]byte("x")}, []byte("digest"), nil)
 	})
 
-	require.Panics(t, func() { _ = a.RetrieveBatchByNumber(missing, 0) })
+	require.Panics(t, func() { _, _ = a.RetrieveBatchByNumber(missing, 0) })
 
 	// PruneBefore returns an error .
 	require.ErrorContains(t, a.PruneBefore(missing, 0), "partyID does not exist: 99")
@@ -204,7 +204,7 @@ func TestBatchLedgerArrayWithPrimarySignature(t *testing.T) {
 	require.Equal(t, uint64(1), a.Height(partyID))
 
 	// Retrieve the batch and verify the primary signature
-	batch := a.RetrieveBatchByNumber(partyID, seq)
+	batch := mustGetBatchOf(t, a, partyID, seq)
 	require.NotNil(t, batch)
 	require.Equal(t, batchedRequests, batch.Requests())
 	require.Equal(t, partyID, batch.Primary())
@@ -224,13 +224,13 @@ func TestBatchLedgerArrayWithPrimarySignature(t *testing.T) {
 	require.Equal(t, uint64(2), a.Height(partyID))
 
 	// Retrieve the second batch and verify its signature
-	batch2 := a.RetrieveBatchByNumber(partyID, seq2)
+	batch2 := mustGetBatchOf(t, a, partyID, seq2)
 	require.NotNil(t, batch2)
 	require.Equal(t, batchedRequests2, batch2.Requests())
 	require.Equal(t, primarySignature2, batch2.PrimarySignature())
 
 	// Verify the first batch signature is still intact
-	batch1Again := a.RetrieveBatchByNumber(partyID, seq)
+	batch1Again := mustGetBatchOf(t, a, partyID, seq)
 	require.NotNil(t, batch1Again)
 	require.Equal(t, primarySignature, batch1Again.PrimarySignature())
 
@@ -241,11 +241,11 @@ func TestBatchLedgerArrayWithPrimarySignature(t *testing.T) {
 	require.NotNil(t, a)
 
 	// Verify signatures are persisted correctly
-	batchAfterReopen := a.RetrieveBatchByNumber(partyID, seq)
+	batchAfterReopen := mustGetBatchOf(t, a, partyID, seq)
 	require.NotNil(t, batchAfterReopen)
 	require.Equal(t, primarySignature, batchAfterReopen.PrimarySignature())
 
-	batch2AfterReopen := a.RetrieveBatchByNumber(partyID, seq2)
+	batch2AfterReopen := mustGetBatchOf(t, a, partyID, seq2)
 	require.NotNil(t, batch2AfterReopen)
 	require.Equal(t, primarySignature2, batch2AfterReopen.PrimarySignature())
 
@@ -277,15 +277,15 @@ func TestBatchLedgerArrayPruneBefore(t *testing.T) {
 	const pruned = types.PartyID(2)
 	require.NoError(t, a.PruneBefore(pruned, 20))
 
-	require.Nil(t, a.RetrieveBatchByNumber(pruned, 0))
-	require.NotNil(t, a.RetrieveBatchByNumber(pruned, 20))
+	requireNoBatchOf(t, a, pruned, 0)
+	_ = mustGetBatchOf(t, a, pruned, 20)
 	require.Equal(t, uint64(numBatches), a.Height(pruned))
 
 	for _, pID := range parties {
 		if pID == pruned {
 			continue
 		}
-		require.NotNil(t, a.RetrieveBatchByNumber(pID, 0), "party %d should be untouched", pID)
+		_ = mustGetBatchOf(t, a, pID, 0)
 		require.Equal(t, uint64(numBatches), a.Height(pID))
 	}
 }
