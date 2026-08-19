@@ -69,6 +69,7 @@ type mockBlockStore struct {
 	getBlockchainInfoError     error
 	retrieveBlockByNumberError error
 	prunedBefore               uint64
+	firstAvailableBlockNumber  uint64
 }
 
 func (mbs *mockBlockStore) AddBlock(block *cb.Block) error {
@@ -105,6 +106,10 @@ func (mbs *mockBlockStore) RetrieveBlockByTxID(txID string) (*cb.Block, error) {
 
 func (mbs *mockBlockStore) RetrieveTxValidationCodeByTxID(txID string) (peer.TxValidationCode, error) {
 	return mbs.txValidationCode, mbs.defaultError
+}
+
+func (mbs *mockBlockStore) FirstAvailableBlockNumber() uint64 {
+	return mbs.firstAvailableBlockNumber
 }
 
 func (mbs *mockBlockStore) PruneBefore(blockNum uint64) error {
@@ -290,13 +295,16 @@ func TestBlockRetrievalWithSnapshot(t *testing.T) {
 	defer it3.Close()
 	require.Equal(t, uint64(numBlocks), startingNum3)
 
+	// A block covered by the snapshot is never coming to this ledger, so the request is terminal rather than
+	// not-yet-found -- the same answer a pruned block gets.
 	it4, _ := fl.Iterator(&ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: uint64(numBlocks - 1)}}})
 	defer it4.Close()
-	require.Equal(t, &blockledger.NotFoundErrorIterator{}, it4)
+	require.Equal(t, &blockledger.UnavailableErrorIterator{}, it4)
 
+	// Past the end of the ledger stays not-found: that block may yet be written.
 	it5, _ := fl.Iterator(&ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: uint64(numBlocks + 1)}}})
 	defer it5.Close()
-	require.Equal(t, &blockledger.NotFoundErrorIterator{}, it4)
+	require.Equal(t, &blockledger.NotFoundErrorIterator{}, it5)
 
 	// add a block and verify iterator.Next
 	nextBlk := blocks[numBlocks]
@@ -427,4 +435,88 @@ func TestPruneBeforeError(t *testing.T) {
 
 	require.ErrorContains(t, fl.PruneBefore(7), "no pruning today")
 	require.Equal(t, uint64(7), store.prunedBefore)
+}
+
+// Scenario:
+//  1. Append a block to a ledger holding a genesis block, then prune below block 1.
+//  2. Expect an Oldest iterator to start at block 1 rather than 0, and to return it.
+//  3. Expect Newest to still return block 1, since Height is unaffected and the last block always survives.
+func TestIteratorOldestOnPrunedLedger(t *testing.T) {
+	tev, fl := initialize(t)
+	defer tev.tearDown()
+
+	require.NoError(t, fl.Append(blockledger.CreateNextBlock(fl, []*cb.Envelope{getSampleEnvelopeWithSignatureHeader()})))
+	require.NoError(t, fl.PruneBefore(1))
+
+	it, num := fl.Iterator(&ab.SeekPosition{Type: &ab.SeekPosition_Oldest{}})
+	defer it.Close()
+	require.Equal(t, uint64(1), num, "Oldest must be the first block still available, not block 0")
+
+	block, status := it.Next()
+	require.Equal(t, cb.Status_SUCCESS, status)
+	require.Equal(t, uint64(1), block.Header.Number)
+
+	newest, num := fl.Iterator(&ab.SeekPosition{Type: &ab.SeekPosition_Newest{}})
+	defer newest.Close()
+	require.Equal(t, uint64(1), num)
+	block, status = newest.Next()
+	require.Equal(t, cb.Status_SUCCESS, status)
+	require.Equal(t, uint64(1), block.Header.Number)
+}
+
+// Scenario:
+//  1. Append a block and prune below block 1.
+//  2. Expect a Specified iterator for block 0 to report BAD_REQUEST, not NOT_FOUND: the block will never
+//     come back, so a consumer must re-seed rather than retry.
+//  3. Expect a Specified iterator past the end of the ledger to still report NOT_FOUND, since that block may
+//     simply not exist yet.
+//  4. Expect a Specified iterator at the first available block to succeed.
+func TestIteratorSpecifiedBelowPrunePoint(t *testing.T) {
+	tev, fl := initialize(t)
+	defer tev.tearDown()
+
+	require.NoError(t, fl.Append(blockledger.CreateNextBlock(fl, []*cb.Envelope{getSampleEnvelopeWithSignatureHeader()})))
+	require.NoError(t, fl.PruneBefore(1))
+
+	pruned, num := fl.Iterator(&ab.SeekPosition{Type: &ab.SeekPosition_Specified{
+		Specified: &ab.SeekSpecified{Number: 0},
+	}})
+	defer pruned.Close()
+	require.Zero(t, num)
+	_, status := pruned.Next()
+	require.Equal(t, cb.Status_BAD_REQUEST, status)
+
+	notYet, _ := fl.Iterator(&ab.SeekPosition{Type: &ab.SeekPosition_Specified{
+		Specified: &ab.SeekSpecified{Number: fl.Height() + 1},
+	}})
+	defer notYet.Close()
+	_, status = notYet.Next()
+	require.Equal(t, cb.Status_NOT_FOUND, status)
+
+	available, num := fl.Iterator(&ab.SeekPosition{Type: &ab.SeekPosition_Specified{
+		Specified: &ab.SeekSpecified{Number: 1},
+	}})
+	defer available.Close()
+	require.Equal(t, uint64(1), num)
+	block, status := available.Next()
+	require.Equal(t, cb.Status_SUCCESS, status)
+	require.Equal(t, uint64(1), block.Header.Number)
+}
+
+// Scenario:
+//  1. Append a block to a ledger that has never been pruned.
+//  2. Expect Oldest to start at block 0, unchanged.
+func TestIteratorOldestWithoutPruning(t *testing.T) {
+	tev, fl := initialize(t)
+	defer tev.tearDown()
+
+	require.NoError(t, fl.Append(blockledger.CreateNextBlock(fl, []*cb.Envelope{getSampleEnvelopeWithSignatureHeader()})))
+
+	it, num := fl.Iterator(&ab.SeekPosition{Type: &ab.SeekPosition_Oldest{}})
+	defer it.Close()
+	require.Zero(t, num)
+
+	block, status := it.Next()
+	require.Equal(t, cb.Status_SUCCESS, status)
+	require.Zero(t, block.Header.Number)
 }
