@@ -326,6 +326,8 @@ func CreatePayloadWithConfigUpdate(data []byte, certBytes []byte, org string) *c
 		Nonce:   []byte("nonce"),
 	}
 
+	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)
+
 	return &common.Payload{
 		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
 		Data:   data,
