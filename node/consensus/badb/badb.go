@@ -51,7 +51,22 @@ func (db *BatchAttestationDB) List() ([][]byte, []uint64) {
 
 func (db *BatchAttestationDB) Exists(digest []byte) bool {
 	_, err := db.db.Get(makeDigestKey(digest), nil)
-	return err == nil
+	switch err {
+	case nil:
+		return true
+	case leveldb.ErrNotFound:
+		return false
+	case leveldb.ErrClosed:
+		// The DB may be closed while the consenter is soft-stopping (the BFT
+		// engine can still drive Exists via SimulateStateTransition). Treat a
+		// closed DB as "digest absent" rather than fail-stopping.
+		return false
+	default:
+		// A corruption/IO error must not be silently reported as absence; match
+		// Put's fail-stop behavior.
+		db.logger.Panicf("Failed reading from database: %v", err)
+		return false
+	}
 }
 
 func (db *BatchAttestationDB) Put(digest [][]byte, epoch []uint64) {
@@ -88,7 +103,16 @@ func (db *BatchAttestationDB) Clean(epochToDelete uint64) {
 		batch.Delete(epochKey)
 	}
 
-	db.db.Write(batch, nil)
+	// Next stops returning pairs on error; the error is retrieved via Error().
+	// Without this check Clean could write a partial/empty delete batch and
+	// mask an underlying corruption/IO fault.
+	if err := iter.Error(); err != nil {
+		db.logger.Panicf("Failed iterating over database: %v", err)
+	}
+
+	if err := db.db.Write(batch, nil); err != nil {
+		db.logger.Panicf("Failed updating database: %v", err)
+	}
 }
 
 func makeDigestKey(digest []byte) []byte {
