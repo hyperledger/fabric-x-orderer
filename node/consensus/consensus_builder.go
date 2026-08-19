@@ -460,7 +460,7 @@ func configureComm(c *Consensus) {
 		})
 	}
 	c.ClusterService.ConfigureNodeCerts(consenterConfigs)
-	c.Egress.Reconfigure(c.CurrentNodes, remotesNodes)
+	c.Egress.Reconfigure(remotesNodes)
 }
 
 func setupComm(c *Consensus) {
@@ -483,8 +483,7 @@ func setupComm(c *Consensus) {
 	}
 
 	c.Egress = &comm.Egress{
-		NodeList: c.CurrentNodes,
-		Logger:   c.Logger,
+		Logger: c.Logger,
 		RPC: &comm.RPC{
 			StreamsByType: comm.NewStreamsByType(),
 			Timeout:       c.fullConfig.LocalConfig.ClusterConfig.RPCTimeout,
@@ -495,7 +494,7 @@ func setupComm(c *Consensus) {
 
 	configureComm(c)
 
-	c.BFT.Comm = c
+	c.BFT.Comm = c.Egress
 }
 
 func getSelfID(consenterInfos []node_config.ConsenterInfo, partyID arma_types.PartyID) []byte {

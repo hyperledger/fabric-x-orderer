@@ -7,8 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package comm
 
 import (
-	"sync"
-
 	protos "github.com/hyperledger-labs/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -20,18 +18,14 @@ import (
 
 // Egress implementation
 type Egress struct {
-	Channel  string
-	RPC      *RPC
-	Logger   *flogging.FabricLogger
-	NodeList []uint64
-	lock     sync.Mutex
+	Channel string
+	RPC     *RPC
+	Logger  *flogging.FabricLogger
 }
 
-// Nodes returns nodes from the runtime config
+// Nodes returns the set of member node IDs, delegating to the thread-safe RPC.
 func (e *Egress) Nodes() []uint64 {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-	return e.NodeList
+	return e.RPC.Nodes()
 }
 
 // SendConsensus sends the BFT message to the cluster
@@ -62,10 +56,7 @@ func bftMsgToClusterMsg(message *protos.Message) *ab.ConsensusRequest {
 	}
 }
 
-// Reconfigure updates the list of nodes and reconfigures the RPC
-func (e *Egress) Reconfigure(nodes []uint64, members []RemoteNode) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
+// Reconfigure reconfigures the RPC with the given members.
+func (e *Egress) Reconfigure(members []RemoteNode) {
 	e.RPC.Reconfigure(members)
-	e.NodeList = nodes
 }
