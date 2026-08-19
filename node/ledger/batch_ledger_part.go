@@ -98,6 +98,14 @@ func (b *BatchLedgerPart) RetrieveBatchByNumber(seq uint64) types.Batch {
 	return (*FabricBatch)(block)
 }
 
+// PruneBefore prunes the batches below seq. Retrieving a batch below seq fails afterwards
+// whether or not its bytes were removed, and Height() is unaffected.
+func (b *BatchLedgerPart) PruneBefore(seq uint64) error {
+	b.logger.Debugf("Party %d, Shard: %d, is pruning batches below sequence %d from Primary: %d",
+		b.partyID, b.shardID, seq, b.primaryPartyID)
+	return b.ledger.PruneBefore(seq)
+}
+
 // Ledger returns the underlying ledger, which supports an iterator as well.
 func (b *BatchLedgerPart) Ledger() blockledger.ReadWriter {
 	return b.ledger
