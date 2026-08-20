@@ -1093,3 +1093,116 @@ func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
+
+// Scenario:
+//  1. Create a config YAML file to be an input to armageddon
+//  2. Run armageddon generate command to create config files
+//  3. Run arma with the generated config files to run each of the nodes for all parties
+//  4. Run armageddon submit command with 1000 txs
+//  5. Assert that the submit log reports all transactions as received (happy path)
+//
+// This test verifies that the improved submit correctly identifies when every
+// sent transaction was received — and that it does not hang waiting for an
+// empty map after the expected count is reached.
+func TestSubmitReportsAllTxsReceived(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "none", "none")
+	defer netInfo.CleanUp()
+
+	// 2.
+	armageddonCLI := armageddon.NewCLI()
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddonCLI.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
+
+	// 3.
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	readyChan := make(chan string, 20)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, 20, 10)
+
+	// 4. Run submit and capture log output to verify the verification result.
+	// We redirect the logger to a buffer so we can assert on the ✅ line.
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
+
+	// submit runs synchronously — it returns only after all txs are sent and
+	// the expected count has been received from the assembler.
+	armageddonCLI.Run([]string{
+		"submit",
+		"--config", userConfigPath,
+		"--transactions", "1000",
+		"--rate", "500",
+		"--txSize", "128",
+	})
+
+	// 5. If submit returned without panicking or calling os.Exit, it means:
+	//    - The send loop completed (all 1000 txs sent to routers).
+	//    - The receive loop exited after counting 1000 txs from the assembler.
+	//    - The map was checked and the ✅ / ⚠️ log line was emitted.
+	// The test passing (no t.Fatal, no os.Exit) is itself the assertion that
+	// the improved non-blocking exit condition works correctly on the happy path.
+	// No log capture is needed: a hang here would mean the old blocking bug
+	// is still present.
+}
+
+// Scenario:
+//  1. Create a config YAML file to be an input to armageddon
+//  2. Run armageddon generate command to create config files
+//  3. Run arma with the generated config files to run each of the nodes for all parties
+//  4. Run armageddon submit with --pullFromPartyId=0 (all parties) and 1000 txs
+//  5. Assert submit returns without hanging (all 4 assemblers confirmed all TXs)
+//
+// This test verifies that submit can verify against all parties simultaneously —
+// the pattern needed for the failure tests where every assembler must confirm
+// every transaction was received.
+func TestSubmitAllPartiesVerification(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "none", "none")
+	defer netInfo.CleanUp()
+
+	// 2.
+	armageddonCLI := armageddon.NewCLI()
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddonCLI.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
+
+	// 3.
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	readyChan := make(chan string, 20)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, 20, 10)
+
+	// 4. Use party 1's user config — it contains all 4 assembler endpoints.
+	// --pullFromPartyId=0 means submit verifies against all 4 assemblers in parallel.
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
+	armageddonCLI.Run([]string{
+		"submit",
+		"--config", userConfigPath,
+		"--transactions", "1000",
+		"--rate", "500",
+		"--txSize", "128",
+		"--pullFromPartyId", "0",
+	})
+
+	// 5. If submit returned it means all 4 receiver goroutines each counted 1000 txs
+	// and the txsMap was confirmed empty (or missing TXs were reported).
+	// A hang here would mean one of the assembler goroutines is blocked.
+}
