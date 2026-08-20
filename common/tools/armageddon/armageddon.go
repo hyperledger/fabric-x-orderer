@@ -9,6 +9,7 @@ package armageddon
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/csv"
 	"encoding/pem"
 	"fmt"
@@ -111,6 +112,28 @@ func (pm *protectedMap) IsEmpty() bool {
 	return len(pm.keyValMap) == 0
 }
 
+func (pm *protectedMap) Size() int {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	return len(pm.keyValMap)
+}
+
+func (pm *protectedMap) Keys() []string {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	keys := make([]string, 0, len(pm.keyValMap))
+	for k := range pm.keyValMap {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func (pm *protectedMap) Contains(key string) bool {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	return pm.keyValMap[key]
+}
+
 type CLI struct {
 	app      *kingpin.Application
 	commands map[string]*kingpin.CmdClause
@@ -121,10 +144,11 @@ type CLI struct {
 	useTLS                              *bool
 	clientSignatureVerificationRequired *bool
 	// submit command flags
-	userConfigFile **os.File
-	transactions   *int // transactions is the number of txs to be sent
-	rate           *int // rate is the number of transaction per second to be sent
-	txSize         *int // txSize is the required transaction size
+	userConfigFile        **os.File
+	transactions          *int // transactions is the number of txs to be sent
+	rate                  *int // rate is the number of transaction per second to be sent
+	txSize                *int // txSize is the required transaction size
+	submitPullFromPartyId *int // 0 = all parties (default), >0 = specific party
 	// load command flags
 	loadUserConfigFile **os.File
 	loadTransactions   *int
@@ -174,6 +198,7 @@ func (cli *CLI) configureCommands() {
 	cli.transactions = submit.Flag("transactions", "The number of transactions to be sent").Int()
 	cli.rate = submit.Flag("rate", "The rate specifies the number of transactions per second to be sent").Int()
 	cli.txSize = submit.Flag("txSize", "The required transaction size in bytes").Default("512").Int()
+	cli.submitPullFromPartyId = submit.Flag("pullFromPartyId", "Party ID of the assembler to verify against (0 = all parties, default 0)").Default("0").Int()
 	commands["submit"] = submit
 
 	load := cli.app.Command("load", "Submit txs to routers and verify the routers have received the txs")
@@ -224,7 +249,7 @@ func (cli *CLI) Run(args []string) {
 
 	// "submit" command
 	case cli.commands["submit"].FullCommand():
-		submit(cli.userConfigFile, cli.transactions, cli.rate, cli.txSize)
+		submit(cli.userConfigFile, cli.transactions, cli.rate, cli.txSize, cli.submitPullFromPartyId)
 
 	// "load" command
 	case cli.commands["load"].FullCommand():
@@ -469,7 +494,7 @@ func ReadUserConfig(userConfigFile **os.File) (*UserConfig, error) {
 
 // submit command makes txs and sends them to all routers
 // it also asks for blocks from some assembler (no matter who it is) to validate the txs appear in some block
-func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
+func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int, pullFromPartyId *int) {
 	// check transaction size
 	txMinimumSize := 16 + 8 + 8
 	if *txSize < txMinimumSize {
@@ -484,6 +509,17 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 		os.Exit(-1)
 	}
 
+	// determine which parties to receive from:
+	// 0 = all parties, >0 = that specific party only
+	var partiesToReceive []int
+	if *pullFromPartyId == 0 {
+		for i := range userConfig.AssemblerEndpoints {
+			partiesToReceive = append(partiesToReceive, i+1)
+		}
+	} else {
+		partiesToReceive = []int{*pullFromPartyId}
+	}
+
 	// send txs to the routers
 	start := time.Now()
 	txsMap := &protectedMap{
@@ -491,27 +527,46 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 		mutex:     sync.Mutex{},
 	}
 
-	logger.Infof("Submit starts.....")
+	logger.Infof("Submit starts — sending to all routers, verifying against %d assembler(s).....", len(partiesToReceive))
 	var waitForTxToBeSentAndReceived sync.WaitGroup
-	waitForTxToBeSentAndReceived.Add(2)
+
+	// one goroutine sends all transactions
+	waitForTxToBeSentAndReceived.Add(1)
 	go func() {
 		sendTxToRouters(userConfig, *transactions, *rate, *txSize, txsMap)
 		waitForTxToBeSentAndReceived.Done()
 	}()
 
-	// receive blocks from some assembler
-	var numOfBlocks int
-	var txDelayTimes float64
-	go func() {
-		numOfBlocks, txDelayTimes = receiveResponseFromAssembler(userConfig, txsMap, *transactions)
-		waitForTxToBeSentAndReceived.Done()
-	}()
+	// one goroutine per assembler receives blocks and removes confirmed TXs from the map
+	var mu sync.Mutex
+	var totalBlocks int
+	var totalDelayTimes float64
+	for _, partyId := range partiesToReceive {
+		waitForTxToBeSentAndReceived.Add(1)
+		go func(pid int) {
+			blocks, delays := receiveResponseFromAssembler(userConfig, txsMap, *transactions, pid)
+			mu.Lock()
+			totalBlocks += blocks
+			totalDelayTimes += delays
+			mu.Unlock()
+			waitForTxToBeSentAndReceived.Done()
+		}(partyId)
+	}
 
 	waitForTxToBeSentAndReceived.Wait()
 	elapsed := time.Since(start)
 	logger.Infof("Submit Finished.....")
+
+	// report which transactions were not received, if any
+	if txsMap.IsEmpty() {
+		logger.Infof("✅ TX verification passed: all %d transactions were received", *transactions)
+	} else {
+		missing := txsMap.Keys()
+		logger.Warnf("⚠️  TX verification: %d out of %d transactions were not received. Missing TX numbers: %v", len(missing), *transactions, missing)
+	}
+
 	// report results
-	reportResults(*transactions, elapsed, txDelayTimes, numOfBlocks, *txSize)
+	reportResults(*transactions, elapsed, totalDelayTimes, totalBlocks, *txSize)
 }
 
 // load command makes txs and sends them to all routers
@@ -964,6 +1019,16 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 	logger.Debugf("exit pulling blocks from the assembler")
 }
 
+// extractTxNumber reads the first 8 bytes of payload data as a big-endian uint64
+// and returns its decimal string representation — used as the stable per-TX map key.
+// This matches the txNumber written by PrepareTxWithTimestamp (bytes 0-7 of payload.Data).
+func extractTxNumber(data []byte) string {
+	if len(data) < 8 {
+		return ""
+	}
+	return strconv.FormatUint(binary.BigEndian.Uint64(data[:8]), 10)
+}
+
 func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string) (*common.Block, error) {
 	resp, err := stream.Recv()
 	if err != nil {
@@ -994,7 +1059,7 @@ func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, 
 	data, _ := tx.GetDataFromEnvelope(env)
 	if txsMap != nil {
 		logger.Debugf("Add tx %x to the map", data)
-		txsMap.Add(string(data))
+		txsMap.Add(extractTxNumber(data))
 	}
 	for j := 0; j < len(streams); j++ {
 		err := streams[j].Send(env)
@@ -1131,10 +1196,7 @@ func createDeliverRequestWithSeekInfo(userConfig *UserConfig, startSeq uint64) (
 
 // receiveResponseFromAssembler is used by the submit command, which is a short-lived operation.
 // Unlike pullBlocksFromAssemblerAndCollectStatistics, no reconnect logic is supported.
-func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
-	// arbitrarily choose the first assembler to pull blocks from
-	pullFromPartyId := 1
-
+func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int, pullFromPartyId int) (int, float64) {
 	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
@@ -1227,17 +1289,18 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 			// 2. delete the tx from the map
 			if txsMap != nil {
 				logger.Debugf("remove tx %x from the map", data)
-				txsMap.Remove(string(data))
+				txsMap.Remove(extractTxNumber(data))
 			}
 		}
 
-		// if the map is empty it means we received all txs, then we stop asking for blocks from the assembler
 		// NOTE: the map is relevant when using the submit command. Load and receive commands don't maintain a map.
+		// We exit when the expected number of txs have been counted, regardless of whether the map is empty.
+		// The map is checked after the loop to report any missing txs.
 		if expectedNumOfTxs < 0 {
 			continue
 		}
 
-		if (txsMap != nil && txsMap.IsEmpty()) && numOfTxsCalculated >= expectedNumOfTxs {
+		if numOfTxsCalculated >= expectedNumOfTxs {
 			break
 		}
 	}

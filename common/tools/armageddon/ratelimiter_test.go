@@ -125,3 +125,39 @@ func TestTPSMeasureWithRateLimiter(t *testing.T) {
 	require.Less(t, minLimit, TPS)
 	require.Less(t, TPS, maxLimit)
 }
+
+// TestProtectedMapHelpers verifies the Size, Keys, and Contains methods added
+// to protectedMap for the improved submit TX-verification path.
+// This is a pure unit test — no network, no goroutines.
+func TestProtectedMapHelpers(t *testing.T) {
+	pm := &protectedMap{keyValMap: make(map[string]bool), mutex: sync.Mutex{}}
+
+	// Empty map
+	require.Equal(t, 0, pm.Size())
+	require.Empty(t, pm.Keys())
+	require.False(t, pm.Contains("0"))
+
+	// Add three entries
+	pm.Add("0")
+	pm.Add("1")
+	pm.Add("2")
+	require.Equal(t, 3, pm.Size())
+	require.True(t, pm.Contains("1"))
+	require.False(t, pm.Contains("99"))
+
+	keys := pm.Keys()
+	require.Len(t, keys, 3)
+	require.ElementsMatch(t, []string{"0", "1", "2"}, keys)
+
+	// Remove one entry
+	pm.Remove("1")
+	require.Equal(t, 2, pm.Size())
+	require.False(t, pm.Contains("1"))
+	require.ElementsMatch(t, []string{"0", "2"}, pm.Keys())
+
+	// Remove remaining entries — map should be empty
+	pm.Remove("0")
+	pm.Remove("2")
+	require.Equal(t, 0, pm.Size())
+	require.True(t, pm.IsEmpty())
+}
