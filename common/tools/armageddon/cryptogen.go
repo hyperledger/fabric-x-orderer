@@ -72,36 +72,49 @@ import (
 //			                        ├── signcerts
 //			                        ├── tlscacerts
 func GenerateCryptoConfigWithProfile(networkConfig *generate.Network, outputDir string) (*configtxgen.Profile, error) {
-	orgs := make([]cryptogen.OrganizationParameters, 0, int(1+len(networkConfig.Parties)))
+	orgs := make([]cryptogen.OrganizationParameters, 0, len(networkConfig.Parties)+len(networkConfig.Peers))
 
 	for _, party := range networkConfig.Parties {
 		partyName := fmt.Sprintf("party%d", party.ID)
-		routerHostName := utils.TrimPortFromEndpoint(party.RouterEndpoint)
-		assemblerHostName := utils.TrimPortFromEndpoint(party.AssemblerEndpoint)
-		consenterHostName := utils.TrimPortFromEndpoint(party.ConsenterEndpoint)
+		routerHost := utils.TrimPortFromEndpoint(party.RouterEndpoint)
+		routerNodeSANS := []string{routerHost}
+		routerTLSHostname := routerHost
+		if party.RouterTLSHostname != "" {
+			routerTLSHostname = party.RouterTLSHostname
+			routerNodeSANS = append(routerNodeSANS, routerTLSHostname)
+		}
+		assemblerHost := utils.TrimPortFromEndpoint(party.AssemblerEndpoint)
+		assemblerNodeSANS := []string{assemblerHost}
+		assemblerTLSHostname := assemblerHost
+		if party.AssemblerTLSHostname != "" {
+			assemblerTLSHostname = party.AssemblerTLSHostname
+			assemblerNodeSANS = append(assemblerNodeSANS, assemblerTLSHostname)
+		}
+		consenterHost := utils.TrimPortFromEndpoint(party.ConsenterEndpoint)
 		routerPort := utils.GetPortFromEndpoint(party.RouterEndpoint)
 		assemblerPort := utils.GetPortFromEndpoint(party.AssemblerEndpoint)
+
 		ordererNodes := []cryptogen.Node{
 			{
 				CommonName: "router",
 				PartyName:  partyName,
-				Hostname:   routerHostName,
-				SANS:       []string{routerHostName},
+				Hostname:   routerHost,
+				SANS:       routerNodeSANS,
 			},
 			{
 				CommonName: "assembler",
 				PartyName:  partyName,
-				Hostname:   assemblerHostName,
-				SANS:       []string{assemblerHostName},
+				Hostname:   assemblerHost,
+				SANS:       assemblerNodeSANS,
 			},
 		}
-		for batcherId, ep := range party.BatchersEndpoints {
-			batcherHostName := utils.TrimPortFromEndpoint(ep)
+		for batcherID, ep := range party.BatchersEndpoints {
+			batcherHost := utils.TrimPortFromEndpoint(ep)
 			ordererNodes = append(ordererNodes, cryptogen.Node{
-				CommonName: fmt.Sprintf("batcher%d", batcherId+1),
+				CommonName: fmt.Sprintf("batcher%d", batcherID+1),
 				PartyName:  partyName,
-				Hostname:   batcherHostName,
-				SANS:       []string{batcherHostName},
+				Hostname:   batcherHost,
+				SANS:       []string{batcherHost},
 			})
 		}
 
@@ -109,12 +122,12 @@ func GenerateCryptoConfigWithProfile(networkConfig *generate.Network, outputDir 
 		orgs = append(orgs, cryptogen.OrganizationParameters{
 			Name:             orgName,
 			Domain:           orgName,
-			OrdererEndpoints: generate.BuildOrdererEndpoints(uint32(party.ID), routerHostName, int(routerPort), assemblerHostName, int(assemblerPort)),
+			OrdererEndpoints: generate.BuildOrdererEndpoints(uint32(party.ID), routerTLSHostname, int(routerPort), assemblerTLSHostname, int(assemblerPort)),
 			ConsenterNodes: []cryptogen.Node{{
 				Hostname:   party.ConsenterEndpoint,
 				CommonName: "consenter",
 				PartyName:  partyName,
-				SANS:       []string{consenterHostName},
+				SANS:       []string{consenterHost},
 			}},
 			OrdererNodes: ordererNodes,
 		})
@@ -163,20 +176,22 @@ func CopyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
 
-	_, err = io.Copy(dstFile, srcFile)
-	return err
+	_, copyErr := io.Copy(dstFile, srcFile)
+	closeErr := dstFile.Close()
+	if copyErr != nil {
+		os.Remove(dst) // best-effort cleanup of a partial file
+		return copyErr
+	}
+	return closeErr
 }
 
 func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, certType string, pathToNewCert string, pathToNewPrivateKey string, nodesIPs []string) ([]byte, error) {
 	var ku x509.KeyUsage
 	switch certType {
 	case "tls":
-		certType = "tls"
 		ku = x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
 	case "sign":
-		certType = "sign"
 		ku = x509.KeyUsageDigitalSignature
 	default:
 		return nil, fmt.Errorf("unsupported cert type: %s", certType)

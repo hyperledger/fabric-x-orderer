@@ -42,11 +42,13 @@ func (n *Network) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type Party struct {
-	ID                types.PartyID `yaml:"ID"`
-	AssemblerEndpoint string        `yaml:"AssemblerEndpoint"`
-	ConsenterEndpoint string        `yaml:"ConsenterEndpoint"`
-	RouterEndpoint    string        `yaml:"RouterEndpoint"`
-	BatchersEndpoints []string      `yaml:"BatchersEndpoints"`
+	ID                   types.PartyID `yaml:"ID"`
+	AssemblerEndpoint    string        `yaml:"AssemblerEndpoint"`
+	AssemblerTLSHostname string        `yaml:"AssemblerTLSHostname,omitempty"` // optional externally-reachable TLS hostname for the assembler, advertised via OrdererEndpoints
+	ConsenterEndpoint    string        `yaml:"ConsenterEndpoint"`
+	RouterEndpoint       string        `yaml:"RouterEndpoint"`
+	RouterTLSHostname    string        `yaml:"RouterTLSHostname,omitempty"` // optional externally-reachable TLS hostname for the router, advertised via OrdererEndpoints
+	BatchersEndpoints    []string      `yaml:"BatchersEndpoints"`
 }
 
 // NetworkLocalConfig collects the local config of each node per party.
