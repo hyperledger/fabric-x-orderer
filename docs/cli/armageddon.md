@@ -103,6 +103,8 @@ Flags:
   --rate=RATE                  The rate specifies the number of transactions per
                                second to be sent
   --txSize=512                 The required transaction size in bytes
+  --pullFromPartyId=1          The party id of the assembler to verify against,
+                               or 0 to verify against every party
 ```
 
 
