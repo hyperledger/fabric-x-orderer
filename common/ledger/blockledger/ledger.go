@@ -57,6 +57,11 @@ type Reader interface {
 type Writer interface {
 	// Append a new block to the ledger
 	Append(block *cb.Block) error
+	// PruneBefore reclaims the blocks below seq. It is an upper bound rather than an exact point: storage
+	// reclaims on whole-file boundaries, so it may keep more than asked, but never less. Reads below seq
+	// fail afterwards whether or not their bytes were reclaimed. Height is unaffected, and the call is
+	// idempotent and monotone: a seq at or below the current bound changes nothing.
+	PruneBefore(seq uint64) error
 }
 
 // ReadWriter encapsulates the read/write functions of the ledger

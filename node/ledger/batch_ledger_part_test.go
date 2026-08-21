@@ -133,3 +133,37 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 	block, _ = it.Next()
 	require.Equal(t, uint64(6), block.GetHeader().GetNumber())
 }
+
+// Scenario:
+//  1. Append 30 batches to a part.
+//  2. Call PruneBefore(20).
+//  3. Expect batches below 20 to be unavailable, 20 and above to be returned, and Height to stay 30.
+//  4. Call PruneBefore(20) again and PruneBefore(5), and expect neither to change anything.
+func TestBatchLedgerPart_PruneBefore(t *testing.T) {
+	dir := t.TempDir()
+	logger := flogging.MustGetLogger("test")
+
+	array, err := NewBatchLedgerArray(1, 1, []types.PartyID{1}, "test-channel", dir, logger)
+	require.NoError(t, err)
+	defer array.Close()
+	part := array.Part(1)
+
+	const numBatches = 30
+	for seq := uint64(0); seq < numBatches; seq++ {
+		reqs := types.BatchedRequests{[]byte(fmt.Sprintf("tx-%d", seq))}
+		part.Append(types.BatchSequence(seq), 0, reqs, reqs.Digest(), nil)
+	}
+
+	require.NoError(t, part.PruneBefore(20))
+
+	require.Nil(t, part.RetrieveBatchByNumber(0))
+	require.Nil(t, part.RetrieveBatchByNumber(19))
+	require.NotNil(t, part.RetrieveBatchByNumber(20))
+	require.NotNil(t, part.RetrieveBatchByNumber(numBatches-1))
+	require.Equal(t, uint64(numBatches), part.Height())
+
+	require.NoError(t, part.PruneBefore(20))
+	require.NoError(t, part.PruneBefore(5))
+	require.Nil(t, part.RetrieveBatchByNumber(19))
+	require.NotNil(t, part.RetrieveBatchByNumber(20))
+}
