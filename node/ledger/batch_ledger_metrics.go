@@ -1,0 +1,39 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
+package ledger
+
+import (
+	"github.com/hyperledger/fabric-lib-go/common/metrics"
+)
+
+var (
+	headerHashingLatencyOpts = metrics.HistogramOpts{
+		Namespace:  "batch_ledger",
+		Name:       "header_hashing_latency_seconds",
+		Help:       "The latency to compute the block header hash.",
+		LabelNames: []string{"party_id", "shard_id"},
+		Buckets:    []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}, // TODO: adjust buckets after reviewing Grafana
+	}
+
+	appendLatencyOpts = metrics.HistogramOpts{
+		Namespace:  "batch_ledger",
+		Name:       "append_latency_seconds",
+		Help:       "The latency to append a batch to the ledger.",
+		LabelNames: []string{"party_id", "shard_id"},
+		Buckets:    []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}, // TODO: adjust buckets after reviewing Grafana
+	}
+)
+
+type BatchLedgerMetrics struct {
+	HeaderHashingLatency metrics.Histogram
+	AppendLatency        metrics.Histogram
+}
+
+func (bl *BatchLedgerMetrics) NewBatchLedgerMetrics(p metrics.Provider, partyID, shardID string) {
+	bl.HeaderHashingLatency = p.NewHistogram(headerHashingLatencyOpts).With([]string{partyID, shardID}...)
+	bl.AppendLatency = p.NewHistogram(appendLatencyOpts).With([]string{partyID, shardID}...)
+}

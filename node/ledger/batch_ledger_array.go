@@ -24,9 +24,10 @@ type BatchLedgerArray struct {
 	ledgerParts map[types.PartyID]*BatchLedgerPart // A BatchLedgerPart for each party in the system.
 	provider    *blkstorage.BlockStoreProvider
 	logger      *flogging.FabricLogger
+	metrics     *BatchLedgerMetrics
 }
 
-func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, channelID string, batchLedgerDir string, logger *flogging.FabricLogger) (*BatchLedgerArray, error) {
+func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, channelID string, batchLedgerDir string, logger *flogging.FabricLogger, metrics *BatchLedgerMetrics) (*BatchLedgerArray, error) {
 	if !slices.Contains(parties, partyID) {
 		return nil, errors.Errorf("partyID %d not in parties %v", partyID, parties)
 	}
@@ -51,7 +52,7 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 	}
 
 	for _, primaryPartyID := range parties {
-		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, channelID, logger)
+		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, channelID, logger, metrics)
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +72,7 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 		if ledgerPartsMap[primaryPartyID] != nil {
 			continue
 		}
-		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, channelID, logger)
+		part, err := newBatchLedgerPart(provider, shardID, partyID, primaryPartyID, channelID, logger, metrics)
 		if err != nil {
 			return nil, err
 		}
@@ -87,6 +88,7 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 		ledgerParts: ledgerPartsMap,
 		provider:    provider,
 		logger:      logger,
+		metrics:     metrics,
 	}, nil
 }
 

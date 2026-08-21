@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
@@ -66,7 +67,9 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 	}
 
 	logger := flogging.MustGetLogger(fmt.Sprintf("stub-batcher-S%d-P%d", shardID, partyID))
-	ledgerArray, err := node_ledger.NewBatchLedgerArray(shardID, partyID, parties, "arma", t.TempDir(), logger)
+	ledgerMetrics := &node_ledger.BatchLedgerMetrics{}
+	ledgerMetrics.NewBatchLedgerMetrics(&disabled.Provider{}, fmt.Sprintf("%d", partyID), fmt.Sprintf("%d", shardID))
+	ledgerArray, err := node_ledger.NewBatchLedgerArray(shardID, partyID, parties, "arma", t.TempDir(), logger, ledgerMetrics)
 	if err != nil {
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}

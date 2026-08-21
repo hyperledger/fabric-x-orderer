@@ -21,7 +21,7 @@ func TestNewBatchLedgerArray(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
 	parties := []types.PartyID{1, 2, 3, 4}
-	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger)
+	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger, newTestBatchLedgerMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -38,7 +38,7 @@ func TestBatchLedgerArray(t *testing.T) {
 
 	t.Log("Open, write & read")
 	parties := []types.PartyID{1, 2, 3, 4}
-	a, err := NewBatchLedgerArray(1, 3, parties, "test-channel", dir, logger)
+	a, err := NewBatchLedgerArray(1, 3, parties, "test-channel", dir, logger, newTestBatchLedgerMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -61,7 +61,7 @@ func TestBatchLedgerArray(t *testing.T) {
 
 	t.Log("Close, reopen write and read")
 	a.Close()
-	a, err = NewBatchLedgerArray(1, 3, parties, "test-channel", dir, logger)
+	a, err = NewBatchLedgerArray(1, 3, parties, "test-channel", dir, logger, newTestBatchLedgerMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -98,7 +98,7 @@ func TestBatchLedgerArray(t *testing.T) {
 	oldParties := parties
 	newParty := types.PartyID(5)
 	newParties := []types.PartyID{1, 2, 3, newParty}
-	a, err = NewBatchLedgerArray(1, 3, newParties, "test-channel", dir, logger)
+	a, err = NewBatchLedgerArray(1, 3, newParties, "test-channel", dir, logger, newTestBatchLedgerMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -135,7 +135,7 @@ func TestBatchLedgerArrayPart(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
 	parties := []types.PartyID{1, 2, 3, 4}
-	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger)
+	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger, newTestBatchLedgerMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -159,7 +159,7 @@ func TestBatchLedgerArrayMissingPartyID(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
 	parties := []types.PartyID{1, 2, 3, 4}
-	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger)
+	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger, newTestBatchLedgerMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -186,7 +186,7 @@ func TestBatchLedgerArrayWithPrimarySignature(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 
 	parties := []types.PartyID{1, 2, 3, 4}
-	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger)
+	a, err := NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger, newTestBatchLedgerMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
@@ -233,7 +233,7 @@ func TestBatchLedgerArrayWithPrimarySignature(t *testing.T) {
 
 	// Close and reopen to verify persistence
 	a.Close()
-	a, err = NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger)
+	a, err = NewBatchLedgerArray(1, 1, parties, "test-channel", dir, logger, newTestBatchLedgerMetrics())
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
