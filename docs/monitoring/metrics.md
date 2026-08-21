@@ -32,18 +32,6 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 
 ### Assembler
 
-- **Namespace:** "assembler_ledger"  
-  **Name:** "transaction_count_total"  
-  **Help:** "The total number of transactions committed to the ledger."
-
-- **Namespace:** "assembler_ledger"  
-  **Name:** "blocks_size_bytes_total"  
-  **Help:** "The estimated total size in bytes of blocks committed to the ledger."
-
-- **Namespace:** "assembler_ledger"  
-  **Name:** "blocks_count_total"  
-  **Help:** "The total number of blocks committed to the ledger."
-
 - **Namespace:** "assembler"  
   **Name:** "batch_unary_fetch_latency_seconds"
   **Help:** "The latency to unary fetch a requested batch from the batchers in the shard."
@@ -59,6 +47,22 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 - **Namespace:** "assembler"  
   **Name:** "prefetch_index_size_bytes"
   **Help:** "The current size of the assembler prefetch index for a shard in bytes."
+
+- **Namespace:** "assembler"  
+  **Name:** "prefetch_index_evictions_total"  
+  **Help:** "The total number of evictions from the assembler prefetch index."
+
+- **Namespace:** "assembler_ledger"  
+  **Name:** "transaction_count_total"  
+  **Help:** "The total number of transactions committed to the ledger."
+
+- **Namespace:** "assembler_ledger"  
+  **Name:** "blocks_size_bytes_total"  
+  **Help:** "The estimated total size in bytes of blocks committed to the ledger."
+
+- **Namespace:** "assembler_ledger"  
+  **Name:** "blocks_count_total"  
+  **Help:** "The total number of blocks committed to the ledger."
 
 ---
 

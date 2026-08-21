@@ -277,6 +277,22 @@ func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_confi
 	configBlockNumber := configBlock.GetHeader().GetNumber()
 	a.logger.Infof("Initializing assembler ledger, current height: %d, config block number: %d", ledgerHeight, configBlockNumber)
 
+	// update metrics with current ledger state before syncing
+	// (genesis and synced blocks are updated in AppendConfig/AppendBlock)
+	if ledgerHeight > 0 {
+		var transactionCount uint64
+		block, err := a.ledger.LedgerReader().RetrieveBlockByNumber(ledgerHeight - 1)
+		if err != nil {
+			a.logger.Panicf("error while fetching last block from ledger %v", err)
+		}
+		_, _, transactionCount, err = node_ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
+		if err != nil {
+			a.logger.Panicf("error while fetching last block ordering info %v", err)
+		}
+		a.ledger.Metrics().TransactionCount.Add(float64(transactionCount))
+		a.ledger.Metrics().BlocksCount.Add(float64(ledgerHeight))
+	}
+
 	if configBlockNumber == 0 && ledgerHeight == 0 {
 		// append config block only if it is the genesis block and the ledger is empty.
 		configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = common_utils.GenesisBlockMetadataBytes()
@@ -313,23 +329,6 @@ func (a *Assembler) initLedger(configBlock *common.Block, nodeConfig *node_confi
 	ledgerHeight = a.ledger.LedgerReader().Height()
 	if ledgerHeight == 0 {
 		a.logger.Panicf("Assembler ledger is empty after initialization, this should not happen")
-	}
-
-	// update metrics with current ledger state only if we didn't just append the genesis block
-	// (if we just appended genesis block, metrics were already updated in AppendConfig)
-	// This happens when the assembler is restarting with an existing ledger or after syncing
-	if ledgerHeight > 1 || configBlockNumber > 0 {
-		var transactionCount uint64
-		block, err := a.ledger.LedgerReader().RetrieveBlockByNumber(ledgerHeight - 1)
-		if err != nil {
-			a.logger.Panicf("error while fetching last block from ledger %v", err)
-		}
-		_, _, transactionCount, err = node_ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(block)
-		if err != nil {
-			a.logger.Panicf("error while fetching last block ordering info %v", err)
-		}
-		a.ledger.Metrics().TransactionCount.Add(float64(transactionCount))
-		a.ledger.Metrics().BlocksCount.Add(float64(ledgerHeight))
 	}
 
 	a.logger.Infof("Ledger was initialized, current ledger height: %d", ledgerHeight)
