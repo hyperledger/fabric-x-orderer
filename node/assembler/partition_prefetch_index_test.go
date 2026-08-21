@@ -110,6 +110,19 @@ func (pitv *partitionPrefetchIndexTestVars) finish() {
 	pitv.partitionPrefetchIndex.Stop()
 }
 
+// raiseMaxPoppedSeq makes the index observe a PopOrWait of the given sequence, by putting a batch
+// with that sequence and popping it right away. This is what makes a later Put of a lower sequence
+// evict the oldest batch instead of waiting for the index to be drained.
+// It leaves the index empty, and creates a single timer that is stopped by the pop.
+func raiseMaxPoppedSeq(t *testing.T, test *partitionPrefetchIndexTestVars, seq types.BatchSequence) {
+	batch := createTestBatchWithSize(test.partition.Shard, test.partition.Primary, seq, []int{1})
+	require.NoError(t, test.partitionPrefetchIndex.Put(batch))
+	poppedBatch, err := test.partitionPrefetchIndex.PopOrWait(batch)
+	require.NoError(t, err)
+	require.True(t, types.BatchIDEqual(batch, poppedBatch))
+	require.Zero(t, test.batchCache.SizeBytes())
+}
+
 // These tests can match both Put and PutForce
 func putCommonTests(t *testing.T, put func(*assembler.PartitionPrefetchIndex, types.Batch) error) {
 	t.Run("PuttingSameBatchTwiceShouldResultInError", func(t *testing.T) {
@@ -433,6 +446,67 @@ func TestPartitionPrefetchIndex_Put(t *testing.T) {
 		require.False(t, test.batchCache.Has(batches[1]))
 	})
 
+	t.Run("ReDeliveredEvictedBatchCanBePoppedAgain", func(t *testing.T) {
+		// Arrange
+		// The index has room for a single batch, so every Put beyond the first one evicts.
+		test := setupPartitionPrefetchIndexTest(t, 1)
+		defer test.finish()
+		shard, primary := test.partition.Shard, test.partition.Primary
+		batchA := createTestBatchWithSize(shard, primary, 1, []int{1})
+		batchB := createTestBatchWithSize(shard, primary, 2, []int{1})
+		reDeliveredBatchA := createTestBatchWithSize(shard, primary, 1, []int{1})
+		require.True(t, types.BatchIDEqual(batchA, reDeliveredBatchA))
+		raiseMaxPoppedSeq(t, test, 9)
+
+		// Act
+		require.NoError(t, test.partitionPrefetchIndex.Put(batchA))
+		// putting batch b evicts batch a
+		require.NoError(t, test.partitionPrefetchIndex.Put(batchB))
+		require.False(t, test.batchCache.Has(batchA))
+		// the batcher delivers batch a again, evicting batch b
+		require.NoError(t, test.partitionPrefetchIndex.Put(reDeliveredBatchA))
+
+		// Assert
+		require.True(t, test.batchCache.Has(reDeliveredBatchA))
+		require.False(t, test.batchCache.Has(batchB))
+		poppedBatch, err := test.partitionPrefetchIndex.PopOrWait(reDeliveredBatchA)
+		require.NoError(t, err)
+		require.True(t, types.BatchIDEqual(reDeliveredBatchA, poppedBatch))
+		require.Zero(t, test.batchCache.SizeBytes())
+		// the re-delivered batch was tracked by the sequence heap as well, hence its ttl timer was stopped
+		require.Len(t, test.timers, 4)
+		for i, timer := range test.timers {
+			require.Equalf(t, 1, timer.stopCallCount, "the ttl timer of batch %d was not stopped exactly once", i)
+		}
+	})
+
+	t.Run("ReDeliveredEvictedBatchCanBeEvictedByTheNextPut", func(t *testing.T) {
+		// Arrange
+		// The index has room for a single batch, so every Put beyond the first one evicts.
+		test := setupPartitionPrefetchIndexTest(t, 1)
+		defer test.finish()
+		shard, primary := test.partition.Shard, test.partition.Primary
+		batchA := createTestBatchWithSize(shard, primary, 1, []int{1})
+		batchB := createTestBatchWithSize(shard, primary, 2, []int{1})
+		batchC := createTestBatchWithSize(shard, primary, 3, []int{1})
+		reDeliveredBatchA := createTestBatchWithSize(shard, primary, 1, []int{1})
+		raiseMaxPoppedSeq(t, test, 9)
+		require.NoError(t, test.partitionPrefetchIndex.Put(batchA))
+		// putting batch b evicts batch a, then the batcher delivers batch a again, evicting batch b
+		require.NoError(t, test.partitionPrefetchIndex.Put(batchB))
+		require.NoError(t, test.partitionPrefetchIndex.Put(reDeliveredBatchA))
+
+		// Act
+		// the re-delivered batch is in the sequence heap, so it can be evicted to make room for batch c
+		err := test.partitionPrefetchIndex.Put(batchC)
+
+		// Assert
+		require.NoError(t, err)
+		require.True(t, test.batchCache.Has(batchC))
+		require.False(t, test.batchCache.Has(reDeliveredBatchA))
+		require.Equal(t, 1, test.batchCache.SizeBytes())
+	})
+
 	t.Run("EvictedBatchTimersWillBeStopped", func(t *testing.T) {
 		// Arrange
 		test := setupPartitionPrefetchIndexTest(t, 2)
@@ -589,6 +663,28 @@ func TestPartitionPrefetchIndex_Stop(t *testing.T) {
 		// Assert
 		require.ErrorIs(t, err1, utils.ErrOperationCancelled)
 		require.ErrorIs(t, err2, utils.ErrOperationCancelled)
+	})
+
+	t.Run("StopShouldStopTheTtlTimersOfTheBatchesLeftInTheIndex", func(t *testing.T) {
+		// Arrange
+		test := setupPartitionPrefetchIndexTest(t, 10)
+		defer test.finish()
+		for i := 1; i <= 3; i++ {
+			batch := createTestBatchWithSize(test.partition.Shard, test.partition.Primary, types.BatchSequence(i), []int{1})
+			require.NoError(t, test.partitionPrefetchIndex.Put(batch))
+		}
+		require.Len(t, test.timers, 3)
+		for _, timer := range test.timers {
+			require.Zero(t, timer.stopCallCount)
+		}
+
+		// Act
+		test.partitionPrefetchIndex.Stop()
+
+		// Assert
+		for i, timer := range test.timers {
+			require.Equalf(t, 1, timer.stopCallCount, "the ttl timer of batch %d was not stopped exactly once", i)
+		}
 	})
 
 	t.Run("WaitingPutShouldReturnProperErrorWhenPrefetchIndexStops", func(t *testing.T) {
