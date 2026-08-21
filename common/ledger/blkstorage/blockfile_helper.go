@@ -56,6 +56,9 @@ func constructBlockfilesInfo(rootDir string) (*blockfilesInfo, error) {
 		return nil, err
 	}
 
+	// Note this stays safe on a pruned ledger: if the last file holds no complete block it is the active
+	// file, so lastPersistedBlock lives in the file directly below it. Pruning never reclaims the
+	// file holding lastPersistedBlock, so that predecessor is always present.
 	if numBlocksInFile == 0 && lastFileNum > 0 {
 		secondLastFileNum := lastFileNum - 1
 		fileInfo := getFileInfoOrPanic(rootDir, secondLastFileNum)
@@ -87,13 +90,17 @@ func constructBlockfilesInfo(rootDir string) (*blockfilesInfo, error) {
 // binarySearchFileNumForBlock locates the file number that contains the given block number.
 // This function assumes that the caller invokes this function with a block number that has been committed
 // For any uncommitted block, this function returns the last file present
-func binarySearchFileNumForBlock(rootDir string, blockNum uint64) (int, error) {
+//
+// firstFileNum bounds the search below and must be the lowest block file still on disk: on a pruned
+// ledger the files no longer start at 0, and probing a reclaimed file would fail the search outright.
+// Pass 0 for a ledger that has not been pruned.
+func binarySearchFileNumForBlock(rootDir string, firstFileNum int, blockNum uint64) (int, error) {
 	blkfilesInfo, err := constructBlockfilesInfo(rootDir)
 	if err != nil {
 		return -1, err
 	}
 
-	beginFile := 0
+	beginFile := firstFileNum
 	endFile := blkfilesInfo.latestFileNumber
 
 	for endFile != beginFile {
