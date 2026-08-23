@@ -33,9 +33,9 @@ import (
 // 1. Create config and crypto material
 // 2. Create Batchers and stub Consenters
 // 3. Prepare config block to be received by batchers from stub consenter. The config changes the AutoRemoveTimeout parameter.
-// 4. Verify that batchers correctly handle the config tx and apply the new config.
-// 5. After reconfiguration, the batcher continue processing transactions.
-func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeoutsParam(t *testing.T) {
+// 4. Verify that batchers correctly handle the config tx and reach pending admin state.
+// TODO: complete dynamic reconfig scenario when memory pool supports reconfig
+func TestBatcherReconfigAutoRemoveTimeoutReachesPendingAdmin(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3, 4, 5}
 	numOfShards := 1
 
@@ -62,25 +62,24 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 		}
 	}()
 
-	for i := 0; i < len(parties); i++ {
+	for i := range parties {
 		blocks, err := batchers[i].ConfigStore.ListBlockNumbers()
 		require.NoError(t, err)
-		require.Equal(t, len(blocks), 1)
+		require.Equal(t, 1, len(blocks))
 	}
 
-	// receive config block from consensus
+	// create config block that changes the AutoRemoveTimeout parameter
 	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
 	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "15ms"))
 	require.NotNil(t, configUpdatePbData)
 	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
 	require.NoError(t, err)
-	availableCommonBlocks := []*common.Block{configBlock}
-	shardID := types.ShardID(1)
-	state := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}}
 
+	// send the config block to the batchers by the stub consenters
+	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
 	for i := range parties {
-		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), availableCommonBlocks, state)
+		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
 	}
 
 	// wait for batchers to append the config tx to the config store
@@ -92,73 +91,20 @@ func TestBatcherReceivesConfigBlockFromConsensusAndApplyConfig_ChangeBatchTimeou
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// TODO: complete dynamic reconfig scenario when memory pool supports reconfig (uncommented below)
-	// wait for the batcher to soft stop
+	// wait for the batcher to reach pending admin state
 	for j := range parties {
 		require.Eventually(t, func() bool {
-			return batchers[j].GetStatus().GetState() == node_utils.StateSoftStopped
+			return batchers[j].GetStatus().GetState() == node_utils.StatePendingAdmin
 		}, 60*time.Second, 10*time.Millisecond)
 	}
-
-	time.Sleep(10 * time.Second) // wait for the batcher to finish apply config before stopping
-	for _, b := range batchers {
-		b.Stop()
-	}
-
-	//// wait for the batchers initialized with the new AutoRemoveTimeout parameter
-	//for j := range parties {
-	//	require.Eventually(t, func() bool {
-	//		return batchers[j].GetConfig().AutoRemoveTimeout == 15*time.Millisecond
-	//	}, 60*time.Second, 10*time.Millisecond)
-	//}
-
-	// TODO: make sure the memory pool is updated accordingly
-
-	//// wait for the batcher to initialize
-	//for j := range parties {
-	//	require.Eventually(t, func() bool {
-	//		return batchers[j].GetStatus().GetState() == node_utils.StateRunning
-	//	}, 60*time.Second, 10*time.Millisecond)
-	//}
-	//
-	//// find the primary
-	//var primaryBatcher *batcher.Batcher
-	//primaryID := batchers[0].GetPrimaryID()
-	//for _, b := range batchers {
-	//	if b.GetPrimaryID() == primaryID {
-	//		primaryBatcher = b
-	//		break
-	//	}
-	//}
-	//
-	//// submit request
-	//req := tx.CreateStructuredRequestWithConfigSeq([]byte{2}, 1)
-	//require.Eventually(t, func() bool {
-	//	resp, err := primaryBatcher.Submit(context.Background(), req)
-	//	return err == nil && resp.Error == ""
-	//}, 60*time.Second, 10*time.Millisecond)
-	//
-	//// make sure request was batched
-	//for _, b := range batchers {
-	//	require.Eventually(t, func() bool {
-	//		return b.Ledger.Height(primaryID) == uint64(1)
-	//	}, 30*time.Second, 10*time.Millisecond)
-	//}
-	//
-	//// make sure consenters received the required BAF
-	//for _, sc := range stubConsenters {
-	//	require.Eventually(t, func() bool {
-	//		return sc.BAFCount() == len(parties)
-	//	}, 30*time.Second, 10*time.Millisecond)
-	//}
 }
 
 // Scenario:
 // 1. Create config and crypto material
 // 2. Create Batcher and stub Consenter
 // 3. Prepare config block to be received by batcher from stub consenter. The config removes the party of the batcher.
-// 4. Verify that batcher correctly handle the config tx, detects that it has been removed and admin operation is required as a result.
-func TestBatcherPartyEvicted(t *testing.T) {
+// 4. Verify that batcher correctly handle the config tx and that it reached pending admin state.
+func TestBatcherReconfigPartyEvictionReachesPendingAdmin(t *testing.T) {
 	parties := []types.PartyID{1}
 	numOfShards := 1
 
@@ -167,28 +113,30 @@ func TestBatcherPartyEvicted(t *testing.T) {
 	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
 	require.NotNil(t, netInfo)
 
-	for _, n := range netInfo {
-		if n.Listener != nil {
-			_ = n.Listener.Close()
-		}
-	}
-
 	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
 
 	updateFileStorePath(t, dir, parties, numOfShards)
 
+	netInfo.CleanUp()
 	stubConsenters := createStubConsenters(t, dir, parties)
 	batchers, genesisBlock, bundle := createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
 	startBatcherNodes(batchers)
 
 	defer func() {
 		for _, sc := range stubConsenters {
-			sc.Stop()
+			sc.StopNet()
 		}
 		for _, b := range batchers {
 			b.Stop()
 		}
 	}()
+
+	// make sure the genesis block is stored in the config store
+	for i := range parties {
+		blocks, err := batchers[i].ConfigStore.ListBlockNumbers()
+		require.NoError(t, err)
+		require.Equal(t, 1, len(blocks))
+	}
 
 	// create config block that removes the batcher
 	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
@@ -199,18 +147,97 @@ func TestBatcherPartyEvicted(t *testing.T) {
 	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
 	require.NoError(t, err)
 
-	// TODO: instead of Add, SoftStop and ApplyConfig do the full path, and use State to discover PendingAdmin
-	// append block to the config store
-	err = batchers[0].ConfigStore.Add(configBlock)
+	// send the config block to the batchers by the stub consenters
+	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	for i := range parties {
+		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
+	}
+
+	// wait for batchers to append the config tx to the config store
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			block, err1 := batchers[j].ConfigStore.Last()
+			blockNumbers, err2 := batchers[j].ConfigStore.ListBlockNumbers()
+			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 2
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// wait for the batcher to reach pending admin state
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			return batchers[j].GetStatus().GetState() == node_utils.StatePendingAdmin
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+}
+
+// Scenario:
+// 1. Create config and crypto material
+// 2. Create Batcher and stub Consenter
+// 3. Prepare config block to be received by batcher from stub consenter. The config changes the endpoint of the batcher.
+// 4. Verify that batcher correctly handle the config tx and that it reached pending admin state.
+func TestBatcherReconfigEndpointChangeReachesPendingAdmin(t *testing.T) {
+	parties := []types.PartyID{1}
+	numOfShards := 1
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	updateFileStorePath(t, dir, parties, numOfShards)
+
+	netInfo.CleanUp()
+	stubConsenters := createStubConsenters(t, dir, parties)
+	batchers, genesisBlock, bundle := createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
+	startBatcherNodes(batchers)
+
+	defer func() {
+		for _, sc := range stubConsenters {
+			sc.StopNet()
+		}
+		for _, b := range batchers {
+			b.Stop()
+		}
+	}()
+
+	// make sure the genesis block is stored in the config store
+	for i := range parties {
+		blocks, err := batchers[i].ConfigStore.ListBlockNumbers()
+		require.NoError(t, err)
+		require.Equal(t, 1, len(blocks))
+	}
+
+	// create config block that changes the batcher's endpoint
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdatePbData := configUpdateBuilder.UpdateBatcherEndpoint(t, types.PartyID(1), types.ShardID(1), "127.0.0.1", 8080)
+	require.NotNil(t, configUpdatePbData)
+	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
 	require.NoError(t, err)
 
-	// soft stop batcher
-	batchers[0].SoftStop()
+	// send the config block to the batchers by the stub consenters
+	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	for i := range parties {
+		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
+	}
 
-	// apply config
-	isAdminOperationRequired, err := batchers[0].ApplyConfig(configBlock)
-	require.NoError(t, err)
-	require.True(t, isAdminOperationRequired)
+	// wait for batchers to append the config tx to the config store
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			block, err1 := batchers[j].ConfigStore.Last()
+			blockNumbers, err2 := batchers[j].ConfigStore.ListBlockNumbers()
+			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 2
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// wait for the batcher to reach pending admin state
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			return batchers[j].GetStatus().GetState() == node_utils.StatePendingAdmin
+		}, 60*time.Second, 10*time.Millisecond)
+	}
 }
 
 func createBatcherNodes(t *testing.T, dir string, parties []types.PartyID, numOfShards int, consenters []*stubConsenter) ([]*batcher.Batcher, *common.Block, channelconfig.Resources) {
