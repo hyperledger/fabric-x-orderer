@@ -61,7 +61,13 @@ func (store *BlockStore) GetBlockchainInfo() (*common.BlockchainInfo, error) {
 
 // RetrieveBlocks returns an iterator that can be used for iterating over a range of blocks
 func (store *BlockStore) RetrieveBlocks(startNum uint64) (ledger.ResultsIterator, error) {
-	return store.fileMgr.retrieveBlocks(startNum)
+	itr, err := store.fileMgr.retrieveBlocks(startNum)
+	if err != nil {
+		// Returned explicitly rather than as a typed nil, so that a caller testing the iterator instead of
+		// the error does not get something that looks like an iterator and panics on first use.
+		return nil, err
+	}
+	return itr, nil
 }
 
 // RetrieveBlockByHash returns the block for given block-hash
