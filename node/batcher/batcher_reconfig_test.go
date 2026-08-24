@@ -9,18 +9,22 @@ package batcher_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -28,6 +32,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 // Scenario:
@@ -100,14 +105,18 @@ func TestBatcherReconfigAutoRemoveTimeoutReachesPendingAdmin(t *testing.T) {
 	}
 }
 
-// Scenario:
-//  1. Create config and crypto material for 4 parties, one shard.
-//  2. Create Batchers and stub Consenters, and verify that all batchers are running with config sequence 0.
-//  3. Prepare a config block that evicts the shard primary (party 2), and have the stub consenters deliver it.
-//  4. Verify that the evicted batcher reaches pending admin state, while the surviving batchers reconfigure
-//     and return to running state with the new config sequence.
-//  5. Verify that the surviving batchers elect a new primary and can batch and replicate a normal tx.
-func TestBatcherReconfigPrimaryEviction(t *testing.T) {
+// Scenario: evict the shard primary, then add a new party, verifying the shard keeps ordering txs across both
+// reconfigurations. Each reconfiguration changes the party count, so consensus bumps the shard term, which in
+// turn moves the primary (primary index = (shardID + term) % N over the parties sorted by ID).
+//  1. Create 4 parties (one shard) and verify all batchers run at config sequence 0 (term 0, primary party 2).
+//  2. Evict the shard primary (party 2): the evicted batcher reaches pending admin, the survivors reconfigure to
+//     config sequence 1, the term bumps to 1 so they elect party 4 as primary, and they batch and replicate a tx.
+//  3. Add a new party (party 5) via a config block chained on the post-eviction config: the survivors reconfigure
+//     to config sequence 2 and their configuration now includes party 5.
+//  4. Bring up the added party's batcher so it joins the shard. The term bumps to 2, so all parties elect the
+//     added party (party 5) as the new primary.
+//  5. Verify that all parties in the new configuration (1, 3, 4, 5) batch and replicate a normal tx.
+func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
 
@@ -191,9 +200,21 @@ func TestBatcherReconfigPrimaryEviction(t *testing.T) {
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// after the primary was evicted, the surviving batchers (sorted by party ID: [1, 3, 4]) elect a new primary:
-	// batchers[(shardID + term) % N] = batchers[(1 + 0) % 3] = party 3
-	newPrimary := types.PartyID(3)
+	// because the party count changed, consensus bumps the shard term (see DefaultConfigApplier.ApplyConfigToState).
+	// After a reconfigured batcher restarts it waits for a fresh state, so deliver the post-reconfig state (N 3,
+	// term 1) to the surviving batchers.
+	survivingParties := []types.PartyID{1, 3, 4}
+	stEvicted := &state.State{N: uint16(len(survivingParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 1}}}
+	for j := range parties {
+		if parties[j] == partyToRemove {
+			continue
+		}
+		stubConsenters[j].UpdateState(stEvicted)
+	}
+
+	// with the bumped term the surviving batchers (sorted by party ID: [1, 3, 4]) elect a new primary:
+	// batchers[(shardID + term) % N] = batchers[(1 + 1) % 3] = party 4
+	newPrimary := types.PartyID(4)
 	for j := range parties {
 		partyID := parties[j]
 		if partyID == partyToRemove {
@@ -234,6 +255,211 @@ func TestBatcherReconfigPrimaryEviction(t *testing.T) {
 			return batchers[j].Ledger.Height(newPrimary) == uint64(1)
 		}, 60*time.Second, 10*time.Millisecond)
 	}
+
+	// verify that the evicted party can no longer forward transactions to the primary: when the new primary
+	// reconfigured it rebuilt its TLS trust from the new configuration, which no longer includes the evicted
+	// party's CA, so the evicted party's connection is rejected at the TLS handshake and never reaches the
+	// primary's request handling. Build a request connector using the evicted party's identity (its config still
+	// carries the pre-eviction batcher endpoints and certificates), point it at the new primary, and confirm the
+	// primary's ledger does not advance.
+	evictedIdx := indexOfParty(parties, partyToRemove)
+	evictedConfig := batchers[evictedIdx].GetConfig()
+	evictedConnector := batcher.CreatePrimaryReqConnector(newPrimary, testutil.CreateLogger(t, int(partyToRemove)), evictedConfig, batcher.GetBatchersEndpointsAndCerts(evictedConfig.Shards[0].Batchers), context.Background(), 2*time.Second, 100*time.Millisecond, 500*time.Millisecond)
+	evictedConnector.ConnectToPrimary()
+	defer evictedConnector.Stop()
+
+	evictedReq := tx.CreateStructuredRequest([]byte{99})
+	evictedReq.ConfigSeq = 1
+	evictedRawReq, err := proto.Marshal(evictedReq)
+	require.NoError(t, err)
+	evictedConnector.SendReq(evictedRawReq)
+
+	// the primary's ledger must stay at the single batch created above; the forwarded request from the evicted
+	// party is rejected and never batched
+	require.Never(t, func() bool {
+		return batchers[newPrimaryIdx].Ledger.Height(newPrimary) != uint64(1)
+	}, 5*time.Second, 200*time.Millisecond)
+
+	// second reconfig: add a new party (party 5) to the shard. The add-party config update must be chained on top
+	// of the post-eviction configuration (parties 1, 3, 4), so base a new config update builder on the eviction
+	// config block and derive its bundle for building the next config block.
+	evictionBundle := bundleFromBlock(t, configBlock)
+	evictionBlockPath := filepath.Join(dir, "eviction_config.block")
+	evictionBlockBytes, err := proto.Marshal(configBlock)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(evictionBlockPath, evictionBlockBytes, 0o644))
+
+	addPartyBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, evictionBlockPath)
+	addedPartyID, addedNetInfo := addPartyBuilder.PrepareAndAddNewParty(t, dir)
+	// free the ports reserved for the added party's nodes so its batcher can bind them
+	for _, info := range addedNetInfo {
+		if info != nil && info.Listener != nil {
+			info.Listener.Close()
+		}
+	}
+	require.Equal(t, types.PartyID(5), addedPartyID)
+
+	addPartyPbData := addPartyBuilder.ConfigUpdatePBData(t)
+	require.NotNil(t, addPartyPbData)
+
+	// the surviving parties (1, 3, 4) sign the config update to reach majority
+	addPartyEnvelope := cfgutil.CreateConfigTX(t, dir, survivingParties, 1, addPartyPbData)
+	addPartyBlock, err := cfgutil.CreateConsensusConfigBlock(evictionBundle, addPartyEnvelope, configBlock.Header, 1, types.DecisionNum(2), 1, 0)
+	require.NoError(t, err)
+
+	// all parties in the new configuration (1, 3, 4, 5) participate in the shard
+	allParties := []types.PartyID{1, 3, 4, 5}
+
+	// deliver the add-party config block to the surviving batchers' stub consenters. The state bundled with a
+	// config block is not used to drive the term (a reconfigured batcher restarts from a zero state), so the term
+	// carried here is irrelevant; the post-reconfig term is delivered explicitly below.
+	stAddConfig := &state.State{N: uint16(len(allParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	for j := range parties {
+		if parties[j] == partyToRemove {
+			continue
+		}
+		stubConsenters[j].UpdateStateHeaderWithConfigBlock(types.DecisionNum(2), []*common.Block{addPartyBlock}, stAddConfig)
+	}
+
+	// wait for the surviving batchers to append the add-party config block and reconfigure to config sequence 2
+	for j := range parties {
+		if parties[j] == partyToRemove {
+			continue
+		}
+		require.Eventually(t, func() bool {
+			block, err1 := batchers[j].ConfigStore.Last()
+			blockNumbers, err2 := batchers[j].ConfigStore.ListBlockNumbers()
+			return err1 == nil && err2 == nil && block.Header.Number == uint64(2) && len(blockNumbers) == 3
+		}, 60*time.Second, 10*time.Millisecond)
+		require.Eventually(t, func() bool {
+			status := batchers[j].GetStatus()
+			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(2)
+		}, 60*time.Second, 10*time.Millisecond)
+
+		// the surviving batchers' shard configuration now includes the added party 5
+		require.True(t, shardContainsParty(batchers[j].GetConfig(), types.ShardID(1), addedPartyID))
+	}
+
+	// rebuild the surviving consenters' TLS trust so that they accept the added party's connections. The stub
+	// consenters of parties 1, 3, 4 were created before party 5 existed, so their gRPC servers (which require
+	// client certificates) do not trust party 5's TLS certificate. Restart them trusting the client root CAs of
+	// the new configuration, so the added party's batcher can reach a consenter quorum when sending BAFs.
+	for j := range parties {
+		if parties[j] == partyToRemove {
+			continue
+		}
+		clientRootCAs := consenterClientRootCAs(t, dir, parties[j], addPartyBlock)
+		stubConsenters[j].RestartWithClientRootCAs(clientRootCAs)
+	}
+
+	// bring up the added party's batcher so it can join the shard. It bootstraps from the add-party config block
+	// (which contains parties 1, 3, 4, 5), so redirect its file stores and point its bootstrap file at that block.
+	addedParties := []types.PartyID{addedPartyID}
+	addPartyBlockPath := filepath.Join(dir, "add_party_config.block")
+	addPartyBlockBytes, err := proto.Marshal(addPartyBlock)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(addPartyBlockPath, addPartyBlockBytes, 0o644))
+	updateFileStorePath(t, dir, addedParties, numOfShards)
+	prepareAddedPartyConfig(t, dir, addedPartyID, numOfShards, addPartyBlockPath)
+
+	addedStubConsenters := createStubConsenters(t, dir, addedParties)
+	addedBatchers, _, _ := createBatcherNodes(t, dir, addedParties, numOfShards, addedStubConsenters)
+	startBatcherNodes(addedBatchers)
+	addedBatcher := addedBatchers[0]
+
+	defer func() {
+		for _, sc := range addedStubConsenters {
+			sc.StopNet()
+		}
+		addedBatcher.Stop()
+	}()
+
+	// map every party in the new configuration to its batcher
+	allBatchers := map[types.PartyID]*batcher.Batcher{addedPartyID: addedBatcher}
+	for j := range parties {
+		if parties[j] == partyToRemove {
+			continue
+		}
+		allBatchers[parties[j]] = batchers[j]
+	}
+
+	// deliver the post-add-party state to all parties. Adding a party changes the party count, so consensus bumps
+	// the shard term again: it is now 2. With N 4 and term 2 the parties (sorted by party ID: [1, 3, 4, 5]) elect
+	// batchers[(shardID + term) % N] = batchers[(1 + 2) % 4] = the added party (party 5) as the new primary.
+	stAdd := &state.State{N: uint16(len(allParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 2}}}
+	for j := range parties {
+		if parties[j] == partyToRemove {
+			continue
+		}
+		stubConsenters[j].UpdateState(stAdd)
+	}
+	addedStubConsenters[0].UpdateState(stAdd)
+	newPrimaryAfterAdd := addedPartyID
+
+	// wait for the added party's batcher to run with config sequence 2 and for all parties to elect the new primary
+	require.Eventually(t, func() bool {
+		status := addedBatcher.GetStatus()
+		return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(2)
+	}, 60*time.Second, 10*time.Millisecond)
+	for _, partyID := range allParties {
+		b := allBatchers[partyID]
+		require.Eventually(t, func() bool {
+			return b.GetPrimaryID() == newPrimaryAfterAdd
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// submit another normal tx under the new configuration and verify that all parties in it (1, 3, 4, 5) batch
+	// and replicate it into their ledgers. The added party is now the primary, so it batches the tx and the others
+	// pull and replicate it.
+	routerCtx2 := routerContextForParty(t, dir, newPrimaryAfterAdd)
+	req2 := tx.CreateStructuredRequest([]byte{43})
+	req2.ConfigSeq = 2
+	resp2, err := allBatchers[newPrimaryAfterAdd].Submit(routerCtx2, req2)
+	require.NoError(t, err)
+	require.Empty(t, resp2.Error)
+
+	for _, partyID := range allParties {
+		b := allBatchers[partyID]
+		require.Eventually(t, func() bool {
+			return b.Ledger.Height(newPrimaryAfterAdd) == uint64(1)
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+}
+
+// prepareAddedPartyConfig points the bootstrap file of the added party's batchers and consenter at blockPath (so
+// the node bootstraps from the add-party config block instead of the original genesis block) and disables client
+// signature verification, matching the other parties (created with TLS "none") so that the test's dummy-signed
+// requests pass the batcher's request verifier.
+func prepareAddedPartyConfig(t *testing.T, dir string, partyID types.PartyID, numOfShards int, blockPath string) {
+	configLogger := testutil.CreateLoggerForModule(t, "PrepareAddedPartyConfig", zap.DebugLevel)
+
+	nodeConfigPaths := []string{filepath.Join(dir, "config", fmt.Sprintf("party%d", partyID), "local_config_consenter.yaml")}
+	for j := 1; j <= numOfShards; j++ {
+		nodeConfigPaths = append(nodeConfigPaths, filepath.Join(dir, "config", fmt.Sprintf("party%d", partyID), fmt.Sprintf("local_config_batcher%d.yaml", j)))
+	}
+
+	for _, nodeConfigPath := range nodeConfigPaths {
+		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath, configLogger)
+		require.NoError(t, err)
+		localConfig.NodeLocalConfig.GeneralConfig.Bootstrap.File = blockPath
+		localConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired = false
+		require.NoError(t, utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath))
+	}
+}
+
+// shardContainsParty reports whether the batcher configuration lists a batcher for partyID in the given shard.
+func shardContainsParty(conf *node_config.BatcherNodeConfig, shardID types.ShardID, partyID types.PartyID) bool {
+	for _, shard := range conf.Shards {
+		if shard.ShardId != shardID {
+			continue
+		}
+		for _, b := range shard.Batchers {
+			if b.PartyID == partyID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // indexOfParty returns the index of partyID within parties.
@@ -253,6 +479,16 @@ func routerContextForParty(t *testing.T, dir string, partyID types.PartyID) cont
 	localConfig, _, err := config.LoadLocalConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, fmt.Sprintf("LoadLocalConfigRouter%d", partyID), zap.DebugLevel))
 	require.NoError(t, err)
 	return testutil.ContextWithClientTLSCert(t, localConfig.TLSConfig.Certificate)
+}
+
+// bundleFromBlock builds a channelconfig.Resources bundle directly from a config block, so a subsequent config
+// update can be validated and chained on top of it.
+func bundleFromBlock(t *testing.T, configBlock *common.Block) channelconfig.Resources {
+	envelope, err := protoutil.ExtractEnvelope(configBlock, 0)
+	require.NoError(t, err)
+	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
+	require.NoError(t, err)
+	return bundle
 }
 
 // Scenario:
@@ -410,6 +646,22 @@ func createStubConsenters(t *testing.T, dir string, parties []types.PartyID) []*
 		consenterNodes = append(consenterNodes, stubConsenter)
 	}
 	return consenterNodes
+}
+
+// consenterClientRootCAs derives, from the given config block, the set of client root CAs a consenter of the
+// given party should trust. It mirrors how a consenter computes its ClientRootCAs in production, so the returned
+// set includes the TLS CAs of every party present in the block (including a newly added party).
+func consenterClientRootCAs(t *testing.T, dir string, partyID types.PartyID, configBlock *common.Block) [][]byte {
+	nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyID), "local_config_consenter.yaml")
+	nodeConfig, _, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, fmt.Sprintf("ReadConfigConsenterForTrust%d", partyID), zap.DebugLevel))
+	require.NoError(t, err)
+	updatedConfig, _, err := nodeConfig.NewUpdatedConfigurationFromBlock(configBlock)
+	require.NoError(t, err)
+	consenterConfig := updatedConfig.ExtractConsenterConfig(configBlock)
+	require.NotNil(t, consenterConfig)
+	caCerts := make([][]byte, 0, len(consenterConfig.ClientRootCAs))
+	caCerts = append(caCerts, consenterConfig.ClientRootCAs...)
+	return caCerts
 }
 
 func updateFileStorePath(t *testing.T, dir string, parties []types.PartyID, numOfShards int) {

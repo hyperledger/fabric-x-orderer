@@ -119,6 +119,35 @@ func (sc *stubConsenter) Restart() {
 	}()
 }
 
+// RestartWithClientRootCAs restarts the stub consenter's gRPC server on the same address, requiring mutual TLS and
+// trusting the provided client root CAs. It is used to rebuild an existing consenter's trust after a new party
+// joins, so that the new party's batcher can establish connections and send BAFs to the consenter.
+func (sc *stubConsenter) RestartWithClientRootCAs(clientRootCAs [][]byte) {
+	sc.StopNet()
+	addr := sc.net.Address()
+	server, err := comm.NewGRPCServer(addr, comm.ServerConfig{
+		SecOpts: comm.SecureOptions{
+			UseTLS:            true,
+			RequireClientCert: true,
+			ClientRootCAs:     clientRootCAs,
+			ServerRootCAs:     clientRootCAs,
+			Certificate:       sc.certificate,
+			Key:               sc.key,
+		},
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to restart gRPC server: %v", err))
+	}
+
+	sc.net = server
+	protos.RegisterConsensusServer(sc.net.Server(), sc)
+	go func() {
+		if err := sc.net.Start(); err != nil {
+			panic(err)
+		}
+	}()
+}
+
 // Returns the last received control event
 func (sc *stubConsenter) LastControlEvent() *state.ControlEvent {
 	sc.receivedEventsLock.RLock()
