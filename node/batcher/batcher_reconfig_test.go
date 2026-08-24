@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package batcher_test
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -100,12 +101,14 @@ func TestBatcherReconfigAutoRemoveTimeoutReachesPendingAdmin(t *testing.T) {
 }
 
 // Scenario:
-// 1. Create config and crypto material
-// 2. Create Batcher and stub Consenter
-// 3. Prepare config block to be received by batcher from stub consenter. The config removes the party of the batcher.
-// 4. Verify that batcher correctly handle the config tx and that it reached pending admin state.
-func TestBatcherReconfigPartyEvictionReachesPendingAdmin(t *testing.T) {
-	parties := []types.PartyID{1}
+//  1. Create config and crypto material for 4 parties, one shard.
+//  2. Create Batchers and stub Consenters, and verify that all batchers are running with config sequence 0.
+//  3. Prepare a config block that evicts the shard primary (party 2), and have the stub consenters deliver it.
+//  4. Verify that the evicted batcher reaches pending admin state, while the surviving batchers reconfigure
+//     and return to running state with the new config sequence.
+//  5. Verify that the surviving batchers elect a new primary and can batch and replicate a normal tx.
+func TestBatcherReconfigPrimaryEviction(t *testing.T) {
+	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
 
 	dir := t.TempDir()
@@ -138,9 +141,19 @@ func TestBatcherReconfigPartyEvictionReachesPendingAdmin(t *testing.T) {
 		require.Equal(t, 1, len(blocks))
 	}
 
-	// create config block that removes the batcher
+	// make sure all batchers are running with the initial config sequence 0
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			status := batchers[j].GetStatus()
+			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(0)
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// the shard primary is batchers[(shardID + term) % N] once sorted by party ID; for shard 1, term 0, N 4 this is party 2
+	partyToRemove := types.PartyID(2)
+
+	// create config block that evicts the shard primary
 	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	partyToRemove := types.PartyID(1)
 	configUpdatePbData := configUpdateBuilder.RemoveParty(t, partyToRemove)
 	require.NotNil(t, configUpdatePbData)
 	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
@@ -162,21 +175,95 @@ func TestBatcherReconfigPartyEvictionReachesPendingAdmin(t *testing.T) {
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// wait for the batcher to reach pending admin state
+	// wait for the evicted batcher to reach pending admin state, and for the surviving batchers to reconfigure
+	// and return to running state with the new config sequence
 	for j := range parties {
+		partyID := parties[j]
+		if partyID == partyToRemove {
+			require.Eventually(t, func() bool {
+				return batchers[j].GetStatus().GetState() == node_utils.StatePendingAdmin
+			}, 60*time.Second, 10*time.Millisecond)
+			continue
+		}
 		require.Eventually(t, func() bool {
-			return batchers[j].GetStatus().GetState() == node_utils.StatePendingAdmin
+			status := batchers[j].GetStatus()
+			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(1)
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// after the primary was evicted, the surviving batchers (sorted by party ID: [1, 3, 4]) elect a new primary:
+	// batchers[(shardID + term) % N] = batchers[(1 + 0) % 3] = party 3
+	newPrimary := types.PartyID(3)
+	for j := range parties {
+		partyID := parties[j]
+		if partyID == partyToRemove {
+			continue
+		}
+		require.Eventually(t, func() bool {
+			return batchers[j].GetPrimaryID() == newPrimary
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// verify that the reconfigured shard can handle a normal tx: submit a request to the new primary and wait for
+	// the surviving batchers to batch and replicate it into their ledgers.
+	newPrimaryIdx := indexOfParty(parties, newPrimary)
+	routerCtx := routerContextForParty(t, dir, newPrimary)
+
+	// batches produced by the new primary are stored in the ledger part keyed by its party ID, which starts empty
+	for j := range parties {
+		if parties[j] == partyToRemove {
+			continue
+		}
+		require.Equal(t, uint64(0), batchers[j].Ledger.Height(newPrimary))
+	}
+
+	// the request must carry the batcher's current config sequence (1 after the reconfig), otherwise the batcher's
+	// request verifier rejects it with a config sequence mismatch
+	req := tx.CreateStructuredRequest([]byte{42})
+	req.ConfigSeq = 1
+	resp, err := batchers[newPrimaryIdx].Submit(routerCtx, req)
+	require.NoError(t, err)
+	require.Empty(t, resp.Error)
+
+	// after batching and replicating the tx, each surviving batcher holds a single batch from the new primary
+	for j := range parties {
+		if parties[j] == partyToRemove {
+			continue
+		}
+		require.Eventually(t, func() bool {
+			return batchers[j].Ledger.Height(newPrimary) == uint64(1)
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 }
 
+// indexOfParty returns the index of partyID within parties.
+func indexOfParty(parties []types.PartyID, partyID types.PartyID) int {
+	for i := range parties {
+		if parties[i] == partyID {
+			return i
+		}
+	}
+	return -1
+}
+
+// routerContextForParty builds a context that carries the router TLS certificate of the given party, so that
+// a request submitted through it passes the batcher's router authentication.
+func routerContextForParty(t *testing.T, dir string, partyID types.PartyID) context.Context {
+	nodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyID), "local_config_router.yaml")
+	localConfig, _, err := config.LoadLocalConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, fmt.Sprintf("LoadLocalConfigRouter%d", partyID), zap.DebugLevel))
+	require.NoError(t, err)
+	return testutil.ContextWithClientTLSCert(t, localConfig.TLSConfig.Certificate)
+}
+
 // Scenario:
-// 1. Create config and crypto material
-// 2. Create Batcher and stub Consenter
-// 3. Prepare config block to be received by batcher from stub consenter. The config changes the endpoint of the batcher.
-// 4. Verify that batcher correctly handle the config tx and that it reached pending admin state.
-func TestBatcherReconfigEndpointChangeReachesPendingAdmin(t *testing.T) {
-	parties := []types.PartyID{1}
+//  1. Create config and crypto material for 4 parties, one shard.
+//  2. Create Batchers and stub Consenters, and verify that all batchers are running with config sequence 0.
+//  3. Prepare a config block that changes the endpoint of the shard primary (party 2), and have the stub
+//     consenters deliver it.
+//  4. Verify that the batcher whose endpoint changed reaches pending admin state, while the other batchers
+//     reconfigure and return to running state with the new config sequence.
+func TestBatcherReconfigPrimaryEndpointChange(t *testing.T) {
+	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
 
 	dir := t.TempDir()
@@ -209,9 +296,20 @@ func TestBatcherReconfigEndpointChangeReachesPendingAdmin(t *testing.T) {
 		require.Equal(t, 1, len(blocks))
 	}
 
-	// create config block that changes the batcher's endpoint
+	// make sure all batchers are running with the initial config sequence 0
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			status := batchers[j].GetStatus()
+			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(0)
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// the shard primary is batchers[(shardID + term) % N] once sorted by party ID; for shard 1, term 0, N 4 this is party 2
+	partyToChange := types.PartyID(2)
+
+	// create config block that changes the shard primary's endpoint
 	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	configUpdatePbData := configUpdateBuilder.UpdateBatcherEndpoint(t, types.PartyID(1), types.ShardID(1), "127.0.0.1", 8080)
+	configUpdatePbData := configUpdateBuilder.UpdateBatcherEndpoint(t, partyToChange, types.ShardID(1), "127.0.0.1", 8080)
 	require.NotNil(t, configUpdatePbData)
 	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
@@ -232,10 +330,19 @@ func TestBatcherReconfigEndpointChangeReachesPendingAdmin(t *testing.T) {
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// wait for the batcher to reach pending admin state
+	// wait for the batcher whose endpoint changed to reach pending admin state, and for the other batchers to
+	// reconfigure and return to running state with the new config sequence
 	for j := range parties {
+		partyID := parties[j]
+		if partyID == partyToChange {
+			require.Eventually(t, func() bool {
+				return batchers[j].GetStatus().GetState() == node_utils.StatePendingAdmin
+			}, 60*time.Second, 10*time.Millisecond)
+			continue
+		}
 		require.Eventually(t, func() bool {
-			return batchers[j].GetStatus().GetState() == node_utils.StatePendingAdmin
+			status := batchers[j].GetStatus()
+			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(1)
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 }
