@@ -13,26 +13,38 @@ import (
 	"strconv"
 
 	"github.com/hyperledger/fabric-x-common/tools/fileutil"
+	"github.com/pkg/errors"
 )
 
-// ResetBlockStore drops the block storage index and truncates the blocks files for all channels/ledgers to genesis blocks
+// ResetBlockStore drops the block storage index and truncates the block files for all channels/ledgers
+// to their genesis blocks. It is an offline operation: the store must be closed, so no pruning can be in
+// flight. It refuses to touch anything if any ledger has been pruned, since a pruned ledger no longer
+// holds the genesis block that resetting rewinds to.
 func ResetBlockStore(blockStorageDir string) error {
-	if err := DeleteBlockStoreIndex(blockStorageDir); err != nil {
-		return err
-	}
 	conf := &Conf{blockStorageDir: blockStorageDir}
 	chainsDir := conf.getChainsDir()
 	chainsDirExists, err := pathExists(chainsDir)
 	if err != nil {
 		return err
 	}
+
+	var ledgerIDs []string
+	if chainsDirExists {
+		if ledgerIDs, err = fileutil.ListSubdirs(chainsDir); err != nil {
+			return err
+		}
+		if err := checkNoLedgerIsPruned(conf, ledgerIDs); err != nil {
+			logger.Errorf("Refusing to reset the block store under [%s]: %s", blockStorageDir, err)
+			return err
+		}
+	}
+
+	if err := DeleteBlockStoreIndex(blockStorageDir); err != nil {
+		return err
+	}
 	if !chainsDirExists {
 		logger.Infof("Dir [%s] missing... exiting", chainsDir)
 		return nil
-	}
-	ledgerIDs, err := fileutil.ListSubdirs(chainsDir)
-	if err != nil {
-		return err
 	}
 	if len(ledgerIDs) == 0 {
 		logger.Info("No ledgers found.. exiting")
@@ -47,6 +59,31 @@ func ResetBlockStore(blockStorageDir string) error {
 		if err := resetToGenesisBlk(ledgerDir); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkNoLedgerIsPruned reports an error if any ledger's block files no longer start at block file 0.
+func checkNoLedgerIsPruned(conf *Conf, ledgerIDs []string) error {
+	for _, ledgerID := range ledgerIDs {
+		ledgerDir := conf.getLedgerBlockDir(ledgerID)
+		nums, err := blockfileNumsIn(ledgerDir)
+		if err != nil {
+			return err
+		}
+		if len(nums) == 0 || nums[0] == 0 {
+			continue
+		}
+		firstBlock, err := retrieveFirstBlockNumFromFile(ledgerDir, nums[0])
+		if err != nil {
+			return errors.WithMessagef(err,
+				"cannot reset ledger [%s]: its lowest block file is [%d] rather than [0]", ledgerID, nums[0])
+		}
+		return errors.Errorf(
+			"cannot reset ledger [%s]: it has been pruned, so it starts at block [%d] in block file [%d] "+
+				"rather than at the genesis block",
+			ledgerID, firstBlock, nums[0],
+		)
 	}
 	return nil
 }

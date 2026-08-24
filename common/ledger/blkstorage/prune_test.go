@@ -1080,3 +1080,90 @@ func TestPruneBeforeRepeatedlyDownToTheLastFiles(t *testing.T) {
 	require.Equal(t, 40, mgr.pruner.firstStoredBlockfileNum())
 	requireBlocksPruned(t, mgr, all, 400)
 }
+
+// Scenario:
+//  1. Store 50 blocks over five block files and prune the two lowest, so the ledger starts at block 20.
+//  2. Close the store and call ResetBlockStore.
+//  3. Expect an error naming the ledger, the pruning, and the block the ledger now starts at.
+//  4. Expect nothing to have been removed: the index directory and every surviving block file are intact,
+//     since resetting a pruned ledger must not get halfway through before failing.
+func TestResetBlockStoreRefusesAPrunedLedger(t *testing.T) {
+	path := t.TempDir()
+	env, w, _ := newPrunableTestLedger(t, path, 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	pruneFilesUpTo(t, mgr, 2)
+	filesBefore := blockfileNums(t, mgr.rootDir)
+	env.provider.Close()
+
+	err := ResetBlockStore(path)
+	require.ErrorContains(t, err,
+		"cannot reset ledger [testLedger]: it has been pruned, so it starts at block [20] in block file [2] "+
+			"rather than at the genesis block")
+
+	require.Equal(t, filesBefore, blockfileNums(t, mgr.rootDir), "a refused reset must not remove block files")
+	indexEntries, err := os.ReadDir((&Conf{blockStorageDir: path}).getIndexDir())
+	require.NoError(t, err)
+	require.NotEmpty(t, indexEntries, "a refused reset must not drop the index")
+}
+
+// Scenario:
+//  1. Store 50 blocks over five block files and prune the two lowest, so the ledger starts at block 20.
+//  2. Close the store and roll back to a block below 20.
+//  3. Expect an error naming the ledger, the target, and the first available block.
+//  4. Expect the block files to be untouched, since the target can never be reached.
+func TestRollbackRefusesATargetBelowThePrunePoint(t *testing.T) {
+	path := t.TempDir()
+	env, w, _ := newPrunableTestLedger(t, path, 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	pruneFilesUpTo(t, mgr, 2)
+	filesBefore := blockfileNums(t, mgr.rootDir)
+	env.provider.Close()
+	w.close()
+
+	err := Rollback(path, "testLedger", 15, &IndexConfig{AttrsToIndex: attrsToIndex})
+	require.ErrorContains(t, err,
+		"cannot roll back ledger [testLedger] to block [15]: the ledger has been pruned and its first "+
+			"available block is [20]")
+
+	require.Equal(t, filesBefore, blockfileNums(t, mgr.rootDir), "a refused rollback must not remove block files")
+}
+
+// Scenario:
+//  1. Store 50 blocks over five block files and prune the two lowest, so the ledger starts at block 20.
+//  2. Close the store and roll back to block 45, which the ledger still holds.
+//  3. Expect the rollback to succeed and the store to reopen.
+//  4. Expect the height to follow the rollback, the surviving blocks to be readable and unchanged, and the
+//     pruned blocks to still report ErrPruned: the marker survives a rollback.
+func TestRollbackToATargetAboveThePrunePoint(t *testing.T) {
+	path := t.TempDir()
+	env, w, blocks := newPrunableTestLedger(t, path, 50)
+	mgr := w.blockfileMgr
+
+	pruneFilesUpTo(t, mgr, 2)
+	env.provider.Close()
+	w.close()
+
+	require.NoError(t, Rollback(path, "testLedger", 45, &IndexConfig{AttrsToIndex: attrsToIndex}))
+
+	reopened := newTestEnv(t, NewConf(path, 0))
+	defer reopened.Cleanup()
+	w = newTestBlockfileWrapper(reopened, "testLedger")
+	defer w.close()
+	mgr = w.blockfileMgr
+
+	require.Equal(t, uint64(46), mgr.getBlockchainInfo().Height)
+	require.Equal(t, uint64(20), mgr.pruner.firstReadableBlockNum())
+
+	_, err := mgr.retrieveBlockByNumber(19)
+	require.ErrorIs(t, err, ErrPruned)
+
+	for i := 20; i <= 45; i++ {
+		block, err := mgr.retrieveBlockByNumber(uint64(i))
+		require.NoError(t, err, "block %d must survive the rollback", i)
+		require.Equal(t, blocks[i], block)
+	}
+}
