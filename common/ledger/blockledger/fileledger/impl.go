@@ -8,11 +8,13 @@ package fileledger
 
 import (
 	"github.com/hyperledger/fabric-x-orderer/common/ledger"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/pkg/errors"
 )
 
 var logger = flogging.MustGetLogger("common.ledger.blockledger.file")
@@ -52,6 +54,11 @@ func (i *fileLedgerIterator) Next() (*cb.Block, cb.Status) {
 	result, err := i.commonIterator.Next()
 	if err != nil {
 		logger.Error(err)
+		if errors.Is(err, blkstorage.ErrPruned) {
+			// The block will never arrive, so the consumer has to be re-seeded rather than retry this
+			// position. This is the same answer a freshly created iterator gets for the same block.
+			return nil, cb.Status_BAD_REQUEST
+		}
 		return nil, cb.Status_SERVICE_UNAVAILABLE
 	}
 	// Cover the case where another thread calls Close on the iterator.

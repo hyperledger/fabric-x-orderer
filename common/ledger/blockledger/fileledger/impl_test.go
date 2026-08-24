@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package fileledger
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -23,6 +22,7 @@ import (
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -519,4 +519,31 @@ func TestIteratorOldestWithoutPruning(t *testing.T) {
 	block, status := it.Next()
 	require.Equal(t, cb.Status_SUCCESS, status)
 	require.Zero(t, block.Header.Number)
+}
+
+// Scenario:
+//  1. Build a ledger whose iterator fails with ErrPruned, as it does when a prune overtakes a live
+//     reader mid-stream.
+//  2. Read from that iterator.
+//  3. Expect BAD_REQUEST rather than SERVICE_UNAVAILABLE: the block is gone for good, so retrying this
+//     position can never succeed and the consumer has to be re-seeded.
+func TestIteratorNextOnAPrunedBlockIsTerminal(t *testing.T) {
+	resultsIterator := &mockBlockStoreIterator{}
+	resultsIterator.On("Next").Return(nil, errors.WithMessage(blkstorage.ErrPruned, "cannot serve block [7]"))
+	resultsIterator.On("Close").Return()
+
+	fl := &FileLedger{
+		blockStore: &mockBlockStore{
+			blockchainInfo:  &cb.BlockchainInfo{Height: uint64(1)},
+			resultsIterator: resultsIterator,
+		},
+		signal: make(chan struct{}),
+	}
+
+	it, _ := fl.Iterator(&ab.SeekPosition{Type: &ab.SeekPosition_Oldest{}})
+	defer it.Close()
+
+	block, status := it.Next()
+	require.Nil(t, block)
+	require.Equal(t, cb.Status_BAD_REQUEST, status)
 }
