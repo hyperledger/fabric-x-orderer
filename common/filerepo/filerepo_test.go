@@ -179,3 +179,68 @@ func TestFileRepo_FileToBaseName(t *testing.T) {
 	channelName := r.FileToBaseName(filePath)
 	require.Equal(t, "mychannel", channelName)
 }
+
+func TestFileRepo_InvalidBaseName(t *testing.T) {
+	r, err := filerepo.New("testdata", "join")
+	require.NoError(t, err)
+
+	tests := []struct {
+		testName    string
+		baseName    string
+		expectedErr string
+	}{
+		{
+			testName:    "empty",
+			baseName:    "",
+			expectedErr: "baseName illegal, cannot be empty",
+		},
+		{
+			testName:    "dot",
+			baseName:    ".",
+			expectedErr: "baseName [.] illegal, cannot be '.' or '..'",
+		},
+		{
+			testName:    "dot-dot",
+			baseName:    "..",
+			expectedErr: "baseName [..] illegal, cannot be '.' or '..'",
+		},
+		{
+			testName:    "slash",
+			baseName:    "foo/bar",
+			expectedErr: "baseName [foo/bar] illegal, cannot contain os path separator",
+		},
+		{
+			testName:    "backslash",
+			baseName:    `foo\bar`,
+			expectedErr: `baseName [foo\bar] illegal, cannot contain os path separator`,
+		},
+		{
+			testName:    "control character",
+			baseName:    "foo\nbar",
+			expectedErr: "baseName [foo\nbar] illegal, cannot contain control characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.testName, func(t *testing.T) {
+			err := r.Save(tt.baseName, []byte("payload"))
+			require.EqualError(t, err, tt.expectedErr)
+
+			err = r.Remove(tt.baseName)
+			require.EqualError(t, err, tt.expectedErr)
+
+			_, err = r.Read(tt.baseName)
+			require.EqualError(t, err, tt.expectedErr)
+		})
+	}
+
+	t.Run("dot-dot does not write outside the repo", func(t *testing.T) {
+		parentMarker := filepath.Join("testdata", "..join")
+		_, statErr := os.Stat(parentMarker)
+		require.ErrorIs(t, statErr, os.ErrNotExist)
+
+		err := r.Save("..", []byte("escaped"))
+		require.EqualError(t, err, "baseName [..] illegal, cannot be '.' or '..'")
+		require.NoFileExists(t, parentMarker)
+	})
+}
