@@ -55,6 +55,10 @@ type blockPlacementInfo struct {
 // /////////////////////////////////
 // blockfileStream functions
 // //////////////////////////////////
+
+// newBlockfileStream creates a new blockfile stream that reads blocks sequentially from a file, starting
+// from the given offset and continuing to the end of the file. It returns an error if the file cannot be
+// opened, or cannot be seeked to the given offset.
 func newBlockfileStream(rootDir string, fileNum int, startOffset int64) (*blockfileStream, error) {
 	filePath := deriveBlockfilePath(rootDir, fileNum)
 	logger.Debugf("newBlockfileStream(): filePath=[%s], startOffset=[%d]", filePath, startOffset)
@@ -150,12 +154,21 @@ func (s *blockfileStream) close() error {
 // /////////////////////////////////
 // blockStream functions
 // //////////////////////////////////
+
+// newBlockStream creates a new block stream that reads blocks sequentially, starting from the given file
+// number and offset and continuing to the end of the last file segment (`endFileNum`). It returns an error
+// if the first file cannot be opened, or cannot be seeked to the given offset.
 func newBlockStream(rootDir string, startFileNum int, startOffset int64, endFileNum int) (*blockStream, error) {
 	startFileStream, err := newBlockfileStream(rootDir, startFileNum, startOffset)
 	if err != nil {
 		return nil, err
 	}
-	return &blockStream{rootDir: rootDir, currentFileNum: startFileNum, endFileNum: endFileNum, currentFileStream: startFileStream}, nil
+	return &blockStream{
+		rootDir:           rootDir,
+		currentFileNum:    startFileNum,
+		endFileNum:        endFileNum,
+		currentFileStream: startFileStream,
+	}, nil
 }
 
 func (s *blockStream) moveToNextBlockfileStream() error {
