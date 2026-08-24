@@ -618,6 +618,8 @@ func (mgr *blockfileMgr) retrieveBlocks(startNum uint64) (*blocksItr, error) {
 	return newBlockItr(mgr, startNum), nil
 }
 
+// txIDExists reports whether the txID is present in the index. A transaction in a pruned block reads the
+// same as one that never existed, so false does not mean "never committed".
 func (mgr *blockfileMgr) txIDExists(txID string) (bool, error) {
 	return mgr.index.txIDExists(txID)
 }
@@ -682,12 +684,12 @@ func (mgr *blockfileMgr) fetchTransactionEnvelope(lp *fileLocPointer) (*common.E
 func (mgr *blockfileMgr) fetchBlockBytes(lp *fileLocPointer) ([]byte, error) {
 	stream, err := newBlockfileStream(mgr.rootDir, lp.fileSuffixNum, int64(lp.offset))
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedFileRead(lp.fileSuffixNum, err)
 	}
 	defer stream.close()
 	b, err := stream.nextBlockBytes()
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedFileRead(lp.fileSuffixNum, err)
 	}
 	return b, nil
 }
@@ -696,12 +698,12 @@ func (mgr *blockfileMgr) fetchRawBytes(lp *fileLocPointer) ([]byte, error) {
 	filePath := deriveBlockfilePath(mgr.rootDir, lp.fileSuffixNum)
 	reader, err := newBlockfileReader(filePath)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedFileRead(lp.fileSuffixNum, err)
 	}
 	defer reader.close()
 	b, err := reader.read(lp.offset, lp.bytesLength)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedFileRead(lp.fileSuffixNum, err)
 	}
 	return b, nil
 }
@@ -736,6 +738,21 @@ func (mgr *blockfileMgr) saveBlkfilesInfo(i *blockfilesInfo, sync bool) error {
 func (mgr *blockfileMgr) errAfterFailedRead(blockNum uint64, err error) error {
 	if unavailable := mgr.checkBlockAvailable(blockNum); unavailable != nil {
 		return unavailable
+	}
+	return err
+}
+
+// errAfterFailedFileRead re-checks the prune marker after reading a block file failed. A file below
+// firstStoredBlockfileNum is one the marker has already given up, and no file is unlinked before the
+// marker records it as gone, so any failure to read it is pruning rather than a fault.
+//
+// This is the classification available to reads keyed by hash or transaction ID: their block number is
+// only known after the lookup that failed, so they have nothing to compare against the marker, but the
+// location they resolved names a file.
+func (mgr *blockfileMgr) errAfterFailedFileRead(fileNum int, err error) error {
+	if firstStored := mgr.pruner.firstStoredBlockfileNum(); fileNum < firstStored {
+		return errors.WithMessagef(ErrPruned,
+			"cannot serve block file [%d]. First stored block file = [%d]", fileNum, firstStored)
 	}
 	return err
 }
