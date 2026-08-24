@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 	"github.com/pkg/errors"
@@ -82,6 +83,10 @@ func New(repoParentDir, fileSuffix string) (*Repo, error) {
 // to a tmp file marked by the transientFileMarker and then moves the file to the final
 // destination indicated by the FileSuffix.
 func (r *Repo) Save(baseName string, content []byte) error {
+	if err := validateBaseName(baseName); err != nil {
+		return err
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -102,6 +107,10 @@ func (r *Repo) Save(baseName string, content []byte) error {
 
 // Remove removes the file associated with baseName from the file system.
 func (r *Repo) Remove(baseName string) error {
+	if err := validateBaseName(baseName); err != nil {
+		return err
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -116,6 +125,10 @@ func (r *Repo) Remove(baseName string) error {
 
 // Read reads the file in the fileRepo associated with baseName's contents.
 func (r *Repo) Read(baseName string) ([]byte, error) {
+	if err := validateBaseName(baseName); err != nil {
+		return nil, err
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -170,6 +183,28 @@ func validateFileSuffix(fileSuffix string) error {
 
 	if strings.Contains(fileSuffix, string(os.PathSeparator)) {
 		return errors.Errorf("fileSuffix [%s] illegal, cannot contain os path separator", fileSuffix)
+	}
+
+	return nil
+}
+
+func validateBaseName(baseName string) error {
+	if len(baseName) == 0 {
+		return errors.New("baseName illegal, cannot be empty")
+	}
+
+	if baseName == "." || baseName == ".." {
+		return errors.Errorf("baseName [%s] illegal, cannot be '.' or '..'", baseName)
+	}
+
+	if strings.Contains(baseName, "/") || strings.Contains(baseName, "\\") {
+		return errors.Errorf("baseName [%s] illegal, cannot contain os path separator", baseName)
+	}
+
+	for _, r := range baseName {
+		if unicode.IsControl(r) {
+			return errors.Errorf("baseName [%s] illegal, cannot contain control characters", baseName)
+		}
 	}
 
 	return nil
