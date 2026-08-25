@@ -30,7 +30,7 @@ type FakeBatchLedger struct {
 	heightReturnsOnCall map[int]struct {
 		result1 uint64
 	}
-	RetrieveBatchByNumberStub        func(types.PartyID, uint64) types.Batch
+	RetrieveBatchByNumberStub        func(types.PartyID, uint64) (types.Batch, error)
 	retrieveBatchByNumberMutex       sync.RWMutex
 	retrieveBatchByNumberArgsForCall []struct {
 		arg1 types.PartyID
@@ -38,9 +38,11 @@ type FakeBatchLedger struct {
 	}
 	retrieveBatchByNumberReturns struct {
 		result1 types.Batch
+		result2 error
 	}
 	retrieveBatchByNumberReturnsOnCall map[int]struct {
 		result1 types.Batch
+		result2 error
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
@@ -154,7 +156,7 @@ func (fake *FakeBatchLedger) HeightReturnsOnCall(i int, result1 uint64) {
 	}{result1}
 }
 
-func (fake *FakeBatchLedger) RetrieveBatchByNumber(arg1 types.PartyID, arg2 uint64) types.Batch {
+func (fake *FakeBatchLedger) RetrieveBatchByNumber(arg1 types.PartyID, arg2 uint64) (types.Batch, error) {
 	fake.retrieveBatchByNumberMutex.Lock()
 	ret, specificReturn := fake.retrieveBatchByNumberReturnsOnCall[len(fake.retrieveBatchByNumberArgsForCall)]
 	fake.retrieveBatchByNumberArgsForCall = append(fake.retrieveBatchByNumberArgsForCall, struct {
@@ -169,9 +171,9 @@ func (fake *FakeBatchLedger) RetrieveBatchByNumber(arg1 types.PartyID, arg2 uint
 		return stub(arg1, arg2)
 	}
 	if specificReturn {
-		return ret.result1
+		return ret.result1, ret.result2
 	}
-	return fakeReturns.result1
+	return fakeReturns.result1, fakeReturns.result2
 }
 
 func (fake *FakeBatchLedger) RetrieveBatchByNumberCallCount() int {
@@ -180,7 +182,7 @@ func (fake *FakeBatchLedger) RetrieveBatchByNumberCallCount() int {
 	return len(fake.retrieveBatchByNumberArgsForCall)
 }
 
-func (fake *FakeBatchLedger) RetrieveBatchByNumberCalls(stub func(types.PartyID, uint64) types.Batch) {
+func (fake *FakeBatchLedger) RetrieveBatchByNumberCalls(stub func(types.PartyID, uint64) (types.Batch, error)) {
 	fake.retrieveBatchByNumberMutex.Lock()
 	defer fake.retrieveBatchByNumberMutex.Unlock()
 	fake.RetrieveBatchByNumberStub = stub
@@ -193,27 +195,30 @@ func (fake *FakeBatchLedger) RetrieveBatchByNumberArgsForCall(i int) (types.Part
 	return argsForCall.arg1, argsForCall.arg2
 }
 
-func (fake *FakeBatchLedger) RetrieveBatchByNumberReturns(result1 types.Batch) {
+func (fake *FakeBatchLedger) RetrieveBatchByNumberReturns(result1 types.Batch, result2 error) {
 	fake.retrieveBatchByNumberMutex.Lock()
 	defer fake.retrieveBatchByNumberMutex.Unlock()
 	fake.RetrieveBatchByNumberStub = nil
 	fake.retrieveBatchByNumberReturns = struct {
 		result1 types.Batch
-	}{result1}
+		result2 error
+	}{result1, result2}
 }
 
-func (fake *FakeBatchLedger) RetrieveBatchByNumberReturnsOnCall(i int, result1 types.Batch) {
+func (fake *FakeBatchLedger) RetrieveBatchByNumberReturnsOnCall(i int, result1 types.Batch, result2 error) {
 	fake.retrieveBatchByNumberMutex.Lock()
 	defer fake.retrieveBatchByNumberMutex.Unlock()
 	fake.RetrieveBatchByNumberStub = nil
 	if fake.retrieveBatchByNumberReturnsOnCall == nil {
 		fake.retrieveBatchByNumberReturnsOnCall = make(map[int]struct {
 			result1 types.Batch
+			result2 error
 		})
 	}
 	fake.retrieveBatchByNumberReturnsOnCall[i] = struct {
 		result1 types.Batch
-	}{result1}
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *FakeBatchLedger) Invocations() map[string][][]interface{} {

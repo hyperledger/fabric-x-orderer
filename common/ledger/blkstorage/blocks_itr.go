@@ -88,7 +88,7 @@ func (itr *blocksItr) Next() (ledger.QueryResult, error) {
 	if itr.stream == nil {
 		logger.Debugf("Initializing block stream for iterator. itr.maxBlockNumAvailable=%d", itr.maxBlockNumAvailable)
 		if err := itr.initStream(); err != nil {
-			return nil, err
+			return nil, itr.mgr.errAfterFailedRead(itr.blockNumToRetrieve, err)
 		}
 	}
 
@@ -96,7 +96,7 @@ func (itr *blocksItr) Next() (ledger.QueryResult, error) {
 
 	nextBlockBytes, err := itr.stream.nextBlockBytes()
 	if err != nil {
-		return nil, err
+		return nil, itr.mgr.errAfterFailedRead(itr.blockNumToRetrieve, err)
 	}
 	itr.blockNumToRetrieve++
 	return deserializeBlock(nextBlockBytes)

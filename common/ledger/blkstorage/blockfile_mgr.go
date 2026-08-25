@@ -44,6 +44,9 @@ type blockfileMgr struct {
 	currentFileWriter         *blockfileWriter
 	bcInfo                    atomic.Value
 	cache                     *cache
+
+	// pruner owns the prune marker and the pruning operation (see prune.go).
+	pruner *pruneMgr
 }
 
 /*
@@ -140,6 +143,12 @@ func newBlockfileMgr(id string, conf *Conf, indexConfig *IndexConfig, indexStore
 	mgr.bootstrappingSnapshotInfo = bsi
 	mgr.currentFileWriter = currentFileWriter
 	mgr.blkfilesInfoCond = sync.NewCond(&sync.Mutex{})
+
+	// Construct the pruner before syncIndex: on a pruned ledger the block files no longer start at
+	// blockfile_000000, and the recovery paths need to know where they do start.
+	if mgr.pruner, err = newPruneMgr(rootDir, indexStore, mgr.index); err != nil {
+		return nil, err
+	}
 
 	if err := mgr.syncIndex(); err != nil {
 		return nil, err
@@ -387,7 +396,7 @@ func (mgr *blockfileMgr) syncIndex() error {
 		// bootstrapping the ledger from a snapshot or the index is dropped/corrupted afterward
 		return errors.Errorf(
 			"cannot sync index with block files. blockstore is bootstrapped from a snapshot and first available block=[%d]",
-			mgr.firstPossibleBlockNumberInBlockFiles(),
+			mgr.firstBlockNumAfterSnapshotBootstrap(),
 		)
 	}
 
@@ -401,12 +410,29 @@ func (mgr *blockfileMgr) syncIndex() error {
 		return nil
 	}
 
-	startFileNum := 0
+	// On a pruned ledger the block files no longer start at blockfile_000000, so the rebuild scan has to
+	// begin at the first file that survived pruning.
+	startFileNum := mgr.pruner.firstStoredBlockfileNum()
 	startOffset := 0
 	skipFirstBlock := false
 	endFileNum := mgr.blockfilesInfo.latestFileNumber
 
-	firstAvailableBlkNum, err := retrieveFirstBlockNumFromFile(mgr.rootDir, 0)
+	// If that file is absent, the marker and the files disagree.  This is unrecoverable, the pruned blocks
+	// are gone, so return an error. Note the opposite skew is benign: files below the marker are orphans
+	// left by a crash mid-prune, and removing them again is the next prune's job.
+	exists, _, err := fileutil.FileExists(deriveBlockfilePath(mgr.rootDir, startFileNum))
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.Errorf(
+			"cannot sync index with block files. block file [%d] is missing; the blockstore is pruned "+
+				"up to block [%d] but its block files do not start there",
+			startFileNum, mgr.pruner.firstReadableBlockNum(),
+		)
+	}
+
+	firstAvailableBlkNum, err := retrieveFirstBlockNumFromFile(mgr.rootDir, startFileNum)
 	if err != nil {
 		return err
 	}
@@ -527,17 +553,18 @@ func (mgr *blockfileMgr) retrieveBlockByNumber(blockNum uint64) (*common.Block, 
 	if blockNum == math.MaxUint64 {
 		blockNum = mgr.getBlockchainInfo().Height - 1
 	}
-	if blockNum < mgr.firstPossibleBlockNumberInBlockFiles() {
-		return nil, errors.Errorf(
-			"cannot serve block [%d]. The ledger is bootstrapped from a snapshot. First available block = [%d]",
-			blockNum, mgr.firstPossibleBlockNumberInBlockFiles(),
-		)
+	if err := mgr.checkBlockAvailable(blockNum); err != nil {
+		return nil, err
 	}
 	loc, err := mgr.index.getBlockLocByBlockNum(blockNum)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
-	return mgr.fetchBlock(loc)
+	block, err := mgr.fetchBlock(loc)
+	if err != nil {
+		return nil, mgr.errAfterFailedRead(blockNum, err)
+	}
+	return block, nil
 }
 
 func (mgr *blockfileMgr) retrieveBlockByTxID(txID string) (*common.Block, error) {
@@ -546,7 +573,7 @@ func (mgr *blockfileMgr) retrieveBlockByTxID(txID string) (*common.Block, error)
 	if err == errNilValue {
 		return nil, errors.Errorf(
 			"details for the TXID [%s] not available. Ledger bootstrapped from a snapshot. First available block = [%d]",
-			txID, mgr.firstPossibleBlockNumberInBlockFiles(),
+			txID, mgr.firstAvailableBlockNum(),
 		)
 	}
 	if err != nil {
@@ -561,7 +588,7 @@ func (mgr *blockfileMgr) retrieveTxValidationCodeByTxID(txID string) (peer.TxVal
 	if err == errNilValue {
 		return peer.TxValidationCode(-1), 0, errors.Errorf(
 			"details for the TXID [%s] not available. Ledger bootstrapped from a snapshot. First available block = [%d]",
-			txID, mgr.firstPossibleBlockNumberInBlockFiles(),
+			txID, mgr.firstAvailableBlockNum(),
 		)
 	}
 	return validationCode, blkNum, err
@@ -569,34 +596,30 @@ func (mgr *blockfileMgr) retrieveTxValidationCodeByTxID(txID string) (peer.TxVal
 
 func (mgr *blockfileMgr) retrieveBlockHeaderByNumber(blockNum uint64) (*common.BlockHeader, error) {
 	logger.Debugf("retrieveBlockHeaderByNumber() - blockNum = [%d]", blockNum)
-	if blockNum < mgr.firstPossibleBlockNumberInBlockFiles() {
-		return nil, errors.Errorf(
-			"cannot serve block [%d]. The ledger is bootstrapped from a snapshot. First available block = [%d]",
-			blockNum, mgr.firstPossibleBlockNumberInBlockFiles(),
-		)
+	if err := mgr.checkBlockAvailable(blockNum); err != nil {
+		return nil, err
 	}
 	loc, err := mgr.index.getBlockLocByBlockNum(blockNum)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
 	blockBytes, err := mgr.fetchBlockBytes(loc)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
 
 	return extractSerializedBlockHeader(blockBytes)
 }
 
 func (mgr *blockfileMgr) retrieveBlocks(startNum uint64) (*blocksItr, error) {
-	if startNum < mgr.firstPossibleBlockNumberInBlockFiles() {
-		return nil, errors.Errorf(
-			"cannot serve block [%d]. The ledger is bootstrapped from a snapshot. First available block = [%d]",
-			startNum, mgr.firstPossibleBlockNumberInBlockFiles(),
-		)
+	if err := mgr.checkBlockAvailable(startNum); err != nil {
+		return nil, err
 	}
 	return newBlockItr(mgr, startNum), nil
 }
 
+// txIDExists reports whether the txID is present in the index. A transaction in a pruned block reads the
+// same as one that never existed, so false does not mean "never committed".
 func (mgr *blockfileMgr) txIDExists(txID string) (bool, error) {
 	return mgr.index.txIDExists(txID)
 }
@@ -607,7 +630,7 @@ func (mgr *blockfileMgr) retrieveTransactionByID(txID string) (*common.Envelope,
 	if err == errNilValue {
 		return nil, errors.Errorf(
 			"details for the TXID [%s] not available. Ledger bootstrapped from a snapshot. First available block = [%d]",
-			txID, mgr.firstPossibleBlockNumberInBlockFiles(),
+			txID, mgr.firstAvailableBlockNum(),
 		)
 	}
 	if err != nil {
@@ -618,17 +641,18 @@ func (mgr *blockfileMgr) retrieveTransactionByID(txID string) (*common.Envelope,
 
 func (mgr *blockfileMgr) retrieveTransactionByBlockNumTranNum(blockNum uint64, tranNum uint64) (*common.Envelope, error) {
 	logger.Debugf("retrieveTransactionByBlockNumTranNum() - blockNum = [%d], tranNum = [%d]", blockNum, tranNum)
-	if blockNum < mgr.firstPossibleBlockNumberInBlockFiles() {
-		return nil, errors.Errorf(
-			"cannot serve block [%d]. The ledger is bootstrapped from a snapshot. First available block = [%d]",
-			blockNum, mgr.firstPossibleBlockNumberInBlockFiles(),
-		)
+	if err := mgr.checkBlockAvailable(blockNum); err != nil {
+		return nil, err
 	}
 	loc, err := mgr.index.getTXLocByBlockNumTranNum(blockNum, tranNum)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
-	return mgr.fetchTransactionEnvelope(loc)
+	envelope, err := mgr.fetchTransactionEnvelope(loc)
+	if err != nil {
+		return nil, mgr.errAfterFailedRead(blockNum, err)
+	}
+	return envelope, nil
 }
 
 func (mgr *blockfileMgr) fetchBlock(lp *fileLocPointer) (*common.Block, error) {
@@ -660,12 +684,12 @@ func (mgr *blockfileMgr) fetchTransactionEnvelope(lp *fileLocPointer) (*common.E
 func (mgr *blockfileMgr) fetchBlockBytes(lp *fileLocPointer) ([]byte, error) {
 	stream, err := newBlockfileStream(mgr.rootDir, lp.fileSuffixNum, int64(lp.offset))
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedFileRead(lp.fileSuffixNum, err)
 	}
 	defer stream.close()
 	b, err := stream.nextBlockBytes()
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedFileRead(lp.fileSuffixNum, err)
 	}
 	return b, nil
 }
@@ -674,12 +698,12 @@ func (mgr *blockfileMgr) fetchRawBytes(lp *fileLocPointer) ([]byte, error) {
 	filePath := deriveBlockfilePath(mgr.rootDir, lp.fileSuffixNum)
 	reader, err := newBlockfileReader(filePath)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedFileRead(lp.fileSuffixNum, err)
 	}
 	defer reader.close()
 	b, err := reader.read(lp.offset, lp.bytesLength)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedFileRead(lp.fileSuffixNum, err)
 	}
 	return b, nil
 }
@@ -707,7 +731,90 @@ func (mgr *blockfileMgr) saveBlkfilesInfo(i *blockfilesInfo, sync bool) error {
 	return nil
 }
 
-func (mgr *blockfileMgr) firstPossibleBlockNumberInBlockFiles() uint64 {
+// errAfterFailedRead re-checks availability after a read that had already passed the availability check
+// failed. Pruning deletes index entries and unlinks block files while readers run, so a read can resolve
+// a block, lose a race, and trip over the debris; the caller must hear that the block was pruned rather
+// than that a file is missing.
+func (mgr *blockfileMgr) errAfterFailedRead(blockNum uint64, err error) error {
+	if unavailable := mgr.checkBlockAvailable(blockNum); unavailable != nil {
+		return unavailable
+	}
+	return err
+}
+
+// errAfterFailedFileRead re-checks the prune marker after reading a block file failed. A file below
+// firstStoredBlockfileNum is one the marker has already given up, and no file is unlinked before the
+// marker records it as gone, so any failure to read it is pruning rather than a fault.
+//
+// This is the classification available to reads keyed by hash or transaction ID: their block number is
+// only known after the lookup that failed, so they have nothing to compare against the marker, but the
+// location they resolved names a file.
+func (mgr *blockfileMgr) errAfterFailedFileRead(fileNum int, err error) error {
+	if firstStored := mgr.pruner.firstStoredBlockfileNum(); fileNum < firstStored {
+		return errors.WithMessagef(ErrPruned,
+			"cannot serve block file [%d]. First stored block file = [%d]", fileNum, firstStored)
+	}
+	return err
+}
+
+// checkBlockAvailable reports whether the store can serve the given block number, returning nil when
+// it can. It distinguishes the two reasons a ledger may not start at block 0: pruning, which yields
+// ErrPruned, and a snapshot bootstrap. When both apply, the snapshot takes precedence for the range it explains.
+// A request above lastPersistedBlock passes here and fails in the index with "no such block number".
+func (mgr *blockfileMgr) checkBlockAvailable(blockNum uint64) error {
+	// Read the marker once: a concurrent prune must not be able to land between the check and the
+	// error message and have us report a bound other than the one that made the decision.
+	snapshotFirst := mgr.firstBlockNumAfterSnapshotBootstrap()
+	prunedTo := mgr.pruner.firstReadableBlockNum()
+	first := max(snapshotFirst, prunedTo)
+
+	if blockNum < snapshotFirst {
+		return errors.Errorf(
+			"cannot serve block [%d]. The ledger is bootstrapped from a snapshot. First available block = [%d]",
+			blockNum, first,
+		)
+	}
+	if blockNum < prunedTo {
+		return errors.WithMessagef(ErrPruned,
+			"cannot serve block [%d]. First available block = [%d]", blockNum, first)
+	}
+	return nil
+}
+
+// firstReadableBlockNum is the combined lower bound for reads: the highest of the snapshot-bootstrap
+// frontier and the prune marker.
+//
+// Note that this is deliberately NOT folded into firstBlockNumAfterSnapshotBootstrap(), which is the
+// definition of bootstrappedFromSnapshot(). Making that function non-zero on a pruned ledger would
+// trip the "bootstrapped from a snapshot" error path in syncIndex on every pruned ledger.
+func (mgr *blockfileMgr) firstAvailableBlockNum() uint64 {
+	return max(mgr.firstBlockNumAfterSnapshotBootstrap(), mgr.pruner.firstReadableBlockNum())
+}
+
+// pruneBefore snapshots the tail pointer and hands the work to the pruner. The snapshot is taken
+// here because the lock that guards blockfilesInfo lives here, and it is released before any file I/O.
+func (mgr *blockfileMgr) pruneBefore(blockNum uint64) error {
+	return mgr.pruner.pruneBefore(blockNum, mgr.blockfilesInfoSnapshot())
+}
+
+// blockfilesInfoSnapshot copies the tail pointer so that a caller can reason about a stable view of it.
+// The lock is held only for the copy: appends update blockfilesInfo under it, and holding it across file
+// I/O would stall every blocking iterator.
+func (mgr *blockfileMgr) blockfilesInfoSnapshot() *blockfilesInfo {
+	mgr.blkfilesInfoCond.L.Lock()
+	defer mgr.blkfilesInfoCond.L.Unlock()
+	info := *mgr.blockfilesInfo
+	return &info
+}
+
+// firstBlockNumAfterSnapshotBootstrap is the lowest block number that a snapshot bootstrap left for
+// the block files to hold: blocks below it were covered by the snapshot and were never written here.
+// It is 0 on a ledger that was not bootstrapped from a snapshot.
+//
+// This is a bound contributed by snapshot bootstrap alone. on a pruned ledger it still reports 0
+// while the lowest block actually on disk is firstReadableBlockNum().
+// For the bound that reads are guarded against, use firstAvailableBlockNum(), which combines both.
+func (mgr *blockfileMgr) firstBlockNumAfterSnapshotBootstrap() uint64 {
 	if mgr.bootstrappingSnapshotInfo == nil {
 		return 0
 	}
@@ -715,7 +822,7 @@ func (mgr *blockfileMgr) firstPossibleBlockNumberInBlockFiles() uint64 {
 }
 
 func (mgr *blockfileMgr) bootstrappedFromSnapshot() bool {
-	return mgr.firstPossibleBlockNumberInBlockFiles() > 0
+	return mgr.bootstrappingSnapshotInfo != nil
 }
 
 // scanForLastCompleteBlock scan a given block file and detects the last offset in the file

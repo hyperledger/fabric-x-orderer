@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
@@ -677,7 +678,7 @@ func TestResubmitPending(t *testing.T) {
 
 	require.Zero(t, pool.SubmitCallCount())
 
-	ledger.RetrieveBatchByNumberReturns(batch)
+	ledger.RetrieveBatchByNumberReturns(batch, nil)
 
 	myBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID), 0, 0, nil)
 	notMyBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID+1), 0, 0, nil)
@@ -720,6 +721,60 @@ func TestResubmitPending(t *testing.T) {
 
 	require.Equal(t, arma_types.PartyID(1), ledger.HeightArgsForCall(0))
 	require.Equal(t, arma_types.PartyID(2), ledger.HeightArgsForCall(1))
+}
+
+// Scenario:
+//  1. Build a batcher and hand it a pending BAF it signed itself.
+//  2. Make the ledger report the batch as pruned.
+//  3. Expect resubmission to skip it without panicking and without touching the pool.
+func TestResubmitPendingSkipsPrunedBatch(t *testing.T) {
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := arma_types.PartyID(2)
+	shardID := arma_types.ShardID(0)
+
+	b := createBatcher(t, batcherID, shardID, batchers, uint16(len(batchers)), testutil.CreateLogger(t, int(batcherID)))
+
+	pool := &mocks.FakeMemPool{}
+	b.MemPool = pool
+
+	ledger := &mocks.FakeBatchLedger{}
+	ledger.RetrieveBatchByNumberReturns(nil, errors.Join(blkstorage.ErrPruned, errors.New("wrapped by the ledger")))
+	b.Ledger = ledger
+
+	myBAF := arma_types.NewSimpleBatchAttestationFragment(shardID, 1, 0, []byte("digest"), batcherID, 0, 0, nil)
+
+	require.NotPanics(t, func() {
+		b.ResubmitPendingBAFs(&state.State{
+			Pending: []arma_types.BatchAttestationFragment{myBAF},
+		}, 1, false)
+	})
+
+	require.Equal(t, 1, ledger.RetrieveBatchByNumberCallCount())
+	require.Zero(t, pool.SubmitCallCount())
+}
+
+// Scenario:
+//  1. Build a batcher and hand it a pending BAF it signed itself.
+//  2. Make the ledger fail for a reason other than pruning.
+//  3. Expect resubmission to panic, since a batch that should be there is missing.
+func TestResubmitPendingPanicsOnOtherLedgerError(t *testing.T) {
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := arma_types.PartyID(2)
+	shardID := arma_types.ShardID(0)
+
+	b := createBatcher(t, batcherID, shardID, batchers, uint16(len(batchers)), testutil.CreateLogger(t, int(batcherID)))
+
+	ledger := &mocks.FakeBatchLedger{}
+	ledger.RetrieveBatchByNumberReturns(nil, errors.New("index is corrupt"))
+	b.Ledger = ledger
+
+	myBAF := arma_types.NewSimpleBatchAttestationFragment(shardID, 1, 0, []byte("digest"), batcherID, 0, 0, nil)
+
+	require.Panics(t, func() {
+		b.ResubmitPendingBAFs(&state.State{
+			Pending: []arma_types.BatchAttestationFragment{myBAF},
+		}, 1, false)
+	})
 }
 
 func TestVerifyBatch(t *testing.T) {
