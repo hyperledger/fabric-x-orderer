@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -299,6 +300,13 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 }
 
 func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration, ClientAuthRequired bool, clientRootCAs [][]byte) (*assembler.Assembler, string) {
+	return newAssemblerTestWithBundle(t, partyID, ca, shards, consenterInfo, popWaitMonitorTimeout, ClientAuthRequired, clientRootCAs, testutil.CreateAssemblerBundleForTest(0))
+}
+
+// newAssemblerTestWithBundle starts an assembler that authorizes deliver requests against the
+// policies of the given config bundle. Pass a bundle built from a real config block to exercise
+// authorization; newAssemblerTest passes one that accepts every identity.
+func newAssemblerTestWithBundle(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration, ClientAuthRequired bool, clientRootCAs [][]byte, bundle channelconfig.Resources) (*assembler.Assembler, string) {
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
@@ -328,7 +336,7 @@ func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards 
 			MetricsLogInterval: 10 * time.Second,
 		},
 		ClientRootCAs: clientRootCAs,
-		Bundle:        testutil.CreateAssemblerBundleForTest(0),
+		Bundle:        bundle,
 	}
 
 	configuration := testutil.ConfigurationWithDefaultCluster()
