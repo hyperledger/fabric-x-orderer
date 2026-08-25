@@ -61,13 +61,8 @@ func (a AssemblerDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverS
 		ConfigBlockOps: &utils.CommonConfigBlockOperations{},
 	}
 
-	policyChecker := func(env *common.Envelope, channelID string) error {
-		asf := NewAssemblerSigFilter(a.bundle)
-		return asf.Apply(env)
-	}
-
 	deliverServer := &deliver.Server{
-		PolicyChecker:  deliver.PolicyCheckerFunc(policyChecker),
+		PolicyChecker:  deliver.NewChannelReadersChecker(a.bundle),
 		ResponseSender: &responseSender{stream: stream},
 		Receiver:       stream,
 	}
@@ -131,30 +126,4 @@ func (c *assemblerChain) Reader() blockledger.Reader {
 
 func (c *assemblerChain) Errored() <-chan struct{} {
 	return c.errChan
-}
-
-type assemblerSigFilter struct {
-	bundle channelconfig.Resources
-}
-
-func NewAssemblerSigFilter(bundle channelconfig.Resources) *assemblerSigFilter {
-	return &assemblerSigFilter{bundle: bundle}
-}
-
-func (asf *assemblerSigFilter) Apply(env *common.Envelope) error {
-	signedData, err := protoutil.EnvelopeAsSignedData(env)
-	if err != nil {
-		return fmt.Errorf("could not convert message to signedData: %s", err)
-	}
-
-	policy, ok := asf.bundle.PolicyManager().GetPolicy(policies.ChannelReaders)
-	if !ok {
-		return fmt.Errorf("could not find policy %s", policies.ChannelReaders)
-	}
-
-	err = policy.EvaluateSignedData(signedData)
-	if err != nil {
-		return fmt.Errorf("AssemblerSigFilter evaluation failed: %s", err)
-	}
-	return nil
 }
