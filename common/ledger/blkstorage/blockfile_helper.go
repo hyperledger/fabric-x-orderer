@@ -9,6 +9,7 @@ package blkstorage
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -56,6 +57,9 @@ func constructBlockfilesInfo(rootDir string) (*blockfilesInfo, error) {
 		return nil, err
 	}
 
+	// Note this stays safe on a pruned ledger: if the last file holds no complete block it is the active
+	// file, so lastPersistedBlock lives in the file directly below it. Pruning never removes the
+	// file holding lastPersistedBlock, so that predecessor is always present.
 	if numBlocksInFile == 0 && lastFileNum > 0 {
 		secondLastFileNum := lastFileNum - 1
 		fileInfo := getFileInfoOrPanic(rootDir, secondLastFileNum)
@@ -87,13 +91,17 @@ func constructBlockfilesInfo(rootDir string) (*blockfilesInfo, error) {
 // binarySearchFileNumForBlock locates the file number that contains the given block number.
 // This function assumes that the caller invokes this function with a block number that has been committed
 // For any uncommitted block, this function returns the last file present
-func binarySearchFileNumForBlock(rootDir string, blockNum uint64) (int, error) {
+//
+// firstFileNum bounds the search below and must be the lowest block file still on disk: on a pruned
+// ledger the files no longer start at 0, and probing a removed file would fail the search outright.
+// Pass 0 for a ledger that has not been pruned.
+func binarySearchFileNumForBlock(rootDir string, firstFileNum int, blockNum uint64) (int, error) {
 	blkfilesInfo, err := constructBlockfilesInfo(rootDir)
 	if err != nil {
 		return -1, err
 	}
 
-	beginFile := 0
+	beginFile := firstFileNum
 	endFile := blkfilesInfo.latestFileNumber
 
 	for endFile != beginFile {
@@ -157,6 +165,27 @@ func retrieveLastFileSuffix(rootDir string) (int, error) {
 	}
 	logger.Debugf("retrieveLastFileSuffix() - biggestFileNum = %d", biggestFileNum)
 	return biggestFileNum, err
+}
+
+// blockfileNumsIn returns the suffix numbers of the block files present in rootDir, ascending.
+func blockfileNumsIn(rootDir string) ([]int, error) {
+	entries, err := os.ReadDir(rootDir)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error reading dir %s", rootDir)
+	}
+	nums := make([]int, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !isBlockFileName(e.Name()) {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(e.Name(), blockfilePrefix))
+		if err != nil {
+			return nil, errors.Wrapf(err, "unexpected block file name %s", e.Name())
+		}
+		nums = append(nums, n)
+	}
+	sort.Ints(nums)
+	return nums, nil
 }
 
 func isBlockFileName(name string) bool {

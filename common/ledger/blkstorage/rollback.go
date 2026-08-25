@@ -175,7 +175,9 @@ func (r *rollbackMgr) rollbackBlockFiles() error {
 		return err
 	}
 	// must not use index for block location search since the index can be behind the target block
-	targetFileNum, err := binarySearchFileNumForBlock(r.ledgerDir, r.targetBlockNum)
+	// TODO rollback is not pruning-aware: on a pruned ledger the files do not start at 0, and a target
+	// below the prune point cannot be satisfied at all. Both need handling before the two can coexist.
+	targetFileNum, err := binarySearchFileNumForBlock(r.ledgerDir, 0, r.targetBlockNum)
 	if err != nil {
 		return err
 	}
