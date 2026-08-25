@@ -464,6 +464,7 @@ func TestAssembler_InitLedgerSyncsWhenConfigBlockAheadOfLedger(t *testing.T) {
 	require.Equal(t, orderer_config.DefaultNodeLocalConfig.GeneralConfig.Cluster.ReplicationMaxRetryDuration, cluster.ReplicationMaxRetryDuration)
 	require.NotNil(t, fakeSync)
 	require.Equal(t, 1, fakeSync.SyncCallCount())
+	require.Equal(t, uint64(2), test.assembler.GetTxCount())
 
 	test.StopAssembler()
 	test.WaitAssemblerStopped(t)
@@ -536,6 +537,7 @@ func TestAssembler_InitLedgerDoesNotSyncWhenConfigBlockAlreadyInLedger(t *testin
 
 	// Assert: no synchronizer was created across either start.
 	require.Equal(t, 0, test.synchronizerFactoryMock.CreateSynchronizerCallCount())
+	require.Equal(t, uint64(1), test.assembler.GetTxCount())
 
 	test.StopAssembler()
 	test.WaitAssemblerStopped(t)
