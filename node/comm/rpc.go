@@ -44,6 +44,7 @@ type RPC struct {
 	Comm          Communicator
 	lock          sync.RWMutex
 	StreamsByType map[OperationType]map[uint64]*Stream
+	nodes         []uint64
 }
 
 // NewStreamsByType returns a mapping of operation type to
@@ -72,7 +73,8 @@ func (ot OperationType) String() string {
 	return "consensus"
 }
 
-// Reconfigure configures the communicator of the RPC and replaces the stream map.
+// Reconfigure configures the communicator of the RPC, replaces the stream map,
+// and records the set of member node IDs.
 // The previous streams are abandoned here; they are aborted out-of-band by
 // Comm.Configure, which deactivates stubs and aborts their RemoteContext.
 func (s *RPC) Reconfigure(members []RemoteNode) {
@@ -80,6 +82,20 @@ func (s *RPC) Reconfigure(members []RemoteNode) {
 	defer s.lock.Unlock()
 	s.StreamsByType = NewStreamsByType()
 	s.Comm.Configure(members)
+	nodes := make([]uint64, len(members))
+	for i, member := range members {
+		nodes[i] = member.ID
+	}
+	s.nodes = nodes
+}
+
+// Nodes returns a copy of the set of member node IDs.
+func (s *RPC) Nodes() []uint64 {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	nodes := make([]uint64, len(s.nodes))
+	copy(nodes, s.nodes)
+	return nodes
 }
 
 // SendConsensus passes the given ConsensusRequest message to the given destination node.

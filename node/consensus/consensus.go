@@ -92,7 +92,7 @@ type BFT interface {
 type Consensus struct {
 	delivery.DeliverService
 	*comm.ClusterService
-	*comm.Egress
+	Egress       *comm.Egress
 	Logger       *flogging.FabricLogger
 	Config       *node_config.ConsenterNodeConfig
 	SigVerifier  SigVerifier
