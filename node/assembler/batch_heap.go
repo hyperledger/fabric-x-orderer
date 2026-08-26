@@ -70,6 +70,7 @@ func (h *batchHeap[T]) Pop() interface{} {
 	n := len(h.data)
 	lastItem := h.data[n-1]
 	h.data = h.data[:n-1]
+	_, _ = h.batchToIndex.Remove(lastItem.Batch)
 	return lastItem
 }
 
@@ -87,11 +88,14 @@ func (h *batchHeap[T]) Remove(batchId types.BatchID) (*BatchHeapItem[T], error) 
 	if err != nil {
 		return nil, ErrBatchDoesNotExist
 	}
-	item := heap.Remove(h, idx).(*BatchHeapItem[T])
-	_, err = h.batchToIndex.Remove(batchId)
-	if err != nil {
+	if idx < 0 || idx >= len(h.data) {
+		// A mapper entry pointing outside the heap means the mapper and the data went out of
+		// sync; heap.Remove would panic on it. Drop the stale entry so the batch can be pushed again.
+		_, _ = h.batchToIndex.Remove(batchId)
 		return nil, ErrBatchDoesNotExist
 	}
+	// heap.Remove ends up calling h.Pop, which removes the batch from the mapper.
+	item := heap.Remove(h, idx).(*BatchHeapItem[T])
 	return item, nil
 }
 
