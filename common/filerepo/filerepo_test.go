@@ -234,13 +234,15 @@ func TestFileRepo_InvalidBaseName(t *testing.T) {
 		})
 	}
 
-	t.Run("dot-dot does not write outside the repo", func(t *testing.T) {
-		parentMarker := filepath.Join("testdata", "..join")
-		_, statErr := os.Stat(parentMarker)
-		require.ErrorIs(t, statErr, os.ErrNotExist)
+	t.Run("separator in baseName cannot write outside the repo", func(t *testing.T) {
+		parent := t.TempDir()
+		repo, err := filerepo.New(parent, "join")
+		require.NoError(t, err)
 
-		err := r.Save("..", []byte("escaped"))
-		require.EqualError(t, err, "baseName [..] illegal, cannot be '.' or '..'")
-		require.NoFileExists(t, parentMarker)
+		escaped := filepath.Join(parent, "escaped.join")
+
+		err = repo.Save("../escaped", []byte("payload"))
+		require.EqualError(t, err, "baseName [../escaped] illegal, cannot contain os path separator")
+		require.NoFileExists(t, escaped)
 	})
 }
