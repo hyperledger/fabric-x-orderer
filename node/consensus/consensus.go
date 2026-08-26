@@ -123,7 +123,12 @@ type Consensus struct {
 	ReconfigAbort chan struct{}
 
 	synchronizerFactory bft_synch.SynchronizerFactory // Builds a BFT synchronizer
-	Synchronizer        SynchronizerStopper           // The BFT synchronizer built by the factory
+	// synchronizerHolder is the stable indirection handed to SmartBFT (as BFT.Synchronizer) and
+	// held as c.Synchronizer. It is created once at BFT creation and never reassigned; the dynamic
+	// reconfiguration path swaps its inner synchronizer under the holder's lock instead. This
+	// avoids racing SmartBFT's unlocked read of BFT.Synchronizer in pkg/consensus.Sync().
+	synchronizerHolder *bft_synch.Holder
+	Synchronizer       SynchronizerStopper // The BFT synchronizer built by the factory (the holder)
 
 	RequestVerifier        *requestfilter.RulesVerifier
 	ConfigUpdateProposer   policy.ConfigUpdateProposer
