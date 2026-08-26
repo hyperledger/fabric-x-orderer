@@ -18,6 +18,10 @@ fi
 
 CONFIG=/config/example-deployment.yaml
 
+echo "Cleaning storage before generating a fresh network"
+mkdir -p "$STORAGE_DIR"
+find "$STORAGE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
 echo "🔥 PATCH SOURCE CONFIG BEFORE GENERATE (CRITICAL)"
 
 sed -i 's/router.p1/127.0.0.1/g' $CONFIG
@@ -53,17 +57,29 @@ for i in 1 2 3 4; do
 
   OFFSET=$(( (i - 1) * 100 ))
 
-  sed -i "s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_router.yaml
-  sed -i "s/ListenPort:.*/ListenPort: $((6022 + OFFSET))/" ${PARTY_DIR}/local_config_router.yaml
+  sed -i "/^General:/,/^FileStore:/ s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_router.yaml
+  sed -i "/^General:/,/^FileStore:/ s/ListenPort:.*/ListenPort: $((6022 + OFFSET))/" ${PARTY_DIR}/local_config_router.yaml
+  sed -i "/^Operations:/,/^Metrics:/ s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_router.yaml
+  sed -i "/^Operations:/,/^Metrics:/ {/^[[:space:]]*ListenPort:/d;}" ${PARTY_DIR}/local_config_router.yaml
+  sed -i "/^Operations:/ a\\ ListenPort: $((8022 + OFFSET))" ${PARTY_DIR}/local_config_router.yaml
 
-  sed -i "s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_assembler.yaml
-  sed -i "s/ListenPort:.*/ListenPort: $((6023 + OFFSET))/" ${PARTY_DIR}/local_config_assembler.yaml
+  sed -i "/^General:/,/^FileStore:/ s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_assembler.yaml
+  sed -i "/^General:/,/^FileStore:/ s/ListenPort:.*/ListenPort: $((6023 + OFFSET))/" ${PARTY_DIR}/local_config_assembler.yaml
+  sed -i "/^Operations:/,/^Metrics:/ s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_assembler.yaml
+  sed -i "/^Operations:/,/^Metrics:/ {/^[[:space:]]*ListenPort:/d;}" ${PARTY_DIR}/local_config_assembler.yaml
+  sed -i "/^Operations:/ a\\ ListenPort: $((8023 + OFFSET))" ${PARTY_DIR}/local_config_assembler.yaml
 
-  sed -i "s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_batcher1.yaml
-  sed -i "s/ListenPort:.*/ListenPort: $((6024 + OFFSET))/" ${PARTY_DIR}/local_config_batcher1.yaml
+  sed -i "/^General:/,/^FileStore:/ s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_batcher1.yaml
+  sed -i "/^General:/,/^FileStore:/ s/ListenPort:.*/ListenPort: $((6024 + OFFSET))/" ${PARTY_DIR}/local_config_batcher1.yaml
+  sed -i "/^Operations:/,/^Metrics:/ s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_batcher1.yaml
+  sed -i "/^Operations:/,/^Metrics:/ {/^[[:space:]]*ListenPort:/d;}" ${PARTY_DIR}/local_config_batcher1.yaml
+  sed -i "/^Operations:/ a\\ ListenPort: $((8024 + OFFSET))" ${PARTY_DIR}/local_config_batcher1.yaml
 
-  sed -i "s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_consenter.yaml
-  sed -i "s/ListenPort:.*/ListenPort: $((6025 + OFFSET))/" ${PARTY_DIR}/local_config_consenter.yaml
+  sed -i "/^General:/,/^FileStore:/ s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_consenter.yaml
+  sed -i "/^General:/,/^FileStore:/ s/ListenPort:.*/ListenPort: $((6025 + OFFSET))/" ${PARTY_DIR}/local_config_consenter.yaml
+  sed -i "/^Operations:/,/^Metrics:/ s/ListenAddress:.*/ListenAddress: 0.0.0.0/" ${PARTY_DIR}/local_config_consenter.yaml
+  sed -i "/^Operations:/,/^Metrics:/ {/^[[:space:]]*ListenPort:/d;}" ${PARTY_DIR}/local_config_consenter.yaml
+  sed -i "/^Operations:/ a\\ ListenPort: $((8025 + OFFSET))" ${PARTY_DIR}/local_config_consenter.yaml
 
   sed -i "s|/var/dec-trust/production/orderer/store|${STORAGE_DIR}/party${i}/router|g" ${PARTY_DIR}/local_config_router.yaml
   sed -i "s|/var/dec-trust/production/orderer/store|${STORAGE_DIR}/party${i}/assembler|g" ${PARTY_DIR}/local_config_assembler.yaml
