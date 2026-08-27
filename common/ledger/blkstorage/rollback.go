@@ -24,15 +24,26 @@ type rollbackMgr struct {
 	indexStore     *blockIndex
 	targetBlockNum uint64
 	reusableBatch  *leveldbhelper.UpdateBatch
+	pruneMarker    *pruneMarker
 }
 
-// Rollback reverts changes made to the block store beyond a given block number.
+// Rollback reverts changes made to the block store beyond a given block number. It is an offline
+// operation: the store must be closed, so no pruning can be done during the rollback.
 func Rollback(blockStorageDir, ledgerID string, targetBlockNum uint64, indexConfig *IndexConfig) error {
 	r, err := newRollbackMgr(blockStorageDir, ledgerID, indexConfig, targetBlockNum)
 	if err != nil {
 		return err
 	}
 	defer r.dbProvider.Close()
+
+	// Refuse rollback if the target block number is below the prune point.
+	if r.targetBlockNum < r.pruneMarker.firstReadableBlockNum {
+		return errors.Errorf(
+			"cannot roll back ledger [%s] to block [%d]: the ledger has been pruned and its first "+
+				"available block is [%d]",
+			r.ledgerID, r.targetBlockNum, r.pruneMarker.firstReadableBlockNum,
+		)
+	}
 
 	if err := recordHeightIfGreaterThanPreviousRecording(r.ledgerDir); err != nil {
 		return err
@@ -71,9 +82,14 @@ func newRollbackMgr(blockStorageDir, ledgerID string, indexConfig *IndexConfig, 
 		return nil, err
 	}
 	indexDB := r.dbProvider.GetDBHandle(ledgerID)
-	r.indexStore, err = newBlockIndex(indexConfig, indexDB)
+	if r.indexStore, err = newBlockIndex(indexConfig, indexDB); err != nil {
+		return nil, err
+	}
 	r.reusableBatch = r.indexStore.db.NewUpdateBatch()
-	return r, err
+	if r.pruneMarker, err = (&pruneMgr{db: indexDB}).load(); err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 func (r *rollbackMgr) rollbackBlockIndex() error {
@@ -174,8 +190,10 @@ func (r *rollbackMgr) rollbackBlockFiles() error {
 	if err := r.indexStore.db.Delete(blkMgrInfoKey, true); err != nil {
 		return err
 	}
-	// must not use index for block location search since the index can be behind the target block
-	targetFileNum, err := binarySearchFileNumForBlock(r.ledgerDir, r.targetBlockNum)
+	// The search starts at the lowest block file still on disk, which is the first non-pruned file.
+	targetFileNum, err := binarySearchFileNumForBlock(
+		r.ledgerDir, r.pruneMarker.firstStoredBlockfileNum, r.targetBlockNum,
+	)
 	if err != nil {
 		return err
 	}

@@ -20,6 +20,16 @@ type FileLedgerBlockStore struct {
 	addBlockReturnsOnCall map[int]struct {
 		result1 error
 	}
+	FirstAvailableBlockNumberStub        func() uint64
+	firstAvailableBlockNumberMutex       sync.RWMutex
+	firstAvailableBlockNumberArgsForCall []struct {
+	}
+	firstAvailableBlockNumberReturns struct {
+		result1 uint64
+	}
+	firstAvailableBlockNumberReturnsOnCall map[int]struct {
+		result1 uint64
+	}
 	GetBlockchainInfoStub        func() (*common.BlockchainInfo, error)
 	getBlockchainInfoMutex       sync.RWMutex
 	getBlockchainInfoArgsForCall []struct {
@@ -31,6 +41,17 @@ type FileLedgerBlockStore struct {
 	getBlockchainInfoReturnsOnCall map[int]struct {
 		result1 *common.BlockchainInfo
 		result2 error
+	}
+	PruneBeforeStub        func(uint64) error
+	pruneBeforeMutex       sync.RWMutex
+	pruneBeforeArgsForCall []struct {
+		arg1 uint64
+	}
+	pruneBeforeReturns struct {
+		result1 error
+	}
+	pruneBeforeReturnsOnCall map[int]struct {
+		result1 error
 	}
 	RetrieveBlockByNumberStub        func(uint64) (*common.Block, error)
 	retrieveBlockByNumberMutex       sync.RWMutex
@@ -127,6 +148,59 @@ func (fake *FileLedgerBlockStore) AddBlockReturnsOnCall(i int, result1 error) {
 	}{result1}
 }
 
+func (fake *FileLedgerBlockStore) FirstAvailableBlockNumber() uint64 {
+	fake.firstAvailableBlockNumberMutex.Lock()
+	ret, specificReturn := fake.firstAvailableBlockNumberReturnsOnCall[len(fake.firstAvailableBlockNumberArgsForCall)]
+	fake.firstAvailableBlockNumberArgsForCall = append(fake.firstAvailableBlockNumberArgsForCall, struct {
+	}{})
+	stub := fake.FirstAvailableBlockNumberStub
+	fakeReturns := fake.firstAvailableBlockNumberReturns
+	fake.recordInvocation("FirstAvailableBlockNumber", []interface{}{})
+	fake.firstAvailableBlockNumberMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FileLedgerBlockStore) FirstAvailableBlockNumberCallCount() int {
+	fake.firstAvailableBlockNumberMutex.RLock()
+	defer fake.firstAvailableBlockNumberMutex.RUnlock()
+	return len(fake.firstAvailableBlockNumberArgsForCall)
+}
+
+func (fake *FileLedgerBlockStore) FirstAvailableBlockNumberCalls(stub func() uint64) {
+	fake.firstAvailableBlockNumberMutex.Lock()
+	defer fake.firstAvailableBlockNumberMutex.Unlock()
+	fake.FirstAvailableBlockNumberStub = stub
+}
+
+func (fake *FileLedgerBlockStore) FirstAvailableBlockNumberReturns(result1 uint64) {
+	fake.firstAvailableBlockNumberMutex.Lock()
+	defer fake.firstAvailableBlockNumberMutex.Unlock()
+	fake.FirstAvailableBlockNumberStub = nil
+	fake.firstAvailableBlockNumberReturns = struct {
+		result1 uint64
+	}{result1}
+}
+
+func (fake *FileLedgerBlockStore) FirstAvailableBlockNumberReturnsOnCall(i int, result1 uint64) {
+	fake.firstAvailableBlockNumberMutex.Lock()
+	defer fake.firstAvailableBlockNumberMutex.Unlock()
+	fake.FirstAvailableBlockNumberStub = nil
+	if fake.firstAvailableBlockNumberReturnsOnCall == nil {
+		fake.firstAvailableBlockNumberReturnsOnCall = make(map[int]struct {
+			result1 uint64
+		})
+	}
+	fake.firstAvailableBlockNumberReturnsOnCall[i] = struct {
+		result1 uint64
+	}{result1}
+}
+
 func (fake *FileLedgerBlockStore) GetBlockchainInfo() (*common.BlockchainInfo, error) {
 	fake.getBlockchainInfoMutex.Lock()
 	ret, specificReturn := fake.getBlockchainInfoReturnsOnCall[len(fake.getBlockchainInfoArgsForCall)]
@@ -181,6 +255,67 @@ func (fake *FileLedgerBlockStore) GetBlockchainInfoReturnsOnCall(i int, result1 
 		result1 *common.BlockchainInfo
 		result2 error
 	}{result1, result2}
+}
+
+func (fake *FileLedgerBlockStore) PruneBefore(arg1 uint64) error {
+	fake.pruneBeforeMutex.Lock()
+	ret, specificReturn := fake.pruneBeforeReturnsOnCall[len(fake.pruneBeforeArgsForCall)]
+	fake.pruneBeforeArgsForCall = append(fake.pruneBeforeArgsForCall, struct {
+		arg1 uint64
+	}{arg1})
+	stub := fake.PruneBeforeStub
+	fakeReturns := fake.pruneBeforeReturns
+	fake.recordInvocation("PruneBefore", []interface{}{arg1})
+	fake.pruneBeforeMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FileLedgerBlockStore) PruneBeforeCallCount() int {
+	fake.pruneBeforeMutex.RLock()
+	defer fake.pruneBeforeMutex.RUnlock()
+	return len(fake.pruneBeforeArgsForCall)
+}
+
+func (fake *FileLedgerBlockStore) PruneBeforeCalls(stub func(uint64) error) {
+	fake.pruneBeforeMutex.Lock()
+	defer fake.pruneBeforeMutex.Unlock()
+	fake.PruneBeforeStub = stub
+}
+
+func (fake *FileLedgerBlockStore) PruneBeforeArgsForCall(i int) uint64 {
+	fake.pruneBeforeMutex.RLock()
+	defer fake.pruneBeforeMutex.RUnlock()
+	argsForCall := fake.pruneBeforeArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *FileLedgerBlockStore) PruneBeforeReturns(result1 error) {
+	fake.pruneBeforeMutex.Lock()
+	defer fake.pruneBeforeMutex.Unlock()
+	fake.PruneBeforeStub = nil
+	fake.pruneBeforeReturns = struct {
+		result1 error
+	}{result1}
+}
+
+func (fake *FileLedgerBlockStore) PruneBeforeReturnsOnCall(i int, result1 error) {
+	fake.pruneBeforeMutex.Lock()
+	defer fake.pruneBeforeMutex.Unlock()
+	fake.PruneBeforeStub = nil
+	if fake.pruneBeforeReturnsOnCall == nil {
+		fake.pruneBeforeReturnsOnCall = make(map[int]struct {
+			result1 error
+		})
+	}
+	fake.pruneBeforeReturnsOnCall[i] = struct {
+		result1 error
+	}{result1}
 }
 
 func (fake *FileLedgerBlockStore) RetrieveBlockByNumber(arg1 uint64) (*common.Block, error) {

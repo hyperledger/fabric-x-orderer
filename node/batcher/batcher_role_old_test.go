@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -42,8 +43,8 @@ func (*noopLedger) Height(partyID arma_types.PartyID) uint64 {
 	return 0
 }
 
-func (*noopLedger) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) arma_types.Batch {
-	return nil
+func (*noopLedger) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) (arma_types.Batch, error) {
+	return nil, errors.New("noopLedger holds no batches")
 }
 
 type naiveReplication struct {
@@ -77,9 +78,9 @@ func (r *naiveReplication) Height(partyID arma_types.PartyID) uint64 {
 	return 0
 }
 
-func (r *naiveReplication) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) arma_types.Batch {
+func (r *naiveReplication) RetrieveBatchByNumber(partyID arma_types.PartyID, seq uint64) (arma_types.Batch, error) {
 	// TODO use in test
-	return nil
+	return nil, errors.New("naiveReplication holds no batches")
 }
 
 type acker struct {

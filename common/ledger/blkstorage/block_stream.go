@@ -34,10 +34,14 @@ type blockfileStream struct {
 // it starts from a given file offset and continues with the next
 // file segment until the end of the last segment (`endFileNum`)
 type blockStream struct {
-	rootDir           string
-	currentFileNum    int
-	endFileNum        int
+	rootDir        string
+	currentFileNum int
+	endFileNum     int
+	// currentFileStream is nil once advancing to the next block file has failed, in which case advanceErr
+	// holds why. The stream owns no file from that point on, and every further read reports the same
+	// failure rather than dereferencing what it no longer has.
 	currentFileStream *blockfileStream
+	advanceErr        error
 }
 
 // blockPlacementInfo captures the information related
@@ -51,6 +55,10 @@ type blockPlacementInfo struct {
 // /////////////////////////////////
 // blockfileStream functions
 // //////////////////////////////////
+
+// newBlockfileStream creates a new blockfile stream that reads blocks sequentially from a file, starting
+// from the given offset and continuing to the end of the file. It returns an error if the file cannot be
+// opened, or cannot be seeked to the given offset.
 func newBlockfileStream(rootDir string, fileNum int, startOffset int64) (*blockfileStream, error) {
 	filePath := deriveBlockfilePath(rootDir, fileNum)
 	logger.Debugf("newBlockfileStream(): filePath=[%s], startOffset=[%d]", filePath, startOffset)
@@ -146,23 +154,39 @@ func (s *blockfileStream) close() error {
 // /////////////////////////////////
 // blockStream functions
 // //////////////////////////////////
+
+// newBlockStream creates a new block stream that reads blocks sequentially, starting from the given file
+// number and offset and continuing to the end of the last file segment (`endFileNum`). It returns an error
+// if the first file cannot be opened, or cannot be seeked to the given offset.
 func newBlockStream(rootDir string, startFileNum int, startOffset int64, endFileNum int) (*blockStream, error) {
 	startFileStream, err := newBlockfileStream(rootDir, startFileNum, startOffset)
 	if err != nil {
 		return nil, err
 	}
-	return &blockStream{rootDir, startFileNum, endFileNum, startFileStream}, nil
+	return &blockStream{
+		rootDir:           rootDir,
+		currentFileNum:    startFileNum,
+		endFileNum:        endFileNum,
+		currentFileStream: startFileStream,
+	}, nil
 }
 
 func (s *blockStream) moveToNextBlockfileStream() error {
-	var err error
-	if err = s.currentFileStream.close(); err != nil {
+	if err := s.currentFileStream.close(); err != nil {
 		return err
 	}
+	// The previous file is closed, so the stream owns nothing until the next one opens. Opening it can
+	// fail once pruning is in play, since a reader that falls behind may reach a removed file, and the
+	// caller still closes the stream afterwards.
+	s.currentFileStream = nil
 	s.currentFileNum++
-	if s.currentFileStream, err = newBlockfileStream(s.rootDir, s.currentFileNum, 0); err != nil {
+
+	next, err := newBlockfileStream(s.rootDir, s.currentFileNum, 0)
+	if err != nil {
+		s.advanceErr = err
 		return err
 	}
+	s.currentFileStream = next
 	return nil
 }
 
@@ -172,6 +196,10 @@ func (s *blockStream) nextBlockBytes() ([]byte, error) {
 }
 
 func (s *blockStream) nextBlockBytesAndPlacementInfo() ([]byte, *blockPlacementInfo, error) {
+	if s.advanceErr != nil {
+		return nil, nil, s.advanceErr
+	}
+
 	var blockBytes []byte
 	var blockPlacementInfo *blockPlacementInfo
 	var err error
@@ -191,6 +219,9 @@ func (s *blockStream) nextBlockBytesAndPlacementInfo() ([]byte, *blockPlacementI
 }
 
 func (s *blockStream) close() error {
+	if s.currentFileStream == nil {
+		return nil
+	}
 	return s.currentFileStream.close()
 }
 
