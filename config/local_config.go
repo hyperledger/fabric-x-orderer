@@ -248,6 +248,10 @@ func LoadLocalConfig(filePath string, logger *flogging.FabricLogger) (*LocalConf
 
 	applyLocalConfigDefaults(nodeLocalConfig, role, logger)
 
+	if err := validateLocalConfigValues(nodeLocalConfig, role); err != nil {
+		return nil, "", err
+	}
+
 	tlsConfig, err := loadTLSCryptoConfig(&nodeLocalConfig.GeneralConfig.TLSConfig)
 	if err != nil {
 		return nil, "", fmt.Errorf("cannot load local tls config, err: %s", err)
@@ -627,4 +631,75 @@ func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *fl
 			logger.Infof("General.Cluster.ReplicationPolicy is not set, using default value: %s", nodeLocalConfig.GeneralConfig.Cluster.ReplicationPolicy)
 		}
 	}
+}
+
+func validateLocalConfigValues(nodeLocalConfig *NodeLocalConfig, role string) error {
+	cluster := nodeLocalConfig.GeneralConfig.Cluster
+
+	if cluster.SendBufferSize < 0 {
+		return fmt.Errorf("node local config is not valid, General.Cluster.SendBufferSize must not be negative")
+	}
+	if cluster.RPCTimeout < 0 {
+		return fmt.Errorf("node local config is not valid, General.Cluster.RPCTimeout must not be negative")
+	}
+	if cluster.ReplicationBufferSize < 0 {
+		return fmt.Errorf("node local config is not valid, General.Cluster.ReplicationBufferSize must not be negative")
+	}
+	if cluster.ReplicationMinRetryInterval < 0 {
+		return fmt.Errorf("node local config is not valid, General.Cluster.ReplicationMinRetryInterval must not be negative")
+	}
+	if cluster.ReplicationMaxRetryInterval < 0 {
+		return fmt.Errorf("node local config is not valid, General.Cluster.ReplicationMaxRetryInterval must not be negative")
+	}
+	if cluster.ReplicationMaxRetryDuration < 0 {
+		return fmt.Errorf("node local config is not valid, General.Cluster.ReplicationMaxRetryDuration must not be negative")
+	}
+	if cluster.CertExpirationWarningThreshold < 0 {
+		return fmt.Errorf("node local config is not valid, General.Cluster.CertExpirationWarningThreshold must not be negative")
+	}
+	if cluster.TLSHandshakeTimeShift < 0 {
+		return fmt.Errorf("node local config is not valid, General.Cluster.TLSHandshakeTimeShift must not be negative")
+	}
+	if cluster.ReplicationMinRetryInterval > cluster.ReplicationMaxRetryInterval {
+		return fmt.Errorf("node local config is not valid, General.Cluster.ReplicationMinRetryInterval must be less than or equal to General.Cluster.ReplicationMaxRetryInterval")
+	}
+
+	if nodeLocalConfig.MetricsConfig.MetricsLogInterval < 0 {
+		return fmt.Errorf("node local config is not valid, Metrics.MetricsLogInterval must not be negative")
+	}
+
+	switch role {
+	case RouterStr:
+		if nodeLocalConfig.RouterParams.NumberOfConnectionsPerBatcher < 0 {
+			return fmt.Errorf("node local config is not valid, Router.NumberOfConnectionsPerBatcher must not be negative")
+		}
+		if nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection < 0 {
+			return fmt.Errorf("node local config is not valid, Router.NumberOfStreamsPerConnection must not be negative")
+		}
+	case BatcherStr:
+		if nodeLocalConfig.BatcherParams.SubmitTimeout < 0 {
+			return fmt.Errorf("node local config is not valid, Batcher.SubmitTimeout must not be negative")
+		}
+	case AssemblerStr:
+		if nodeLocalConfig.AssemblerParams.PrefetchBufferMemoryBytes < 0 {
+			return fmt.Errorf("node local config is not valid, Assembler.PrefetchBufferMemoryBytes must not be negative")
+		}
+		if nodeLocalConfig.AssemblerParams.RestartLedgerScanTimeout < 0 {
+			return fmt.Errorf("node local config is not valid, Assembler.RestartLedgerScanTimeout must not be negative")
+		}
+		if nodeLocalConfig.AssemblerParams.PrefetchEvictionTtl < 0 {
+			return fmt.Errorf("node local config is not valid, Assembler.PrefetchEvictionTtl must not be negative")
+		}
+		if nodeLocalConfig.AssemblerParams.PopWaitMonitorTimeout < 0 {
+			return fmt.Errorf("node local config is not valid, Assembler.PopWaitMonitorTimeout must not be negative")
+		}
+		if nodeLocalConfig.AssemblerParams.ReplicationChannelSize < 0 {
+			return fmt.Errorf("node local config is not valid, Assembler.ReplicationChannelSize must not be negative")
+		}
+		if nodeLocalConfig.AssemblerParams.BatchRequestsChannelSize < 0 {
+			return fmt.Errorf("node local config is not valid, Assembler.BatchRequestsChannelSize must not be negative")
+		}
+	}
+
+	return nil
 }
