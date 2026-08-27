@@ -118,8 +118,7 @@ func NewShardRouter(l *flogging.FabricLogger,
 }
 
 func (sr *ShardRouter) Forward(trackedReq *TrackedRequest) {
-	connIndex := int(binary.BigEndian.Uint16(trackedReq.reqID)) % len(sr.connPool)
-	streamInConnIndex := int(binary.BigEndian.Uint16(trackedReq.reqID)) % sr.router2batcherStreamsPerConn
+	connIndex, streamInConnIndex := sr.streamIndexes(trackedReq.reqID)
 
 	sr.lock.RLock()
 	stream := sr.streams[connIndex][streamInConnIndex]
@@ -143,6 +142,25 @@ func (sr *ShardRouter) Forward(trackedReq *TrackedRequest) {
 
 	sr.logger.Debugf("enter request %x to the requests list", trackedReq.reqID)
 	stream.requestsChannel <- trackedReq
+}
+
+// streamIndexes maps a request ID onto one of the
+// router2batcherConnPoolSize*router2batcherStreamsPerConn streams, by first reducing the request
+// ID to a single slot index over the whole set of streams, and then splitting that slot into a
+// (connection, stream-in-connection) pair.
+func (sr *ShardRouter) streamIndexes(reqID []byte) (connIndex int, streamInConnIndex int) {
+	var reqToSlot uint64
+	if len(reqID) >= 8 {
+		reqToSlot = binary.BigEndian.Uint64(reqID)
+	} else {
+		var buff [8]byte
+		copy(buff[:], reqID)
+		reqToSlot = binary.BigEndian.Uint64(buff[:])
+	}
+
+	numOfSlots := sr.router2batcherConnPoolSize * sr.router2batcherStreamsPerConn
+	slot := int(reqToSlot % uint64(numOfSlots))
+	return slot / sr.router2batcherStreamsPerConn, slot % sr.router2batcherStreamsPerConn
 }
 
 func (sr *ShardRouter) maybeReconnectStream(connIndex int, streamInConnIndex int) error {
