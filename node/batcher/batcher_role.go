@@ -488,8 +488,11 @@ func (b *BatcherRole) verifyBatch(batch types.Batch) error {
 		return errors.Errorf("empty batch")
 	}
 	br := batch.Requests()
-	if !slices.Equal(batch.Digest(), br.Digest()) {
-		return errors.Errorf("batch digest (%v) is not equal to calculated digest (%v)", batch.Digest(), br.Digest())
+	digestStart := time.Now()
+	computedDigest := br.Digest()
+	b.Metrics.batchHashingLatency.Observe(time.Since(digestStart).Seconds())
+	if !slices.Equal(batch.Digest(), computedDigest) {
+		return errors.Errorf("batch digest (%v) is not equal to calculated digest (%v)", batch.Digest(), computedDigest)
 	}
 	primaryBAF := types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), batch.Primary(), batch.ConfigSequence(), uint64(len(batch.Requests())), nil)
 	if err := b.SigVerifier.VerifySignature(batch.Primary(), batch.Shard(), primaryBAF.ToBeSigned(), batch.PrimarySignature()); err != nil {

@@ -114,7 +114,7 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 
 - **Namespace:** "batcher"  
   **Name:** "batch_hashing_latency_seconds"  
-  **Help:** "The latency to compute the batch requests digest on the primary."
+  **Help:** "The latency to compute the batch requests digest."
 
 - **Namespace:** "batch_ledger"  
   **Name:** "header_hashing_latency_seconds"  

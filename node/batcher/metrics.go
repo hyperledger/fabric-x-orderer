@@ -104,7 +104,7 @@ var (
 	batchHashingLatencyOpts = metrics.HistogramOpts{
 		Namespace:  "batcher",
 		Name:       "batch_hashing_latency_seconds",
-		Help:       "The latency to compute the batch requests digest on the primary.",
+		Help:       "The latency to compute the batch requests digest.",
 		LabelNames: []string{"party_id", "shard_id"},
 		Buckets:    []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}, // TODO: adjust buckets after reviewing Grafana
 	}
