@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/request"
 	request_mocks "github.com/hyperledger/fabric-x-orderer/request/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -251,7 +252,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 				Provider:           "disabled",
 				MetricsLogInterval: 0 * time.Second,
 			},
-		}, batchersInfo, ledger, sugaredLogger),
+		}, batchersInfo, &node_ledger.BatchLedgerMetrics{}, ledger, sugaredLogger),
 	}
 
 	return batcher
@@ -420,7 +421,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 				Provider:           "disabled",
 				MetricsLogInterval: 0 * time.Second,
 			},
-		}, batchersInfo, ledger, sugaredLogger),
+		}, batchersInfo, &node_ledger.BatchLedgerMetrics{}, ledger, sugaredLogger),
 	}
 
 	return b

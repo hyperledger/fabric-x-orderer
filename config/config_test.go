@@ -610,7 +610,7 @@ func TestReadConfigRejoinBlock(t *testing.T) {
 		al, err := node_ledger.NewAssemblerLedger(e.logger, storagePath)
 		require.NoError(t, err)
 		defer al.Close()
-		al.Metrics().NewAssemblerLedgerMetrics(monitoring.NewProvider(generate.DefaultMetricsProviderType, e.logger), "party1", e.logger)
+		al.Metrics().NewAssemblerLedgerMetrics(monitoring.NewProvider(generate.DefaultMetricsProviderType, e.logger), "party1")
 		var prev *common.Block
 		for n := uint64(0); n <= storedNumber; n++ {
 			block := ledgerConfigBlock(n, prev)

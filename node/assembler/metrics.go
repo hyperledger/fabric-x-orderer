@@ -87,7 +87,7 @@ func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *
 	versionGauge := monitoring.VersionGauge(provider)
 	versionGauge.With(metadata.Version).Set(1)
 
-	ledgerMetrics.NewAssemblerLedgerMetrics(provider, partyID, logger)
+	ledgerMetrics.NewAssemblerLedgerMetrics(provider, partyID)
 	deliverMetrics := deliver.NewMetrics(provider)
 
 	batchUnaryFetchLatency := provider.NewHistogram(batchUnaryFetchLatencyOpts).With([]string{partyID}...)
