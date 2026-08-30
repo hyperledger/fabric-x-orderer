@@ -63,7 +63,7 @@ func (c *Consenter) Index(digests [][]byte) {
 	}
 }
 
-// bafGroupKey is the comparable form of types.BatchID (<shard, primary, seq, digest>): the
+// batchIDKey is the comparable form of types.BatchID (<shard, primary, seq, digest>): the
 // tuple that identifies a batch. digest is a string because BatchID.Digest() ([]byte) is not
 // map-key-comparable. Fragments are grouped by batch identity so that each block corresponds
 // to exactly one batch. In the honest case there is one batch per <seq, shard> (unchanged
@@ -72,25 +72,25 @@ func (c *Consenter) Index(digests [][]byte) {
 // This guarantees every group is a single batch, so consumers that read only the first
 // fragment (ba[0]) always see a threshold-attested batch rather than a stale/minority digest
 // that happened to be first in Pending order.
-type bafGroupKey struct {
-	seq     types.BatchSequence
+type batchIDKey struct {
 	shard   types.ShardID
 	primary types.PartyID
+	seq     types.BatchSequence
 	digest  string
 }
 
-func bafKey(baf types.BatchAttestationFragment) bafGroupKey {
-	return bafGroupKey{seq: baf.Seq(), shard: baf.Shard(), primary: baf.Primary(), digest: string(baf.Digest())}
+func batchIDKeyOf(baf types.BatchAttestationFragment) batchIDKey {
+	return batchIDKey{shard: baf.Shard(), primary: baf.Primary(), seq: baf.Seq(), digest: string(baf.Digest())}
 }
 
-// aggregateFragments groups fragments by batch identity (bafGroupKey), preserving the order in
+// aggregateFragments groups fragments by batch identity (batchIDKey), preserving the order in
 // which each group's key first appears. Each returned group holds all fragments of one batch.
 func aggregateFragments(batchAttestationFragments []types.BatchAttestationFragment) [][]types.BatchAttestationFragment {
-	groups := make(map[bafGroupKey][]types.BatchAttestationFragment)
-	var order []bafGroupKey // keys in first-seen order (map iteration is unordered)
+	groups := make(map[batchIDKey][]types.BatchAttestationFragment)
+	var order []batchIDKey // keys in first-seen order (map iteration is unordered)
 
 	for _, baf := range batchAttestationFragments {
-		key := bafKey(baf)
+		key := batchIDKeyOf(baf)
 		if _, seen := groups[key]; !seen {
 			order = append(order, key)
 		}
@@ -107,7 +107,7 @@ func aggregateFragments(batchAttestationFragments []types.BatchAttestationFragme
 
 func requestsToControlEvents(requests [][]byte) ([]state.ControlEvent, error) {
 	events := make([]state.ControlEvent, 0, len(requests))
-	for i := 0; i < len(requests); i++ {
+	for i := range requests {
 		ce := state.ControlEvent{}
 		if err := ce.FromBytes(requests[i]); err != nil {
 			return nil, err

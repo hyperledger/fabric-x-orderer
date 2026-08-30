@@ -36,9 +36,22 @@ var Rules = []Rule{
 // types.BatchID with the digest excluded. It is the unit of equivocation detection and
 // extraction — a byzantine primary produces several digests under a single batchKey.
 type batchKey struct {
-	seq     types.BatchSequence
 	shard   types.ShardID
 	primary types.PartyID
+	seq     types.BatchSequence
+}
+
+// compare orders batchKeys by shard, then primary, then seq, returning a negative, zero, or
+// positive value in the manner of cmp.Compare. It gives DetectEquivocation a deterministic
+// processing order (and is trivially unit-testable in isolation).
+func (b batchKey) compare(other batchKey) int {
+	if c := cmp.Compare(b.shard, other.shard); c != 0 {
+		return c
+	}
+	if c := cmp.Compare(b.primary, other.primary); c != 0 {
+		return c
+	}
+	return cmp.Compare(b.seq, other.seq)
 }
 
 // attestationKey identifies one signer's attestation of a specific digest of a batch: a batchKey
@@ -328,7 +341,30 @@ func PrimaryRotateDueToComplaints(s *State, configSeq types.ConfigSequence, l *f
 	s.Complaints = newComplaints
 }
 
-func CollectAndDeduplicateEvents(s *State, configSeq types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent) {
+// CollectAndDeduplicateEvents ingests the BAFs and complaints carried by this round's ControlEvents
+// into the State, skipping ones that are duplicates or that reference an unknown shard. It is a Rule
+// (see the Rules pipeline) and follows that uniform signature; configSeq is unused here because
+// config-sequence filtering already happened in an earlier rule (FilterPendingEventsWithDiffConfigSeq
+// / filterCEsWithDiffConfigSeq).
+//
+// Inputs:
+//   - s: the current consensus State. Its Pending (BAFs) and Complaints slices are the accumulators
+//     this function grows, and its Shards list is consulted to validate that each event's shard exists.
+//   - ces: the new ControlEvents to fold in. Only the BAF and Complaint variants are handled here;
+//     any other event kind (e.g. ConfigRequest) and empty events are ignored.
+//
+// Mutations (the only fields it changes):
+//   - s.Pending: each accepted BAF is appended.
+//   - s.Complaints: each accepted complaint is appended.
+//
+// A BAF is skipped when its shard is not in s.Shards, or when an equal attestationKey
+// (<shard, primary, seq, signer, digest>) is already present in s.Pending — i.e. the same signer has
+// already attested that exact (batch, digest). Note two BAFs from one signer with *different* digests
+// for the same batch are NOT duplicates: they are equivocation evidence and both are kept.
+// A complaint is skipped when its ShardTerm is not in s.Shards, or when the same signer has already
+// complained about that ShardTerm. The dedup sets are seeded from the existing s.Pending / s.Complaints
+// and, for complaints, updated as events are accepted within this call.
+func CollectAndDeduplicateEvents(s *State, _ types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent) {
 	// shardsAndSequences dedups incoming BAFs against ones already in Pending. It is seeded from
 	// Pending and, unlike the complaints set below, is not updated as BAFs are appended in this
 	// loop — so two identical BAFs arriving in the same round would both be kept here. That case
@@ -336,12 +372,11 @@ func CollectAndDeduplicateEvents(s *State, configSeq types.ConfigSequence, l *fl
 	// shard, digest> tuple, and SmartBFT's request pool rejects a duplicate RequestInfo before it
 	// ever reaches a proposal, so identical BAFs cannot co-occur in one round's events.
 	shardsAndSequences := make(map[attestationKey]struct{}, len(s.Pending))
-	complaints := make(map[ShardTerm]map[types.PartyID]struct{})
-
 	for _, baf := range s.Pending {
 		shardsAndSequences[attestationKeyOf(baf)] = struct{}{}
 	}
 
+	complaints := make(map[ShardTerm]map[types.PartyID]struct{})
 	for _, complaint := range s.Complaints {
 		if _, exists := complaints[complaint.ShardTerm]; !exists {
 			complaints[complaint.ShardTerm] = make(map[types.PartyID]struct{})
@@ -447,6 +482,29 @@ func FilterPendingEventsWithDiffConfigSeq(s *State, configSeq types.ConfigSequen
 	s.Complaints = filteredComplaints
 }
 
+// DetectEquivocation is a Rule (see the Rules pipeline) that catches a byzantine primary which
+// signed two or more conflicting batches for the same <shard, primary, seq>, and punishes it by
+// rotating the shard to the next term. A primary signs every BAF it produces, so two distinct
+// digests carrying its signature under one batchKey are proof it equivocated.
+//
+// It follows the uniform Rule signature but uses only s and l:
+//   - configSeq is ignored: an earlier rule (FilterPendingEventsWithDiffConfigSeq) already dropped
+//     BAFs from other config sequences from s.Pending.
+//   - ces is ignored: this rule runs purely over s.Pending, which CollectAndDeduplicateEvents (the
+//     preceding rule) has already populated with this round's incoming BAFs. It therefore only sees
+//     BAFs still pending — not ones from prior rounds that already reached the f+1 threshold and were
+//     committed to the BatchAttestationDB.
+//
+// Inputs it reads:
+//   - s.Pending: the BAFs to inspect, grouped by batchKey and digest. Only BAFs with Signer != Primary
+//     count (self-signed BAFs are excluded, so a non-primary cannot forge equivocation evidence by
+//     broadcasting two self-signed BAFs with different digests).
+//   - s.Shards: scanned to find the shard whose term must be bumped.
+//
+// Mutation (the only thing it changes):
+//   - s.Shards[i].Term: incremented by one for each shard found to have an equivocating batch. To keep
+//     the rotation bounded and deterministic, at most one rotation happens per shard per call, and
+//     batches are processed in a fixed order (shard, then primary, then seq). No BAFs are removed here.
 func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogger, _ ...ControlEvent) {
 	// Since the primary signs the BAF, if we see multiple different digests
 	// for the same <seq, shard, primary> tuple, the primary has equivocated.
@@ -461,49 +519,41 @@ func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogg
 	// manufacture false equivocation evidence.  Genuine attestations from secondaries
 	// always have Signer != Primary (the primary's own participation is captured by the
 	// empty PrimarySignature field, not by it re-broadcasting its own BAF as a voter).
-	m := batchAttestationVotesByDigests(s, isNotSelfSigned)
+	m := batchAttestationVotesByDigests(s, true)
 
-	// Sort batches for deterministic processing: by shard, then primary, then seq.
-	batches := make([]batchKey, 0, len(m))
-	for batch := range m {
-		batches = append(batches, batch)
+	// Sort batchKeys for deterministic processing: by shard, then primary, then seq.
+	batchKeys := make([]batchKey, 0, len(m))
+	for bk := range m {
+		batchKeys = append(batchKeys, bk)
 	}
-	slices.SortFunc(batches, func(a, b batchKey) int {
-		if c := cmp.Compare(a.shard, b.shard); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(a.primary, b.primary); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.seq, b.seq)
-	})
+	slices.SortFunc(batchKeys, batchKey.compare)
 
 	// Track which shards have already been rotated to ensure at most one rotation per shard.
 	rotatedShards := make(map[types.ShardID]struct{})
 
 	// For each <seq, shard, primary> check if it has multiple different digests
-	for _, batch := range batches {
-		digest2signers := m[batch]
+	for _, bk := range batchKeys {
+		digest2signers := m[bk]
 		// If there are multiple different digests for the same <seq, shard, primary>,
 		// the primary has equivocated
 		if len(digest2signers) > 1 {
 			l.Warnf("Detected equivocation: batch attestation sequence %d in shard %d from primary %d "+
 				"has %d different digests (%v). Primary has sent conflicting batches.",
-				batch.seq, batch.shard, batch.primary,
+				bk.seq, bk.shard, bk.primary,
 				len(digest2signers), getDigestSummary(digest2signers))
 
 			// Rotate the primary in the affected shard at most once per DetectEquivocation call.
-			if _, alreadyRotated := rotatedShards[batch.shard]; alreadyRotated {
-				l.Warnf("Skipping additional rotation for shard %d (already rotated once this round)", batch.shard)
+			if _, alreadyRotated := rotatedShards[bk.shard]; alreadyRotated {
+				l.Warnf("Skipping additional rotation for shard %d (already rotated once this round)", bk.shard)
 				continue
 			}
 
 			for i := range s.Shards {
-				if s.Shards[i].Shard == batch.shard {
+				if s.Shards[i].Shard == bk.shard {
 					l.Warnf("Rotating primary %d (term %d -> %d) in shard %d due to equivocation at sequence %d",
-						batch.primary, s.Shards[i].Term, s.Shards[i].Term+1, s.Shards[i].Shard, batch.seq)
+						bk.primary, s.Shards[i].Term, s.Shards[i].Term+1, s.Shards[i].Shard, bk.seq)
 					s.Shards[i].Term++
-					rotatedShards[batch.shard] = struct{}{}
+					rotatedShards[bk.shard] = struct{}{}
 					break
 				}
 			}
@@ -532,38 +582,34 @@ func getDigestSummary(digest2signers map[string][]types.PartyID) string {
 	return summary.String()
 }
 
-// batchAttestationVotesByDigests groups pending BAFs as <batchKey> --> { digest --> signers },
-// including only fragments for which include(baf) is true. Digests are hex-encoded so they are
-// map-comparable.
-func batchAttestationVotesByDigests(s *State, include func(baf types.BatchAttestationFragment) bool) map[batchKey]map[string][]types.PartyID {
+// batchAttestationVotesByDigests groups pending BAFs as <batchKey> --> { digest --> signers }.
+// Digests are hex-encoded so they are map-comparable.
+//
+// When excludeSelfSigned is true, BAFs where Signer() == Primary() are skipped. Such self-signed
+// BAFs cannot serve as secondary attestations; excluding them prevents a non-primary from
+// manufacturing equivocation evidence by sending two BAFs with Primary() == Signer() but different
+// digests. Equivocation detection passes true; threshold tallying passes false to count every BAF.
+func batchAttestationVotesByDigests(s *State, excludeSelfSigned bool) map[batchKey]map[string][]types.PartyID {
 	m := make(map[batchKey]map[string][]types.PartyID)
 
 	for _, baf := range s.Pending {
-		if !include(baf) {
+		if excludeSelfSigned && baf.Signer() == baf.Primary() {
 			continue
 		}
 
-		batch := batchKeyOf(baf)
-		if m[batch] == nil {
-			m[batch] = make(map[string][]types.PartyID)
+		bk := batchKeyOf(baf)
+		if m[bk] == nil {
+			m[bk] = make(map[string][]types.PartyID)
 		}
 
 		hexDigest := hex.EncodeToString(baf.Digest())
-		m[batch][hexDigest] = append(m[batch][hexDigest], baf.Signer())
+		m[bk][hexDigest] = append(m[bk][hexDigest], baf.Signer())
 	}
 	return m
 }
 
-// allBAFs includes every pending BAF (used when tallying signatures toward the threshold).
-func allBAFs(_ types.BatchAttestationFragment) bool { return true }
-
-// isNotSelfSigned excludes BAFs where Signer() == Primary(). Such self-signed BAFs cannot serve
-// as secondary attestations; excluding them prevents a non-primary from manufacturing
-// equivocation evidence by sending two BAFs with Primary() == Signer() but different digests.
-func isNotSelfSigned(baf types.BatchAttestationFragment) bool { return baf.Signer() != baf.Primary() }
-
 func ExtractBatchAttestationsFromPending(s *State, l *flogging.FabricLogger) []types.BatchAttestationFragment {
-	m := batchAttestationVotesByDigests(s, allBAFs)
+	m := batchAttestationVotesByDigests(s, false)
 
 	// decidedBatches holds the <seq, shard, primary> batches for which at least one digest
 	// reached threshold. It governs which pending BAFs are removed: once a batch is decided,
@@ -578,19 +624,19 @@ func ExtractBatchAttestationsFromPending(s *State, l *flogging.FabricLogger) []t
 	// downstream becomes its own block.
 	thresholdDigests := make(map[thresholdDigestKey]struct{})
 
-	for batch, digest2signers := range m {
-		l.Debugf("A total of %d digests were found for seq %d in shard %d with primary %d", len(digest2signers), batch.seq, batch.shard, batch.primary)
+	for bk, digest2signers := range m {
+		l.Debugf("A total of %d digests were found for seq %d in shard %d with primary %d", len(digest2signers), bk.seq, bk.shard, bk.primary)
 
 		for digest, signers := range digest2signers {
 			if len(signers) >= int(s.Threshold) {
-				l.Debugf("Found threshold (%d >= %d) of batch attestation fragments for shard %d, seq %d, digest %s", len(signers), s.Threshold, batch.shard, batch.seq, digest)
-				decidedBatches[batch] = struct{}{}
-				thresholdDigests[thresholdDigestKey{batch: batch, digest: digest}] = struct{}{}
+				l.Debugf("Found threshold (%d >= %d) of batch attestation fragments for shard %d, seq %d, digest %s", len(signers), s.Threshold, bk.shard, bk.seq, digest)
+				decidedBatches[bk] = struct{}{}
+				thresholdDigests[thresholdDigestKey{batch: bk, digest: digest}] = struct{}{}
 			}
 		}
 
-		if _, ok := decidedBatches[batch]; !ok {
-			l.Debugf("Could not find a threshold of batch attestation fragments for shard %d, seq %d", batch.shard, batch.seq)
+		if _, ok := decidedBatches[bk]; !ok {
+			l.Debugf("Could not find a threshold of batch attestation fragments for shard %d, seq %d", bk.shard, bk.seq)
 		}
 	} // for all <seq, shard, primary>
 
@@ -600,9 +646,9 @@ func ExtractBatchAttestationsFromPending(s *State, l *flogging.FabricLogger) []t
 
 	// We iterate over the pending because we need deterministic processing
 	for _, baf := range s.Pending {
-		batch := batchKeyOf(baf)
+		bk := batchKeyOf(baf)
 
-		if _, decided := decidedBatches[batch]; !decided {
+		if _, decided := decidedBatches[bk]; !decided {
 			// No digest for this batch reached threshold yet; keep it pending.
 			newPending = append(newPending, baf)
 			continue
@@ -610,7 +656,7 @@ func ExtractBatchAttestationsFromPending(s *State, l *flogging.FabricLogger) []t
 
 		// The batch is decided and thus removed from Pending. Only emit fragments whose digest
 		// actually reached threshold; minority/equivocating digests are dropped, not extracted.
-		if _, ok := thresholdDigests[thresholdDigestKey{batch: batch, digest: hex.EncodeToString(baf.Digest())}]; ok {
+		if _, ok := thresholdDigests[thresholdDigestKey{batch: bk, digest: hex.EncodeToString(baf.Digest())}]; ok {
 			extracted = append(extracted, baf)
 		}
 	}
