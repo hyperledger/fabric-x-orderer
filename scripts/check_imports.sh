@@ -6,21 +6,19 @@
 #
 set -euo pipefail
 
-# Check that protoutil is not imported from fabric
+# Check that packages are not imported from github.com/hyperledger/fabric/
+FABRIC_IMPORT="github.com/hyperledger/fabric/"
 FABRIC_PROTOUTIL="github.com/hyperledger/fabric/protoutil"
-EXCLUDED="^vendor/"
 
-CHECK=$(git diff --name-only --diff-filter=ACMRTUXB origin/main...HEAD || true)
-[[ -z "$CHECK" ]] && CHECK=$(git diff-tree --no-commit-id --name-only --diff-filter=ACMRTUXB -r HEAD^..HEAD)
-
-CHECK=$(echo "$CHECK" | grep '\.go$' | grep -Ev "$EXCLUDED" || true)
-[[ -z "$CHECK" ]] && exit 0
-
-found=$(echo "$CHECK" | xargs grep -n "$FABRIC_PROTOUTIL" || true)
+found=$(grep -rn --include='*.go' --exclude-dir=vendor "\"${FABRIC_IMPORT}" . || true)
 [[ -z "$found" ]] && exit 0
 
-echo "The following files import $FABRIC_PROTOUTIL:"
+echo "The following files import from $FABRIC_IMPORT:"
 echo "$found"
-echo "Use github.com/hyperledger/fabric-x-common/protoutil instead."
+echo "Use github.com/hyperledger/fabric-x-common (or fabric-lib-go / fabric-protos-go-apiv2) instead."
+
+if echo "$found" | grep -q "$FABRIC_PROTOUTIL"; then
+    echo "Use github.com/hyperledger/fabric-x-common/protoutil instead."
+fi
 
 exit 1
