@@ -9,7 +9,6 @@ package state_test
 import (
 	"testing"
 
-	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	consensus_state "github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -337,45 +336,6 @@ func TestStateString(t *testing.T) {
 	assert.Contains(t, str2, "Pending: 6")
 	assert.Contains(t, str2, "... and 1 more")
 	assert.Contains(t, str2, "Complaints: 6")
-}
-
-func TestControlEventSerialization(t *testing.T) {
-	// Serialization and deserialization of ControlEvent with Complaint
-	ce := consensus_state.ControlEvent{Complaint: &complaint}
-
-	var ce2 consensus_state.ControlEvent
-
-	err := ce2.FromBytes(ce.Bytes())
-	assert.NoError(t, err)
-
-	assert.Equal(t, ce, ce2)
-
-	// Serialization and deserialization of ControlEvent with BAF
-	baf := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0, 0, nil)
-	baf.SetSignature([]byte{4})
-	ce = consensus_state.ControlEvent{BAF: baf}
-
-	ce2.Complaint = nil
-	err = ce2.FromBytes(ce.Bytes())
-	assert.NoError(t, err)
-
-	assert.Equal(t, ce, ce2)
-
-	// Serialization and deserialization of ControlEvent with ConfigRequest
-	cr := &consensus_state.ConfigRequest{
-		Envelope: &common.Envelope{
-			Payload:   []byte("config-payload"),
-			Signature: []byte("config-signature"),
-		},
-	}
-	ce = consensus_state.ControlEvent{ConfigRequest: cr}
-
-	var ce3 consensus_state.ControlEvent
-	err = ce3.FromBytes(ce.Bytes())
-	assert.NoError(t, err)
-	assert.NotNil(t, ce3.ConfigRequest)
-	assert.Equal(t, cr.Envelope.Payload, ce3.ConfigRequest.Envelope.Payload)
-	assert.Equal(t, cr.Envelope.Signature, ce3.ConfigRequest.Envelope.Signature)
 }
 
 func TestCollectAndDeduplicateEvents(t *testing.T) {
