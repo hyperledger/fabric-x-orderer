@@ -345,7 +345,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 
 	// Add a valid Complaint and ensure no duplicates are accepted in the same round
-	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce, ce2)
+	state.CollectAndDeduplicateEvents(logger, ce, ce2)
 
 	expectedState := consensus_state.State{
 		N:          4,
@@ -357,7 +357,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	assert.Equal(t, state, expectedState)
 
 	// Handle duplicate Complaint
-	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
+	state.CollectAndDeduplicateEvents(logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle Complaint with invalid shard
@@ -371,7 +371,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	}
 
 	ce = consensus_state.ControlEvent{Complaint: &c}
-	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
+	state.CollectAndDeduplicateEvents(logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle Complaint with invalid term
@@ -385,7 +385,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	}
 
 	ce = consensus_state.ControlEvent{Complaint: &c}
-	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
+	state.CollectAndDeduplicateEvents(logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Update state with a valid BAF
@@ -394,11 +394,11 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	ce = consensus_state.ControlEvent{BAF: baf}
 	expectedState.Pending = append(expectedState.Pending, baf)
 
-	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
+	state.CollectAndDeduplicateEvents(logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle duplicate BAF
-	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
+	state.CollectAndDeduplicateEvents(logger, ce)
 	assert.Equal(t, state, expectedState)
 
 	// Handle BAF with invalid Shard
@@ -406,7 +406,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 	baf2.SetSignature([]byte{4})
 	ce = consensus_state.ControlEvent{BAF: baf2}
 
-	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, ce)
+	state.CollectAndDeduplicateEvents(logger, ce)
 	assert.Equal(t, state, expectedState)
 }
 
@@ -441,20 +441,20 @@ func TestCollectAndDeduplicateEvents_SameSignerDifferentDigests(t *testing.T) {
 	}
 
 	// Round 1: the signer reports digest X.
-	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, newBAF([]byte{1, 2, 3}))
+	state.CollectAndDeduplicateEvents(logger, newBAF([]byte{1, 2, 3}))
 	assert.Len(t, state.Pending, 1)
 
 	// Round 2: the same signer reports a re-send of X (must be dropped as a true duplicate: same
 	// <shard, primary, seq, signer, digest> already pending) and a different digest Y (must be
 	// retained: it is equivocation evidence, not a duplicate).
-	consensus_state.CollectAndDeduplicateEvents(&state, 0, logger, newBAF([]byte{1, 2, 3}), newBAF([]byte{4, 5, 6}))
+	state.CollectAndDeduplicateEvents(logger, newBAF([]byte{1, 2, 3}), newBAF([]byte{4, 5, 6}))
 
 	assert.Len(t, state.Pending, 2)
 	assert.Equal(t, []byte{1, 2, 3}, state.Pending[0].Digest())
 	assert.Equal(t, []byte{4, 5, 6}, state.Pending[1].Digest())
 
 	// The retained conflict is now visible to equivocation detection, which rotates the primary.
-	consensus_state.DetectEquivocation(&state, 0, logger)
+	state.DetectEquivocation(logger)
 	assert.Equal(t, uint64(2), state.Shards[0].Term)
 }
 
@@ -471,21 +471,21 @@ func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, 0)
 
-	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 0, logger)
+	state.FilterPendingEventsWithDiffConfigSeq(0, logger)
 
 	assert.Len(t, state.Complaints, 2)
 
-	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 1, logger)
+	state.FilterPendingEventsWithDiffConfigSeq(1, logger)
 
 	assert.Len(t, state.Complaints, 0)
 
 	state.Pending = append(state.Pending, types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{3}, types.PartyID(2), 0, 0, nil))
 
-	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 0, logger)
+	state.FilterPendingEventsWithDiffConfigSeq(0, logger)
 
 	assert.Len(t, state.Pending, 1)
 
-	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 1, logger)
+	state.FilterPendingEventsWithDiffConfigSeq(1, logger)
 
 	assert.Len(t, state.Pending, 0)
 
@@ -497,7 +497,7 @@ func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 	state.Complaints = append(state.Complaints, consensus_state.Complaint{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2, ConfigSeq: 2})
 	state.Complaints = append(state.Complaints, consensus_state.Complaint{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 1}, Signer: 2, ConfigSeq: 3})
 
-	consensus_state.FilterPendingEventsWithDiffConfigSeq(&state, 2, logger)
+	state.FilterPendingEventsWithDiffConfigSeq(2, logger)
 	assert.Len(t, state.Pending, 1)
 	assert.Equal(t, types.ConfigSequence(2), state.Pending[0].ConfigSequence())
 	assert.Len(t, state.Complaints, 1)
@@ -517,7 +517,7 @@ func TestPrimaryRotateDueToComplaints(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, 0)
 
-	consensus_state.PrimaryRotateDueToComplaints(&state, 0, logger)
+	state.PrimaryRotateDueToComplaints(logger)
 
 	// Check that the term for shard 1 has been incremented
 	expectedShards := []consensus_state.ShardTerm{{Shard: 1, Term: 2}, {Shard: 2, Term: 1}}
@@ -537,7 +537,7 @@ func TestCleanupOldComplaints(t *testing.T) {
 
 	logger := testutil.CreateLogger(t, 0)
 
-	consensus_state.CleanupOldComplaints(&state, 0, logger)
+	state.CleanupOldComplaints(logger)
 
 	expectedComplaints := []consensus_state.Complaint{
 		{ShardTerm: consensus_state.ShardTerm{Shard: 1, Term: 2}, Signer: 3},
@@ -560,7 +560,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		consensus_state.DetectEquivocation(&state, 0, logger)
+		state.DetectEquivocation(logger)
 
 		// Term should not change - no equivocation detected
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -579,7 +579,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		consensus_state.DetectEquivocation(&state, 0, logger)
+		state.DetectEquivocation(logger)
 
 		// Term should be incremented due to equivocation
 		assert.Equal(t, uint64(2), state.Shards[0].Term)
@@ -599,7 +599,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		consensus_state.DetectEquivocation(&state, 0, logger)
+		state.DetectEquivocation(logger)
 
 		// Term should be incremented
 		assert.Equal(t, uint64(6), state.Shards[0].Term)
@@ -618,7 +618,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		consensus_state.DetectEquivocation(&state, 0, logger)
+		state.DetectEquivocation(logger)
 
 		// Term should not change
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -637,7 +637,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		consensus_state.DetectEquivocation(&state, 0, logger)
+		state.DetectEquivocation(logger)
 
 		// Terms should not change
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -657,7 +657,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		consensus_state.DetectEquivocation(&state, 0, logger)
+		state.DetectEquivocation(logger)
 
 		// Term should not change
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -679,7 +679,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		consensus_state.DetectEquivocation(&state, 0, logger)
+		state.DetectEquivocation(logger)
 
 		// Both terms should be incremented
 		assert.Equal(t, uint64(2), state.Shards[0].Term)
@@ -695,7 +695,7 @@ func TestDetectEquivocation(t *testing.T) {
 			Pending:   []types.BatchAttestationFragment{},
 		}
 
-		consensus_state.DetectEquivocation(&state, 0, logger)
+		state.DetectEquivocation(logger)
 
 		// Term should not change
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -718,7 +718,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		consensus_state.DetectEquivocation(&state, 0, logger)
+		state.DetectEquivocation(logger)
 
 		// Term must not change: self-signed BAFs cannot be used as equivocation evidence.
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -740,7 +740,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		consensus_state.DetectEquivocation(&state, 0, logger)
+		state.DetectEquivocation(logger)
 
 		// Equivocation is detected: term must be incremented.
 		assert.Equal(t, uint64(2), state.Shards[0].Term)
@@ -784,7 +784,7 @@ func TestExtractBatchAttestationsFromPending_EquivocationDigestLeak(t *testing.T
 		},
 	}
 
-	consensus_state.DetectEquivocation(&state, 0, logger)
+	state.DetectEquivocation(logger)
 	// Equivocation is detected: term must be incremented.
 	assert.Equal(t, uint64(2), state.Shards[0].Term)
 
@@ -813,7 +813,7 @@ func TestExtractBatchAttestationsFromPending_EquivocationDigestLeak(t *testing.T
 		},
 	}
 
-	consensus_state.DetectEquivocation(&state2, 0, logger)
+	state2.DetectEquivocation(logger)
 	// Equivocation is detected: term must be incremented.
 	assert.Equal(t, uint64(2), state2.Shards[0].Term)
 

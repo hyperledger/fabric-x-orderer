@@ -21,17 +21,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type Rule func(*State, types.ConfigSequence, *flogging.FabricLogger, ...ControlEvent)
-
-var Rules = []Rule{
-	FilterPendingEventsWithDiffConfigSeq,
-	CollectAndDeduplicateEvents,
-	DetectEquivocation,
-	PrimaryRotateDueToComplaints,
-	CleanupOldComplaints,
-	// CleanupOldAttestations, // TODO: fully test for byzantine failures
-}
-
 // batchKey identifies a batch by <shard, primary, seq>: the batch-identity portion of
 // types.BatchID with the digest excluded. It is the unit of equivocation detection and
 // extraction — a byzantine primary produces several digests under a single batchKey.
@@ -252,11 +241,13 @@ func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence
 
 	filteredCEs := filterCEsWithDiffConfigSeq(configSeq, l, ces...)
 
-	for _, rule := range Rules {
-		rule(nextState, configSeq, l, filteredCEs...)
-	}
+	nextState.FilterPendingEventsWithDiffConfigSeq(configSeq, l)
+	nextState.CollectAndDeduplicateEvents(l, filteredCEs...)
+	nextState.DetectEquivocation(l)
+	nextState.PrimaryRotateDueToComplaints(l)
+	nextState.CleanupOldComplaints(l)
 
-	// After applying rules, extract all batch attestations for which enough fragments have been collected.
+	// After applying the rules above, extract all batch attestations for which enough fragments have been collected.
 	extracted := ExtractBatchAttestationsFromPending(nextState, l)
 	configRequests := ExtractConfigRequests(filteredCEs)
 	return nextState, extracted, configRequests
@@ -278,7 +269,7 @@ func (s *State) Clone() *State {
 	return &s2
 }
 
-func CleanupOldComplaints(s *State, configSeq types.ConfigSequence, l *flogging.FabricLogger, _ ...ControlEvent) {
+func (s *State) CleanupOldComplaints(l *flogging.FabricLogger) {
 	newComplaints := make([]Complaint, 0, len(s.Complaints))
 	for _, c := range s.Complaints {
 		shardIndex, _ := shardExists(c.Shard, s.Shards)
@@ -293,7 +284,7 @@ func CleanupOldComplaints(s *State, configSeq types.ConfigSequence, l *flogging.
 	s.Complaints = newComplaints
 }
 
-func PrimaryRotateDueToComplaints(s *State, configSeq types.ConfigSequence, l *flogging.FabricLogger, _ ...ControlEvent) {
+func (s *State) PrimaryRotateDueToComplaints(l *flogging.FabricLogger) {
 	complaintsToNum := make(map[ShardTerm]int)
 
 	for _, complaint := range s.Complaints {
@@ -342,10 +333,9 @@ func PrimaryRotateDueToComplaints(s *State, configSeq types.ConfigSequence, l *f
 }
 
 // CollectAndDeduplicateEvents ingests the BAFs and complaints carried by this round's ControlEvents
-// into the State, skipping ones that are duplicates or that reference an unknown shard. It is a Rule
-// (see the Rules pipeline) and follows that uniform signature; configSeq is unused here because
-// config-sequence filtering already happened in an earlier rule (FilterPendingEventsWithDiffConfigSeq
-// / filterCEsWithDiffConfigSeq).
+// into the State, skipping ones that are duplicates or that reference an unknown shard.
+// Config-sequence filtering already happened before this step (FilterPendingEventsWithDiffConfigSeq
+// / filterCEsWithDiffConfigSeq), so it is not repeated here.
 //
 // Inputs:
 //   - s: the current consensus State. Its Pending (BAFs) and Complaints slices are the accumulators
@@ -364,7 +354,7 @@ func PrimaryRotateDueToComplaints(s *State, configSeq types.ConfigSequence, l *f
 // A complaint is skipped when its ShardTerm is not in s.Shards, or when the same signer has already
 // complained about that ShardTerm. The dedup sets are seeded from the existing s.Pending / s.Complaints
 // and, for complaints, updated as events are accepted within this call.
-func CollectAndDeduplicateEvents(s *State, _ types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent) {
+func (s *State) CollectAndDeduplicateEvents(l *flogging.FabricLogger, ces ...ControlEvent) {
 	// shardsAndSequences dedups incoming BAFs against ones already in Pending. It is seeded from
 	// Pending and, unlike the complaints set below, is not updated as BAFs are appended in this
 	// loop — so two identical BAFs arriving in the same round would both be kept here. That case
@@ -460,7 +450,7 @@ func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l *flogging.Fabr
 	return filteredEvents
 }
 
-func FilterPendingEventsWithDiffConfigSeq(s *State, configSeq types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent) {
+func (s *State) FilterPendingEventsWithDiffConfigSeq(configSeq types.ConfigSequence, l *flogging.FabricLogger) {
 	filteredPending := make([]types.BatchAttestationFragment, 0)
 	for _, baf := range s.Pending {
 		if baf.ConfigSequence() == configSeq {
@@ -482,18 +472,15 @@ func FilterPendingEventsWithDiffConfigSeq(s *State, configSeq types.ConfigSequen
 	s.Complaints = filteredComplaints
 }
 
-// DetectEquivocation is a Rule (see the Rules pipeline) that catches a byzantine primary which
-// signed two or more conflicting batches for the same <shard, primary, seq>, and punishes it by
-// rotating the shard to the next term. A primary signs every BAF it produces, so two distinct
-// digests carrying its signature under one batchKey are proof it equivocated.
+// DetectEquivocation catches a byzantine primary which signed two or more conflicting batches for
+// the same <shard, primary, seq>, and punishes it by rotating the shard to the next term. A primary
+// signs every BAF it produces, so two distinct digests carrying its signature under one batchKey are
+// proof it equivocated.
 //
-// It follows the uniform Rule signature but uses only s and l:
-//   - configSeq is ignored: an earlier rule (FilterPendingEventsWithDiffConfigSeq) already dropped
-//     BAFs from other config sequences from s.Pending.
-//   - ces is ignored: this rule runs purely over s.Pending, which CollectAndDeduplicateEvents (the
-//     preceding rule) has already populated with this round's incoming BAFs. It therefore only sees
-//     BAFs still pending — not ones from prior rounds that already reached the f+1 threshold and were
-//     committed to the BatchAttestationDB.
+// It runs purely over s.Pending, which CollectAndDeduplicateEvents (the preceding step) has already
+// populated with this round's incoming BAFs. It therefore only sees BAFs still pending — not ones
+// from prior rounds that already reached the f+1 threshold and were committed to the
+// BatchAttestationDB.
 //
 // Inputs it reads:
 //   - s.Pending: the BAFs to inspect, grouped by batchKey and digest. Only BAFs with Signer != Primary
@@ -505,7 +492,7 @@ func FilterPendingEventsWithDiffConfigSeq(s *State, configSeq types.ConfigSequen
 //   - s.Shards[i].Term: incremented by one for each shard found to have an equivocating batch. To keep
 //     the rotation bounded and deterministic, at most one rotation happens per shard per call, and
 //     batches are processed in a fixed order (shard, then primary, then seq). No BAFs are removed here.
-func DetectEquivocation(s *State, _ types.ConfigSequence, l *flogging.FabricLogger, _ ...ControlEvent) {
+func (s *State) DetectEquivocation(l *flogging.FabricLogger) {
 	// Since the primary signs the BAF, if we see multiple different digests
 	// for the same <seq, shard, primary> tuple, the primary has equivocated.
 	// In this case, we rotate the primary by incrementing the term.
