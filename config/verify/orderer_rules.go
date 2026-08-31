@@ -56,7 +56,7 @@ type DefaultOrdererRules struct{}
 //  8. Party TLS CA certificates in SharedConfig must match the orderer organization MSP.
 //  9. BlockValidationPolicy must be consistent with the current consenters.
 //  10. Party certificates must be valid, with expiration enforced for genesis
-//     configs and ignored for advanced configs.
+//     configs and ignored for later config updates.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {

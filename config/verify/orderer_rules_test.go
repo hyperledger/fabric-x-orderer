@@ -7,14 +7,19 @@ SPDX-License-Identifier: Apache-2.0
 package verify_test
 
 import (
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
@@ -24,10 +29,12 @@ import (
 	mocksVerifier "github.com/hyperledger/fabric-x-orderer/common/requestfilter/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config/verify"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
@@ -170,7 +177,7 @@ func TestValidateNewConfig_ConsenterConsistency(t *testing.T) {
 	bccsp := factory.GetDefault()
 
 	// create a valid config update first
-	cert := []byte("fake1-tls-cert")
+	cert := generateConsenterTLSCert(t, dir, 1)
 	updatePb := builder.UpdateConsensusTLSCert(t, types.PartyID(1), cert)
 
 	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, 1, updatePb)
@@ -197,8 +204,9 @@ func TestValidateNewConfig_ConsenterConsistency(t *testing.T) {
 	require.NoError(t, proto.Unmarshal(orderersVal.Value, orderers))
 
 	// change the TLS cert in consenter_mapping to create mismatch
-	orderers.ConsenterMapping[0].ServerTlsCert = []byte("fake2-tls-cert")
-	orderers.ConsenterMapping[0].ClientTlsCert = []byte("fake2-tls-cert")
+	otherCert := generateConsenterTLSCert(t, dir, 1)
+	orderers.ConsenterMapping[0].ServerTlsCert = otherCert
+	orderers.ConsenterMapping[0].ClientTlsCert = otherCert
 
 	orderersVal.Value, err = proto.Marshal(orderers)
 	require.NoError(t, err)
@@ -214,6 +222,52 @@ func TestValidateNewConfig_ConsenterConsistency(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "TLS certificate mismatch for party 1")
+}
+
+func TestValidateNewConfig_CertificateExpiration(t *testing.T) {
+	dir, env, _, _, _, _, _ := setupOrdererRulesTest(t, 1)
+	or := verify.DefaultOrdererRules{}
+	bccsp := factory.GetDefault()
+
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+	cfgEnv := &common.ConfigEnvelope{}
+	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+
+	// expire the router certificate
+	shared := configutil.GetSharedConfig(t, cfgEnv)
+	caCertPEM, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "tlsca", "tlsorg1-CA-cert.pem"))
+	require.NoError(t, err)
+	caKeyPEM, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "tlsca", "priv_sk"))
+	require.NoError(t, err)
+	routerCert, err := utils.Parsex509Cert(shared.PartiesConfig[0].RouterConfig.TlsCert)
+	require.NoError(t, err)
+	caCert, err := utils.Parsex509Cert(caCertPEM)
+	require.NoError(t, err)
+	caKey, err := tx.CreateECDSAPrivateKey(caKeyPEM)
+	require.NoError(t, err)
+	tmpl := *routerCert
+	tmpl.NotAfter = routerCert.NotBefore.Add(time.Second)
+	expiredDER, err := x509.CreateCertificate(rand.Reader, &tmpl, caCert, routerCert.PublicKey, caKey)
+	require.NoError(t, err)
+	shared.PartiesConfig[0].RouterConfig.TlsCert = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: expiredDER})
+
+	// validate the new config, expect error
+	consensusType := &orderer.ConsensusType{}
+	require.NoError(t, proto.Unmarshal(cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"].Value, consensusType))
+	consensusType.Metadata = protoutil.MarshalOrPanic(shared)
+	cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
+
+	payload.Data = protoutil.MarshalOrPanic(cfgEnv)
+	env.Payload = protoutil.MarshalOrPanic(payload)
+
+	err = or.ValidateNewConfig(env, bccsp, types.PartyID(1))
+	require.ErrorContains(t, err, "certificate validation failed for party ID 1")
+
+	cfgEnv.Config.Sequence = 1
+	payload.Data = protoutil.MarshalOrPanic(cfgEnv)
+	env.Payload = protoutil.MarshalOrPanic(payload)
+	require.NoError(t, or.ValidateNewConfig(env, bccsp, types.PartyID(1)))
 }
 
 func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
