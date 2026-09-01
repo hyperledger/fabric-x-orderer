@@ -90,32 +90,6 @@ func TestConstructBlockfilesInfo(t *testing.T) {
 	checkBlockfilesInfoFromFS(t, blkStoreDir, blockfileMgr.blockfilesInfo)
 }
 
-func TestBinarySearchBlockFileNum(t *testing.T) {
-	blockStoreRootDir := t.TempDir()
-	blocks := testutil.ConstructTestBlocks(t, 100)
-	maxFileSie := int(0.1 * float64(testutilEstimateTotalSizeOnDisk(t, blocks)))
-	env := newTestEnv(t, NewConf(blockStoreRootDir, maxFileSie))
-	defer env.Cleanup()
-	blkfileMgrWrapper := newTestBlockfileWrapper(env, "testLedger")
-	blkfileMgr := blkfileMgrWrapper.blockfileMgr
-
-	blkfileMgrWrapper.addBlocks(blocks)
-
-	ledgerDir := (&Conf{blockStorageDir: blockStoreRootDir}).getLedgerBlockDir("testLedger")
-	files, err := os.ReadDir(ledgerDir)
-	require.NoError(t, err)
-	require.Len(t, files, 11)
-
-	for i := uint64(0); i < 100; i++ {
-		fileNum, err := binarySearchFileNumForBlock(ledgerDir, i)
-		require.NoError(t, err)
-		locFromIndex, err := blkfileMgr.index.getBlockLocByBlockNum(i)
-		require.NoError(t, err)
-		expectedFileNum := locFromIndex.fileSuffixNum
-		require.Equal(t, expectedFileNum, fileNum)
-	}
-}
-
 func TestIsBootstrappedFromSnapshot(t *testing.T) {
 	testDir := t.TempDir()
 

@@ -84,36 +84,6 @@ func constructBlockfilesInfo(rootDir string) (*blockfilesInfo, error) {
 	return blkfilesInfo, nil
 }
 
-// binarySearchFileNumForBlock locates the file number that contains the given block number.
-// This function assumes that the caller invokes this function with a block number that has been committed
-// For any uncommitted block, this function returns the last file present
-func binarySearchFileNumForBlock(rootDir string, blockNum uint64) (int, error) {
-	blkfilesInfo, err := constructBlockfilesInfo(rootDir)
-	if err != nil {
-		return -1, err
-	}
-
-	beginFile := 0
-	endFile := blkfilesInfo.latestFileNumber
-
-	for endFile != beginFile {
-		searchFile := beginFile + (endFile-beginFile)/2 + 1
-		n, err := retrieveFirstBlockNumFromFile(rootDir, searchFile)
-		if err != nil {
-			return -1, err
-		}
-		switch {
-		case n == blockNum:
-			return searchFile, nil
-		case n > blockNum:
-			endFile = searchFile - 1
-		case n < blockNum:
-			beginFile = searchFile
-		}
-	}
-	return beginFile, nil
-}
-
 func retrieveFirstBlockNumFromFile(rootDir string, fileNum int) (uint64, error) {
 	s, err := newBlockfileStream(rootDir, fileNum, 0)
 	if err != nil {
