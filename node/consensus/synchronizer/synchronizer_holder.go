@@ -48,6 +48,7 @@ func (h *Holder) Stop() {
 
 // Swap replaces the inner synchronizer under the Holder's lock. It is safe to call concurrently
 // with Sync()/Stop().
+// The caller must stop the previous inner synchronizer first.
 func (h *Holder) Swap(inner SynchronizerWithStop) {
 	h.mu.Lock()
 	h.inner = inner

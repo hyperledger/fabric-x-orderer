@@ -177,6 +177,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 		// Dynamic reconfig: the existing BFT keeps running and still holds the same holder, so we
 		// only swap the inner synchronizer under the holder's lock rather than reassigning the
 		// BFT.Synchronizer field (which SmartBFT reads without a lock).
+		// Note that the synchronizerHolder is initialized only when `createNewBFT == true` at startup.
 		c.synchronizerHolder.Swap(bftSynch)
 	}
 }
