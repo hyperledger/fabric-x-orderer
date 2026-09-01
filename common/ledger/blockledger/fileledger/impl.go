@@ -77,9 +77,6 @@ func (fl *FileLedger) Iterator(startPosition *ab.SeekPosition) (blockledger.Iter
 			logger.Panic(err)
 		}
 		newestBlockNumber := info.Height - 1
-		if info.BootstrappingSnapshotInfo != nil && newestBlockNumber == info.BootstrappingSnapshotInfo.LastBlockInSnapshot {
-			newestBlockNumber = info.Height
-		}
 		startingBlockNumber = newestBlockNumber
 	case *ab.SeekPosition_Specified:
 		startingBlockNumber = start.Specified.Number

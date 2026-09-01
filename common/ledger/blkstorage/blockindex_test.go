@@ -7,15 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package blkstorage
 
 import (
-	"crypto/sha256"
 	"fmt"
-	"hash"
-	"os"
-	"path/filepath"
 	"testing"
 
 	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/snapshot"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 	commonledgerutil "github.com/hyperledger/fabric-x-orderer/common/ledger/util"
 
@@ -24,10 +19,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 )
-
-var testNewHashFunc = func() (hash.Hash, error) {
-	return sha256.New(), nil
-}
 
 func TestBlockIndexSync(t *testing.T) {
 	testBlockIndexSync(t, 10, 5, false)
@@ -267,167 +258,6 @@ func TestTxIDKeyDecodingInvalidInputs(t *testing.T) {
 	incompleteTxID := appendAllAndTrimLastByte(prefix, txIDLen, txID)
 	_, err = retrieveTxID(incompleteTxID)
 	require.EqualError(t, err, fmt.Sprintf("invalid txIDKey {%x}, fewer bytes present", incompleteTxID))
-}
-
-func TestExportUniqueTxIDs(t *testing.T) {
-	env := newTestEnv(t, NewConf(t.TempDir(), 0))
-	defer env.Cleanup()
-	ledgerid := "testledger"
-	blkfileMgrWrapper := newTestBlockfileWrapper(env, ledgerid)
-	defer blkfileMgrWrapper.close()
-	blkfileMgr := blkfileMgrWrapper.blockfileMgr
-
-	testSnapshotDir := t.TempDir()
-
-	// empty store generates no output
-	fileHashes, err := blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
-	require.NoError(t, err)
-	require.Empty(t, fileHashes)
-	files, err := os.ReadDir(testSnapshotDir)
-	require.NoError(t, err)
-	require.Len(t, files, 0)
-
-	// add genesis block and test the exported bytes
-	bg, gb := testutil.NewBlockGenerator(t, "myChannel", false)
-	blkfileMgr.addBlock(gb)
-	configTxID, err := protoutil.GetOrComputeTxIDFromEnvelope(gb.Data.Data[0])
-	require.NoError(t, err)
-	fileHashes, err = blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
-	require.NoError(t, err)
-	verifyExportedTxIDs(t, testSnapshotDir, fileHashes, configTxID)
-	os.Remove(filepath.Join(testSnapshotDir, snapshotDataFileName))
-	os.Remove(filepath.Join(testSnapshotDir, snapshotMetadataFileName))
-
-	// add block-1 and test the exported bytes
-	block1 := bg.NextBlockWithTxid(
-		[][]byte{
-			[]byte("tx with id=txid-3"),
-			[]byte("tx with id=txid-1"),
-			[]byte("tx with id=txid-2"),
-			[]byte("another tx with existing id=txid-1"),
-		},
-		[]string{"txid-3", "txid-1", "txid-2", "txid-1"},
-	)
-	err = blkfileMgr.addBlock(block1)
-	require.NoError(t, err)
-	fileHashes, err = blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
-	require.NoError(t, err)
-	verifyExportedTxIDs(t, testSnapshotDir, fileHashes, "txid-1", "txid-2", "txid-3", configTxID) // "txid-1" appears once, Txids appear in radix sort order
-	os.Remove(filepath.Join(testSnapshotDir, snapshotDataFileName))
-	os.Remove(filepath.Join(testSnapshotDir, snapshotMetadataFileName))
-
-	// add block-2 and test the exported bytes
-	block2 := bg.NextBlockWithTxid(
-		[][]byte{
-			[]byte("tx with id=txid-0000000"),
-			[]byte("tx with id=txid-3"),
-			[]byte("tx with id=txid-4"),
-		},
-		[]string{"txid-0000000", "txid-3", "txid-4"},
-	)
-	blkfileMgr.addBlock(block2)
-	require.NoError(t, err)
-
-	fileHashes, err = blkfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
-	require.NoError(t, err)
-	verifyExportedTxIDs(t, testSnapshotDir, fileHashes, "txid-1", "txid-2", "txid-3", "txid-4", "txid-0000000", configTxID) // "txid-1", and "txid-3 appears once and Txids appear in radix sort order
-}
-
-func TestExportUniqueTxIDsWhenTxIDsNotIndexed(t *testing.T) {
-	env := newTestEnvSelectiveIndexing(t, NewConf(t.TempDir(), 0), []IndexableAttr{IndexableAttrBlockNum}, &disabled.Provider{})
-	defer env.Cleanup()
-	blkfileMgrWrapper := newTestBlockfileWrapper(env, "testledger")
-	defer blkfileMgrWrapper.close()
-
-	blocks := testutil.ConstructTestBlocks(t, 5)
-	blkfileMgrWrapper.addBlocks(blocks)
-
-	testSnapshotDir := t.TempDir()
-	_, err := blkfileMgrWrapper.blockfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
-	require.EqualError(t, err, "transaction IDs not maintained in index")
-}
-
-func TestExportUniqueTxIDsErrorCases(t *testing.T) {
-	env := newTestEnv(t, NewConf(t.TempDir(), 0))
-	defer env.Cleanup()
-	ledgerid := "testledger"
-	blkfileMgrWrapper := newTestBlockfileWrapper(env, ledgerid)
-	defer blkfileMgrWrapper.close()
-
-	blocks := testutil.ConstructTestBlocks(t, 5)
-	blkfileMgrWrapper.addBlocks(blocks)
-	blockfileMgr := blkfileMgrWrapper.blockfileMgr
-	index := blockfileMgr.index
-
-	testSnapshotDir := t.TempDir()
-
-	// error during data file creation
-	dataFilePath := filepath.Join(testSnapshotDir, snapshotDataFileName)
-	_, err := os.Create(dataFilePath)
-	require.NoError(t, err)
-	_, err = blkfileMgrWrapper.blockfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
-	require.Contains(t, err.Error(), "error while creating the snapshot file: "+dataFilePath)
-	os.RemoveAll(testSnapshotDir)
-
-	// error during metadata file creation
-	fmt.Printf("testSnapshotDir=%s", testSnapshotDir)
-	require.NoError(t, os.MkdirAll(testSnapshotDir, 0o700))
-	metadataFilePath := filepath.Join(testSnapshotDir, snapshotMetadataFileName)
-	_, err = os.Create(metadataFilePath)
-	require.NoError(t, err)
-	_, err = blkfileMgrWrapper.blockfileMgr.index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
-	require.Contains(t, err.Error(), "error while creating the snapshot file: "+metadataFilePath)
-	os.RemoveAll(testSnapshotDir)
-
-	// error while retrieving the txid key
-	require.NoError(t, os.MkdirAll(testSnapshotDir, 0o700))
-	index.db.Put([]byte{txIDIdxKeyPrefix}, []byte("some junk value"), true)
-	_, err = index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
-	require.EqualError(t, err, "invalid txIDKey {74}: number of consumed bytes from DecodeVarint is invalid, expected 1, but got 0")
-	os.RemoveAll(testSnapshotDir)
-
-	// error while reading from leveldb
-	require.NoError(t, os.MkdirAll(testSnapshotDir, 0o700))
-	env.provider.leveldbProvider.Close()
-	_, err = index.exportUniqueTxIDs(testSnapshotDir, testNewHashFunc)
-	require.EqualError(t, err, "internal leveldb error while obtaining db iterator: leveldb: closed")
-	os.RemoveAll(testSnapshotDir)
-}
-
-func verifyExportedTxIDs(t *testing.T, dir string, fileHashes map[string][]byte, expectedTxIDs ...string) {
-	require.Len(t, fileHashes, 2)
-	require.Contains(t, fileHashes, snapshotDataFileName)
-	require.Contains(t, fileHashes, snapshotMetadataFileName)
-
-	dataFile := filepath.Join(dir, snapshotDataFileName)
-	dataFileContent, err := os.ReadFile(dataFile)
-	require.NoError(t, err)
-	dataFileHash := sha256.Sum256(dataFileContent)
-	require.Equal(t, dataFileHash[:], fileHashes[snapshotDataFileName])
-
-	metadataFile := filepath.Join(dir, snapshotMetadataFileName)
-	metadataFileContent, err := os.ReadFile(metadataFile)
-	require.NoError(t, err)
-	metadataFileHash := sha256.Sum256(metadataFileContent)
-	require.Equal(t, metadataFileHash[:], fileHashes[snapshotMetadataFileName])
-
-	metadataReader, err := snapshot.OpenFile(metadataFile, snapshotFileFormat)
-	require.NoError(t, err)
-	defer metadataReader.Close()
-
-	dataReader, err := snapshot.OpenFile(dataFile, snapshotFileFormat)
-	require.NoError(t, err)
-	defer dataReader.Close()
-
-	numTxIDs, err := metadataReader.DecodeUVarInt()
-	require.NoError(t, err)
-	retrievedTxIDs := []string{}
-	for i := uint64(0); i < numTxIDs; i++ {
-		txID, err := dataReader.DecodeString()
-		require.NoError(t, err)
-		retrievedTxIDs = append(retrievedTxIDs, txID)
-	}
-	require.Equal(t, expectedTxIDs, retrievedTxIDs)
 }
 
 func appendAllAndTrimLastByte(input ...[]byte) []byte {

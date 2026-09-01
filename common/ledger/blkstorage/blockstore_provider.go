@@ -36,13 +36,6 @@ type IndexConfig struct {
 	AttrsToIndex []IndexableAttr
 }
 
-// SnapshotInfo captures some of the details about the snapshot
-type SnapshotInfo struct {
-	LastBlockNum      uint64
-	LastBlockHash     []byte
-	PreviousBlockHash []byte
-}
-
 // Contains returns true iff the supplied parameter is present in the IndexConfig.AttrsToIndex
 func (c *IndexConfig) Contains(indexableAttr IndexableAttr) bool {
 	for _, a := range c.AttrsToIndex {
@@ -95,22 +88,6 @@ func NewProvider(conf *Conf, indexConfig *IndexConfig, metricsProvider metrics.P
 func (p *BlockStoreProvider) Open(ledgerid string) (*BlockStore, error) {
 	indexStoreHandle := p.leveldbProvider.GetDBHandle(ledgerid)
 	return newBlockStore(ledgerid, p.conf, p.indexConfig, indexStoreHandle, p.stats)
-}
-
-// ImportFromSnapshot initializes blockstore from a previously generated snapshot
-// Any failure during bootstrapping the blockstore may leave the partial loaded data
-// on disk. The consumer, such as peer is expected to keep track of failures and cleanup the
-// data explicitly.
-func (p *BlockStoreProvider) ImportFromSnapshot(
-	ledgerID string,
-	snapshotDir string,
-	snapshotInfo *SnapshotInfo,
-) error {
-	indexStoreHandle := p.leveldbProvider.GetDBHandle(ledgerID)
-	if err := bootstrapFromSnapshottedTxIDs(ledgerID, snapshotDir, snapshotInfo, p.conf, indexStoreHandle); err != nil {
-		return err
-	}
-	return nil
 }
 
 // Exists tells whether the BlockStore with given id exists

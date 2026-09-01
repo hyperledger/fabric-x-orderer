@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/ledger"
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/snapshot"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util/leveldbhelper"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -97,14 +96,6 @@ func (store *BlockStore) RetrieveBlockByTxID(txID string) (*common.Block, error)
 // RetrieveTxValidationCodeByTxID returns validation code and blocknumber for the specified txID
 func (store *BlockStore) RetrieveTxValidationCodeByTxID(txID string) (peer.TxValidationCode, uint64, error) {
 	return store.fileMgr.retrieveTxValidationCodeByTxID(txID)
-}
-
-// ExportTxIds creates two files in the specified dir and returns a map that contains
-// the mapping between the names of the files and their hashes.
-// Technically, the TxIDs appear in the sort order of radix-sort/shortlex. However,
-// since practically all the TxIDs are of same length, so the sort order would be the lexical sort order
-func (store *BlockStore) ExportTxIds(dir string, newHashFunc snapshot.NewHashFunc) (map[string][]byte, error) {
-	return store.fileMgr.index.exportUniqueTxIDs(dir, newHashFunc)
 }
 
 // Shutdown shuts down the block store
