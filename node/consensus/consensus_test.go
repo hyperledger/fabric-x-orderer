@@ -837,6 +837,110 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	}
 }
 
+// configReqEnvelopeWithID builds a config request envelope whose config envelope carries the given
+// sequence and a LastUpdate (CONFIG_UPDATE) envelope whose channel header carries the given tx id,
+// so that ConfigRequest.ConfigSequence and ConfigRequest.ID both resolve.
+func configReqEnvelopeWithID(seq uint64, txID string) *common.Envelope {
+	channelHeader := &common.ChannelHeader{
+		Type: int32(common.HeaderType_CONFIG_UPDATE),
+		TxId: txID,
+	}
+	lastUpdatePayload := &common.Payload{
+		Header: &common.Header{
+			ChannelHeader: protoutil.MarshalOrPanic(channelHeader),
+		},
+	}
+	configEnvelope := &common.ConfigEnvelope{
+		Config: &common.Config{
+			Sequence: seq,
+		},
+		LastUpdate: &common.Envelope{
+			Payload: protoutil.MarshalOrPanic(lastUpdatePayload),
+		},
+	}
+	return tx.CreateStructuredConfigUpdateEnvelope(protoutil.MarshalOrPanic(configEnvelope))
+}
+
+// TestAssembleProposalWithMultipleConfigRequests exercises the path where several config requests
+// contend for the same next config sequence in a single decision. Consensus keeps the first and
+// drops the rest; running this test with -v shows the warning that names the applied request
+// (tx-first) and lists the dropped ones (tx-second, tx-third), each on its own line.
+func TestAssembleProposalWithMultipleConfigRequests(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	dir, err := os.MkdirTemp("", strings.ReplaceAll(t.Name(), "/", "-"))
+	require.NoError(t, err)
+
+	db, err := badb.NewBatchAttestationDB(dir, logger)
+	require.NoError(t, err)
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	config := &nodeconfig.ConsenterNodeConfig{
+		ClientSignatureVerificationRequired: false,
+		Bundle:                              bundle,
+		RequestMaxBytes:                     1000,
+	}
+
+	consenter := &node_consensus.Consenter{DB: db, Logger: logger}
+
+	mockConfigApplier := &consensus_mocks.FakeConfigApplier{}
+	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
+		return s, nil
+	})
+
+	initialState := &state.State{
+		N:          4,
+		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Threshold:  2,
+		Quorum:     3,
+		AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 10}),
+	}
+
+	c := &node_consensus.Consensus{
+		Arma:          consenter,
+		State:         initialState,
+		Logger:        logger,
+		Config:        config,
+		ConfigApplier: mockConfigApplier,
+	}
+
+	// The current config sequence is 0, so config requests must carry sequence 0+1 == 1 to be kept.
+	// All three contend for that same sequence, each with a distinct tx id.
+	ces := []state.ControlEvent{
+		{ConfigRequest: &state.ConfigRequest{Envelope: configReqEnvelopeWithID(1, "tx-first")}},
+		{ConfigRequest: &state.ConfigRequest{Envelope: configReqEnvelopeWithID(1, "tx-second")}},
+		{ConfigRequest: &state.ConfigRequest{Envelope: configReqEnvelopeWithID(1, "tx-third")}},
+	}
+
+	var reqs [][]byte
+	for _, ce := range ces {
+		reqs = append(reqs, ce.Bytes())
+	}
+
+	metadata, err := proto.Marshal(&smartbftprotos.ViewMetadata{LatestSequence: 5})
+	require.NoError(t, err)
+
+	proposal := c.AssembleProposal(metadata, reqs)
+	require.NotNil(t, proposal)
+
+	header := &state.Header{}
+	require.NoError(t, header.Deserialize(proposal.Header))
+
+	// Only the first config request becomes a config block; the other two are dropped.
+	require.Len(t, header.AvailableCommonBlocks, 1)
+
+	// The applied config request survives as a config block, and only one config request was applied.
+	require.Equal(t, 1, mockConfigApplier.ApplyConfigToStateCallCount())
+	_, appliedReq := mockConfigApplier.ApplyConfigToStateArgsForCall(0)
+	appliedID, err := appliedReq.ID()
+	require.NoError(t, err)
+	require.Equal(t, "tx-first", appliedID)
+}
+
 func TestVerifyProposal(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
 

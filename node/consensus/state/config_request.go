@@ -40,6 +40,48 @@ func (c *ConfigRequest) ConfigSequence() (types.ConfigSequence, error) {
 	return types.ConfigSequence(configEnvelope.Config.Sequence), nil
 }
 
+// ID returns the transaction id of the config request, taken from the channel header of the
+// CONFIG_UPDATE envelope (ConfigEnvelope.LastUpdate) that generated this configuration.
+func (c *ConfigRequest) ID() (string, error) {
+	payload, err := protoutil.UnmarshalPayload(c.Envelope.Payload)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to unmarshal payload")
+	}
+
+	configEnvelope, err := configtx.UnmarshalConfigEnvelope(payload.Data)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to unmarshal config envelope")
+	}
+
+	if configEnvelope.LastUpdate == nil {
+		return "", errors.New("config envelope has nil last update")
+	}
+
+	lastUpdatePayload, err := protoutil.UnmarshalPayload(configEnvelope.LastUpdate.Payload)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to unmarshal last update payload")
+	}
+
+	if lastUpdatePayload.Header == nil {
+		return "", errors.New("last update payload has nil header")
+	}
+
+	channelHeader, err := protoutil.UnmarshalChannelHeader(lastUpdatePayload.Header.ChannelHeader)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to unmarshal channel header")
+	}
+
+	if channelHeader.Type != int32(common.HeaderType_CONFIG_UPDATE) {
+		return "", errors.Errorf("unexpected channel header type %d", channelHeader.Type)
+	}
+
+	if channelHeader.TxId == "" {
+		return "", errors.New("channel header has empty tx id")
+	}
+
+	return channelHeader.TxId, nil
+}
+
 func (c *ConfigRequest) toProto() *stateprotos.ConfigRequest {
 	envelopeBytes, err := protoutil.Marshal(c.Envelope)
 	if err != nil {
@@ -81,5 +123,9 @@ func (c *ConfigRequest) String() string {
 	if err != nil {
 		return fmt.Sprintf("Config Request with error: %v", err)
 	}
-	return fmt.Sprintf("Config Request with config sequence %d", configSeq)
+	id, err := c.ID()
+	if err != nil {
+		return fmt.Sprintf("Config Request with config sequence %d and error extracting id: %v", configSeq, err)
+	}
+	return fmt.Sprintf("Config Request with tx id %q and config sequence %d", id, configSeq)
 }

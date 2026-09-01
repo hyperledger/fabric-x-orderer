@@ -12,6 +12,7 @@ import (
 	"encoding/asn1"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -499,8 +500,19 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	if len(configRequests) > 0 {
+		if len(configRequests) > 1 {
+			// Consensus keeps only the first config request and drops the rest.
+			// Administrators should submit config requests one at a time, waiting for each to be delivered by the
+			// assemblers before submitting the next. Logging the dropped requests to aid diagnosis.
+			dropped := make([]string, 0, len(configRequests)-1)
+			for _, cr := range configRequests[1:] {
+				dropped = append(dropped, cr.String())
+			}
+			c.Logger.Warnf("Received %d config requests in a single proposal; applying the first (%s) and dropping the other %d:\n%s",
+				len(configRequests), configRequests[0].String(), len(configRequests)-1, strings.Join(dropped, "\n"))
+		}
 		computedConfigBlockHeader := &common.BlockHeader{Number: lastBlockNumber + 1, PreviousHash: prevHash}
-		configReq, err := protoutil.Marshal(configRequests[0].Envelope) // TODO handle when there are multiple requests
+		configReq, err := protoutil.Marshal(configRequests[0].Envelope)
 		if err != nil {
 			c.Logger.Panicf("Failed marshaling config request")
 		}
@@ -921,7 +933,17 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 
 	if len(configRequests) > 0 {
 		c.Logger.Infof("There are %d config requests, creating a config block from the first request", len(configRequests))
-		// TODO something when there are a few config request
+		if len(configRequests) > 1 {
+			// Consensus keeps only the first config request and drops the rest.
+			// Administrators should submit config requests one at a time, waiting for each to be delivered by the
+			// assemblers before submitting the next. Logging the dropped requests to aid diagnosis.
+			dropped := make([]string, 0, len(configRequests)-1)
+			for _, cr := range configRequests[1:] {
+				dropped = append(dropped, cr.String())
+			}
+			c.Logger.Warnf("Received %d config requests in a single proposal; applying the first (%s) and dropping the other %d:\n%s",
+				len(configRequests), configRequests[0].String(), len(configRequests)-1, strings.Join(dropped, "\n"))
+		}
 		configReq, err := protoutil.Marshal(configRequests[0].Envelope)
 		if err != nil {
 			c.Logger.Panicf("Failed marshaling config request")

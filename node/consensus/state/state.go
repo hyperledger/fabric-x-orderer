@@ -669,7 +669,6 @@ func shardExists(shard types.ShardID, shardTerms []ShardTerm) (int, bool) {
 }
 
 func ExtractConfigRequests(ces []ControlEvent) []*ConfigRequest {
-	// TODO: decide how to handle multiple config requests
 	var reqs []*ConfigRequest
 	for _, ce := range ces {
 		if ce.ConfigRequest != nil {
