@@ -241,6 +241,25 @@ func (rp *Pool) RemoveRequests(requestsIDs ...string) {
 	}
 }
 
+// Contains reports whether a request with the given id is currently in the pool.
+// It is only supported while batching is disabled (i.e. a secondary batcher); when
+// batching is enabled it conservatively returns false so callers fall back to full
+// verification.
+func (rp *Pool) Contains(reqID string) bool {
+	rp.lock.RLock()
+	defer rp.lock.RUnlock()
+
+	if rp.isClosed() || rp.isStopped() {
+		return false
+	}
+
+	if rp.isBatchingEnabled() {
+		return false
+	}
+
+	return rp.pending.Contains(reqID)
+}
+
 // RequestCount returns the current number of requests in the pool.
 func (rp *Pool) RequestCount() int64 {
 	return atomic.LoadInt64(&rp.size)

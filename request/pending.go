@@ -314,6 +314,21 @@ func (ps *PendingStore) removeRequest(reqID string, now time.Time) {
 	ps.OnDelete(reqID)
 }
 
+// Contains reports whether a request with the given id is currently held in the store.
+// A tombstoned (already-removed) request is reported as absent.
+func (ps *PendingStore) Contains(reqID string) bool {
+	v, ok := ps.reqID2Bucket.Load(reqID)
+	if !ok {
+		return false
+	}
+	b := v.(*bucket)
+	if b.isDummyBucket() {
+		return false
+	}
+	_, exists := b.requests.Load(reqID)
+	return exists
+}
+
 func (ps *PendingStore) Prune(predicate func([]byte) error) {
 	ps.reqID2Bucket.Range(func(key, value any) bool {
 		reqID := key.(string)

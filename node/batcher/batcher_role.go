@@ -37,6 +37,7 @@ type MemPool interface {
 	RequestCount() int64
 	Close()
 	Prune(predicate func([]byte) error)
+	Contains(reqID string) bool
 }
 
 //go:generate counterfeiter -o mocks/state_provider.go . StateProvider
