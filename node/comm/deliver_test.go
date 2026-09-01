@@ -217,8 +217,15 @@ func (ds *deliverServer) Deliver(stream orderer.AtomicBroadcast_DeliverServer) e
 }
 
 func (ds *deliverServer) deliverBlocks(stream orderer.AtomicBroadcast_DeliverServer) error {
+	// Capture the block channel once, when the stream starts. A test may close
+	// the current channel and swap in a fresh, pre-filled one (via setBlocks) to
+	// recover after an induced failure. Closing the channel is meant to terminate
+	// this stream (see the nil-response handling below); re-reading ds.blocks()
+	// on every iteration would instead let this lingering goroutine hop onto the
+	// new channel and drain blocks that were tabled for a subsequent probe/pull,
+	// which deadlocks that probe (its seek response never arrives).
+	blockChan := ds.blocks()
 	for {
-		blockChan := ds.blocks()
 		var response *orderer.DeliverResponse
 		select {
 		case response = <-blockChan:
