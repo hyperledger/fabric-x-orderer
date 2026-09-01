@@ -40,7 +40,7 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 		RequestMaxBytes: 60,
 		Bundle:          bundle,
 	}
-	verifier := batcher.NewRequestsInspectorVerifier(logger, config, nil, batcher.DefaultRequestID)
+	verifier := batcher.NewRequestsInspectorVerifier(logger, config, nil, batcher.DefaultRequestID, &fakeRequestPool{})
 
 	req1, err := proto.Marshal(tx.CreateStructuredRequest([]byte{1})) // should map to shard 1
 	require.NoError(t, err)
@@ -136,6 +136,71 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 	})
 }
 
+// fakeRequestPool is a test double for batcher.RequestPool. A request is reported
+// as present iff its id was added to present; the zero value is an empty pool.
+type fakeRequestPool struct {
+	present map[string]bool
+}
+
+func (f *fakeRequestPool) Contains(reqID string) bool {
+	return f.present[reqID]
+}
+
+func TestVerifyBatchedRequestsSkipsPooledRequests(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configtxValidator.SequenceReturns(0)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	config := &config.BatcherNodeConfig{
+		ShardId:         1,
+		Shards:          []config.ShardInfo{{ShardId: 1}}, // single shard: skip shard mapping
+		BatchMaxSize:    500,
+		BatchMaxBytes:   10000,
+		RequestMaxBytes: 1000,
+		Bundle:          bundle,
+	}
+
+	reqs := make([][]byte, 10)
+	for i := 0; i < 10; i++ {
+		r, err := proto.Marshal(tx.CreateStructuredRequest([]byte{byte(i)}))
+		require.NoError(t, err)
+		reqs[i] = r
+	}
+
+	t.Run("only requests absent from the pool are verified", func(t *testing.T) {
+		reqVerifier := &mocks.FakeRequestVerifier{}
+		reqVerifier.VerifyReturns(nil)
+		reqVerifier.VerifyStructureAndClassifyReturns(0, nil)
+
+		pool := &fakeRequestPool{present: map[string]bool{}}
+		for i := 0; i < 10; i += 2 { // even-indexed requests are already in the pool
+			pool.present[batcher.DefaultRequestID(reqs[i])] = true
+		}
+		verifier := batcher.NewRequestsInspectorVerifier(logger, config, reqVerifier, batcher.DefaultRequestID, pool)
+
+		require.NoError(t, verifier.VerifyBatchedRequests(reqs))
+		require.Equal(t, 5, reqVerifier.VerifyCallCount())
+	})
+
+	t.Run("requests already in the pool are not re-verified even if verification would fail", func(t *testing.T) {
+		reqVerifier := &mocks.FakeRequestVerifier{}
+		reqVerifier.VerifyReturns(errors.New("must not be called for pooled requests"))
+
+		allPooled := &fakeRequestPool{present: map[string]bool{}}
+		for _, r := range reqs {
+			allPooled.present[batcher.DefaultRequestID(r)] = true
+		}
+		verifier := batcher.NewRequestsInspectorVerifier(logger, config, reqVerifier, batcher.DefaultRequestID, allPooled)
+
+		require.NoError(t, verifier.VerifyBatchedRequests(reqs))
+		require.Zero(t, reqVerifier.VerifyCallCount())
+	})
+}
+
 func TestRequestVerificationStopEarly(t *testing.T) {
 	req1, err := proto.Marshal(tx.CreateStructuredRequest([]byte{1})) // should map to shard 1
 	require.NoError(t, err)
@@ -158,7 +223,7 @@ func TestRequestVerificationStopEarly(t *testing.T) {
 	}
 	reqVerifier := &mocks.FakeRequestVerifier{}
 
-	verifier := batcher.NewRequestsInspectorVerifier(logger, config, reqVerifier, batcher.DefaultRequestID)
+	verifier := batcher.NewRequestsInspectorVerifier(logger, config, reqVerifier, batcher.DefaultRequestID, &fakeRequestPool{})
 
 	reqs := make([][]byte, 100)
 	for i := 0; i < 100; i++ {

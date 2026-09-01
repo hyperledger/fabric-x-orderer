@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -108,6 +109,59 @@ func TestPending(t *testing.T) {
 	}
 
 	assert.Equal(t, uint32(workerNum*workPerWorker), atomic.LoadUint32(&submittedCount))
+}
+
+func TestPendingStoreContains(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
+	requestInspector := &reqInspector{}
+
+	start := time.Now()
+	ticker := time.NewTicker(time.Millisecond * 100)
+	defer ticker.Stop()
+
+	ps := &request.PendingStore{
+		ReqIDLifetime:         time.Second * 10,
+		ReqIDGCInterval:       time.Second,
+		Logger:                sugaredLogger,
+		SecondStrikeCallback:  func() {},
+		StartTime:             start,
+		Time:                  ticker.C,
+		FirstStrikeCallback:   func([]byte) {},
+		Epoch:                 time.Millisecond * 200,
+		FirstStrikeThreshold:  time.Second * 10,
+		Inspector:             requestInspector,
+		OnDelete:              func(key string) {},
+		SecondStrikeThreshold: time.Second,
+	}
+
+	ps.Init()
+	ps.Start()
+	defer ps.Close()
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqID := requestInspector.RequestID(req)
+
+	// A request that was never submitted is absent.
+	assert.False(t, ps.Contains(reqID))
+	assert.False(t, ps.Contains(requestInspector.RequestID([]byte("never-submitted"))))
+
+	// After submission the request is present.
+	require.NoError(t, ps.Submit(req))
+	assert.True(t, ps.Contains(reqID))
+
+	// After removal the request is absent (tombstoned).
+	ps.RemoveRequests(reqID)
+	assert.False(t, ps.Contains(reqID))
+
+	// A request dropped by Prune is absent.
+	req2 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req2, uint64(2))
+	reqID2 := requestInspector.RequestID(req2)
+	require.NoError(t, ps.Submit(req2))
+	assert.True(t, ps.Contains(reqID2))
+	ps.Prune(func([]byte) error { return errors.New("drop everything") })
+	assert.False(t, ps.Contains(reqID2))
 }
 
 func TestGetAll(t *testing.T) {

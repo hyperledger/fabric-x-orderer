@@ -92,7 +92,11 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 
 	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, b.logger, lastKnownDecisionNum)
 
-	requestsIDAndVerifier := NewRequestsInspectorVerifier(b.logger, b.config, nil, DefaultRequestID)
+	if memPool == nil {
+		memPool = createMemPool(b, b.config, DefaultRequestID)
+	}
+
+	requestsIDAndVerifier := NewRequestsInspectorVerifier(b.logger, b.config, nil, DefaultRequestID, memPool)
 
 	batchers := batchersFromConfig(b.config)
 	if len(batchers) == 0 {
@@ -169,14 +173,9 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 		Complainer:              b,
 		BatchedRequestsVerifier: b.requestsInspectorVerifier,
 		SigVerifier:             b.sigVerifier,
+		MemPool:                 memPool,
 		BatchSequenceGap:        b.config.BatchSequenceGap,
 		Metrics:                 b.metrics,
-	}
-
-	if memPool == nil {
-		b.batcher.MemPool = createMemPool(b, b.config, DefaultRequestID)
-	} else {
-		b.batcher.MemPool = memPool
 	}
 }
 
