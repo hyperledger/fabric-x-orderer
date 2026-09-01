@@ -118,7 +118,7 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
 
 ## Conventions
 
-- Go 1.26. Depends heavily on `hyperledger/fabric-x-common`, `hyperledger/fabric-lib-go` (MSP,
+- Go 1.27. Depends heavily on `hyperledger/fabric-x-common`, `hyperledger/fabric-lib-go` (MSP,
   BCCSP, flogging), `fabric-protos-go-apiv2`, and `hyperledger-labs/SmartBFT` (consensus engine).
 - Logging is `flogging` (`FabricLogger`), typically named per role/party
   (e.g. `Batcher%dShard%d`).

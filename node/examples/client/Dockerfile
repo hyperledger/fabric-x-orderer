@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-ARG GO_VERSION=1.22
+ARG GO_VERSION=1.27.0
 ARG BASE_IMAGE=alpine
 
 FROM golang:${GO_VERSION} as builder
@@ -14,7 +14,7 @@ ENV CGO_ENABLED=0
 ENV GOOS=linux
 RUN pwd
 RUN ls
-RUN go build -o ./node/arma cmd/arma/main/main.go
+RUN go build -o /arma ./cmd/arma
 
 FROM ${BASE_IMAGE} as arma
 

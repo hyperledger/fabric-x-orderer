@@ -1,19 +1,6 @@
 module github.com/hyperledger/fabric-x-orderer
 
-go 1.26.5
-
-require (
-	github.com/hyperledger/fabric-x-common v0.2.9-0.20260723080247-bb9c7dc14898
-	github.com/onsi/ginkgo/v2 v2.32.0
-	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.23.2
-	github.com/prometheus/client_model v0.6.2
-	github.com/stretchr/testify v1.11.1
-	github.com/tedsuo/ifrit v0.0.0-20260418191334-846868129986
-	go.uber.org/zap v1.28.0
-	golang.org/x/sync v0.22.0
-	google.golang.org/grpc v1.82.1
-)
+go 1.27.0
 
 require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
@@ -23,8 +10,18 @@ require (
 	github.com/hyperledger/fabric-config v0.3.0
 	github.com/hyperledger/fabric-lib-go v1.1.5-0.20260708100132-163bcc919208
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
+	github.com/hyperledger/fabric-x-common v0.2.9-0.20260723080247-bb9c7dc14898
+	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
+	github.com/pkg/errors v0.9.1
+	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_model v0.6.2
+	github.com/stretchr/testify v1.11.1
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
+	github.com/tedsuo/ifrit v0.0.0-20260418191334-846868129986
+	go.uber.org/zap v1.28.0
+	golang.org/x/sync v0.22.0
+	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v3 v3.0.1
