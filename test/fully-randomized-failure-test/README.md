@@ -4,7 +4,7 @@
 
 This directory contains the script used to run the ARMA fully randomized failure test.
 
-The test starts a local ARMA network (4 parties, 2 shards by default), sends transactions through the loader, pulls blocks from each party's assembler via receivers, optionally runs a failure runner that stops and restarts ARMA components chosen **completely at random**, monitors progress, and then collects logs, statistics, and a summary.
+The test starts a local ARMA network (4 parties, 2 shards by default), sends transactions and verifies that every party's assembler confirmed each one using a single `armageddon submit`, optionally runs a failure runner that stops and restarts ARMA components chosen **completely at random**, monitors progress, and then collects logs and a summary.
 
 Unlike the deterministic failure test, the randomized failure runner does not cycle through parties or components in any fixed order. Any component — assembler, consenter, router, or batcher — from any party can be killed at any point, including immediately after being restarted. The test is designed to exercise unpredictable failure scenarios that a fixed ordering cannot cover.
 
@@ -25,9 +25,9 @@ Single entry-point script that contains all logic previously split across five s
 It defines the following internal functions, then calls `main`:
 
 - **`start_arma_network`** — Starts all ARMA network components in the correct order: consenters first, then batchers, assemblers, and routers. Stores each process PID under the test directory.
-- **`run_failure_runner`** — Builds a flat pool of every component across all parties (`NUM_PARTIES × (3 + NUM_SHARDS)` entries). On each iteration, picks one entry at random using `$RANDOM`, kills it, waits `FAILURE_RUNNER_STOP_DURATION` seconds, restarts it, then waits `FAILURE_RUNNER_RESTART_WAIT` seconds. After every `N = 3 + NUM_SHARDS` kills a signal file is written so `monitor_completion` knows to print a status snapshot. A running kill counter is maintained in the test directory.
-- **`monitor_completion`** — Monitors test execution. In failure runner mode: prints a status snapshot after every `N = 3 + NUM_SHARDS` kills. Without failure runner: prints a status snapshot every 5 minutes. Always stops when the configured duration is reached or when the loader and all receivers finish early. After duration expires, stops the loader immediately then gives receivers a 30-second drain window to pull remaining blocks from the assemblers before killing them.
-- **`collect_results`** — Cleans the `test-results/` directory from any previous run, then extracts loader and receiver statistics, copies all component and loader/receiver logs into `test-results/logs/` and compresses them with gzip, collects receiver statistics CSV files, creates `summary.txt`, and creates `summary-kills.txt` with a per-component and total kill count report.
+- **`run_failure_runner`** — Its verbose output goes to `failure_runner.log`; only short one-line events (`pick: batcher party 2 shard 1`, `batcher party 2 shard 1 down for 30s`) are printed to the console, so status snapshots are never interleaved. Builds a flat pool of every component across all parties (`NUM_PARTIES × (3 + NUM_SHARDS)` entries). On each iteration, picks one entry at random using `$RANDOM`, kills it, waits `FAILURE_RUNNER_STOP_DURATION` seconds, restarts it, then waits `FAILURE_RUNNER_RESTART_WAIT` seconds. After every `N = 3 + NUM_SHARDS` kills a signal file is written so `monitor_completion` knows to print a status snapshot. A running kill counter is maintained in the test directory.
+- **`monitor_completion`** — Monitors test execution, reading all progress numbers from `submit.log`. In failure runner mode: prints a status snapshot after every `N = 3 + NUM_SHARDS` kills. Without failure runner: prints a status snapshot every 5 minutes. Always stops when the configured duration is reached, or as soon as `submit` logs `Submit Finished`. It then signals the failure runner to stop and **waits** for `submit` to finish draining and print its verdict, recording its exit code for `main` to propagate.
+- **`collect_results`** — Cleans the `test-results/` directory from any previous run, counts per-component kills from `failure_runner.log`, extracts the per-party results and the verdict from `submit.log`, reads the assembler height result from `submit.log`, copies all component logs plus `submit.log` and `failure_runner.log` into `test-results/logs/` and gzips them, writes a single-block `summary.txt` (and `failure_reason.txt` when the verdict is not a pass) plus `summary-kills.txt`, then deletes the working-directory logs now that the compressed copies exist.
 - **`main`** — Reads configuration from environment variables, removes stale log files from previous runs, generates the network config YAML, runs `armageddon generate` to produce all crypto and config files, patches the generated FileStore `Location` and consenter `WALDir` paths to writable temp directories, then calls the functions above in order.
 
 ## Prerequisites
@@ -125,19 +125,69 @@ When `fully-randomized-failure-test.sh` runs, it performs the following steps:
 6. Patches all generated `Location` (FileStore) and `WALDir` (consenter) paths to writable per-component subdirectories under the temp dir.
 7. Removes stale log files from any previous run.
 8. Starts the ARMA network via `start_arma_network`, which polls `/healthz` on each component immediately after it starts. If any component fails to become healthy within 60 s the test aborts immediately, naming the failing component in the error output and in `test-results/startup_failure.txt`.
-9. Starts one receiver per party (background).
-10. Starts the loader (background).
+9. Starts `armageddon submit` (background) — it sends transactions, verifies them against assembler 1, then compares the block height of every assembler.
+10. (nothing — `submit` replaced the separate loader and receivers.)
 11. Starts `run_failure_runner` if `FAILURE_RUNNER_ENABLED=true` (background).
 12. Calls `monitor_completion` (blocks until duration expires or all components finish).
 13. Waits briefly for the failure runner to stop gracefully.
 14. Calls `collect_results`.
 15. Kills any remaining `arma` and `armageddon` processes.
 
-## Receiver Behaviour
+## Transaction Verification
 
-Each party runs an independent assembler. Every transaction sent by the loader is committed to **every** party's assembler ledger. Each receiver pulls from its own party's assembler independently. This means each party's receiver is expected to receive the full `TOTAL_TXS` count — not `TOTAL_TXS / NUM_PARTIES`.
+A single `armageddon submit` replaces the loader and the receivers. It sends transactions to
+every router and, in the same process, pulls blocks from **assembler 1** and checks off each
+transaction it sent. Whatever is left unchecked at the end was never confirmed.
 
-The receiver stops pulling when it has received at least `expectedTxs` transactions. Because it processes whole blocks, it may overshoot by the number of transactions in the final block — this is expected and not an error.
+Every transaction is committed to every party's assembler ledger, so assembler 1 alone is expected
+to confirm the full `TOTAL_TXS` count. `submit` has no deadline of its own, so this script supplies
+one: when the drain window closes `submit` is stopped, and a run stopped that way logs no result.
+
+### Assembler block heights
+
+Before exiting, `submit` also asks every assembler for its newest block number and waits until they
+all agree — that is what shows the blocks reached the other parties' ledgers. It is
+`verifyAssemblerHeights` in `common/tools/armageddon/armageddon.go`, not part of this script: it
+queries the Deliver API rather than parsing logs, and polls for up to 3 minutes
+(`assemblerHeightTimeout`) because assemblers commit asynchronously.
+
+`collect_results` only reads the outcome from `submit.log`:
+
+```
+all 4 assemblers reached block 6542
+assemblers are not at the same block height after 3m0s, per party: [6542 6542 6100 6542]
+```
+
+### The drain window (`SUBMIT_DRAIN_SECONDS`, default 420)
+
+`TOTAL_TXS = DURATION x 60 x TX_RATE`, so the last transaction is sent right at the end of the
+test window while thousands are still legitimately in flight through
+router -> batcher -> consensus -> assembler. `SUBMIT_DRAIN_SECONDS` is how long `submit` keeps
+verifying after sending stops.
+
+It is a **deadline, not a delay**: `submit` exits as soon as every transaction is confirmed, so a
+generous value costs nothing on a healthy run. It must exceed
+`FAILURE_RUNNER_STOP_DURATION + FAILURE_RUNNER_RESTART_WAIT`, because the failure runner finishes
+the component it is working on after being told to stop, and it must also cover `submit`'s height
+check, which polls for up to 3 minutes after the transactions are confirmed.
+
+The script waits for `submit` rather than killing it, because `submit` logs both results on the way
+out. It is only stopped if the drain window closes first.
+
+### Exit codes
+
+`submit` always exits 0, so `collect_results` decides the outcome from the two results it logs, and
+a run passes only if both are good. Note there is no "verification failed" line: `submit` waits for
+a transaction that never arrives, so the *absence* of the passed line is what fails the run.
+
+| Code | Meaning | evidence in submit.log |
+| ---- | ------- | ---------------------- |
+| `0`  | every transaction confirmed, and all assemblers agree on the height | `Verification passed, all N txs were received` **and** `all N assemblers reached block M` |
+| `1`  | a transaction was sent but never confirmed — the bug this test hunts | no `Verification passed` line |
+| `1`  | `submit` crashed or could not start | no `Verification passed` line |
+| `1`  | the assemblers are not at the same block height | `assemblers are not at the same block height after ...` |
+| `1`  | `submit` was stopped before its height check finished | neither height line |
+
 
 ## Failure Runner Behaviour
 
@@ -178,7 +228,6 @@ During execution, the test creates a temporary directory:
 ├── crypto/          # generated crypto material
 ├── bootstrap/       # genesis block and shared config
 ├── data/            # per-component writable data directories
-├── output*/         # receiver statistics CSV files per party
 ├── pids/            # PID files for all started processes
 └── kill_counter     # running total of kills written by the failure runner
 ```
@@ -187,10 +236,10 @@ Result artifacts are written to (cleaned at the start of each run):
 
 ```text
 test-results/
-├── logs/              # component and loader/receiver logs (gzipped)
-├── statistics/        # per-party statistics CSV files
-├── summary.txt        # pass/fail, tx counts, and total kill count
-└── summary-kills.txt  # per-component kill counts and overall total
+├── logs/                  # component logs, submit.log, failure_runner.log (gzipped)
+├── summary.txt            # per-party confirmed/missing counts, kill counts, assembler heights, verdict
+├── summary-kills.txt      # full per-component kill report (artifact only)
+└── failure_reason.txt     # (only on failure) one-line reason, used by the Slack step
 ```
 
 ### `summary-kills.txt`
@@ -247,7 +296,7 @@ Steps:
 5. Sets configuration via environment variables.
 6. Runs `test/fully-randomized-failure-test/fully-randomized-failure-test.sh`.
 7. Publishes the test summary directly to the workflow run's Summary tab (plain text, no download needed).
-8. Uploads `test-results/` artifacts (statistics and logs — as separate CI artifacts).
+8. Uploads `test-results/logs/` and the kill report as CI artifacts.
 
 ## Manual Workflow Trigger
 
@@ -263,3 +312,4 @@ The following parameters can be set when triggering manually:
 | `failure_runner_enabled`       | Enable fully randomized failure runner      | `true`  |
 | `failure_runner_stop_duration` | How long to keep component down (s)         | `60`    |
 | `failure_runner_restart_wait`  | Wait after component restart (s)            | `60`    |
+| `submit_drain_seconds`         | How long submit keeps verifying after sending | `420` |

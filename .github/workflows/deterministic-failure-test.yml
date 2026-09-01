@@ -61,6 +61,11 @@ on:
         required: true
         default: '60'
         type: string
+      submit_drain_seconds:
+        description: 'How long submit keeps verifying after it finished sending (seconds)'
+        required: true
+        default: '420'
+        type: string
 
 env:
   GOPATH: /opt/go
@@ -73,7 +78,7 @@ jobs:
   deterministic-failure-test:
     name: Deterministic Failure Test
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 360
     if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.repository == 'hyperledger/fabric-x-orderer'
 
     steps:
@@ -121,6 +126,7 @@ jobs:
           FAILURE_RUNNER_ENABLED: ${{ inputs.failure_runner_enabled != false }}
           FAILURE_RUNNER_STOP_DURATION: ${{ inputs.failure_runner_stop_duration || '60' }}
           FAILURE_RUNNER_RESTART_WAIT: ${{ inputs.failure_runner_restart_wait || '60' }}
+          SUBMIT_DRAIN_SECONDS: ${{ inputs.submit_drain_seconds || '420' }}
         run: |
           chmod +x test/deterministic-failure-test/*.sh
           test/deterministic-failure-test/deterministic-failure-test.sh
@@ -135,14 +141,6 @@ jobs:
             echo "_No summary files were produced._" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Upload statistics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: deterministic-failure-test-statistics-${{ github.run_number }}
-          path: test-results/statistics/
-          retention-days: 30
-
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -156,7 +154,9 @@ jobs:
         if: failure()
         id: failure_reason
         run: |
-          if [ -f test-results/startup_failure.txt ]; then
+          if [ -f test-results/failure_reason.txt ]; then
+            echo "reason=$(cat test-results/failure_reason.txt)" >> $GITHUB_OUTPUT
+          elif [ -f test-results/startup_failure.txt ]; then
             echo "reason=$(cat test-results/startup_failure.txt)" >> $GITHUB_OUTPUT
           else
             echo "reason=The test job failed to run (possibly due to insufficient runner resources or an infrastructure issue)" >> $GITHUB_OUTPUT
