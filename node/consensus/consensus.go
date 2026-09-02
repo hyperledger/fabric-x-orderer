@@ -662,7 +662,14 @@ func verifyProposalMessageToSign(proposalMsg *protoutil.MessageToSign, proposalM
 	}
 
 	computedProposalMsgBytes := computedProposalMsg.ASN1MarshalOrPanic()
-	if !bytes.Equal(proposalMsgBytes, computedProposalMsgBytes) { // TODO validate msgs like fabric?
+	// We recompute MessageToSign from independently-tracked state (block header,
+	// last-config index, and the proposal's orderer metadata) and require an exact
+	// byte match before verifying the signature. This is intentionally stricter than
+	// Fabric's protoutil.BlockSigVerifier, which verifies the signature over the
+	// received header||metadata and trusts the metadata value as-is. The re-marshal +
+	// bytes.Equal pins each signature to exactly one (blockHeader, ordererMetadata,
+	// lastConfig) tuple, closing the proto.Marshal malleability / signature-substitution class.
+	if !bytes.Equal(proposalMsgBytes, computedProposalMsgBytes) {
 		return errors.New("proposal message content is not as expected")
 	}
 
@@ -689,7 +696,10 @@ func verifyBlockMessageToSign(msg *protoutil.MessageToSign, msgBytes []byte, sig
 		}),
 	}
 	computedMsgBytes := computedMsg.ASN1MarshalOrPanic()
-	if !bytes.Equal(msgBytes, computedMsgBytes) { // TODO validate msgs like fabric?
+	// As in verifyProposalMessageToSign, the re-marshal + bytes.Equal is intentionally
+	// stricter than Fabric's protoutil.BlockSigVerifier: it pins each signature to exactly
+	// one (blockHeader, ordererMetadata, lastConfig) tuple before the signature is verified.
+	if !bytes.Equal(msgBytes, computedMsgBytes) {
 		return errors.New("message content is not as expected")
 	}
 	return nil
