@@ -65,6 +65,12 @@ func (store *BlockStore) RetrieveBlockByNumber(blockNum uint64) (*common.Block, 
 	return store.fileMgr.retrieveBlockByNumber(blockNum)
 }
 
+// FirstAvailableBlockNumber returns the lowest block number this store can serve. It is 0 unless the
+// ledger has been pruned. Reads below it fail with ErrPruned.
+func (store *BlockStore) FirstAvailableBlockNumber() uint64 {
+	return store.fileMgr.pruner.firstReadableBlockNum()
+}
+
 // Shutdown shuts down the block store
 func (store *BlockStore) Shutdown() {
 	logger.Debugf("closing fs blockStore:%s", store.id)
