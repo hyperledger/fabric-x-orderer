@@ -60,6 +60,16 @@ func TestSimpleBAF(t *testing.T) {
 		require.False(t, bytes.Equal(bafBytes, toBeSigned), "ASN.1 and protobuf encodings are different")
 	})
 
+	t.Run("ToBeSigned is bound to the BAF domain", func(t *testing.T) {
+		baf := types.NewSimpleBatchAttestationFragment(1, 2, 3, []byte{4, 5, 6, 7}, 8, 18, 0, nil)
+		tbs := baf.ToBeSigned()
+
+		// The signed bytes carry the BAF domain tag, and cannot be mistaken for
+		// another message type's signed bytes (e.g. a Complaint).
+		require.True(t, bytes.HasPrefix(tbs, types.PrefixWithDomain(types.DomainBAF, nil)))
+		require.False(t, bytes.HasPrefix(tbs, types.PrefixWithDomain(types.DomainComplaint, nil)))
+	})
+
 	t.Run("serialize and deserialize", func(t *testing.T) {
 		baf := types.NewSimpleBatchAttestationFragment(1, 2, 3, []byte{4, 5, 6, 7}, 8, 18, 12, nil)
 		baf.SetSignature([]byte{9, 10, 11, 12})
