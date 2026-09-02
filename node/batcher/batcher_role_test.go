@@ -815,6 +815,63 @@ func TestVerifyBatch(t *testing.T) {
 	require.Equal(t, 2, ledger.AppendCallCount())
 }
 
+// TestResubmitPendingBAFsReverifiesOnConfigChange covers the reconfiguration case:
+// requests taken from a BAF created under an older config are re-verified under the
+// current policy before being resubmitted to the pool, and any request that fails
+// the current policy is dropped rather than reinserted (so it never becomes eligible
+// for the secondary pull-path verification shortcut).
+func TestResubmitPendingBAFsReverifiesOnConfigChange(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := arma_types.PartyID(2)
+	shardID := arma_types.ShardID(0)
+	logger := testutil.CreateLogger(t, int(batcherID))
+
+	b := createBatcher(t, batcherID, shardID, batchers, N, logger)
+
+	validReq := []byte("valid-request")
+	invalidReq := []byte("invalid-request")
+	reqs := arma_types.BatchedRequests{validReq, invalidReq}
+
+	// The pending BAF and its ledger batch were created under config seq 0.
+	batch := arma_types.NewSimpleBatch(shardID, 1, 0, reqs, 0, nil)
+	ledger := &mocks.FakeBatchLedger{}
+	ledger.RetrieveBatchByNumberReturns(batch)
+	b.Ledger = ledger
+
+	// The batcher's current config seq is newer than the BAF's, so its requests must
+	// be re-verified under the current policy.
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(1)
+	b.ConfigSequenceGetter = configSeqGet
+
+	// Under the current policy invalidReq no longer verifies.
+	verifier := &mocks.FakeBatchedRequestsVerifier{}
+	verifier.VerifyRequestStub = func(req []byte) error {
+		if string(req) == string(invalidReq) {
+			return errors.New("fails current policy")
+		}
+		return nil
+	}
+	b.BatchedRequestsVerifier = verifier
+
+	pool := &mocks.FakeMemPool{}
+	b.MemPool = pool
+
+	myBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), batcherID, 0, 0, nil)
+	st := &state.State{
+		Shards:  []state.ShardTerm{{Shard: shardID, Term: 1}},
+		Pending: []arma_types.BatchAttestationFragment{myBAF},
+	}
+
+	b.ResubmitPendingBAFs(st, 0, true)
+
+	// Both requests were re-verified, but only the valid one was resubmitted to the pool.
+	require.Equal(t, 2, verifier.VerifyRequestCallCount())
+	require.Equal(t, 1, pool.SubmitCallCount())
+	require.Equal(t, validReq, pool.SubmitArgsForCall(0))
+}
+
 func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger *flogging.FabricLogger) *batcher.BatcherRole {
 	bafCreator := &mocks.FakeBAFCreator{}
 	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64, primarySignature []byte) arma_types.BatchAttestationFragment {

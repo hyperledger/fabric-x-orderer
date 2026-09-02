@@ -20,6 +20,17 @@ type FakeBatchedRequestsVerifier struct {
 	verifyBatchedRequestsReturnsOnCall map[int]struct {
 		result1 error
 	}
+	VerifyRequestStub        func([]byte) error
+	verifyRequestMutex       sync.RWMutex
+	verifyRequestArgsForCall []struct {
+		arg1 []byte
+	}
+	verifyRequestReturns struct {
+		result1 error
+	}
+	verifyRequestReturnsOnCall map[int]struct {
+		result1 error
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
@@ -85,11 +96,79 @@ func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsReturnsOnCall(i in
 	}{result1}
 }
 
+func (fake *FakeBatchedRequestsVerifier) VerifyRequest(arg1 []byte) error {
+	var arg1Copy []byte
+	if arg1 != nil {
+		arg1Copy = make([]byte, len(arg1))
+		copy(arg1Copy, arg1)
+	}
+	fake.verifyRequestMutex.Lock()
+	ret, specificReturn := fake.verifyRequestReturnsOnCall[len(fake.verifyRequestArgsForCall)]
+	fake.verifyRequestArgsForCall = append(fake.verifyRequestArgsForCall, struct {
+		arg1 []byte
+	}{arg1Copy})
+	stub := fake.VerifyRequestStub
+	fakeReturns := fake.verifyRequestReturns
+	fake.recordInvocation("VerifyRequest", []interface{}{arg1Copy})
+	fake.verifyRequestMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeBatchedRequestsVerifier) VerifyRequestCallCount() int {
+	fake.verifyRequestMutex.RLock()
+	defer fake.verifyRequestMutex.RUnlock()
+	return len(fake.verifyRequestArgsForCall)
+}
+
+func (fake *FakeBatchedRequestsVerifier) VerifyRequestCalls(stub func([]byte) error) {
+	fake.verifyRequestMutex.Lock()
+	defer fake.verifyRequestMutex.Unlock()
+	fake.VerifyRequestStub = stub
+}
+
+func (fake *FakeBatchedRequestsVerifier) VerifyRequestArgsForCall(i int) []byte {
+	fake.verifyRequestMutex.RLock()
+	defer fake.verifyRequestMutex.RUnlock()
+	argsForCall := fake.verifyRequestArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *FakeBatchedRequestsVerifier) VerifyRequestReturns(result1 error) {
+	fake.verifyRequestMutex.Lock()
+	defer fake.verifyRequestMutex.Unlock()
+	fake.VerifyRequestStub = nil
+	fake.verifyRequestReturns = struct {
+		result1 error
+	}{result1}
+}
+
+func (fake *FakeBatchedRequestsVerifier) VerifyRequestReturnsOnCall(i int, result1 error) {
+	fake.verifyRequestMutex.Lock()
+	defer fake.verifyRequestMutex.Unlock()
+	fake.VerifyRequestStub = nil
+	if fake.verifyRequestReturnsOnCall == nil {
+		fake.verifyRequestReturnsOnCall = make(map[int]struct {
+			result1 error
+		})
+	}
+	fake.verifyRequestReturnsOnCall[i] = struct {
+		result1 error
+	}{result1}
+}
+
 func (fake *FakeBatchedRequestsVerifier) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
 	fake.verifyBatchedRequestsMutex.RLock()
 	defer fake.verifyBatchedRequestsMutex.RUnlock()
+	fake.verifyRequestMutex.RLock()
+	defer fake.verifyRequestMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
 	for key, value := range fake.invocations {
 		copiedInvocations[key] = value
