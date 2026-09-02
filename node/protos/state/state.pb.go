@@ -336,7 +336,6 @@ type ControlEvent struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Event:
-	//
 	//	*ControlEvent_Baf
 	//	*ControlEvent_Complaint
 	//	*ControlEvent_ConfigRequest
