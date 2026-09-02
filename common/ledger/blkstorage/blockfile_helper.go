@@ -52,6 +52,9 @@ func constructBlockfilesInfo(rootDir string) (*blockfilesInfo, error) {
 		return nil, err
 	}
 
+	// Note this stays safe on a pruned ledger: if the last file holds no complete block it is the active
+	// file, so lastPersistedBlock lives in the file directly below it. Pruning never removes the
+	// file holding lastPersistedBlock, so that predecessor is always present.
 	if numBlocksInFile == 0 && lastFileNum > 0 {
 		secondLastFileNum := lastFileNum - 1
 		fileInfo := getFileInfoOrPanic(rootDir, secondLastFileNum)
