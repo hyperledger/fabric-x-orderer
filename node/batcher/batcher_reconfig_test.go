@@ -258,7 +258,6 @@ func TestBatcherReconfigMempoolPruneDropsInvalidRequests(t *testing.T) {
 	require.NotNil(t, batcherConfig)
 
 	logger := testutil.CreateLogger(t, int(parties[0]))
-	riv := batcher.NewRequestsInspectorVerifier(logger, batcherConfig, nil, batcher.DefaultRequestID)
 
 	// build a request pool wired with the same options the batcher's memory pool uses
 	opts := request.PoolOptions{
@@ -274,6 +273,8 @@ func TestBatcherReconfigMempoolPruneDropsInvalidRequests(t *testing.T) {
 	pool := request.NewPool(logger, batcher.DefaultRequestID, opts, noopStriker{})
 	pool.Restart(true)
 	defer pool.Close()
+
+	riv := batcher.NewRequestsInspectorVerifier(logger, batcherConfig, nil, batcher.DefaultRequestID, pool)
 
 	// requests are stored in the pool as marshaled envelopes, exactly as the batcher stores them when submitting
 	makeReq := func(payload []byte, signature []byte) []byte {
