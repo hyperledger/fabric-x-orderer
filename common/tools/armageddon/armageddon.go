@@ -7,8 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package armageddon
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/csv"
 	"encoding/pem"
 	"fmt"
@@ -111,6 +113,28 @@ func (pm *protectedMap) IsEmpty() bool {
 	return len(pm.keyValMap) == 0
 }
 
+func (pm *protectedMap) Size() int {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	return len(pm.keyValMap)
+}
+
+func (pm *protectedMap) Keys() []string {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	keys := make([]string, 0, len(pm.keyValMap))
+	for k := range pm.keyValMap {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func (pm *protectedMap) Contains(key string) bool {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	return pm.keyValMap[key]
+}
+
 type CLI struct {
 	app      *kingpin.Application
 	commands map[string]*kingpin.CmdClause
@@ -131,11 +155,13 @@ type CLI struct {
 	loadRate           *string
 	loadTxSize         *int
 	loadSignedMode     *string
+	loadTxidsFile      *string
 	// receive command flags
 	receiveUserConfigFile   **os.File
 	receiveExpectedNumOfTxs *int
 	receiveOutputDir        *string
 	pullFromPartyId         *int
+	receiveTxidsFile        *string
 	// createSharedConfigProto command flags
 	sharedConfigYamlPath *string
 	sharedConfigProtoDir *string
@@ -182,6 +208,7 @@ func (cli *CLI) configureCommands() {
 	cli.loadRate = load.Flag("rate", "The rate specifies the number of transactions per second to be sent as one or more rate numbers separated by space").String()
 	cli.loadTxSize = load.Flag("txSize", "The required transaction size in bytes").Int()
 	cli.loadSignedMode = load.Flag("signedMode", "Signing mode has three option: none = unsigned, full = sign including the full certificate, short = sign using known certificate").String()
+	cli.loadTxidsFile = load.Flag("txidsFile", "(Optional) path to write the binary TX-ID file — when set, the loader writes one 8-byte big-endian txNumber per TX after all transactions are sent").Default("").String()
 	commands["load"] = load
 
 	receive := cli.app.Command("receive", "Pull txs from some assembler and report statistics")
@@ -189,6 +216,7 @@ func (cli *CLI) configureCommands() {
 	cli.receiveExpectedNumOfTxs = receive.Flag("expectedTxs", "The expected number of transactions the assembler should received").Default("-1").Int()
 	cli.receiveOutputDir = receive.Flag("output", "The output directory in which to place statistics file").Default(".").String()
 	cli.pullFromPartyId = receive.Flag("pullFromPartyId", "The party id of the assembler to pull blocks from").Int()
+	cli.receiveTxidsFile = receive.Flag("txidsFile", "(Optional) path to the binary TX-ID file written by the loader — when set, the receiver verifies every TX-ID was received; exits 1 and writes missing_txids.txt if any are missing").Default("").String()
 	commands["receive"] = receive
 
 	createSharedConfigProto := cli.app.Command("createSharedConfigProto", "Create a shared config binary from a shared configuration YAML file")
@@ -228,11 +256,11 @@ func (cli *CLI) Run(args []string) {
 
 	// "load" command
 	case cli.commands["load"].FullCommand():
-		load(cli.loadUserConfigFile, cli.loadTransactions, cli.loadRate, cli.loadTxSize, cli.loadSignedMode)
+		load(cli.loadUserConfigFile, cli.loadTransactions, cli.loadRate, cli.loadTxSize, cli.loadSignedMode, cli.loadTxidsFile)
 
 	// "receive" command
 	case cli.commands["receive"].FullCommand():
-		receive(cli.receiveUserConfigFile, cli.pullFromPartyId, cli.receiveOutputDir, cli.receiveExpectedNumOfTxs)
+		receive(cli.receiveUserConfigFile, cli.pullFromPartyId, cli.receiveOutputDir, cli.receiveExpectedNumOfTxs, cli.receiveTxidsFile)
 
 	// "createSharedConfigProto" command
 	case cli.commands["createSharedConfigProto"].FullCommand():
@@ -515,7 +543,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 }
 
 // load command makes txs and sends them to all routers
-func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int, signedMode *string) {
+func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int, signedMode *string, txidsFile *string) {
 	rates := strings.Fields(*rate)
 	// check transaction size
 	txMinimumSize := 16 + 8 + 8
@@ -547,6 +575,20 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 		SendTxsToAllAvailableRouters(userConfig, *transactions, convertedRates[i], *txSize, nil, *signedMode)
 		elapsed := time.Since(start)
 		reportLoadResults(*transactions, elapsed, *txSize)
+	}
+
+	// TX-ID verification: write the binary txids file when --txidsFile is set.
+	// The file contains one 8-byte big-endian txNumber per transaction (0-based).
+	// When multiple rates are provided the same N transactions are sent for each
+	// rate, so we write the IDs for *transactions entries (0..N-1) once.
+	if txidsFile != nil && *txidsFile != "" {
+		if err := writeTxidsFile(*txidsFile, *transactions); err != nil {
+			// All transactions were already sent successfully; this exit is for
+			// a file-write failure only (e.g. disk full).  Acceptable for a test tool.
+			fmt.Fprintf(os.Stderr, "failed to write txids file: %v\n", err)
+			os.Exit(3)
+		}
+		logger.Infof("TX-IDs written to %s (%d transactions)", *txidsFile, *transactions)
 	}
 }
 
@@ -650,7 +692,7 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 }
 
 // receive command pull blocks from the assembler and report statistics
-func receive(userConfigFile **os.File, pullFromPartyId *int, receiveOutputDir *string, expectedNumOfTxs *int) {
+func receive(userConfigFile **os.File, pullFromPartyId *int, receiveOutputDir *string, expectedNumOfTxs *int, txidsFile *string) {
 	// get user config file content given as argument
 	userConfig, err := ReadUserConfig(userConfigFile)
 	if err != nil {
@@ -658,9 +700,82 @@ func receive(userConfigFile **os.File, pullFromPartyId *int, receiveOutputDir *s
 		os.Exit(-1)
 	}
 
-	// pull blocks from the assembler and report statistics to a timestamped CSV file
-	pullBlocksFromAssemblerAndCollectStatistics(userConfig, *pullFromPartyId, *receiveOutputDir, *expectedNumOfTxs)
+	// TX-ID verification: pull blocks immediately (preserving concurrent pulling
+	// and correct latency statistics), accumulating every received tx number into
+	// receivedSet.  After the pull loop finishes we load txids.bin — with a
+	// bounded 60-second wait so a loader that was killed before writing the file
+	// yields a clean "skipped" outcome rather than hanging forever.
+	//
+	// nil / empty txidsFile means verification is disabled — no behaviour change.
+	var receivedSet *protectedMap
+	if txidsFile != nil && *txidsFile != "" {
+		receivedSet = &protectedMap{keyValMap: make(map[string]bool)}
+	}
+
+	// pull blocks from the assembler and report statistics to a timestamped CSV file.
+	// When receivedSet is non-nil, every received tx number is added to it as blocks arrive.
+	pullBlocksFromAssemblerAndCollectStatistics(userConfig, *pullFromPartyId, *receiveOutputDir, *expectedNumOfTxs, receivedSet)
 	logger.Infof("Receive command finished, statistics can be found in the output directory: %v\n", *receiveOutputDir)
+
+	// TX-ID verification: now that pulling is done, load txids.bin and compare.
+	if receivedSet != nil {
+		// Wait up to 60 s for the loader to write txids.bin.  The loader writes
+		// the file only after its send loop completes.  On a normal run the file
+		// is already present by the time we reach here; on a run where the loader
+		// was killed before finishing (e.g. duration-limited failure tests) the
+		// file will never appear and we skip verification rather than blocking.
+		const txidsWaitTimeout = 60 * time.Second
+		deadline := time.Now().Add(txidsWaitTimeout)
+		fileFound := false
+		for time.Now().Before(deadline) {
+			if _, statErr := os.Stat(*txidsFile); statErr == nil {
+				fileFound = true
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		if !fileFound {
+			logger.Infof("⚠️  TX-ID verification skipped: loader did not write %s within %s (loader may have been stopped before finishing)", *txidsFile, txidsWaitTimeout)
+			return
+		}
+
+		expectedMap, loadErr := loadTxidsFile(*txidsFile)
+		if loadErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to load txids file %s: %v\n", *txidsFile, loadErr)
+			os.Exit(3)
+		}
+		logger.Infof("TX-ID verification: loaded %d expected TX-IDs from %s, received %d unique TX-IDs", expectedMap.Size(), *txidsFile, receivedSet.Size())
+
+		// Find expected IDs that were never seen in any received block.
+		var missingKeys []string
+		for _, key := range expectedMap.Keys() {
+			if !receivedSet.Contains(key) {
+				missingKeys = append(missingKeys, key)
+			}
+		}
+
+		if len(missingKeys) == 0 {
+			logger.Infof("✅ TX-ID verification passed: all transactions were received")
+		} else {
+			missingFile := path.Join(*receiveOutputDir, "missing_txids.txt")
+			if writeErr := writeMissingTxidsFile(missingFile, missingKeys); writeErr != nil {
+				fmt.Fprintf(os.Stderr, "failed to write missing txids file: %v\n", writeErr)
+			}
+			fmt.Fprintf(os.Stderr, "❌ TX-ID verification FAILED: %d transactions were not received — see %s\n", len(missingKeys), missingFile)
+			// Print a sample of missing TX-IDs directly to stderr so they appear in the
+			// receiver log and can be searched across component logs (grep for the tx number).
+			sampleSize := 10
+			if len(missingKeys) < sampleSize {
+				sampleSize = len(missingKeys)
+			}
+			fmt.Fprintf(os.Stderr, "   First %d missing TX-IDs (search these in component logs):\n", sampleSize)
+			for _, k := range missingKeys[:sampleSize] {
+				fmt.Fprintf(os.Stderr, "   missing txid: %s\n", k)
+			}
+			os.Exit(1)
+		}
+	}
 }
 
 func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
@@ -752,7 +867,7 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 	}
 }
 
-func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFromPartyId int, receiveOutputDir string, expectedNumOfTxs int) {
+func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFromPartyId int, receiveOutputDir string, expectedNumOfTxs int, receivedSet *protectedMap) {
 	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
@@ -944,6 +1059,11 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 				}
 				logger.Debugf("tx %x was received from the assembler", data)
 
+				// TX-ID verification: record this tx number in the received set (when enabled)
+				if receivedSet != nil {
+					receivedSet.Add(extractTxNumber(data))
+				}
+
 				// extract the tx size, sending time and calculate the delay, add the delay to sumOfDelayTimes
 				sumOfTxsSize += len(protoutil.MarshalOrPanic(env))
 				delay := calculateDelayOfTx(data, blockWithTime.acceptedTime)
@@ -952,6 +1072,21 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 			statisticsAggregator.Add(txs, 1, sumOfDelayTimes, sumOfTxsSize)
 
 			if expectedNumOfTxs > 0 && expectedNumOfTxs <= txsTotal {
+				// Drain any blocks already queued in the channel before stopping,
+				// so every pulled TX is recorded in receivedSet before verification runs.
+				for len(blockChan) > 0 {
+					remaining := <-blockChan
+					for j := 0; j < len(remaining.block.Data.Data); j++ {
+						if receivedSet != nil {
+							env, envErr := protoutil.GetEnvelopeFromBlock(remaining.block.Data.Data[j])
+							if envErr == nil {
+								if d, dErr := tx.GetDataFromEnvelope(env); dErr == nil {
+									receivedSet.Add(extractTxNumber(d))
+								}
+							}
+						}
+					}
+				}
 				logger.Infof("%d txs were expected and overall %d were successfully received", expectedNumOfTxs, txsTotal)
 				close(stopChan)
 				waitToFinish.Done()
@@ -962,6 +1097,80 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 
 	waitToFinish.Wait()
 	logger.Debugf("exit pulling blocks from the assembler")
+}
+
+// ---------------------------------------------------------------------------
+// TX-ID verification helpers
+// ---------------------------------------------------------------------------
+
+// writeTxidsFile writes txCount 8-byte big-endian txNumbers (0..txCount-1) to path.
+// Uses a buffered writer to avoid one syscall per transaction.
+func writeTxidsFile(filePath string, txCount int) error {
+	f, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w := bufio.NewWriter(f)
+	buf := make([]byte, 8)
+	for i := 0; i < txCount; i++ {
+		binary.BigEndian.PutUint64(buf, uint64(i))
+		if _, err := w.Write(buf); err != nil {
+			return err
+		}
+	}
+	return w.Flush()
+}
+
+// loadTxidsFile reads a binary txids file (8 bytes per txNumber) into a protectedMap.
+// The map key is the decimal string representation of the txNumber.
+// Uses a buffered reader to avoid one syscall per transaction.
+func loadTxidsFile(filePath string) (*protectedMap, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	r := bufio.NewReader(f)
+	pm := &protectedMap{keyValMap: make(map[string]bool)}
+	buf := make([]byte, 8)
+	for {
+		_, err := io.ReadFull(r, buf)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		txNum := binary.BigEndian.Uint64(buf)
+		pm.Add(strconv.FormatUint(txNum, 10))
+	}
+	return pm, nil
+}
+
+// extractTxNumber reads the first 8 bytes of payload.Data as a big-endian uint64
+// and returns its decimal string — used as the map key matching writeTxidsFile.
+func extractTxNumber(data []byte) string {
+	if len(data) < 8 {
+		return ""
+	}
+	return strconv.FormatUint(binary.BigEndian.Uint64(data[:8]), 10)
+}
+
+// writeMissingTxidsFile writes the remaining (un-received) txNumber strings to a
+// human-readable text file, one decimal number per line.
+func writeMissingTxidsFile(filePath string, keys []string) error {
+	f, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	for _, k := range keys {
+		if _, err := fmt.Fprintln(f, k); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string) (*common.Block, error) {
