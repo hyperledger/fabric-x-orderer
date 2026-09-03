@@ -73,6 +73,12 @@ func (store *BlockStore) RetrieveBlockByNumber(blockNum uint64) (*common.Block, 
 	return store.fileMgr.retrieveBlockByNumber(blockNum)
 }
 
+// FirstAvailableBlockNumber returns the lowest block number this store can serve. It is 0 unless the
+// ledger has been pruned. Reads below it fail with ErrPruned.
+func (store *BlockStore) FirstAvailableBlockNumber() uint64 {
+	return store.fileMgr.pruner.firstReadableBlockNum()
+}
+
 // TxIDExists returns true if a transaction with the txID is ever committed
 func (store *BlockStore) TxIDExists(txID string) (bool, error) {
 	return store.fileMgr.txIDExists(txID)

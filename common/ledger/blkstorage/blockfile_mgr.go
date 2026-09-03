@@ -40,6 +40,9 @@ type blockfileMgr struct {
 	currentFileWriter *blockfileWriter
 	bcInfo            atomic.Value
 	cache             *cache
+
+	// pruner owns the prune info (see prune_mgr.go).
+	pruner *pruneMgr
 }
 
 /*
@@ -131,6 +134,12 @@ func newBlockfileMgr(id string, conf *Conf, indexConfig *IndexConfig, indexStore
 	mgr.blockfilesInfo = blockfilesInfo
 	mgr.currentFileWriter = currentFileWriter
 	mgr.blkfilesInfoCond = sync.NewCond(&sync.Mutex{})
+
+	// Construct the pruner before syncIndex: on a pruned ledger the block files no longer start at
+	// blockfile_000000, and the recovery paths need to know where they do start.
+	if mgr.pruner, err = newPruneMgr(rootDir); err != nil {
+		return nil, err
+	}
 
 	if err := mgr.syncIndex(); err != nil {
 		return nil, err
@@ -330,15 +339,38 @@ func (mgr *blockfileMgr) syncIndex() error {
 		return nil
 	}
 
-	// TODO: when ledger pruning lands, the rebuild scan can no longer assume the block files start at
-	// blockfile_000000. It has to begin at the first file that survived pruning, and if that file is
-	// absent the marker and the files disagree, which is unrecoverable because the pruned blocks are gone.
-	startFileNum := 0
+	// On a pruned ledger the block files no longer start at blockfile_000000, so the rebuild scan has to
+	// begin at the first file that survived pruning.
+	startFileNum := mgr.pruner.firstStoredBlockfileNum()
 	startOffset := 0
 	skipFirstBlock := false
 	endFileNum := mgr.blockfilesInfo.latestFileNumber
 
-	firstAvailableBlkNum, err := retrieveFirstBlockNumFromFile(mgr.rootDir, 0)
+	// If that file is absent, the prune info and the files disagree. That is unrecoverable: the pruned
+	// blocks are gone. Note the opposite skew is benign: files below the recorded first file are orphans
+	// left by a crash mid-prune, and removing them again is the next prune's job.
+	exists, _, err := fileutil.FileExists(deriveBlockfilePath(mgr.rootDir, startFileNum))
+	if err != nil {
+		return err
+	}
+	if !exists {
+		// With no prune info the first file reads as 0, so its absence says the ledger was pruned but the
+		// record of how far is gone. Report that rather than a prune point of zero, which reads as no
+		// pruning at all.
+		if startFileNum == 0 {
+			return errors.Errorf(
+				"cannot sync index with block files. block file [0] is missing and no prune info was " +
+					"found; the ledger appears pruned but the record of how far is gone",
+			)
+		}
+		return errors.Errorf(
+			"cannot sync index with block files. block file [%d] is missing; the blockstore is pruned "+
+				"up to block [%d] but its block files do not start there",
+			startFileNum, mgr.pruner.firstReadableBlockNum(),
+		)
+	}
+
+	firstAvailableBlkNum, err := retrieveFirstBlockNumFromFile(mgr.rootDir, startFileNum)
 	if err != nil {
 		return err
 	}
@@ -451,16 +483,15 @@ func (mgr *blockfileMgr) retrieveBlockByHash(blockHash []byte) (*common.Block, e
 	return mgr.fetchBlock(loc)
 }
 
-// TODO: when ledger pruning lands, the reads keyed by block number need a front-boundary guard again:
-// a block below the prune point must be reported as pruned rather than as missing from the index. The
-// guard belongs at the top of retrieveBlockByNumber, retrieveBlockHeaderByNumber, retrieveBlocks and
-// retrieveTransactionByBlockNumTranNum, where the snapshot-bootstrap guard used to sit.
 func (mgr *blockfileMgr) retrieveBlockByNumber(blockNum uint64) (*common.Block, error) {
 	logger.Debugf("retrieveBlockByNumber() - blockNum = [%d]", blockNum)
 
 	// interpret math.MaxUint64 as a request for last block
 	if blockNum == math.MaxUint64 {
 		blockNum = mgr.getBlockchainInfo().Height - 1
+	}
+	if err := mgr.checkBlockAvailable(blockNum); err != nil {
+		return nil, err
 	}
 	loc, err := mgr.index.getBlockLocByBlockNum(blockNum)
 	if err != nil {
@@ -486,6 +517,9 @@ func (mgr *blockfileMgr) retrieveTxValidationCodeByTxID(txID string) (peer.TxVal
 
 func (mgr *blockfileMgr) retrieveBlockHeaderByNumber(blockNum uint64) (*common.BlockHeader, error) {
 	logger.Debugf("retrieveBlockHeaderByNumber() - blockNum = [%d]", blockNum)
+	if err := mgr.checkBlockAvailable(blockNum); err != nil {
+		return nil, err
+	}
 	loc, err := mgr.index.getBlockLocByBlockNum(blockNum)
 	if err != nil {
 		return nil, err
@@ -499,6 +533,9 @@ func (mgr *blockfileMgr) retrieveBlockHeaderByNumber(blockNum uint64) (*common.B
 }
 
 func (mgr *blockfileMgr) retrieveBlocks(startNum uint64) (*blocksItr, error) {
+	if err := mgr.checkBlockAvailable(startNum); err != nil {
+		return nil, err
+	}
 	return newBlockItr(mgr, startNum), nil
 }
 
@@ -517,6 +554,9 @@ func (mgr *blockfileMgr) retrieveTransactionByID(txID string) (*common.Envelope,
 
 func (mgr *blockfileMgr) retrieveTransactionByBlockNumTranNum(blockNum uint64, tranNum uint64) (*common.Envelope, error) {
 	logger.Debugf("retrieveTransactionByBlockNumTranNum() - blockNum = [%d], tranNum = [%d]", blockNum, tranNum)
+	if err := mgr.checkBlockAvailable(blockNum); err != nil {
+		return nil, err
+	}
 	loc, err := mgr.index.getTXLocByBlockNumTranNum(blockNum, tranNum)
 	if err != nil {
 		return nil, err
@@ -596,6 +636,18 @@ func (mgr *blockfileMgr) saveBlkfilesInfo(i *blockfilesInfo, sync bool) error {
 	b := i.marshal()
 	if err := mgr.db.Put(blkMgrInfoKey, b, sync); err != nil {
 		return err
+	}
+	return nil
+}
+
+// checkBlockAvailable reports whether the store can serve the given block number, returning nil when it can.
+// A request above lastPersistedBlock passes here and fails in the index with "no such block number".
+func (mgr *blockfileMgr) checkBlockAvailable(blockNum uint64) error {
+	// Read the bound once, so a concurrent prune cannot land between the check and the message and have
+	// us report a bound other than the one that made the decision.
+	if prunedTo := mgr.pruner.firstReadableBlockNum(); blockNum < prunedTo {
+		return errors.WithMessagef(ErrPruned,
+			"cannot serve block [%d]. First available block = [%d]", blockNum, prunedTo)
 	}
 	return nil
 }
