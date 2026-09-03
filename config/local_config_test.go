@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -210,4 +211,208 @@ func TestLoadLocalConfigAppliesGeneralDefaults(t *testing.T) {
 	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.CertExpirationWarningThreshold, loadedConfig.ClusterConfig.CertExpirationWarningThreshold)
 	require.Equal(t, loadedConfig.TLSConfig.Certificate, loadedConfig.ClusterConfig.ClientCertificate)
 	require.Equal(t, loadedConfig.TLSConfig.PrivateKey, loadedConfig.ClusterConfig.ClientPrivateKey)
+}
+
+func TestLoadLocalConfigRejectsNegativeValues(t *testing.T) {
+	tests := []struct {
+		name         string
+		createConfig func() *config.NodeLocalConfig
+		update       func(*config.NodeLocalConfig)
+		expectedErr  string
+	}{
+		{
+			name:         "negative send buffer size",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.GeneralConfig.Cluster.SendBufferSize = -1
+			},
+			expectedErr: "node local config is not valid, General.Cluster.SendBufferSize must not be negative",
+		},
+		{
+			name:         "negative RPC timeout",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.GeneralConfig.Cluster.RPCTimeout = -time.Millisecond
+			},
+			expectedErr: "node local config is not valid, General.Cluster.RPCTimeout must not be negative",
+		},
+		{
+			name:         "negative replication buffer size",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.GeneralConfig.Cluster.ReplicationBufferSize = -1
+			},
+			expectedErr: "node local config is not valid, General.Cluster.ReplicationBufferSize must not be negative",
+		},
+		{
+			name:         "negative replication min retry interval",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.GeneralConfig.Cluster.ReplicationMinRetryInterval = -time.Millisecond
+			},
+			expectedErr: "node local config is not valid, General.Cluster.ReplicationMinRetryInterval must not be negative",
+		},
+		{
+			name:         "negative replication max retry interval",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.GeneralConfig.Cluster.ReplicationMaxRetryInterval = -time.Millisecond
+			},
+			expectedErr: "node local config is not valid, General.Cluster.ReplicationMaxRetryInterval must not be negative",
+		},
+		{
+			name:         "negative replication max retry duration",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.GeneralConfig.Cluster.ReplicationMaxRetryDuration = -time.Millisecond
+			},
+			expectedErr: "node local config is not valid, General.Cluster.ReplicationMaxRetryDuration must not be negative",
+		},
+		{
+			name:         "negative certificate expiration warning threshold",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.GeneralConfig.Cluster.CertExpirationWarningThreshold = -time.Millisecond
+			},
+			expectedErr: "node local config is not valid, General.Cluster.CertExpirationWarningThreshold must not be negative",
+		},
+		{
+			name:         "negative TLS handshake time shift",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.GeneralConfig.Cluster.TLSHandshakeTimeShift = -time.Millisecond
+			},
+			expectedErr: "node local config is not valid, General.Cluster.TLSHandshakeTimeShift must not be negative",
+		},
+		{
+			name:         "negative metrics log interval",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.MetricsConfig = &config.Metrics{
+					MetricsLogInterval: -time.Millisecond,
+				}
+			},
+			expectedErr: "node local config is not valid, Metrics.MetricsLogInterval must not be negative",
+		},
+		{
+			name:         "negative router connections per batcher",
+			createConfig: testutil.CreateTestRouterLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.RouterParams.NumberOfConnectionsPerBatcher = -1
+			},
+			expectedErr: "node local config is not valid, Router.NumberOfConnectionsPerBatcher must not be negative",
+		},
+		{
+			name:         "negative router streams per connection",
+			createConfig: testutil.CreateTestRouterLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.RouterParams.NumberOfStreamsPerConnection = -1
+			},
+			expectedErr: "node local config is not valid, Router.NumberOfStreamsPerConnection must not be negative",
+		},
+		{
+			name:         "negative batcher submit timeout",
+			createConfig: testutil.CreateTestBatcherLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.BatcherParams.SubmitTimeout = -time.Millisecond
+			},
+			expectedErr: "node local config is not valid, Batcher.SubmitTimeout must not be negative",
+		},
+		{
+			name:         "negative assembler prefetch buffer size",
+			createConfig: testutil.CreateTestAssemblerLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.AssemblerParams.PrefetchBufferMemoryBytes = -1
+			},
+			expectedErr: "node local config is not valid, Assembler.PrefetchBufferMemoryBytes must not be negative",
+		},
+		{
+			name:         "negative assembler restart ledger scan timeout",
+			createConfig: testutil.CreateTestAssemblerLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.AssemblerParams.RestartLedgerScanTimeout = -time.Millisecond
+			},
+			expectedErr: "node local config is not valid, Assembler.RestartLedgerScanTimeout must not be negative",
+		},
+		{
+			name:         "negative assembler prefetch eviction TTL",
+			createConfig: testutil.CreateTestAssemblerLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.AssemblerParams.PrefetchEvictionTtl = -time.Millisecond
+			},
+			expectedErr: "node local config is not valid, Assembler.PrefetchEvictionTtl must not be negative",
+		},
+		{
+			name:         "negative assembler pop wait monitor timeout",
+			createConfig: testutil.CreateTestAssemblerLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.AssemblerParams.PopWaitMonitorTimeout = -time.Millisecond
+			},
+			expectedErr: "node local config is not valid, Assembler.PopWaitMonitorTimeout must not be negative",
+		},
+		{
+			name:         "negative assembler replication channel size",
+			createConfig: testutil.CreateTestAssemblerLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.AssemblerParams.ReplicationChannelSize = -1
+			},
+			expectedErr: "node local config is not valid, Assembler.ReplicationChannelSize must not be negative",
+		},
+		{
+			name:         "negative assembler batch requests channel size",
+			createConfig: testutil.CreateTestAssemblerLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.AssemblerParams.BatchRequestsChannelSize = -1
+			},
+			expectedErr: "node local config is not valid, Assembler.BatchRequestsChannelSize must not be negative",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.DirExists(t, dir)
+
+			localConfig := test.createConfig()
+			localConfig.GeneralConfig.LocalMSPDir = "path/to/msp"
+			localConfig.GeneralConfig.LocalMSPID = "org1"
+
+			test.update(localConfig)
+
+			configPath := path.Join(dir, "local_config.yaml")
+			err := utils.WriteToYAML(localConfig, configPath)
+			require.NoError(t, err)
+
+			logger := testutil.CreateLoggerForModule(t, "LoadLocalConfig", zap.DebugLevel)
+			loadedConfig, role, err := config.LoadLocalConfig(configPath, logger)
+
+			require.Error(t, err)
+			require.Contains(t, err.Error(), test.expectedErr)
+			require.Equal(t, "", role)
+			require.Nil(t, loadedConfig)
+		})
+	}
+}
+
+func TestLoadLocalConfigRejectsInvertedRetryIntervals(t *testing.T) {
+	dir := t.TempDir()
+	require.DirExists(t, dir)
+
+	localConfig := testutil.CreateTestConsensusLocalConfig()
+	localConfig.GeneralConfig.LocalMSPDir = "path/to/msp"
+	localConfig.GeneralConfig.LocalMSPID = "org1"
+	localConfig.GeneralConfig.Cluster.ReplicationMinRetryInterval = 10 * time.Second
+	localConfig.GeneralConfig.Cluster.ReplicationMaxRetryInterval = time.Second
+
+	configPath := path.Join(dir, "local_config_consenter.yaml")
+	err := utils.WriteToYAML(localConfig, configPath)
+	require.NoError(t, err)
+
+	logger := testutil.CreateLoggerForModule(t, "LoadLocalConfig", zap.DebugLevel)
+	loadedConfig, role, err := config.LoadLocalConfig(configPath, logger)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "node local config is not valid, General.Cluster.ReplicationMinRetryInterval must be less than or equal to General.Cluster.ReplicationMaxRetryInterval")
+	require.Equal(t, "", role)
+	require.Nil(t, loadedConfig)
 }
