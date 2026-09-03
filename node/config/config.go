@@ -98,11 +98,24 @@ type RouterNodeConfig struct {
 	ClientRootCAs                       [][]byte
 	RequestMaxBytes                     uint64
 	ClientSignatureVerificationRequired bool
+	// Throttling configures the router's request throttling (rate limiting).
+	Throttling RouterThrottlingConfig
 	// Bundle collects resources (e.g., policy manager, configTx validator, etc.) that are used by the router for validation of transactions
 	Bundle     channelconfig.Resources
 	BCCSP      bccsp.BCCSP
 	Operations *operations.Operations
 	Metrics    *operations.Metrics
+}
+
+// RouterThrottlingConfig is the runtime throttling configuration for a router.
+// Policy selects the throttling strategy (see the Throttling* constants in
+// node/router); Rate and Burst parameterize the rate limiter. The struct is
+// intentionally a container so future policies (e.g. per-client/per-org) can add
+// parameters without changing existing call sites.
+type RouterThrottlingConfig struct {
+	Policy string
+	Rate   int
+	Burst  int
 }
 
 type AssemblerNodeConfig struct {
