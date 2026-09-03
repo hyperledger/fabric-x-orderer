@@ -94,7 +94,7 @@ func (r *routerTestSetup) isDisconnectedFromBatcher() bool {
 	return r.router.IsAllConnectionsDown()
 }
 
-func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int, useTLS bool, clientAuthRequired bool) *routerTestSetup {
+func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int, useTLS bool, clientAuthRequired bool, opts ...func(*config.RouterNodeConfig)) *routerTestSetup {
 	// create a CA that issues a certificate for the router and the batchers
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func createRouterTestSetup(t *testing.T, partyID types.PartyID, numOfShards int,
 	stubConsenter.Start()
 
 	// create and start router
-	router, conf := createAndStartRouter(t, partyID, ca, batchers, &stubConsenter, useTLS, clientAuthRequired)
+	router, conf := createAndStartRouter(t, partyID, ca, batchers, &stubConsenter, useTLS, clientAuthRequired, opts...)
 
 	return &routerTestSetup{
 		ca:        ca,
@@ -179,6 +179,76 @@ func TestSubmitToStubBatchersGetMetrics(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return testutil.FetchPrometheusMetricValue(t, re, URL) == 2000
 	}, 30*time.Second, 100*time.Millisecond)
+}
+
+// withThrottling returns an option that sets the router's throttling config.
+func withThrottling(policy string, rate, burst int) func(*config.RouterNodeConfig) {
+	return func(c *config.RouterNodeConfig) {
+		c.Throttling = config.RouterThrottlingConfig{Policy: policy, Rate: rate, Burst: burst}
+	}
+}
+
+// TestBroadcastThrottled verifies that, under the global throttling policy with a
+// tight rate, a rapid burst of Broadcast requests yields some SERVICE_UNAVAILABLE
+// rejections carrying the throttle message while the initial burst succeeds, and
+// that the router_requests_throttled metric is incremented.
+func TestBroadcastThrottled(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(router.ThrottlingGlobal, 1, 1))
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+
+	const numRequests = 50
+	res := submitBroadcastRequests(testSetup.clientConn, numRequests)
+
+	require.GreaterOrEqual(t, res.successRequests, 1, "the initial burst should be admitted")
+	require.NotEmpty(t, res.respondsErrors, "requests over the rate should be rejected")
+	throttled := 0
+	for _, e := range res.respondsErrors {
+		if regexp.MustCompile("throttled").MatchString(e.Error()) {
+			throttled++
+		}
+	}
+	require.Positive(t, throttled, "rejections should carry the throttle message")
+
+	URL := testSetup.router.MonitoringServiceAddress()
+	re := regexp.MustCompile(fmt.Sprintf(`router_requests_throttled\{party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, URL) > 0
+	}, 30*time.Second, 100*time.Millisecond)
+}
+
+// TestSubmitThrottled verifies that unary Submit calls over the global rate limit
+// are rejected with the throttle error.
+func TestSubmitThrottled(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(router.ThrottlingGlobal, 1, 1))
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+
+	throttled := 0
+	for i := 0; i < 50; i++ {
+		if err := submitRequest(testSetup.clientConn); err != nil && regexp.MustCompile("throttled").MatchString(err.Error()) {
+			throttled++
+		}
+	}
+	require.Positive(t, throttled, "unary Submit over the rate should be throttled")
+}
+
+// TestThrottlingDisabledPassThrough verifies that with the disabled policy, all
+// requests pass through and none are throttled.
+func TestThrottlingDisabledPassThrough(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(router.ThrottlingDisabled, 0, 0))
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+
+	res := submitBroadcastRequests(testSetup.clientConn, 100)
+	require.NoError(t, res.err)
+	require.Equal(t, 100, res.successRequests)
 }
 
 // Scenario:
@@ -926,7 +996,7 @@ func submitRequest(conn *grpc.ClientConn) error {
 	return nil
 }
 
-func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stub.StubBatcher, consenter *stub.StubConsenter, useTLS bool, clientAuthRequired bool) (*router.Router, *config.RouterNodeConfig) {
+func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, batchers []*stub.StubBatcher, consenter *stub.StubConsenter, useTLS bool, clientAuthRequired bool, opts ...func(*config.RouterNodeConfig)) (*router.Router, *config.RouterNodeConfig) {
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
 	require.NoError(t, err)
 
@@ -987,6 +1057,10 @@ func createAndStartRouter(t *testing.T, partyID types.PartyID, ca tlsgen.CA, bat
 			ListenAddress: testutil.AllocateLocalhostAddress(t),
 		},
 		Metrics: &operations.Metrics{Provider: generate.DefaultMetricsProviderType, MetricsLogInterval: 1 * time.Second},
+	}
+
+	for _, opt := range opts {
+		opt(conf)
 	}
 
 	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}

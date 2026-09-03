@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -58,6 +59,7 @@ type Router struct {
 	wal          *wal.WriteAheadLogFile
 	signer       identity.SignerSerializer
 
+	throttler        atomic.Pointer[throttler] // request rate limiter; always non-nil after init, read lock-free on the hot path
 	lock             sync.RWMutex
 	status           node_utils.NodeStatus
 	configuration    *config.Configuration
@@ -133,6 +135,13 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.configSeq = uint32(configSeq)
 
 	r.verifier = createVerifier(rconfig)
+
+	t, err := newThrottler(rconfig.Throttling)
+	if err != nil {
+		r.logger.Panicf("Failed creating router throttler: %s", err)
+	}
+	r.throttler.Store(t)
+	r.logger.Infof("Router throttling policy: %q (rate=%d, burst=%d)", rconfig.Throttling.Policy, rconfig.Throttling.Rate, rconfig.Throttling.Burst)
 
 	r.configSubmitter = NewConfigSubmitter(rconfig, r.logger, r.verifier, r.signer, configUpdateProposer, configRulesVerifier)
 
@@ -402,6 +411,12 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		r.metrics.incomingTxs.Add(1)
 
+		if !r.throttler.Load().Allow() {
+			r.metrics.throttledTxs.Add(1)
+			r.sendBroadcastResponse(stream, Response{err: ErrThrottled})
+			continue
+		}
+
 		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature, ConfigSeq: r.configSeq}
 		reqID, shardRouter := r.getShardRouterAndReqID(request)
 
@@ -453,6 +468,12 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 
 		reqID, shardRouter := r.getShardRouterAndReqID(req)
 
+		if !r.throttler.Load().Allow() {
+			r.metrics.throttledTxs.Add(1)
+			r.sendSubmitResponse(stream, Response{err: ErrThrottled, reqID: reqID})
+			continue
+		}
+
 		select {
 		case <-r.stopChan:
 			r.sendSubmitResponse(stream, Response{
@@ -494,6 +515,11 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	r.metrics.incomingTxs.Add(1)
 
 	reqID, shardRouter := r.getShardRouterAndReqID(request)
+
+	if !r.throttler.Load().Allow() {
+		r.metrics.throttledTxs.Add(1)
+		return responseToSubmitResponse(&Response{err: ErrThrottled, reqID: reqID}), nil
+	}
 
 	trace := createTraceID(nil)
 
