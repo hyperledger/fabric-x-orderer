@@ -718,6 +718,56 @@ func TestReadConfigWithInvalidBootstrapBlock(t *testing.T) {
 	require.ErrorContains(t, err, "failed to validate bootstrap config")
 }
 
+func TestReadConfigWithInvalidPartyCertificates(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "mTLS", "mTLS")
+	defer netInfo.CleanUp()
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	bootstrapPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
+	data, err := os.ReadFile(bootstrapPath)
+	require.NoError(t, err)
+
+	block, err := protoutil.UnmarshalBlock(data)
+	require.NoError(t, err)
+
+	env, err := protoutil.ExtractEnvelope(block, 0)
+	require.NoError(t, err)
+
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+
+	configEnv := &common.ConfigEnvelope{}
+	require.NoError(t, proto.Unmarshal(payload.Data, configEnv))
+
+	consensusType := &protosorderer.ConsensusType{}
+	require.NoError(t, proto.Unmarshal(configEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"].Value, consensusType))
+	sharedConfig := &ordererpb.SharedConfig{}
+	require.NoError(t, proto.Unmarshal(consensusType.Metadata, sharedConfig))
+
+	sharedConfig.PartiesConfig[0].RouterConfig.TlsCert = []byte("not-a-cert")
+	consensusType.Metadata = protoutil.MarshalOrPanic(sharedConfig)
+	configEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
+
+	payload.Data = protoutil.MarshalOrPanic(configEnv)
+	env.Payload = protoutil.MarshalOrPanic(payload)
+	block.Data.Data[0] = protoutil.MarshalOrPanic(env)
+
+	invalidBootstrapPath := filepath.Join(dir, "bootstrap", "invalid_party_certs.block")
+	require.NoError(t, os.WriteFile(invalidBootstrapPath, protoutil.MarshalOrPanic(block), 0o644))
+
+	storagePath := filepath.Join(dir, "storage")
+	localConfigPath := filepath.Join(dir, "config", "party1", "local_config_router.yaml")
+	testutil.EditDirectoryInNodeConfigYAML(t, localConfigPath, storagePath, invalidBootstrapPath, 0)
+
+	logger := testutil.CreateLoggerForModule(t, "ReadConfigRouter", zap.DebugLevel)
+	_, _, err = config.ReadConfig(localConfigPath, logger)
+	require.ErrorContains(t, err, "failed to validate bootstrap config")
+	require.ErrorContains(t, err, "certificate validation failed for party ID 1")
+}
+
 func ChangeExpirationTimeOfCert(t *testing.T, cert []byte, caCert []byte, caPrivateKey []byte) ([]byte, error) {
 	// Parse the cert to be updated
 	x509Cert, err := utils.Parsex509Cert(cert)

@@ -55,6 +55,8 @@ type DefaultOrdererRules struct{}
 //  7. Each consenter in the ConsenterMapping must have a matching organization.
 //  8. Party TLS CA certificates in SharedConfig must match the orderer organization MSP.
 //  9. BlockValidationPolicy must be consistent with the current consenters.
+//  10. Party certificates must be valid, with expiration enforced for genesis
+//     configs and ignored for later config updates.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
@@ -153,6 +155,14 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 		return errors.Wrap(err, "invalid block validation policy")
 	}
 
+	// 10.
+	ignoreExpiration := bundle.ConfigtxValidator().Sequence() > 0
+	for _, party := range sharedConfig.PartiesConfig {
+		if err := validatePartyCertificates(party, ignoreExpiration); err != nil {
+			return errors.Wrapf(err, "certificate validation failed for party ID %d", party.PartyID)
+		}
+	}
+
 	return nil
 }
 
@@ -170,9 +180,8 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 //  4. At most one party can be removed in a config tx.
 //  5. At most one party can be modified in a config tx.
 //  6. Only one membership change is allowed per config tx (add, remove, or modify).
-//  7. Certificate validation:
-//     - validate certificate chain of trust for all parties while ignoring expiration.
-//     - enforce expiration checks only for node certificates of newly added and modified parties.
+//  7. Certificates of newly added and modified parties must be valid,
+//     with expiration enforced.
 //
 // TODO: Validate ordering service remains live after the change (no quorum loss / no liveness loss).
 func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, next *common.Envelope, bccsp bccsp.BCCSP) error {
@@ -269,12 +278,6 @@ func (DefaultOrdererRules) ValidateTransition(current channelconfig.Resources, n
 	}
 
 	// 7.
-	for _, party := range nextCfg.PartiesConfig {
-		if err := validatePartyCertificates(party, true); err != nil {
-			return errors.Wrapf(err, "certificate validation failed for party ID %d", party.PartyID)
-		}
-	}
-
 	for _, party := range changes.Added {
 		if err := validatePartyCertificates(party, false); err != nil {
 			return errors.Wrapf(err, "certificate validation failed for added party ID %d", party.PartyID)
