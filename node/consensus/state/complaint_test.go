@@ -7,9 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package state_test
 
 import (
+	"bytes"
 	"math"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	consensus_state "github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/stretchr/testify/assert"
 )
@@ -76,11 +78,11 @@ func TestComplaintToBeSigned(t *testing.T) {
 		ConfigSeq: 20,
 	}
 
-	// ToBeSigned must exclude the signature: it equals the encoding of the same
-	// complaint with a nil signature.
+	// ToBeSigned must exclude the signature: it equals the domain-tagged
+	// encoding of the same complaint with a nil signature.
 	unsigned := c
 	unsigned.Signature = nil
-	assert.Equal(t, unsigned.Bytes(), c.ToBeSigned())
+	assert.Equal(t, types.PrefixWithDomain(types.DomainComplaint, unsigned.Bytes()), c.ToBeSigned())
 
 	// The result must be independent of the signature so all signers over the
 	// same complaint sign identical bytes.
@@ -92,6 +94,11 @@ func TestComplaintToBeSigned(t *testing.T) {
 	c3 := c
 	c3.Term = 3
 	assert.NotEqual(t, c.ToBeSigned(), c3.ToBeSigned())
+
+	// The signed bytes are bound to the Complaint domain and cannot be mistaken
+	// for another message type's signed bytes (e.g. a BAF).
+	assert.True(t, bytes.HasPrefix(c.ToBeSigned(), types.PrefixWithDomain(types.DomainComplaint, nil)))
+	assert.False(t, bytes.HasPrefix(c.ToBeSigned(), types.PrefixWithDomain(types.DomainBAF, nil)))
 }
 
 func TestComplaintString(t *testing.T) {
