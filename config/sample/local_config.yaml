@@ -261,6 +261,19 @@ Metrics:
 Router:
   NumberOfConnectionsPerBatcher: 10
   NumberOfStreamsPerConnection: 20
+  # Throttling configures request rate limiting on the router's ingress.
+  # If the Throttling block is omitted entirely, throttling is disabled.
+  Throttling:
+    # Policy selects the throttling strategy:
+    #   disabled - no throttling (default)
+    #   global   - a single aggregate rate limit shared by all clients on this router
+    Policy: disabled
+    # Rate is the aggregate cap, in requests per second, across all clients
+    # (used by the global policy). 0 disables throttling.
+    Rate: 0
+    # Burst is the token-bucket capacity (the largest momentary burst admitted).
+    # When 0 it defaults to Rate, i.e. one second's worth of tokens.
+    Burst: 0
 
 # Consensus specific parameters
 Consensus:
