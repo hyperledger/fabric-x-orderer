@@ -39,6 +39,11 @@ func CreateTestRouterLocalConfig() *config.NodeLocalConfig {
 		RouterParams: &config.RouterParams{
 			NumberOfConnectionsPerBatcher: 10,
 			NumberOfStreamsPerConnection:  20,
+			Throttling: &config.ThrottlingParams{
+				Policy: config.ThrottlingPolicyGlobal,
+				Rate:   500000,
+				Burst:  500000,
+			},
 		},
 	}
 	return routerLocalConfig

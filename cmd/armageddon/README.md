@@ -135,6 +135,17 @@ TLS:
 Even if the `TLS.Enabled = false` is set to false, the `PrivateKey` and `Certificate` fields are expected to point to valid credentials because the nodes operates via mTLS.
 This flag affects only the external Broadcast and Deliver APIs, on the Router and Assembler, respectively.
 
+The generated router local config includes a `Throttling` block that rate-limits the router's request ingress. It is disabled by default; set `Policy: global` and a `Rate` (requests/second) to enable a single aggregate cap across all clients on that router:
+````
+Router:
+   NumberOfConnectionsPerBatcher: 10
+   NumberOfStreamsPerConnection: 5
+   Throttling:
+      Policy: global   # disabled (default) | global
+      Rate: 500000     # aggregate requests/second across all clients
+      Burst: 500000    # token-bucket capacity; 0 defaults to Rate
+````
+
 ###
 <a id="shared-configuration"></a>
 Shared configuration:  

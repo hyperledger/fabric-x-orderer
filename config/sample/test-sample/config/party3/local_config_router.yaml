@@ -42,6 +42,8 @@ FileStore:
 Router:
     NumberOfConnectionsPerBatcher: 10
     NumberOfStreamsPerConnection: 5
+    Throttling:
+        Policy: disabled
 Operations:
     ListenAddress: 127.0.0.1
     TLS:

@@ -106,6 +106,9 @@ func TestARMALocalConfigGeneration(t *testing.T) {
 	require.NotNil(t, res)
 	for i, party := range res.PartiesLocalConfig {
 		require.Equal(t, networkLocalConfig.PartiesLocalConfig[i].RouterLocalConfig, party.RouterLocalConfig)
+		// Generated router configs carry an explicit (disabled) Throttling block.
+		require.NotNil(t, party.RouterLocalConfig.RouterParams.Throttling)
+		require.Equal(t, config.ThrottlingPolicyDisabled, party.RouterLocalConfig.RouterParams.Throttling.Policy)
 		for j, batcher := range party.BatchersLocalConfig {
 			require.Equal(t, batcher, party.BatchersLocalConfig[j])
 		}

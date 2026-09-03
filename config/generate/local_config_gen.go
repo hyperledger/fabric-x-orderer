@@ -230,6 +230,10 @@ func NewGeneralConfig(generalConfigParams GeneralConfigParams) *config.GeneralCo
 
 func NewRouterLocalConfig(routerGeneralParams GeneralConfigParams) *config.NodeLocalConfig {
 	params := config.DefaultRouterParams
+	// Emit an explicit (disabled) Throttling block so operators can discover the
+	// request rate-limiting knob in generated configs. See config/sample/local_config.yaml
+	// for the documented Policy/Rate/Burst fields.
+	params.Throttling = &config.ThrottlingParams{Policy: config.ThrottlingPolicyDisabled}
 	nodeLocalConfig := config.DefaultNodeLocalConfig
 	nodeLocalConfig.PartyID = routerGeneralParams.partyID
 	nodeLocalConfig.GeneralConfig = NewGeneralConfig(routerGeneralParams)
