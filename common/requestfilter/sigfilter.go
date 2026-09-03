@@ -11,6 +11,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"google.golang.org/protobuf/proto"
@@ -21,6 +22,7 @@ type SigFilter struct {
 	channelID                           string
 	policyName                          string
 	policyManager                       policies.Manager
+	mspManager                          msp.IdentityDeserializer
 }
 
 func NewSigFilter(config FilterConfig, policyName string) *SigFilter {
@@ -29,6 +31,7 @@ func NewSigFilter(config FilterConfig, policyName string) *SigFilter {
 		channelID:                           config.GetChannelID(),
 		policyName:                          policyName,
 		policyManager:                       config.GetPolicyManager(),
+		mspManager:                          config.GetMSPManager(),
 	}
 }
 
@@ -44,7 +47,19 @@ func (sf *SigFilter) VerifyAndClassify(request *comm.Request) (common.HeaderType
 		if !exists {
 			return reqType, fmt.Errorf("no policies in config block")
 		}
-		err = policy.EvaluateSignedData([]*protoutil.SignedData{signedData})
+		// Deserialize the signer and check the signature once, then let the policy tree evaluate
+		// the resulting identity. EvaluateSignedData hands the signature set to every sub-policy
+		// the tree tries, so each one repeats both the deserialization and the signature check,
+		// and admitting a request costs one of each per organization tried before one matches.
+		//
+		// A configuration that carries no MSP manager cannot convert the signature set, so it
+		// evaluates the set itself and pays that repetition.
+		if sf.mspManager != nil {
+			ids := policies.SignatureSetToValidIdentities([]*protoutil.SignedData{signedData}, sf.mspManager)
+			err = policy.EvaluateIdentities(ids)
+		} else {
+			err = policy.EvaluateSignedData([]*protoutil.SignedData{signedData})
+		}
 		if err != nil {
 			return reqType, fmt.Errorf("signature did not satisfy policy %s", sf.policyName)
 		}
@@ -111,5 +126,6 @@ func (sf *SigFilter) Update(config FilterConfig) error {
 	sf.clientSignatureVerificationRequired = config.GetClientSignatureVerificationRequired()
 	sf.channelID = config.GetChannelID()
 	sf.policyManager = config.GetPolicyManager()
+	sf.mspManager = config.GetMSPManager()
 	return nil
 }
