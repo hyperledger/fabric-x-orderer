@@ -9,6 +9,7 @@ package requestfilter_test
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/msp"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -162,4 +163,83 @@ func TestSigFilterType(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, common.HeaderType_MESSAGE, reqType)
 	})
+}
+
+// stubDeserializer records how many times a signature set is converted into identities.
+type stubDeserializer struct {
+	calls int
+}
+
+func (s *stubDeserializer) DeserializeIdentity(identity *msppb.Identity) (msp.Identity, error) {
+	s.calls++
+	return &stubIdentity{}, nil
+}
+
+func (s *stubDeserializer) GetKnownDeserializedIdentity(id msp.IdentityIdentifier) msp.Identity {
+	return nil
+}
+
+func (s *stubDeserializer) IsWellFormed(identity *msppb.Identity) error {
+	return nil
+}
+
+// stubIdentity is the identity a stubDeserializer hands back; only Verify is exercised.
+type stubIdentity struct {
+	msp.Identity
+}
+
+func (s *stubIdentity) GetIdentifier() *msp.IdentityIdentifier {
+	return &msp.IdentityIdentifier{Mspid: "org1", Id: "client"}
+}
+
+func (s *stubIdentity) Verify(msg []byte, sig []byte) error {
+	return nil
+}
+
+func TestSigVerifyEvaluatesIdentitiesOnce(t *testing.T) {
+	// Scenario:
+	// 1. A filter config carries both a policy manager and an MSP manager.
+	// 2. A structured request signed by org1 is verified.
+	// 3. The signer is deserialized exactly once, not once per policy the tree tries.
+	// 4. The policy is handed the resulting identity, so no sub-policy re-checks the signature.
+	var v requestfilter.RulesVerifier
+	fc := &mocks.FakeFilterConfig{}
+	pm := &policyMock.FakePolicyManager{}
+	p := &policyMock.FakePolicyEvaluator{}
+	deserializer := &stubDeserializer{}
+
+	pm.GetPolicyReturns(p, true)
+	fc.GetPolicyManagerReturns(pm)
+	fc.GetMSPManagerReturns(deserializer)
+	fc.GetClientSignatureVerificationRequiredReturns(true)
+
+	v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
+
+	_, err := v.VerifyStructureAndClassify(tx.CreateStructuredRequest([]byte("data")))
+	require.NoError(t, err)
+	require.Equal(t, 1, p.EvaluateIdentitiesCallCount())
+	require.Equal(t, 0, p.EvaluateSignedDataCallCount())
+	require.Equal(t, 1, deserializer.calls)
+}
+
+func TestSigVerifyWithoutMSPManagerEvaluatesSignedData(t *testing.T) {
+	// Scenario:
+	// 1. A filter config carries a policy manager but no MSP manager.
+	// 2. A structured request signed by org1 is verified.
+	// 3. The signature set cannot be converted, so the policy evaluates the set itself.
+	var v requestfilter.RulesVerifier
+	fc := &mocks.FakeFilterConfig{}
+	pm := &policyMock.FakePolicyManager{}
+	p := &policyMock.FakePolicyEvaluator{}
+
+	pm.GetPolicyReturns(p, true)
+	fc.GetPolicyManagerReturns(pm)
+	fc.GetClientSignatureVerificationRequiredReturns(true)
+
+	v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
+
+	_, err := v.VerifyStructureAndClassify(tx.CreateStructuredRequest([]byte("data")))
+	require.NoError(t, err)
+	require.Equal(t, 1, p.EvaluateSignedDataCallCount())
+	require.Equal(t, 0, p.EvaluateIdentitiesCallCount())
 }

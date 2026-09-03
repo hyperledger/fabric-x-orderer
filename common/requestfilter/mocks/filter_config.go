@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 )
 
@@ -28,6 +29,16 @@ type FakeFilterConfig struct {
 	}
 	getClientSignatureVerificationRequiredReturnsOnCall map[int]struct {
 		result1 bool
+	}
+	GetMSPManagerStub        func() msp.IdentityDeserializer
+	getMSPManagerMutex       sync.RWMutex
+	getMSPManagerArgsForCall []struct {
+	}
+	getMSPManagerReturns struct {
+		result1 msp.IdentityDeserializer
+	}
+	getMSPManagerReturnsOnCall map[int]struct {
+		result1 msp.IdentityDeserializer
 	}
 	GetPolicyManagerStub        func() policies.Manager
 	getPolicyManagerMutex       sync.RWMutex
@@ -156,6 +167,59 @@ func (fake *FakeFilterConfig) GetClientSignatureVerificationRequiredReturnsOnCal
 	}
 	fake.getClientSignatureVerificationRequiredReturnsOnCall[i] = struct {
 		result1 bool
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) GetMSPManager() msp.IdentityDeserializer {
+	fake.getMSPManagerMutex.Lock()
+	ret, specificReturn := fake.getMSPManagerReturnsOnCall[len(fake.getMSPManagerArgsForCall)]
+	fake.getMSPManagerArgsForCall = append(fake.getMSPManagerArgsForCall, struct {
+	}{})
+	stub := fake.GetMSPManagerStub
+	fakeReturns := fake.getMSPManagerReturns
+	fake.recordInvocation("GetMSPManager", []interface{}{})
+	fake.getMSPManagerMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeFilterConfig) GetMSPManagerCallCount() int {
+	fake.getMSPManagerMutex.RLock()
+	defer fake.getMSPManagerMutex.RUnlock()
+	return len(fake.getMSPManagerArgsForCall)
+}
+
+func (fake *FakeFilterConfig) GetMSPManagerCalls(stub func() msp.IdentityDeserializer) {
+	fake.getMSPManagerMutex.Lock()
+	defer fake.getMSPManagerMutex.Unlock()
+	fake.GetMSPManagerStub = stub
+}
+
+func (fake *FakeFilterConfig) GetMSPManagerReturns(result1 msp.IdentityDeserializer) {
+	fake.getMSPManagerMutex.Lock()
+	defer fake.getMSPManagerMutex.Unlock()
+	fake.GetMSPManagerStub = nil
+	fake.getMSPManagerReturns = struct {
+		result1 msp.IdentityDeserializer
+	}{result1}
+}
+
+func (fake *FakeFilterConfig) GetMSPManagerReturnsOnCall(i int, result1 msp.IdentityDeserializer) {
+	fake.getMSPManagerMutex.Lock()
+	defer fake.getMSPManagerMutex.Unlock()
+	fake.GetMSPManagerStub = nil
+	if fake.getMSPManagerReturnsOnCall == nil {
+		fake.getMSPManagerReturnsOnCall = make(map[int]struct {
+			result1 msp.IdentityDeserializer
+		})
+	}
+	fake.getMSPManagerReturnsOnCall[i] = struct {
+		result1 msp.IdentityDeserializer
 	}{result1}
 }
 
