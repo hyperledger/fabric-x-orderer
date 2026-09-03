@@ -9,11 +9,9 @@ package blkstorage
 import (
 	"bytes"
 	"fmt"
-	"path/filepath"
 	"unicode/utf8"
 
 	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/snapshot"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util/leveldbhelper"
 
@@ -30,17 +28,12 @@ const (
 	txIDIdxKeyPrefix            = 't'
 	blockNumTranNumIdxKeyPrefix = 'a'
 	indexSavePointKeyStr        = "indexCheckpointKey"
-
-	snapshotFileFormat       = byte(1)
-	snapshotDataFileName     = "txids.data"
-	snapshotMetadataFileName = "txids.metadata"
 )
 
 var (
 	indexSavePointKey              = []byte(indexSavePointKeyStr)
 	errIndexSavePointKeyNotPresent = errors.New("NoBlockIndexed")
 	errNilValue                    = errors.New("")
-	importTxIDsBatchSize           = uint64(10000) // txID is 64 bytes, so batch size roughly translates to 640KB
 )
 
 type blockIdxInfo struct {
@@ -287,118 +280,6 @@ func (index *blockIndex) getTXLocByBlockNumTranNum(blockNum uint64, tranNum uint
 		return nil, err
 	}
 	return txFLP, nil
-}
-
-func (index *blockIndex) exportUniqueTxIDs(dir string, newHashFunc snapshot.NewHashFunc) (map[string][]byte, error) {
-	if !index.isAttributeIndexed(IndexableAttrTxID) {
-		return nil, errors.New("transaction IDs not maintained in index")
-	}
-
-	dbItr, err := index.db.GetIterator([]byte{txIDIdxKeyPrefix}, []byte{txIDIdxKeyPrefix + 1})
-	if err != nil {
-		return nil, err
-	}
-	defer dbItr.Release()
-
-	var previousTxID string
-	var numTxIDs uint64 = 0
-	var dataFile *snapshot.FileWriter
-	for dbItr.Next() {
-		if err := dbItr.Error(); err != nil {
-			return nil, errors.Wrap(err, "internal leveldb error while iterating for txids")
-		}
-		txID, err := retrieveTxID(dbItr.Key())
-		if err != nil {
-			return nil, err
-		}
-		// duplicate TxID may be present in the index
-		if previousTxID == txID {
-			continue
-		}
-		previousTxID = txID
-		if numTxIDs == 0 { // first iteration, create the data file
-			dataFile, err = snapshot.CreateFile(filepath.Join(dir, snapshotDataFileName), snapshotFileFormat, newHashFunc)
-			if err != nil {
-				return nil, err
-			}
-			defer dataFile.Close()
-		}
-		if err := dataFile.EncodeString(txID); err != nil {
-			return nil, err
-		}
-		numTxIDs++
-	}
-
-	if dataFile == nil {
-		return nil, nil
-	}
-
-	dataHash, err := dataFile.Done()
-	if err != nil {
-		return nil, err
-	}
-
-	// create the metadata file
-	metadataFile, err := snapshot.CreateFile(filepath.Join(dir, snapshotMetadataFileName), snapshotFileFormat, newHashFunc)
-	if err != nil {
-		return nil, err
-	}
-	defer metadataFile.Close()
-
-	if err = metadataFile.EncodeUVarint(numTxIDs); err != nil {
-		return nil, err
-	}
-	metadataHash, err := metadataFile.Done()
-	if err != nil {
-		return nil, err
-	}
-
-	return map[string][]byte{
-		snapshotDataFileName:     dataHash,
-		snapshotMetadataFileName: metadataHash,
-	}, nil
-}
-
-func importTxIDsFromSnapshot(
-	snapshotDir string,
-	lastBlockNumInSnapshot uint64,
-	db *leveldbhelper.DBHandle,
-) error {
-	txIDsMetadata, err := snapshot.OpenFile(filepath.Join(snapshotDir, snapshotMetadataFileName), snapshotFileFormat)
-	if err != nil {
-		return err
-	}
-	numTxIDs, err := txIDsMetadata.DecodeUVarInt()
-	if err != nil {
-		return err
-	}
-	txIDsData, err := snapshot.OpenFile(filepath.Join(snapshotDir, snapshotDataFileName), snapshotFileFormat)
-	if err != nil {
-		return err
-	}
-
-	batch := db.NewUpdateBatch()
-	for i := uint64(0); i < numTxIDs; i++ {
-		txID, err := txIDsData.DecodeString()
-		if err != nil {
-			return err
-		}
-		batch.Put(
-			constructTxIDKey(txID, lastBlockNumInSnapshot, i),
-			[]byte{},
-		)
-		if (i+1)%importTxIDsBatchSize == 0 {
-			if err := db.WriteBatch(batch, true); err != nil {
-				return err
-			}
-			batch.Reset()
-		}
-	}
-	batch.Put(indexSavePointKey, encodeBlockNum(lastBlockNumInSnapshot))
-	if err := db.WriteBatch(batch, true); err != nil {
-		return err
-	}
-	return nil
 }
 
 func constructBlockNumKey(blockNum uint64) []byte {
