@@ -37,6 +37,7 @@ type MemPool interface {
 	RequestCount() int64
 	Close()
 	Prune(predicate func([]byte) error)
+	Contains(reqID string) bool
 }
 
 //go:generate counterfeiter -o mocks/state_provider.go . StateProvider
@@ -59,6 +60,9 @@ type Complainer interface {
 // BatchedRequestsVerifier verifies batched requests
 type BatchedRequestsVerifier interface {
 	VerifyBatchedRequests(types.BatchedRequests) error
+	// VerifyRequest verifies a single request unconditionally (it does not consult
+	// the mem pool), unlike VerifyBatchedRequests which skips already-pooled requests.
+	VerifyRequest(req []byte) error
 }
 
 //go:generate counterfeiter -o mocks/batch_acker.go . BatchAcker
@@ -269,7 +273,25 @@ func (b *BatcherRole) ResubmitPendingBAFs(state *state.State, prevPrimary types.
 			if batch == nil {
 				b.Logger.Panicf("Error: No such batch; pending BAF signed by me (id: %d) from primary: %d ; %s", b.ID, baf.Primary(), baf.String())
 			}
+			// These requests are read from an old ledger batch. If the BAF was created
+			// under an older config, the channel policies may have changed since, so the
+			// requests are not guaranteed to still satisfy the current policy. They must
+			// be re-verified before being resubmitted to the pool: the secondary pull
+			// path treats pool membership as "already verified under the current config"
+			// and skips re-verifying pooled requests, so an unverified request must never
+			// enter the pool. When the BAF is from the current config (e.g. a plain term
+			// change) the requests were already verified under it, so re-verification is
+			// unnecessary.
+			reverify := baf.ConfigSequence() < b.ConfigSequenceGetter.ConfigSequence()
 			for _, req := range batch.Requests() {
+				if reverify {
+					// Verify one request at a time so a single offending request is dropped
+					// without discarding the rest of the batch.
+					if err := b.BatchedRequestsVerifier.VerifyRequest(req); err != nil {
+						b.Logger.Errorf("Dropping request that failed verification under the current config before resubmitting to pool; err: %v", err)
+						continue
+					}
+				}
 				if err := b.MemPool.Submit(req); err != nil {
 					if strings.Contains(err.Error(), "already inserted") {
 						b.Logger.Debugf("Failed submitting request to pool; err: %v", err)
