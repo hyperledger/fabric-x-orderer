@@ -383,7 +383,7 @@ func (pi *PartitionPrefetchIndex) evictOldestBatch() error {
 		return err
 	}
 	pi.metrics.updatePrefetchIndexSize(pi.partition.Shard, -batchSizeBytes(batch))
-	pi.metrics.prefetchIndexEvictionsTotal.Add(1)
+	pi.metrics.prefetchIndexCacheEvictionsTotal.Add(1)
 	pi.stateCond.Broadcast()
 	return nil
 }

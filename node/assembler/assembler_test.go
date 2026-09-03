@@ -542,3 +542,113 @@ func TestAssembler_InitLedgerDoesNotSyncWhenConfigBlockAlreadyInLedger(t *testin
 	test.StopAssembler()
 	test.WaitAssemblerStopped(t)
 }
+
+// TestAssembler_InitLedgerGetTxCount verifies GetTxCount() with a non-empty ledger,
+// both on restart without sync and when a missing block is synced.
+func TestAssembler_InitLedgerGetTxCount(t *testing.T) {
+	shards := []types.ShardID{1}
+	parties := []types.PartyID{1}
+	genesis := utils.EmptyGenesisBlock("arma")
+
+	t.Run("restart without sync", func(t *testing.T) {
+		test := setupAssemblerTest(t, shards, parties, parties[0], genesis)
+
+		al, err := node_ledger.NewAssemblerLedger(test.logger, test.ledgerDir)
+		require.NoError(t, err)
+		require.NoError(t, al.Ledger.Append(genesis))
+
+		batch := createTestBatchWithSize(1, 1, 1, []int{8, 8})
+		block := &common.Block{
+			Header: &common.BlockHeader{
+				Number:       1,
+				PreviousHash: protoutil.BlockHeaderHash(genesis.Header),
+				DataHash:     batch.Digest(),
+			},
+			Data: &common.BlockData{Data: batch.Requests()},
+		}
+		protoutil.InitBlockMetadata(block)
+
+		md, err := node_ledger.AssemblerBlockMetadataToBytes(
+			batch,
+			&state.OrderingInformation{
+				DecisionNum: 1,
+				BatchIndex:  0,
+				BatchCount:  1,
+			},
+			3, // genesis + 2 data transactions
+		)
+		require.NoError(t, err)
+		block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = md
+
+		require.NoError(t, al.Ledger.Append(block))
+		al.Close()
+
+		test.StartAssembler()
+		test.WaitAssemblerRunning(t)
+
+		require.Equal(t, uint64(3), test.assembler.GetTxCount())
+		require.Equal(t, 0, test.synchronizerFactoryMock.CreateSynchronizerCallCount())
+
+		test.StopAssembler()
+		test.WaitAssemblerStopped(t)
+	})
+
+	t.Run("catch-up with sync", func(t *testing.T) {
+		configBlock := tx.CreateConfigBlock(2, []byte("config block data"))
+		test := setupAssemblerTest(t, shards, parties, parties[0], configBlock)
+
+		al, err := node_ledger.NewAssemblerLedger(test.logger, test.ledgerDir)
+		require.NoError(t, err)
+		require.NoError(t, al.Ledger.Append(genesis))
+
+		batch := createTestBatchWithSize(1, 1, 1, []int{8, 8})
+		block := &common.Block{
+			Header: &common.BlockHeader{
+				Number:       1,
+				PreviousHash: protoutil.BlockHeaderHash(genesis.Header),
+				DataHash:     batch.Digest(),
+			},
+			Data: &common.BlockData{Data: batch.Requests()},
+		}
+		protoutil.InitBlockMetadata(block)
+
+		md, err := node_ledger.AssemblerBlockMetadataToBytes(
+			batch,
+			&state.OrderingInformation{
+				DecisionNum: 1,
+				BatchIndex:  0,
+				BatchCount:  1,
+			},
+			3, // genesis + 2 data transactions
+		)
+		require.NoError(t, err)
+		block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = md
+
+		require.NoError(t, al.Ledger.Append(block))
+		al.Close()
+
+		test.synchronizerFactoryMock.CreateSynchronizerCalls(
+			func(_ *flogging.FabricLogger, _ uint64, _ orderer_config.Cluster,
+				support synchronizer.AssemblerSupport, _ bccsp.BCCSP, _ uint64,
+				bootConfigBlock *common.Block, _ commonsync.VerifierFactory,
+			) synchronizer.SynchronizerWithStop {
+				fakeSync := &synchronizer_mocks.FakeSynchronizerWithStop{}
+				fakeSync.SyncCalls(func() error {
+					bootConfigBlock.Header.PreviousHash = protoutil.BlockHeaderHash(block.Header)
+					support.WriteConfigBlock(bootConfigBlock)
+					return nil
+				})
+				return fakeSync
+			},
+		)
+
+		test.StartAssembler()
+		test.WaitAssemblerRunning(t)
+
+		require.Equal(t, uint64(4), test.assembler.GetTxCount())
+		require.Equal(t, 1, test.synchronizerFactoryMock.CreateSynchronizerCallCount())
+
+		test.StopAssembler()
+		test.WaitAssemblerStopped(t)
+	})
+}

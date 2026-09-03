@@ -72,8 +72,6 @@ func (a *Assembler) GetTxCount() uint64 {
 }
 
 // LedgerHeight returns the current height of the assembler's ledger (number of committed blocks).
-// Unlike GetTxCount, it reflects the full ledger contents, including blocks that were present
-// before this assembler instance opened the ledger (e.g. a pre-seeded or previously synced ledger).
 func (a *Assembler) LedgerHeight() uint64 {
 	a.lock.RLock()
 	defer a.lock.RUnlock()

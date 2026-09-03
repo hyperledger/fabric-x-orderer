@@ -49,8 +49,8 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Help:** "The current size of the assembler prefetch index for a shard in bytes."
 
 - **Namespace:** "assembler"  
-  **Name:** "prefetch_index_evictions_total"  
-  **Help:** "The total number of evictions from the assembler prefetch index."
+  **Name:** "prefetch_index_cache_evictions_total"  
+  **Help:** "The total number of evictions from the assembler prefetch index cache."
 
 - **Namespace:** "assembler_ledger"  
   **Name:** "transaction_count_total"  
