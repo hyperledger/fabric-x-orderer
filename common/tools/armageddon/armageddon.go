@@ -15,12 +15,14 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/alecthomas/kingpin"
@@ -111,6 +113,15 @@ func (pm *protectedMap) IsEmpty() bool {
 	return len(pm.keyValMap) == 0
 }
 
+// Size reports how many keys are still in the map.  For the submit command that
+// is the number of transactions that were sent but never seen in a block, which
+// is what the verification verdict reports.
+func (pm *protectedMap) Size() int {
+	pm.mutex.Lock()
+	defer pm.mutex.Unlock()
+	return len(pm.keyValMap)
+}
+
 type CLI struct {
 	app      *kingpin.Application
 	commands map[string]*kingpin.CmdClause
@@ -121,10 +132,11 @@ type CLI struct {
 	useTLS                              *bool
 	clientSignatureVerificationRequired *bool
 	// submit command flags
-	userConfigFile **os.File
-	transactions   *int // transactions is the number of txs to be sent
-	rate           *int // rate is the number of transaction per second to be sent
-	txSize         *int // txSize is the required transaction size
+	userConfigFile        **os.File
+	transactions          *int // transactions is the number of txs to be sent
+	rate                  *int // rate is the number of transaction per second to be sent
+	txSize                *int // txSize is the required transaction size
+	submitPullFromPartyId *int // the assembler(s) to verify against; 0 = every party
 	// load command flags
 	loadUserConfigFile **os.File
 	loadTransactions   *int
@@ -174,6 +186,7 @@ func (cli *CLI) configureCommands() {
 	cli.transactions = submit.Flag("transactions", "The number of transactions to be sent").Int()
 	cli.rate = submit.Flag("rate", "The rate specifies the number of transactions per second to be sent").Int()
 	cli.txSize = submit.Flag("txSize", "The required transaction size in bytes").Default("512").Int()
+	cli.submitPullFromPartyId = submit.Flag("pullFromPartyId", "The party id of the assembler to verify against, or 0 to verify against every party").Default("1").Int()
 	commands["submit"] = submit
 
 	load := cli.app.Command("load", "Submit txs to routers and verify the routers have received the txs")
@@ -224,7 +237,11 @@ func (cli *CLI) Run(args []string) {
 
 	// "submit" command
 	case cli.commands["submit"].FullCommand():
-		submit(cli.userConfigFile, cli.transactions, cli.rate, cli.txSize)
+		// A non-zero code means verification failed (1) or submit could not run (3).
+		// Exiting here lets a caller such as a failure test fail on it.
+		if code := submit(cli.userConfigFile, cli.transactions, cli.rate, cli.txSize, cli.submitPullFromPartyId); code != 0 {
+			os.Exit(code)
+		}
 
 	// "load" command
 	case cli.commands["load"].FullCommand():
@@ -467,51 +484,145 @@ func ReadUserConfig(userConfigFile **os.File) (*UserConfig, error) {
 	return &userConfig, nil
 }
 
-// submit command makes txs and sends them to all routers
-// it also asks for blocks from some assembler (no matter who it is) to validate the txs appear in some block
-func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int) {
+// submit command makes txs and sends them to all routers, then verifies that the
+// transactions it sent really did reach a ledger.
+//
+// Verification is main's mechanism, unchanged: every tx is added to a protectedMap
+// keyed on its full payload before it is sent, and removed again when it is seen in
+// a block.  Whatever is left in the map at the end was never confirmed.  Because the
+// key is the whole payload it is unique per run and per tx, so duplicate deliveries
+// are harmless and transactions from an earlier run are never mistaken for ours.
+//
+// The only additions over verifying a single assembler are:
+//   - one map per assembler when pullFromPartyId is 0, so a transaction missing from
+//     one party's ledger is still detected;
+//   - reporting on SIGINT/SIGTERM, so a caller that stops submit on a deadline (the
+//     failure tests) still gets a verdict;
+//   - an exit code, so a missing transaction can fail a CI job.
+//
+// Returns 0 when every assembler confirmed every transaction, 1 when any did not,
+// and 3 when submit could not run at all.
+func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int, pullFromPartyId *int) int {
 	// check transaction size
 	txMinimumSize := 16 + 8 + 8
 	if *txSize < txMinimumSize {
 		fmt.Fprintf(os.Stderr, "the required tx size: %d is less than the minimum size: %d", *txSize, txMinimumSize)
-		os.Exit(3)
+		return 3
 	}
 
 	// get user config file content given as argument
 	userConfig, err := ReadUserConfig(userConfigFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
-		os.Exit(-1)
+		return 3
 	}
+
+	// which assemblers to verify against: 0 means every party, otherwise just that one
+	var parties []int
+	if *pullFromPartyId == 0 {
+		for i := range userConfig.AssemblerEndpoints {
+			parties = append(parties, i+1)
+		}
+	} else {
+		if *pullFromPartyId < 0 || *pullFromPartyId > len(userConfig.AssemblerEndpoints) {
+			fmt.Fprintf(os.Stderr, "pullFromPartyId %d out of range, only %d assembler(s) are configured", *pullFromPartyId, len(userConfig.AssemblerEndpoints))
+			return 3
+		}
+		parties = []int{*pullFromPartyId}
+	}
+
+	// one map per assembler being verified
+	txsMaps := make([]*protectedMap, len(parties))
+	for i := range txsMaps {
+		txsMaps[i] = &protectedMap{
+			keyValMap: make(map[string]bool),
+			mutex:     sync.Mutex{},
+		}
+	}
+
+	// A caller that runs submit for a fixed period stops it with a signal when its
+	// time is up.  Report the verdict on the way out instead of dying silently.
+	// The maps are mutex protected, so they can be read while the receivers still run.
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
 
 	// send txs to the routers
 	start := time.Now()
-	txsMap := &protectedMap{
-		keyValMap: make(map[string]bool),
-		mutex:     sync.Mutex{},
-	}
 
-	logger.Infof("Submit starts.....")
+	logger.Infof("Submit starts — %d txs, verifying against %d assembler(s).....", *transactions, len(parties))
 	var waitForTxToBeSentAndReceived sync.WaitGroup
-	waitForTxToBeSentAndReceived.Add(2)
+	waitForTxToBeSentAndReceived.Add(1)
 	go func() {
-		sendTxToRouters(userConfig, *transactions, *rate, *txSize, txsMap)
-		waitForTxToBeSentAndReceived.Done()
+		defer waitForTxToBeSentAndReceived.Done()
+		SendTxsToAllAvailableRouters(userConfig, *transactions, *rate, *txSize, txsMaps, "none")
+		logger.Infof("submit: all %d txs sent, waiting for ledger confirmation", *transactions)
 	}()
 
-	// receive blocks from some assembler
+	// receive blocks from every assembler being verified
+	var statsMutex sync.Mutex
 	var numOfBlocks int
 	var txDelayTimes float64
+	for i, partyId := range parties {
+		waitForTxToBeSentAndReceived.Add(1)
+		go func(idx int, pid int) {
+			defer waitForTxToBeSentAndReceived.Done()
+			blocks, delays := receiveResponseFromAssembler(userConfig, txsMaps[idx], *transactions, pid)
+			statsMutex.Lock()
+			numOfBlocks += blocks
+			txDelayTimes += delays
+			statsMutex.Unlock()
+		}(i, partyId)
+	}
+
+	allDone := make(chan struct{})
 	go func() {
-		numOfBlocks, txDelayTimes = receiveResponseFromAssembler(userConfig, txsMap, *transactions)
-		waitForTxToBeSentAndReceived.Done()
+		waitForTxToBeSentAndReceived.Wait()
+		close(allDone)
 	}()
 
-	waitForTxToBeSentAndReceived.Wait()
+	select {
+	case <-allDone:
+	case <-sigCtx.Done():
+		logger.Infof("submit: stopping on signal — reporting what has been confirmed so far")
+	}
+
 	elapsed := time.Since(start)
 	logger.Infof("Submit Finished.....")
-	// report results
-	reportResults(*transactions, elapsed, txDelayTimes, numOfBlocks, *txSize)
+
+	// report verification per assembler: whatever is left in a map was never confirmed
+	code := 0
+	for i, partyId := range parties {
+		outstanding := txsMaps[i].Size()
+		switch {
+		case outstanding == 0:
+			logger.Infof("submit: assembler %d: all %d txs confirmed", partyId, *transactions)
+		case outstanding >= *transactions:
+			// Nothing at all arrived from this assembler, which usually means it was
+			// never reachable rather than that the network lost every transaction.
+			code = 1
+			logger.Warnf("submit: assembler %d: confirmed nothing of %d txs — check whether this assembler was reachable", partyId, *transactions)
+		default:
+			// The count is what matters.  It is not phrased as a fraction of the
+			// requested total because submit may have been stopped before sending
+			// all of them, which would make such a fraction misleading.
+			code = 1
+			logger.Warnf("submit: assembler %d: %d txs were never confirmed (out of %d requested)", partyId, outstanding, *transactions)
+		}
+	}
+
+	if code == 0 {
+		logger.Infof("✅ submit: VERIFICATION PASSED — all %d txs confirmed by all %d assembler(s)", *transactions, len(parties))
+	} else {
+		logger.Warnf("⚠️  submit: VERIFICATION FAILED — see the per-assembler lines above")
+	}
+
+	// report results, averaged over the assemblers so the figures stay per-ledger.
+	// numOfBlocks is zero when submit was stopped before the receivers returned.
+	if numOfBlocks > 0 {
+		reportResults(*transactions, elapsed, txDelayTimes/float64(len(parties)), numOfBlocks/len(parties), *txSize)
+	}
+
+	return code
 }
 
 // load command makes txs and sends them to all routers
@@ -550,7 +661,11 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	}
 }
 
-func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap, signedMode string) {
+// SendTxsToAllAvailableRouters sends numOfTxs transactions to every router that is
+// reachable, at the given rate.  When txsMaps is non-empty each transaction is added
+// to every map before it is sent, which is how the submit command records what it
+// expects to see in a ledger.  load passes nil.
+func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMaps []*protectedMap, signedMode string) {
 	broadcastClient := NewBroadcastTxClient(userConfig)
 	err := broadcastClient.InitStreams()
 	if err != nil {
@@ -579,6 +694,19 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 	// open go routines for receive response from the router
 	for _, streamInfo := range broadcastClient.streamsToRouters {
 		go ReceiveResponseFromRouter(userConfig, streamInfo)
+	}
+
+	// Record the tx in every map before sending it: if it were sent first, an
+	// assembler could deliver it and the receiver remove a key that has not been
+	// added yet, leaving it in the map for good and reporting a false miss.
+	addToMaps := func(env *common.Envelope) {
+		if len(txsMaps) == 0 {
+			return
+		}
+		data, _ := tx.GetDataFromEnvelope(env)
+		for _, txsMap := range txsMaps {
+			txsMap.Add(string(data))
+		}
 	}
 
 	var signer *crypto.ECDSASigner
@@ -613,6 +741,7 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 				fmt.Fprintf(os.Stderr, "failed to send tx %d in signed mode %s", i+1, signedMode)
 				os.Exit(3)
 			}
+			addToMaps(env)
 			broadcastClient.SendTxToAllRouters(env)
 		}
 	case "short":
@@ -627,6 +756,7 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 				fmt.Fprintf(os.Stderr, "failed to send tx %d in signed mode %s", i+1, signedMode)
 				os.Exit(3)
 			}
+			addToMaps(env)
 			broadcastClient.SendTxToAllRouters(env)
 		}
 	default:
@@ -637,6 +767,7 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 				fmt.Fprintf(os.Stderr, "failed to send tx %d in unsigned mode", i+1)
 				os.Exit(3)
 			}
+			addToMaps(env)
 			broadcastClient.SendTxToAllRouters(env)
 		}
 	}
@@ -669,86 +800,6 @@ func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
 		Stop:          &ab.SeekPosition{Type: &ab.SeekPosition_Specified{Specified: &ab.SeekSpecified{Number: math.MaxUint64}}},
 		Behavior:      ab.SeekInfo_BLOCK_UNTIL_READY,
 		ErrorResponse: ab.SeekInfo_BEST_EFFORT,
-	}
-}
-
-func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
-	var gRPCRouterClientsConn []*grpc.ClientConn
-	var streams []ab.AtomicBroadcast_BroadcastClient
-
-	// create gRPC clients and streams to the routers
-	for i := 0; i < len(userConfig.RouterEndpoints); i++ {
-		// create a gRPC connection to the router
-		gRPCRouterClientConn, stream, err := createConnAndStream(userConfig, userConfig.RouterEndpoints[i])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection and stream to router %d, err: %v", i+1, err)
-			os.Exit(3)
-		}
-
-		gRPCRouterClientsConn = append(gRPCRouterClientsConn, gRPCRouterClientConn)
-		streams = append(streams, stream)
-	}
-
-	// open a go routine to check for acknowledgment
-	var wgRecv sync.WaitGroup
-	for n, s := range streams {
-		wgRecv.Add(1)
-		go func(n int, stream ab.AtomicBroadcast_BroadcastClient) {
-			defer wgRecv.Done()
-			numOfAcks := 0
-			for {
-				ack, err := stream.Recv()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "failed to receive acknowledgment from router %d: %v", n+1, err)
-					os.Exit(3)
-				}
-				if ack.Status.String() != "SUCCESS" {
-					fmt.Fprintf(os.Stderr, "failed to receive ack with success status from router %d: %v", n+1, err)
-					os.Exit(3)
-				}
-				numOfAcks = numOfAcks + 1
-				if numOfAcks == numOfTxs {
-					break
-				}
-			}
-		}(n, s)
-	}
-
-	// create a session number (16 bytes)
-	sessionNumber := make([]byte, 16)
-	_, err := rand.Read(sessionNumber)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create a session number, %v", err)
-		os.Exit(3)
-	}
-
-	// send txs to all routers, using the rate limiter bucket
-	fillInterval := 10 * time.Millisecond
-	fillFrequency := 1000 / int(fillInterval.Milliseconds())
-	capacity := rate / fillFrequency
-	rl, err := NewRateLimiter(rate, fillInterval, capacity)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to start a rate limiter, err: %v\n", err)
-		os.Exit(3)
-	}
-	for i := 0; i < numOfTxs; i++ {
-		status := rl.GetToken()
-		if !status {
-			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
-			os.Exit(3)
-		}
-		sendTx(txsMap, streams, i, txSize, sessionNumber)
-	}
-	rl.Stop()
-
-	wgRecv.Wait()
-
-	// close gRPC connections
-	for i, conn := range gRPCRouterClientsConn {
-		if err := conn.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to close gRPC connection to router %d: %v", i+1, err)
-			os.Exit(3)
-		}
 	}
 }
 
@@ -989,22 +1040,6 @@ func calculateDelayOfTx(data []byte, acceptedTime time.Time) time.Duration {
 	return delayTime
 }
 
-func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
-	env := tx.PrepareUnsignedEnvelope(i, txSize, sessionNumber)
-	data, _ := tx.GetDataFromEnvelope(env)
-	if txsMap != nil {
-		logger.Debugf("Add tx %x to the map", data)
-		txsMap.Add(string(data))
-	}
-	for j := 0; j < len(streams); j++ {
-		err := streams[j].Send(env)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to send tx to router %d: %v", j+1, err)
-			os.Exit(3)
-		}
-	}
-}
-
 func reportResults(transactions int, elapsed time.Duration, txDelayTimesResult float64, numOfBlocksResult int, txSize int) {
 	avgTxRate := float64(transactions) / elapsed.Seconds()
 	avgTxDelay := txDelayTimesResult / float64(transactions)
@@ -1131,10 +1166,7 @@ func createDeliverRequestWithSeekInfo(userConfig *UserConfig, startSeq uint64) (
 
 // receiveResponseFromAssembler is used by the submit command, which is a short-lived operation.
 // Unlike pullBlocksFromAssemblerAndCollectStatistics, no reconnect logic is supported.
-func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
-	// arbitrarily choose the first assembler to pull blocks from
-	pullFromPartyId := 1
-
+func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int, pullFromPartyId int) (int, float64) {
 	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
@@ -1153,55 +1185,65 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 		DialTimeout: time.Second * 5,
 	}
 
-	requestEnvelope, err := createDeliverRequestWithSeekInfo(userConfig, 0)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create a request envelope: %v", err)
-		os.Exit(3)
-	}
-
 	var stream ab.AtomicBroadcast_DeliverClient
 	var gRPCAssemblerClientConn *grpc.ClientConn
 	endpointToPullFrom := userConfig.AssemblerEndpoints[pullFromPartyId-1]
 
-	gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection to assembler %d: %v", pullFromPartyId, err)
-		os.Exit(3)
+	// connect opens a deliver stream starting at fromBlock, retrying until it
+	// succeeds.  An assembler being restarted is a normal condition for the callers
+	// of this function, both when submit starts and while it runs, so giving up
+	// would abandon that assembler for the rest of the run.
+	connect := func(fromBlock uint64) {
+		for {
+			requestEnvelope, err := createDeliverRequestWithSeekInfo(userConfig, fromBlock)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to create a request envelope: %v\n", err)
+				os.Exit(3)
+			}
+
+			gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
+			if err == nil {
+				stream, err = ab.NewAtomicBroadcastClient(gRPCAssemblerClientConn).Deliver(context.TODO())
+				if err == nil {
+					if err = stream.Send(requestEnvelope); err == nil {
+						if fromBlock > 0 {
+							logger.Infof("submit: reconnected to assembler %d, resuming from block %d", pullFromPartyId, fromBlock)
+						}
+						return
+					}
+				}
+				_ = gRPCAssemblerClientConn.Close()
+			}
+
+			logger.Warnf("submit: cannot pull from assembler %d: %v — retrying in 1s", pullFromPartyId, err)
+			time.Sleep(time.Second)
+		}
 	}
 
-	abc := ab.NewAtomicBroadcastClient(gRPCAssemblerClientConn)
-
-	// create a deliver stream
-	stream, err = abc.Deliver(context.TODO())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create a deliver stream to assembler %d: %v", pullFromPartyId, err)
-		os.Exit(3)
-	}
-
-	// send request envelope
-	err = stream.Send(requestEnvelope)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to send a request envelope to assembler %d: %v", pullFromPartyId, err)
-		os.Exit(3)
-	}
+	connect(0)
 
 	// pull blocks from assembler
 	numOfBlocksCalculated := 0
 	numOfTxsCalculated := 0
+	lastBlockNum := uint64(0)
 	var sumOfDelayTimes float64
 	for {
 		block, err := pullBlock(stream, endpointToPullFrom)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", pullFromPartyId, err)
+			// The assembler is down or restarting.  Reconnect and carry on from the
+			// block after the last one seen rather than aborting the whole run.
+			logger.Warnf("submit: lost connection to assembler %d: %v", pullFromPartyId, err)
 			_ = stream.CloseSend()
 			_ = gRPCAssemblerClientConn.Close()
-			os.Exit(3)
+			connect(lastBlockNum + 1)
+			continue
 		}
 
 		if block.Header.Number == 0 {
 			continue
 		}
 
+		lastBlockNum = block.Header.Number
 		currentTime := time.Now()
 		numOfBlocksCalculated += 1
 
