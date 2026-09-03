@@ -166,7 +166,29 @@ type RouterParams struct {
 	NumberOfConnectionsPerBatcher int `yaml:"NumberOfConnectionsPerBatcher,omitempty"`
 	// NumberOfStreamsPerConnection specifies the number of streams per connection that are opened between Router and Batcher
 	NumberOfStreamsPerConnection int `yaml:"NumberOfStreamsPerConnection,omitempty"`
+	// Throttling configures request rate limiting. When omitted, throttling is disabled.
+	Throttling *ThrottlingParams `yaml:"Throttling,omitempty"`
 }
+
+// ThrottlingParams configures the router's request throttling. The Policy field
+// selects the strategy and keeps the config schema stable as new strategies are
+// added (e.g. per-client/per-org in a later phase); Rate and Burst parameterize
+// the rate limiter.
+type ThrottlingParams struct {
+	// Policy selects the throttling strategy: "disabled" (default) or "global".
+	Policy string `yaml:"Policy,omitempty"`
+	// Rate is the aggregate cap in requests/second across all clients (global policy).
+	Rate int `yaml:"Rate,omitempty"`
+	// Burst is the token-bucket capacity. When 0 it defaults to Rate (one second of tokens).
+	Burst int `yaml:"Burst,omitempty"`
+}
+
+// Throttling policy names (mirrored by the ThrottlingDisabled/ThrottlingGlobal
+// constants consumed in node/router).
+const (
+	ThrottlingPolicyDisabled = "disabled"
+	ThrottlingPolicyGlobal   = "global"
+)
 
 type ConsensusParams struct {
 	//  WALDir specifies the location at which Write Ahead Logs for SmartBFT are stored
@@ -567,6 +589,17 @@ func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *fl
 		if nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection == 0 {
 			nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection = DefaultRouterParams.NumberOfStreamsPerConnection
 			logger.Infof("Router.NumberOfStreamsPerConnection is not set, using default value: %d", nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection)
+		}
+
+		if t := nodeLocalConfig.RouterParams.Throttling; t != nil {
+			if t.Policy == "" {
+				t.Policy = ThrottlingPolicyDisabled
+				logger.Infof("Router.Throttling.Policy is not set, using default value: %q", t.Policy)
+			}
+			if t.Policy == ThrottlingPolicyGlobal && t.Rate > 0 && t.Burst == 0 {
+				t.Burst = t.Rate
+				logger.Infof("Router.Throttling.Burst is not set, defaulting to Rate: %d", t.Burst)
+			}
 		}
 
 	case BatcherStr:
