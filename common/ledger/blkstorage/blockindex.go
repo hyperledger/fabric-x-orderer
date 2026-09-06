@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util/leveldbhelper"
@@ -138,6 +139,34 @@ func (index *blockIndex) indexBlock(blockIdxInfo *blockIdxInfo) error {
 		return err
 	}
 	return nil
+}
+
+// addEntriesToBeDeleted queues the removal of every index entry indexBlock adds for one block. It deletes
+// the same keys under the same attributes, so an attribute that was never indexed is never deleted from.
+// The savepoint is not touched: it records how far indexing has reached, which pruning the front does not
+// change.
+func (index *blockIndex) addEntriesToBeDeleted(batch *leveldbhelper.UpdateBatch, blockInfo *serializedBlockInfo) {
+	blkNum := blockInfo.blockHeader.Number
+
+	if index.isAttributeIndexed(IndexableAttrBlockHash) {
+		batch.Delete(constructBlockHashKey(protoutil.BlockHeaderHash(blockInfo.blockHeader)))
+	}
+
+	if index.isAttributeIndexed(IndexableAttrBlockNum) {
+		batch.Delete(constructBlockNumKey(blkNum))
+	}
+
+	if index.isAttributeIndexed(IndexableAttrTxID) {
+		for i, txOffset := range blockInfo.txOffsets {
+			batch.Delete(constructTxIDKey(txOffset.txID, blkNum, uint64(i)))
+		}
+	}
+
+	if index.isAttributeIndexed(IndexableAttrBlockNumTranNum) {
+		for i := range blockInfo.txOffsets {
+			batch.Delete(constructBlockNumTranNumKey(blkNum, uint64(i)))
+		}
+	}
 }
 
 func (index *blockIndex) isAttributeIndexed(attribute IndexableAttr) bool {

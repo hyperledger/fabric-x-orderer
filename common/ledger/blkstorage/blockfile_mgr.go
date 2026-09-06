@@ -41,7 +41,7 @@ type blockfileMgr struct {
 	bcInfo            atomic.Value
 	cache             *cache
 
-	// pruner owns the prune info (see prune_mgr.go).
+	// pruner owns the prune info and the pruning operation (see prune_mgr.go).
 	pruner *pruneMgr
 }
 
@@ -135,8 +135,9 @@ func newBlockfileMgr(id string, conf *Conf, indexConfig *IndexConfig, indexStore
 	mgr.currentFileWriter = currentFileWriter
 	mgr.blkfilesInfoCond = sync.NewCond(&sync.Mutex{})
 
-	// Construct the pruner before syncIndex,  a pruned ledger's block files no longer start at blockfile_000000.
-	if mgr.pruner, err = newPruneMgr(rootDir); err != nil {
+	// Construct the pruner before syncIndex, since a pruned ledger's block files no longer start at
+	// blockfile_000000 and the index rebuild has to know where they do start.
+	if mgr.pruner, err = newPruneMgr(rootDir, mgr.index); err != nil {
 		return nil, err
 	}
 
@@ -497,9 +498,13 @@ func (mgr *blockfileMgr) retrieveBlockByNumber(blockNum uint64) (*common.Block, 
 	}
 	loc, err := mgr.index.getBlockLocByBlockNum(blockNum)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
-	return mgr.fetchBlock(loc)
+	block, err := mgr.fetchBlock(loc)
+	if err != nil {
+		return nil, mgr.errAfterFailedRead(blockNum, err)
+	}
+	return block, nil
 }
 
 func (mgr *blockfileMgr) retrieveBlockByTxID(txID string) (*common.Block, error) {
@@ -527,11 +532,11 @@ func (mgr *blockfileMgr) retrieveBlockHeaderByNumber(blockNum uint64) (*common.B
 	}
 	loc, err := mgr.index.getBlockLocByBlockNum(blockNum)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
 	blockBytes, err := mgr.fetchBlockBytes(loc)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
 
 	return extractSerializedBlockHeader(blockBytes)
@@ -567,9 +572,13 @@ func (mgr *blockfileMgr) retrieveTransactionByBlockNumTranNum(blockNum uint64, t
 	}
 	loc, err := mgr.index.getTXLocByBlockNumTranNum(blockNum, tranNum)
 	if err != nil {
-		return nil, err
+		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
-	return mgr.fetchTransactionEnvelope(loc)
+	envelope, err := mgr.fetchTransactionEnvelope(loc)
+	if err != nil {
+		return nil, mgr.errAfterFailedRead(blockNum, err)
+	}
+	return envelope, nil
 }
 
 func (mgr *blockfileMgr) fetchBlock(lp *fileLocPointer) (*common.Block, error) {
@@ -646,6 +655,33 @@ func (mgr *blockfileMgr) saveBlkfilesInfo(i *blockfilesInfo, sync bool) error {
 		return err
 	}
 	return nil
+}
+
+// pruneBefore reads the tail pointer and hands the work to the pruner. The read happens here because the
+// lock that guards blockfilesInfo lives here, and it is released before any file I/O.
+func (mgr *blockfileMgr) pruneBefore(blockNum uint64) error {
+	return mgr.pruner.pruneBefore(blockNum, mgr.currentBlockfilesInfo())
+}
+
+// currentBlockfilesInfo returns a copy of the tail pointer, so that a caller can reason about a stable view
+// of it. The lock is held only for the copy: appends update blockfilesInfo under it, and holding it across
+// file I/O would stall every blocking iterator.
+func (mgr *blockfileMgr) currentBlockfilesInfo() *blockfilesInfo {
+	mgr.blkfilesInfoCond.L.Lock()
+	defer mgr.blkfilesInfoCond.L.Unlock()
+	info := *mgr.blockfilesInfo
+	return &info
+}
+
+// errAfterFailedRead re-checks availability after a read that had already passed the availability check
+// failed. Pruning deletes index entries and unlinks block files while readers run, so a read can resolve a
+// block, lose the race, and trip over the debris; the caller must hear that the block was pruned rather
+// than that a file is missing.
+func (mgr *blockfileMgr) errAfterFailedRead(blockNum uint64, err error) error {
+	if unavailable := mgr.checkBlockAvailable(blockNum); unavailable != nil {
+		return unavailable
+	}
+	return err
 }
 
 // checkBlockAvailable reports whether the store can serve the given block number, returning nil when it can.
