@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 	"github.com/pkg/errors"
 )
@@ -19,24 +20,53 @@ import (
 // still on disk.
 var ErrPruned = errors.New("block has been pruned")
 
+// LastConfigBlockLocator returns the number of the newest config block at or before the given block, and
+// whether there is one. Which block is a config block is the caller's knowledge, not the block store's: an
+// assembler ledger reads a block's LAST_CONFIG metadata, while on a consensus ledger the config block is
+// nested inside a decision.
+//
+// found is a separate result rather than a sentinel number, because block 0 is the config block of a ledger
+// that has never been reconfigured. A batcher's ledger holds batches and no configuration at all, so it is
+// opened without a locator.
+//
+// It is given once, when the store is opened: a locator that varied between prunes could let one prune hide
+// a newer config block without keeping it.
+type LastConfigBlockLocator func(block *common.Block) (blockNum uint64, found bool, err error)
+
 // pruneMgr owns the prune info -- the live value readers consult, and the store that makes it durable --
 // and the removal of the block files a new bound covers.
 type pruneMgr struct {
 	rootDir string
 	index   *blockIndex
 
-	// store is only touched by setInfo, under mutex.
+	// locateLastConfig is nil for a ledger that holds no config blocks.
+	locateLastConfig LastConfigBlockLocator
+
+	// readBlockBytes reads a block the ledger still holds, in the block store's own serialization. Retaining
+	// a config block has to read it before the bound that hides it is published, and copies its bytes as they
+	// are.
+	readBlockBytes func(blockNum uint64) ([]byte, error)
+
+	// store is only touched while the ledger opens, and under mutex.
 	store *pruneStore
 
 	// info is held atomically so that read guards can consult it without locking, and is non-nil once the
 	// manager is constructed.
 	info atomic.Pointer[pruneInfo]
 
+	// retained is the decoded retained config block, or nil, so that reading it never touches the prune store.
+	retained atomic.Pointer[retainedBlock]
+
 	// mutex serializes pruneBefore against itself, which is what setInfo requires of its caller.
 	mutex sync.Mutex
 }
 
-func newPruneMgr(rootDir string, index *blockIndex) (*pruneMgr, error) {
+func newPruneMgr(
+	rootDir string,
+	index *blockIndex,
+	readBlockBytes func(blockNum uint64) ([]byte, error),
+	locateLastConfig LastConfigBlockLocator,
+) (*pruneMgr, error) {
 	store := newPruneStore(rootDir)
 
 	// A ledger that has never been pruned has nothing stored, which reads as a zero bound.
@@ -45,9 +75,42 @@ func newPruneMgr(rootDir string, index *blockIndex) (*pruneMgr, error) {
 		return nil, err
 	}
 
-	p := &pruneMgr{rootDir: rootDir, index: index, store: store}
+	p := &pruneMgr{
+		rootDir:          rootDir,
+		index:            index,
+		locateLastConfig: locateLastConfig,
+		readBlockBytes:   readBlockBytes,
+		store:            store,
+	}
+	if info.retained.present {
+		block, err := p.loadRetainedBlock(info.retained.blockNum)
+		if err != nil {
+			return nil, err
+		}
+		p.retained.Store(&retainedBlock{blockNum: info.retained.blockNum, block: block})
+	}
 	p.info.Store(info)
 	return p, nil
+}
+
+// retainedBlock pairs a retained config block with its number, so readers load both at once.
+type retainedBlock struct {
+	blockNum uint64
+	block    *common.Block
+}
+
+// loadRetainedBlock reads and decodes the retained config block. The prune info names it, so a copy that
+// cannot be read fails the open.
+func (p *pruneMgr) loadRetainedBlock(blockNum uint64) (*common.Block, error) {
+	blockBytes, err := p.store.getConfigBlock(blockNum)
+	if err != nil {
+		return nil, err
+	}
+	block, err := deserializeBlock(blockBytes)
+	if err != nil {
+		return nil, errors.WithMessagef(err, "error decoding retained config block [%d]", blockNum)
+	}
+	return block, nil
 }
 
 // pruneBefore removes the block files whose blocks all lie below blockNum, and refuses reads below it.
@@ -57,13 +120,16 @@ func newPruneMgr(rootDir string, index *blockIndex) (*pruneMgr, error) {
 //
 // The algorithm:
 //
-//  1. Take the prune mutex, and sweep any file left behind below the lowest one the info records.
-//  2. Count the files that lie entirely below the capped request.
-//  3. If none qualify, persist the new bound alone, or return if the bound did not move either.
-//  4. Otherwise remove each counted file, advancing the durable info ahead of each removal.
+//  1. Take the prune mutex, and sweep any file left behind below the lowest one the info records, and any
+//     config block copy it does not retain.
+//  2. Retain the config block the new bound would hide, before anything is removed or hidden.
+//  3. Count the files that lie entirely below the capped request.
+//  4. If none qualify, persist the new bound alone, or return if nothing moved at all.
+//  5. Otherwise remove each counted file, advancing the durable info ahead of each removal, and drop the
+//     config blocks the retained one has superseded.
 //
 // A call that stops partway keeps the bound it reached and the files it removed; the next call counts again
-// to find the rest, which is why step 2 cannot be skipped when the bound is unchanged.
+// to find the rest, which is why step 3 cannot be skipped when the bound is unchanged.
 func (p *pruneMgr) pruneBefore(blockNum uint64, tail *blockfilesInfo) error {
 	if tail.noBlockFiles {
 		return nil
@@ -100,6 +166,19 @@ func (p *pruneMgr) pruneBefore(blockNum uint64, tail *blockfilesInfo) error {
 	bound := min(blockNum, tail.lastPersistedBlock)
 	firstAvailable := max(current.firstReadableBlockNum, bound)
 
+	// Retaining comes before any removal, since the block to retain may well be in the first file to go.
+	retained, retainedCopy, err := p.retainConfigBlock(current, firstAvailable)
+	if err != nil {
+		return err
+	}
+	newInfo := func(firstStoredBlockfileNum int) *pruneInfo {
+		return &pruneInfo{
+			firstReadableBlockNum:   firstAvailable,
+			firstStoredBlockfileNum: firstStoredBlockfileNum,
+			retained:                retained,
+		}
+	}
+
 	lowestFile := current.firstStoredBlockfileNum
 	eligible, err := p.countEligibleFiles(bound, lowestFile, tail)
 	if err != nil {
@@ -113,10 +192,11 @@ func (p *pruneMgr) pruneBefore(blockNum uint64, tail *blockfilesInfo) error {
 		}
 		// The request falls inside the lowest file, so only the bound moves.
 		logger.Infof("Pruned blocks below [%d]; no block file became eligible", firstAvailable)
-		return p.setInfo(&pruneInfo{
-			firstReadableBlockNum:   firstAvailable,
-			firstStoredBlockfileNum: lowestFile,
-		})
+		if err := p.setInfo(newInfo(lowestFile), retainedCopy); err != nil {
+			return err
+		}
+		p.store.dropConfigBlocksExcept(retained)
+		return nil
 	}
 
 	// Block numbers run on across files, so a file holds the blocks from its own first one up to the first
@@ -130,14 +210,97 @@ func (p *pruneMgr) pruneBefore(blockNum uint64, tail *blockfilesInfo) error {
 		if err != nil {
 			return err
 		}
-		if err := p.pruneBlockfile(f, from, to, firstAvailable); err != nil {
+		if err := p.setInfo(newInfo(f+1), retainedCopy); err != nil {
+			return err
+		}
+		if err := p.pruneBlockfile(f, from, to); err != nil {
 			return err
 		}
 		from = to
 	}
 
+	p.store.dropConfigBlocksExcept(retained)
+
 	logger.Infof("Pruned blocks below [%d]; removed block files [%d] to [%d]",
 		firstAvailable, lowestFile, lowestFile+eligible-1)
+	return nil
+}
+
+// retainConfigBlock copies the newest config block that the new bound would hide into the prune store, and
+// returns what the prune info should record for it. What is already retained is returned unchanged when there
+// is nothing new to keep: when the ledger holds no config blocks, when the bound did not move, or when the
+// config block the bound needs stays readable on its own.
+//
+// The block handed to the locator is the one at the new bound, the lowest that stays readable. That is enough
+// for a node resuming from the ledger, which needs the newest config block at or before its *last* block: if
+// that one were below the bound, then no config block lies between the bound and the last block, so the
+// bound's own config ancestor is that same block.
+//
+// A config block that is neither readable nor the one already retained fails the whole prune. That means an
+// earlier prune hid it, so the ledger is already one a node cannot resume from -- which pruning further would
+// only bury deeper, and which the caller should hear about rather than have papered over.
+func (p *pruneMgr) retainConfigBlock(
+	current *pruneInfo, firstAvailable uint64,
+) (retainedConfig, *retainedBlock, error) {
+	unchanged := func() (retainedConfig, *retainedBlock, error) {
+		return current.retained, p.retained.Load(), nil
+	}
+	if p.locateLastConfig == nil || firstAvailable == current.firstReadableBlockNum {
+		return unchanged()
+	}
+
+	boundBytes, err := p.readBlockBytes(firstAvailable)
+	if err != nil {
+		return retainedConfig{}, nil, errors.WithMessagef(err,
+			"cannot read block [%d] to find its config block", firstAvailable)
+	}
+	boundBlock, err := deserializeBlock(boundBytes)
+	if err != nil {
+		return retainedConfig{}, nil, errors.WithMessagef(err,
+			"cannot decode block [%d] to find its config block", firstAvailable)
+	}
+	configNum, found, err := p.locateLastConfig(boundBlock)
+	if err != nil {
+		return retainedConfig{}, nil, errors.WithMessagef(err,
+			"cannot locate the config block of block [%d]", firstAvailable)
+	}
+
+	// A ledger of batches has no configuration to keep; above the bound it needs no help; and the block
+	// already retained needs no second copy.
+	if !found || configNum >= firstAvailable || current.retains(configNum) {
+		return unchanged()
+	}
+
+	blockBytes, err := p.readBlockBytes(configNum)
+	if err != nil {
+		return retainedConfig{}, nil, errors.WithMessagef(err,
+			"cannot read config block [%d] to retain it", configNum)
+	}
+	configBlock, err := deserializeBlock(blockBytes)
+	if err != nil {
+		return retainedConfig{}, nil, errors.WithMessagef(err,
+			"cannot decode config block [%d] to retain it", configNum)
+	}
+	if err := p.store.saveConfigBlock(configNum, blockBytes); err != nil {
+		return retainedConfig{}, nil, err
+	}
+
+	logger.Infof("Retained config block [%d], which pruning below [%d] would otherwise remove",
+		configNum, firstAvailable)
+	return retainedConfig{blockNum: configNum, present: true},
+		&retainedBlock{blockNum: configNum, block: configBlock}, nil
+}
+
+// retainedConfigBlock returns the retained config block if blockNum names it, and nil if it does not. It is
+// the one hole in the readable bound: a block below it that reads back anyway, though only through
+// retrieveConfigBlockByNumber.
+//
+// It reads from memory. A concurrent prune that supersedes the block can at worst let it return the block
+// retained when the read began.
+func (p *pruneMgr) retainedConfigBlock(blockNum uint64) *common.Block {
+	if r := p.retained.Load(); r != nil && r.blockNum == blockNum {
+		return r.block
+	}
 	return nil
 }
 
@@ -171,20 +334,16 @@ func (p *pruneMgr) firstBlockNumAfter(fileNum int, tail *blockfilesInfo) (uint64
 	return n, nil
 }
 
-// pruneBlockfile removes one block file, which holds blocks [from, to): it records the file as gone, deletes
-// the index entries of those blocks, and only then unlinks it. Each step is durable before the next begins,
+// pruneBlockfile deletes the index entries of the blocks in one block file, [from, to), and then unlinks it.
+// Its caller has already recorded the file as gone, and each step here is durable before the next begins,
 // which is what makes an interrupted prune recoverable without a single atomic write across the three of them.
 //
-// A crash after the first step leaves a file recorded as gone, which sweepOrphans unlinks when the ledger
-// next opens. Its index entries stay behind: no read reaches them, since their blocks lie below
+// A crash before this runs leaves a file recorded as gone, which sweepOrphans unlinks when the ledger next
+// opens. Its index entries stay behind: no read reaches them, since their blocks lie below
 // firstReadableBlockNum and checkBlockAvailable refuses those before the index is consulted, and an index
-// rebuild drops them. A crash after the second step leaves the same kind of file without the entries.
-func (p *pruneMgr) pruneBlockfile(fileNum int, from, to, firstAvailable uint64) error {
-	err := p.setInfo(&pruneInfo{firstReadableBlockNum: firstAvailable, firstStoredBlockfileNum: fileNum + 1})
-	if err != nil {
-		return err
-	}
-
+// rebuild drops them. A crash between the index deletion and the unlink leaves the same kind of file without
+// the entries.
+func (p *pruneMgr) pruneBlockfile(fileNum int, from, to uint64) error {
 	batch := p.index.db.NewUpdateBatch()
 	p.index.addBlockNumDeletions(batch, from, to)
 	if err := p.index.db.WriteBatch(batch, true); err != nil {
@@ -201,9 +360,13 @@ func (p *pruneMgr) pruneBlockfile(fileNum int, from, to, firstAvailable uint64) 
 // which also collects what a failed unlink left without one. It lists the directory rather than probing from
 // zero, and syncs it once at the end.
 //
+// It also removes every config block copy the info does not retain, which an interrupted prune can leave.
+//
 // It leaves the index alone: entries such a prune did not get to delete stay behind, unreachable (see
 // pruneBlockfile).
 func (p *pruneMgr) sweepOrphans(below int) error {
+	p.store.dropConfigBlocksExcept(p.info.Load().retained)
+
 	if below == 0 {
 		return nil
 	}
@@ -252,10 +415,13 @@ func (p *pruneMgr) firstStoredBlockfileNum() int {
 //
 // It must be called under mutex, so that two prunes cannot publish their bounds in one order and remove
 // their blocks in the other.
-func (p *pruneMgr) setInfo(info *pruneInfo) error {
+//
+// retained is the block info retains, or nil, and is published with it.
+func (p *pruneMgr) setInfo(info *pruneInfo, retained *retainedBlock) error {
 	if err := p.store.saveInfo(info); err != nil {
 		return err
 	}
+	p.retained.Store(retained)
 	p.info.Store(info)
 	return nil
 }

@@ -21,18 +21,28 @@ import (
 //     it are refused whether or not the bytes happen to still be on disk.
 //   - firstStoredBlockfileNum is a physical fact: the lowest block file still present. Recovery scans start
 //     there, and the orphan sweep bounds itself by it.
+//   - retained names the one block below the bound that stays readable, held as a copy in the prune store
+//     because a node resuming from this ledger has to read its config block before it can read anything
+//     else.
 //
-// They may diverge because pruning removes whole files only.
+// The first two may diverge because pruning removes whole files only.
 // Therefore, firstReadableBlockNum is at least the firstBlockNum in firstStoredBlockfileNum.
 type pruneInfo struct {
 	firstReadableBlockNum   uint64
 	firstStoredBlockfileNum int
+	retained                retainedConfig
 }
 
+// marshal writes the fields as a varint sequence. The retained block's number comes before the flag that
+// makes it meaningful, so that a record truncated between them reads as nothing retained rather than as
+// block 0 retained: forgetting a retained block closes a hole in the bound, whereas inventing one opens a
+// read that has nothing behind it.
 func (i *pruneInfo) marshal() []byte {
 	var buf []byte
 	buf = protowire.AppendVarint(buf, i.firstReadableBlockNum)
 	buf = protowire.AppendVarint(buf, uint64(i.firstStoredBlockfileNum))
+	buf = protowire.AppendVarint(buf, i.retained.blockNum)
+	buf = protowire.AppendVarint(buf, boolToVarint(i.retained.present))
 	return buf
 }
 
@@ -58,12 +68,58 @@ func (i *pruneInfo) unmarshal(b []byte) error {
 	if n < 0 {
 		return protowire.ParseError(n)
 	}
+	position += n
 	i.firstStoredBlockfileNum = int(val)
+
+	if position == len(b) {
+		return nil
+	}
+
+	val, n = protowire.ConsumeVarint(b[position:])
+	if n < 0 {
+		return protowire.ParseError(n)
+	}
+	position += n
+	i.retained.blockNum = val
+
+	if position == len(b) {
+		return nil
+	}
+
+	val, n = protowire.ConsumeVarint(b[position:])
+	if n < 0 {
+		return protowire.ParseError(n)
+	}
+	i.retained.present = val != 0
 
 	return nil
 }
 
+// retainedConfig is what the prune info records about the config block kept below the bound, carried as one
+// value so that the number and the flag that makes it meaningful cannot be threaded apart. blockNum is
+// meaningful only when present is set: block 0 is the config block of a ledger that has never been
+// reconfigured, so it cannot double as "none retained".
+type retainedConfig struct {
+	blockNum uint64
+	present  bool
+}
+
+// retains reports whether blockNum is the config block held in the prune store.
+func (i *pruneInfo) retains(blockNum uint64) bool {
+	return i.retained.present && i.retained.blockNum == blockNum
+}
+
 func (i *pruneInfo) String() string {
-	return fmt.Sprintf("firstReadableBlockNum=[%d], firstStoredBlockfileNum=[%d]",
-		i.firstReadableBlockNum, i.firstStoredBlockfileNum)
+	return fmt.Sprintf(
+		"firstReadableBlockNum=[%d], firstStoredBlockfileNum=[%d], retainedConfigBlockNum=[%d], "+
+			"hasRetainedConfigBlock=[%t]",
+		i.firstReadableBlockNum, i.firstStoredBlockfileNum, i.retained.blockNum, i.retained.present,
+	)
+}
+
+func boolToVarint(b bool) uint64 {
+	if b {
+		return 1
+	}
+	return 0
 }
