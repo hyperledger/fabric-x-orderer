@@ -190,7 +190,7 @@ func TestRetrieveBlocksReturnsANilIteratorOnError(t *testing.T) {
 
 	store, err := env.provider.Open("testLedger")
 	require.NoError(t, err)
-	require.NoError(t, store.PruneBefore(blocksPerFileForTest))
+	require.NoError(t, store.PruneBefore(blocksPerFileForTest, nil))
 
 	itr, err := store.RetrieveBlocks(0)
 	require.ErrorIs(t, err, ErrPruned)

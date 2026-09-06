@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -70,9 +71,10 @@ func pruneFilesUpTo(t *testing.T, mgr *blockfileMgr, firstStoredBlockfileNum int
 }
 
 // newInfoOnlyPruneMgr constructs a pruneMgr for the tests that exercise only the prune info round-trip.
-// It has no index, which is enough because only pruneBefore reaches for one.
+// It has neither an index nor a way to read blocks, which is enough because only pruneBefore reaches for
+// either.
 func newInfoOnlyPruneMgr(t *testing.T, rootDir string) *pruneMgr {
-	p, err := newPruneMgr(rootDir, nil)
+	p, err := newPruneMgr(rootDir, nil, nil)
 	require.NoError(t, err)
 	return p
 }
@@ -533,7 +535,7 @@ func TestPruneBeforeOnFileBoundary(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(20))
+	require.NoError(t, mgr.pruneBefore(20, nil))
 
 	require.Equal(t, uint64(20), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 2, mgr.pruner.firstStoredBlockfileNum())
@@ -562,7 +564,7 @@ func TestPruneBeforeMidFileHidesTheBlocksItKeeps(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(25))
+	require.NoError(t, mgr.pruneBefore(25, nil))
 
 	require.Equal(t, uint64(25), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 2, mgr.pruner.firstStoredBlockfileNum())
@@ -587,7 +589,7 @@ func TestPruneBeforeAdvancesBoundWithoutRemovingAFile(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(5))
+	require.NoError(t, mgr.pruneBefore(5, nil))
 
 	require.Equal(t, uint64(5), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 0, mgr.pruner.firstStoredBlockfileNum())
@@ -607,15 +609,15 @@ func TestPruneBeforeIsIdempotentAndMonotone(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(5))
+	require.NoError(t, mgr.pruneBefore(5, nil))
 	require.Equal(t, uint64(5), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, []int{0, 1, 2, 3, 4}, blockfileNums(t, mgr.rootDir))
 
-	require.NoError(t, mgr.pruneBefore(20))
+	require.NoError(t, mgr.pruneBefore(20, nil))
 	require.Equal(t, uint64(20), mgr.pruner.firstReadableBlockNum())
 
 	for _, blockNum := range []uint64{20, 10, 0} {
-		require.NoError(t, mgr.pruneBefore(blockNum))
+		require.NoError(t, mgr.pruneBefore(blockNum, nil))
 		require.Equal(t, uint64(20), mgr.pruner.firstReadableBlockNum())
 		require.Equal(t, 2, mgr.pruner.firstStoredBlockfileNum())
 		require.Equal(t, []int{2, 3, 4}, blockfileNums(t, mgr.rootDir))
@@ -634,7 +636,7 @@ func TestPruneBeforeKeepsFileHoldingLastBlock(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(math.MaxUint64))
+	require.NoError(t, mgr.pruneBefore(math.MaxUint64, nil))
 
 	lastBlock := uint64(len(blocks) - 1)
 	require.Equal(t, lastBlock, mgr.pruner.firstReadableBlockNum())
@@ -650,7 +652,7 @@ func TestPruneBeforeKeepsFileHoldingLastBlock(t *testing.T) {
 	require.Equal(t, blocks[lastBlock], got)
 	require.Equal(t, uint64(len(blocks)), mgr.getBlockchainInfo().Height)
 
-	require.NoError(t, mgr.pruneBefore(math.MaxUint64))
+	require.NoError(t, mgr.pruneBefore(math.MaxUint64, nil))
 	require.Equal(t, lastBlock, mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, []int{4}, blockfileNums(t, mgr.rootDir))
 
@@ -672,7 +674,7 @@ func TestPruneBeforeWithEmptyActiveFile(t *testing.T) {
 	mgr := w.blockfileMgr
 	mgr.moveToNextFile()
 
-	require.NoError(t, mgr.pruneBefore(math.MaxUint64))
+	require.NoError(t, mgr.pruneBefore(math.MaxUint64, nil))
 
 	require.Equal(t, uint64(len(blocks)-1), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 4, mgr.pruner.firstStoredBlockfileNum())
@@ -699,7 +701,7 @@ func TestPruneBeforeWithEmptyActiveFile(t *testing.T) {
 func TestPruneBeforeSurvivesReopen(t *testing.T) {
 	path := t.TempDir()
 	env, w, blocks := newPrunableTestLedger(t, path, 50)
-	require.NoError(t, w.blockfileMgr.pruneBefore(25))
+	require.NoError(t, w.blockfileMgr.pruneBefore(25, nil))
 	env.provider.Close()
 
 	reopened := newTestEnv(t, NewConf(path, 0))
@@ -735,7 +737,7 @@ func TestPruneBeforeDeletesIndexEntries(t *testing.T) {
 	savepointBefore, err := mgr.index.getLastBlockIndexed()
 	require.NoError(t, err)
 
-	require.NoError(t, mgr.pruneBefore(20))
+	require.NoError(t, mgr.pruneBefore(20, nil))
 
 	for i := 0; i < 20; i++ {
 		_, err := mgr.index.getBlockLocByBlockNum(uint64(i))
@@ -761,7 +763,7 @@ func TestPruneBeforeOnEmptyLedger(t *testing.T) {
 	defer env.Cleanup()
 	mgr := newTestBlockfileWrapper(env, "testLedger").blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(10))
+	require.NoError(t, mgr.pruneBefore(10, nil))
 
 	require.Equal(t, uint64(0), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 0, mgr.pruner.firstStoredBlockfileNum())
@@ -779,7 +781,7 @@ func TestPruneBeforeWithSingleBlockfile(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(math.MaxUint64))
+	require.NoError(t, mgr.pruneBefore(math.MaxUint64, nil))
 
 	require.Equal(t, uint64(len(blocks)-1), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 0, mgr.pruner.firstStoredBlockfileNum())
@@ -797,7 +799,7 @@ func TestPruneBeforeOnSingleBlockLedger(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(math.MaxUint64))
+	require.NoError(t, mgr.pruneBefore(math.MaxUint64, nil))
 
 	require.Equal(t, uint64(0), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 0, mgr.pruner.firstStoredBlockfileNum())
@@ -821,17 +823,17 @@ func TestPruneBeforeAdvancesAcrossSuccessiveCalls(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(10))
+	require.NoError(t, mgr.pruneBefore(10, nil))
 	require.Equal(t, uint64(10), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 1, mgr.pruner.firstStoredBlockfileNum())
 	require.Equal(t, []int{1, 2, 3, 4}, blockfileNums(t, mgr.rootDir))
 
-	require.NoError(t, mgr.pruneBefore(30))
+	require.NoError(t, mgr.pruneBefore(30, nil))
 	require.Equal(t, uint64(30), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 3, mgr.pruner.firstStoredBlockfileNum())
 	require.Equal(t, []int{3, 4}, blockfileNums(t, mgr.rootDir))
 
-	require.NoError(t, mgr.pruneBefore(40))
+	require.NoError(t, mgr.pruneBefore(40, nil))
 	require.Equal(t, uint64(40), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 4, mgr.pruner.firstStoredBlockfileNum())
 	require.Equal(t, []int{4}, blockfileNums(t, mgr.rootDir))
@@ -852,13 +854,13 @@ func TestPruneBeforeAfterAppendingMoreBlocks(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(math.MaxUint64))
+	require.NoError(t, mgr.pruneBefore(math.MaxUint64, nil))
 	require.Equal(t, []int{4}, blockfileNums(t, mgr.rootDir))
 
 	mgr.moveToNextFile()
 	appended := appendBlocks(t, mgr, blocksPerFileForTest)
 
-	require.NoError(t, mgr.pruneBefore(math.MaxUint64))
+	require.NoError(t, mgr.pruneBefore(math.MaxUint64, nil))
 
 	lastBlock := uint64(len(blocks) + len(appended) - 1)
 	require.Equal(t, lastBlock, mgr.pruner.firstReadableBlockNum())
@@ -893,7 +895,7 @@ func TestPruneBeforeRepeatedlyDownToTheLastFiles(t *testing.T) {
 
 	for i := uint64(0); i < 4; i++ {
 		bound := i*100 + 99
-		require.NoError(t, mgr.pruneBefore(bound))
+		require.NoError(t, mgr.pruneBefore(bound, nil))
 
 		require.Equal(t, bound, mgr.pruner.firstReadableBlockNum())
 		require.Equal(t, int(i*10+9), mgr.pruner.firstStoredBlockfileNum())
@@ -907,7 +909,7 @@ func TestPruneBeforeRepeatedlyDownToTheLastFiles(t *testing.T) {
 
 	// The bound could not pass block 399 while its file held it. Asking for the block after frees that
 	// file too, and only the file holding the last block remains.
-	require.NoError(t, mgr.pruneBefore(400))
+	require.NoError(t, mgr.pruneBefore(400, nil))
 
 	require.Equal(t, []int{40}, blockfileNums(t, mgr.rootDir))
 	require.Equal(t, uint64(400), mgr.pruner.firstReadableBlockNum())
@@ -933,7 +935,7 @@ func TestPruneBeforeConcurrentCalls(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- mgr.pruneBefore(30)
+			errs <- mgr.pruneBefore(30, nil)
 		}()
 	}
 	wg.Wait()
@@ -966,14 +968,14 @@ func TestPruneBeforeMakesNoProgressWhenALaterFileIsUnreadable(t *testing.T) {
 
 	require.NoError(t, os.Truncate(deriveBlockfilePath(mgr.rootDir, 2), 0))
 
-	err := mgr.pruneBefore(45)
+	err := mgr.pruneBefore(45, nil)
 	require.ErrorContains(t, err, "cannot determine the first block of block file [2]")
 
 	require.Equal(t, uint64(0), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 0, mgr.pruner.firstStoredBlockfileNum())
 	require.Equal(t, []int{0, 1, 2, 3, 4}, blockfileNums(t, mgr.rootDir))
 
-	require.NoError(t, mgr.pruneBefore(5))
+	require.NoError(t, mgr.pruneBefore(5, nil))
 
 	require.Equal(t, uint64(5), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 0, mgr.pruner.firstStoredBlockfileNum())
@@ -1001,11 +1003,11 @@ func TestPruneBeforeUnlinkFailureLeavesRecoverableOrphans(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(20))
+	require.NoError(t, mgr.pruneBefore(20, nil))
 	require.Equal(t, []int{2, 3, 4}, blockfileNums(t, mgr.rootDir))
 
 	require.NoError(t, os.Chmod(mgr.rootDir, 0o500))
-	err := mgr.pruneBefore(40)
+	err := mgr.pruneBefore(40, nil)
 	require.NoError(t, os.Chmod(mgr.rootDir, 0o700))
 	require.ErrorContains(t, err, "error removing block file [2]")
 
@@ -1013,7 +1015,7 @@ func TestPruneBeforeUnlinkFailureLeavesRecoverableOrphans(t *testing.T) {
 	require.Equal(t, 3, mgr.pruner.firstStoredBlockfileNum())
 	require.Equal(t, []int{2, 3, 4}, blockfileNums(t, mgr.rootDir))
 
-	require.NoError(t, mgr.pruneBefore(40))
+	require.NoError(t, mgr.pruneBefore(40, nil))
 
 	require.Equal(t, uint64(40), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 4, mgr.pruner.firstStoredBlockfileNum())
@@ -1034,7 +1036,7 @@ func TestPruneBeforeSweepsFilesLeftBehindByACrash(t *testing.T) {
 	defer env.Cleanup()
 	mgr := w.blockfileMgr
 
-	require.NoError(t, mgr.pruneBefore(20))
+	require.NoError(t, mgr.pruneBefore(20, nil))
 	require.Equal(t, []int{2, 3, 4}, blockfileNums(t, mgr.rootDir))
 
 	for _, fileNum := range []int{0, 1} {
@@ -1042,7 +1044,7 @@ func TestPruneBeforeSweepsFilesLeftBehindByACrash(t *testing.T) {
 	}
 	require.Equal(t, []int{0, 1, 2, 3, 4}, blockfileNums(t, mgr.rootDir))
 
-	require.NoError(t, mgr.pruneBefore(20))
+	require.NoError(t, mgr.pruneBefore(20, nil))
 
 	require.Equal(t, []int{2, 3, 4}, blockfileNums(t, mgr.rootDir))
 	require.Equal(t, uint64(20), mgr.pruner.firstReadableBlockNum())
@@ -1062,7 +1064,7 @@ func TestPruneBeforeSweepsFilesLeftBehindByACrash(t *testing.T) {
 func TestReopenAfterRealPruneWithIndexBehind(t *testing.T) {
 	path := t.TempDir()
 	env, w, blocks := newPrunableTestLedger(t, path, 50)
-	require.NoError(t, w.blockfileMgr.pruneBefore(20))
+	require.NoError(t, w.blockfileMgr.pruneBefore(20, nil))
 	rewindIndexSavepoint(t, w.blockfileMgr, 45)
 	env.provider.Close()
 
@@ -1091,7 +1093,7 @@ func TestReopenAfterRealPruneWithIndexBehind(t *testing.T) {
 func TestReopenAfterRealPruneWithIndexBelowTheBound(t *testing.T) {
 	path := t.TempDir()
 	env, w, blocks := newPrunableTestLedger(t, path, 50)
-	require.NoError(t, w.blockfileMgr.pruneBefore(30))
+	require.NoError(t, w.blockfileMgr.pruneBefore(30, nil))
 	rewindIndexSavepoint(t, w.blockfileMgr, 10)
 	env.provider.Close()
 
@@ -1167,7 +1169,7 @@ func TestPruneBeforeConcurrentReadsNeverSurfaceRemovalDebris(t *testing.T) {
 	}
 
 	for _, bound := range []uint64{10, 20, 30, 40} {
-		require.NoError(t, mgr.pruneBefore(bound))
+		require.NoError(t, mgr.pruneBefore(bound, nil))
 	}
 	close(done)
 	wg.Wait()
@@ -1242,7 +1244,7 @@ func TestBlocksItrReportsErrPrunedOncePruningOvertakesIt(t *testing.T) {
 				require.True(t, proto.Equal(blocks[i], got.(*common.Block)))
 			}
 
-			require.NoError(t, mgr.pruneBefore(30))
+			require.NoError(t, mgr.pruneBefore(30, nil))
 
 			for i := 0; i < 2; i++ {
 				got, err := itr.Next()
@@ -1295,4 +1297,386 @@ func TestErrAfterFailedReadAttributesOnlyPrunedBlocks(t *testing.T) {
 		require.ErrorIs(t, err, lost)
 		require.NotErrorIs(t, err, ErrPruned)
 	}
+}
+
+// configBlocksAt returns a locator that treats the given block numbers as the ledger's config blocks. Which
+// block is a config block is role knowledge the block store does not have, so a test supplies its own.
+// Passing none makes a locator that never finds one, as a batcher's ledger of batches would.
+func configBlocksAt(configNums ...uint64) LastConfigBlockLocator {
+	return func(block *common.Block) (uint64, bool, error) {
+		newest, found := uint64(0), false
+		for _, n := range configNums {
+			if n <= block.Header.Number && (!found || n > newest) {
+				newest, found = n, true
+			}
+		}
+		return newest, found, nil
+	}
+}
+
+// requireRetainedBlockEqual compares the block the prune store gave back with the one it was made from.
+// proto.Equal rather than require.Equal, because a message that has been through a marshal round trip
+// carries different internal bookkeeping than the one it was marshalled from.
+func requireRetainedBlockEqual(t *testing.T, expected, got *common.Block) {
+	require.True(t, proto.Equal(expected, got),
+		"retained block [%d] did not come back as it was stored", expected.Header.Number)
+}
+
+// retainedConfigFileNames returns the base names of the config blocks the prune store holds.
+func retainedConfigFileNames(t *testing.T, rootDir string) []string {
+	entries, err := os.ReadDir(pruneStoreDir(rootDir))
+	require.NoError(t, err)
+
+	names := []string{}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), pruneConfigPrefix) {
+			names = append(names, e.Name())
+		}
+	}
+	return names
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files, with config blocks at 0 and 5.
+//  2. Call pruneBefore(20), which removes the block file holding block 5.
+//  3. Expect the bound to be 20 and block files 0 and 1 to be gone.
+//  4. Expect retrieveConfigBlockByNumber to return block 5 unchanged, and retrieveBlockByNumber to report
+//     every block below the bound pruned, block 5 included.
+//  5. Expect the prune store to hold exactly one config block, named after block 5.
+func TestPruneBeforeRetainsTheConfigBlockItWouldHide(t *testing.T) {
+	env, w, blocks := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	const retained = 5
+	require.NoError(t, mgr.pruneBefore(20, configBlocksAt(0, retained)))
+
+	require.Equal(t, uint64(20), mgr.pruner.firstReadableBlockNum())
+	require.Equal(t, []int{2, 3, 4}, blockfileNums(t, mgr.rootDir))
+	require.Equal(t, retainedConfig{blockNum: retained, present: true}, mgr.pruner.info.Load().retainedConfig())
+
+	got, err := mgr.retrieveConfigBlockByNumber(retained)
+	require.NoError(t, err)
+	requireRetainedBlockEqual(t, blocks[retained], got)
+
+	for i := 0; i < 20; i++ {
+		_, err := mgr.retrieveBlockByNumber(uint64(i))
+		require.ErrorIs(t, err, ErrPruned)
+	}
+
+	require.Equal(t,
+		[]string{baseName(pruneConfigPrefix, retained) + "." + pruneStoreFileSuffix},
+		retainedConfigFileNames(t, mgr.rootDir))
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files, with config blocks at 5 and 25.
+//  2. Call pruneBefore(20) and expect block 5 to be the retained config block.
+//  3. Call pruneBefore(40), which hides block 25 as well.
+//  4. Expect retrieveConfigBlockByNumber to return block 25 unchanged and to report block 5 pruned.
+//  5. Expect the prune store to hold only the config block it retained last.
+func TestPruneBeforeSupersedesTheRetainedConfigBlock(t *testing.T) {
+	env, w, blocks := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+	locate := configBlocksAt(5, 25)
+
+	require.NoError(t, mgr.pruneBefore(20, locate))
+	require.True(t, mgr.pruner.info.Load().retains(5))
+
+	require.NoError(t, mgr.pruneBefore(40, locate))
+	require.True(t, mgr.pruner.info.Load().retains(25))
+
+	got, err := mgr.retrieveConfigBlockByNumber(25)
+	require.NoError(t, err)
+	requireRetainedBlockEqual(t, blocks[25], got)
+
+	_, err = mgr.retrieveConfigBlockByNumber(5)
+	require.ErrorIs(t, err, ErrPruned)
+
+	require.Equal(t,
+		[]string{baseName(pruneConfigPrefix, 25) + "." + pruneStoreFileSuffix},
+		retainedConfigFileNames(t, mgr.rootDir))
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files, with config blocks at 20 and 25, so the newest one at or before
+//     the bound is the bound's own block.
+//  2. Call pruneBefore(20), which leaves both of them readable on their own.
+//  3. Expect nothing to have been retained and the prune store to hold no config block.
+func TestPruneBeforeRetainsNothingWhenTheConfigBlockStaysReadable(t *testing.T) {
+	env, w, blocks := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	require.NoError(t, mgr.pruneBefore(20, configBlocksAt(20, 25)))
+
+	require.False(t, mgr.pruner.info.Load().hasRetainedConfigBlock)
+	require.Empty(t, retainedConfigFileNames(t, mgr.rootDir))
+	requireBlocksPruned(t, mgr, blocks, 20)
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files, with a config block at 5 only.
+//  2. Call pruneBefore(20), which retains block 5, and then pruneBefore(40), for which block 5 is still the
+//     newest config block at or before the bound.
+//  3. Expect block 5 to stay the retained block, its stored copy to be untouched, and it to still read back.
+func TestPruneBeforeKeepsOneConfigBlockAcrossSuccessivePrunePoints(t *testing.T) {
+	env, w, blocks := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+	locate := configBlocksAt(5)
+
+	require.NoError(t, mgr.pruneBefore(20, locate))
+	require.NoError(t, mgr.pruneBefore(40, locate))
+
+	require.Equal(t, uint64(40), mgr.pruner.firstReadableBlockNum())
+	require.True(t, mgr.pruner.info.Load().retains(5))
+	require.Equal(t,
+		[]string{baseName(pruneConfigPrefix, 5) + "." + pruneStoreFileSuffix},
+		retainedConfigFileNames(t, mgr.rootDir))
+
+	got, err := mgr.retrieveConfigBlockByNumber(5)
+	require.NoError(t, err)
+	requireRetainedBlockEqual(t, blocks[5], got)
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files, with a config block at 0, which pruning must be able to tell
+//     apart from retaining nothing.
+//  2. Call pruneBefore(20).
+//  3. Expect block 0 to be recorded as retained and retrieveConfigBlockByNumber to return it unchanged, and
+//     blocks 1..19 to be pruned.
+func TestPruneBeforeRetainsBlockZeroAsAConfigBlock(t *testing.T) {
+	env, w, blocks := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	require.NoError(t, mgr.pruneBefore(20, configBlocksAt(0)))
+
+	require.Equal(t, retainedConfig{blockNum: 0, present: true}, mgr.pruner.info.Load().retainedConfig())
+
+	got, err := mgr.retrieveConfigBlockByNumber(0)
+	require.NoError(t, err)
+	requireRetainedBlockEqual(t, blocks[0], got)
+
+	for i := 1; i < 20; i++ {
+		_, err := mgr.retrieveBlockByNumber(uint64(i))
+		require.ErrorIs(t, err, ErrPruned)
+	}
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files.
+//  2. Call pruneBefore(20) with a locator that finds no config block, as a batcher's ledger of batches has
+//     none to find.
+//  3. Expect the prune to succeed, nothing to have been retained, and every block below the bound to be
+//     pruned, block 0 included.
+func TestPruneBeforeRetainsNothingWhenTheLedgerHasNoConfigBlock(t *testing.T) {
+	env, w, blocks := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	require.NoError(t, mgr.pruneBefore(20, configBlocksAt()))
+
+	require.Equal(t, retainedConfig{}, mgr.pruner.info.Load().retainedConfig())
+	require.Empty(t, retainedConfigFileNames(t, mgr.rootDir))
+	requireBlocksPruned(t, mgr, blocks, 20)
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files, with a config block at 5.
+//  2. Call pruneBefore(20) with a nil locator, as a ledger holding no config blocks does.
+//  3. Expect nothing to have been retained and every block below the bound to be pruned.
+func TestPruneBeforeWithoutALocatorRetainsNothing(t *testing.T) {
+	env, w, blocks := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	require.NoError(t, mgr.pruneBefore(20, nil))
+
+	require.Equal(t, retainedConfig{}, mgr.pruner.info.Load().retainedConfig())
+	require.Empty(t, retainedConfigFileNames(t, mgr.rootDir))
+	requireBlocksPruned(t, mgr, blocks, 20)
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files, with a config block at 5, and call pruneBefore(20).
+//  2. Expect retrieveConfigBlockByNumber to return the retained block, and a readable block as well.
+//  3. Expect retrieveConfigBlockByNumber to report a pruned block that was not retained as pruned.
+//  4. Expect retrieveBlockByNumber, the header lookup and an iterator starting at the retained block to
+//     report it pruned.
+func TestRetainedConfigBlockIsServedByRetrieveConfigBlockByNumberOnly(t *testing.T) {
+	env, w, blocks := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	const retained = 5
+	require.NoError(t, mgr.pruneBefore(20, configBlocksAt(retained)))
+
+	block, err := mgr.retrieveConfigBlockByNumber(retained)
+	require.NoError(t, err)
+	requireRetainedBlockEqual(t, blocks[retained], block)
+
+	block, err = mgr.retrieveConfigBlockByNumber(30)
+	require.NoError(t, err)
+	require.True(t, proto.Equal(blocks[30], block))
+
+	_, err = mgr.retrieveConfigBlockByNumber(retained + 1)
+	require.ErrorIs(t, err, ErrPruned)
+
+	_, err = mgr.retrieveBlockByNumber(retained)
+	require.ErrorIs(t, err, ErrPruned)
+
+	header, err := mgr.retrieveBlockHeaderByNumber(retained)
+	require.ErrorIs(t, err, ErrPruned)
+	require.Nil(t, header)
+
+	itr, err := mgr.retrieveBlocks(retained)
+	require.ErrorIs(t, err, ErrPruned)
+	require.Nil(t, itr)
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files, with a config block at 5, and call PruneBefore(20).
+//  2. Close the store and reopen it.
+//  3. Expect the reopened store to report the same bound and RetrieveConfigBlockByNumber to serve the
+//     retained block.
+func TestRetainedConfigBlockSurvivesReopen(t *testing.T) {
+	path := t.TempDir()
+	const retained = 5
+
+	env, w, blocks := newPrunableTestLedger(t, path, 50)
+	require.NoError(t, w.blockfileMgr.pruneBefore(20, configBlocksAt(retained)))
+	env.provider.Close()
+
+	reopened := newTestEnv(t, NewConf(path, 0))
+	defer reopened.Cleanup()
+	store, err := reopened.provider.Open("testLedger")
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(20), store.FirstAvailableBlockNumber())
+
+	got, err := store.RetrieveConfigBlockByNumber(retained)
+	require.NoError(t, err)
+	requireRetainedBlockEqual(t, blocks[retained], got)
+
+	_, err = store.RetrieveConfigBlockByNumber(retained + 1)
+	require.ErrorIs(t, err, ErrPruned)
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files.
+//  2. Call pruneBefore(20) with a locator that fails.
+//  3. Expect the failure to be returned, no block file to have been removed, and the bound to stay 0.
+func TestPruneBeforeFailsBeforeRemovingWhenTheLocatorFails(t *testing.T) {
+	env, w, blocks := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	locate := func(block *common.Block) (uint64, bool, error) {
+		return 0, false, errors.New("cannot tell which block is a config block")
+	}
+	err := mgr.pruneBefore(20, locate)
+	require.ErrorContains(t, err, "cannot locate the config block of block [20]")
+
+	require.Equal(t, uint64(0), mgr.pruner.firstReadableBlockNum())
+	require.Equal(t, []int{0, 1, 2, 3, 4}, blockfileNums(t, mgr.rootDir))
+	requireBlocksPruned(t, mgr, blocks, 0)
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files and call pruneBefore(20) with no locator, so block 5 is hidden
+//     without being retained.
+//  2. Call pruneBefore(40) with a locator naming block 5 as the config block.
+//  3. Expect the prune to fail with ErrPruned, since the block it was asked to retain is already gone, and
+//     expect the bound and the block files to be left as they were.
+func TestPruneBeforeFailsWhenTheConfigBlockWasAlreadyPruned(t *testing.T) {
+	env, w, _ := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	require.NoError(t, mgr.pruneBefore(20, nil))
+
+	err := mgr.pruneBefore(40, configBlocksAt(5))
+	require.ErrorIs(t, err, ErrPruned)
+	require.ErrorContains(t, err, "cannot read config block [5] to retain it")
+
+	require.Equal(t, uint64(20), mgr.pruner.firstReadableBlockNum())
+	require.Equal(t, []int{2, 3, 4}, blockfileNums(t, mgr.rootDir))
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files, with config blocks at 0, 15 and 35.
+//  2. Read every block from 4 goroutines while pruning to 10, 20, 30 and 40 in turn, so that reads of the
+//     retained config block run against the prune store while a prune is writing to it.
+//  3. Expect every read either to return the block unchanged or to report ErrPruned, and nothing else.
+//  4. Expect the config block retained last to be the newest one below the final bound.
+func TestPruneBeforeConcurrentReadsOfTheRetainedConfigBlock(t *testing.T) {
+	env, w, blocks := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+	locate := configBlocksAt(0, 15, 35)
+
+	const readers = 4
+	unexpected := make(chan error, readers*len(blocks))
+	done := make(chan struct{})
+
+	var wg sync.WaitGroup
+	for i := 0; i < readers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				for num, want := range blocks {
+					got, err := mgr.retrieveConfigBlockByNumber(uint64(num))
+					switch {
+					case err == nil && !proto.Equal(got, want):
+						unexpected <- fmt.Errorf("block [%d] came back changed", num)
+					case err != nil && !errors.Is(err, ErrPruned):
+						unexpected <- err
+					}
+				}
+			}
+		}()
+	}
+
+	for _, bound := range []uint64{10, 20, 30, 40} {
+		require.NoError(t, mgr.pruneBefore(bound, locate))
+	}
+	close(done)
+	wg.Wait()
+	close(unexpected)
+
+	for err := range unexpected {
+		require.NoError(t, err)
+	}
+
+	require.Equal(t, uint64(40), mgr.pruner.firstReadableBlockNum())
+	require.True(t, mgr.pruner.info.Load().retains(35))
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files and call pruneBefore(20) with a config block at 5, so block 5 is
+//     the retained one.
+//  2. Attribute a failed read of block 5 and expect the failure back, since the store still says it has it.
+//  3. Advance the retention to block 25, as a later prune does, and attribute the same failure for block 5
+//     again; expect no error, which reports the block as pruned rather than as a broken store.
+func TestErrAfterFailedRetainedReadReportsASupersededBlockAsPruned(t *testing.T) {
+	env, w, _ := newPrunableTestLedger(t, t.TempDir(), 50)
+	defer env.Cleanup()
+	mgr := w.blockfileMgr
+
+	require.NoError(t, mgr.pruneBefore(20, configBlocksAt(5)))
+
+	lost := errors.New("no such file or directory")
+	require.ErrorIs(t, mgr.pruner.errAfterFailedRetainedRead(5, lost), lost)
+
+	require.NoError(t, mgr.pruneBefore(40, configBlocksAt(5, 25)))
+	require.NoError(t, mgr.pruner.errAfterFailedRetainedRead(5, lost))
 }
