@@ -48,3 +48,20 @@ func TestDomainFramesAreDisjoint(t *testing.T) {
 	require.False(t, bytes.HasPrefix(bafFrame, complaintFrame))
 	require.False(t, bytes.HasPrefix(complaintFrame, bafFrame))
 }
+
+// TestPrefixWithDomainPanicsOnOversizedTag guards the disjointness invariant:
+// a tag that does not fit in the 2-byte length field would wrap and could
+// collide with a shorter tag's frame, so the helper must reject it rather than
+// silently produce a colliding frame.
+func TestPrefixWithDomainPanicsOnOversizedTag(t *testing.T) {
+	oversized := types.SignatureDomain(make([]byte, 0x10000))
+	require.Panics(t, func() {
+		types.PrefixWithDomain(oversized, []byte{1, 2, 3})
+	})
+
+	// The largest representable tag must still be accepted.
+	maxTag := types.SignatureDomain(make([]byte, 0xFFFF))
+	require.NotPanics(t, func() {
+		types.PrefixWithDomain(maxTag, []byte{1, 2, 3})
+	})
+}

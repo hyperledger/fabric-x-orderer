@@ -24,8 +24,16 @@ const (
 // length-prefixed domain tag. The 2-byte big-endian length makes the
 // tag/message boundary unambiguous, so outputs under distinct domains occupy
 // disjoint byte spaces and can never collide.
+//
+// The tag must fit in the 2-byte length field; a longer tag would wrap and
+// break the disjointness guarantee. Domains are compile-time constants, so an
+// oversized tag is a programming error and panics rather than silently
+// producing colliding frames.
 func PrefixWithDomain(domain SignatureDomain, msg []byte) []byte {
 	tag := []byte(domain)
+	if len(tag) > 0xFFFF {
+		panic("signature domain tag exceeds 65535 bytes")
+	}
 	out := make([]byte, 0, 2+len(tag)+len(msg))
 	out = append(out, byte(len(tag)>>8), byte(len(tag)))
 	out = append(out, tag...)
