@@ -29,6 +29,7 @@ import (
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
+	"github.com/hyperledger/fabric-x-orderer/request"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	cfgutil "github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -112,11 +113,10 @@ func TestBatcherReconfigAutoRemoveTimeoutReachesPendingAdmin(t *testing.T) {
 // the shard primary throughout.
 //  1. Create a single party (one shard) and verify its batcher runs at config sequence 0.
 //  2. Deliver a config block that lowers RequestMaxBytes. Because RequestMaxBytes is a memory-pool option, the
-//     change requires an admin operation, so the batcher appends the config block and reaches pending admin
-//     (see Batcher.hasBatchingParamsChanged / ApplyConfig).
+//     change requires an admin operation, so the batcher appends the config block and reaches pending admin.
 //  3. Perform the admin restart: fully stop the pending-admin batcher and recreate it. A fresh batcher resumes
-//     from the last block in its config store (config.ReadConfig), so it comes up at config sequence 1 with the
-//     lowered RequestMaxBytes wired into its request pool.
+//     from the last block in its config store, so it comes up at config sequence 1 with the lowered
+//     RequestMaxBytes wired into its request pool.
 //  4. Deliver the (unchanged) state so the batcher runs as the shard primary, then verify that a request exceeding
 //     the new limit is rejected while a request under the limit is accepted.
 func TestBatcherReconfigRequestMaxBytesRejectsOversizedRequests(t *testing.T) {
@@ -217,6 +217,112 @@ func TestBatcherReconfigRequestMaxBytesRejectsOversizedRequests(t *testing.T) {
 	require.Empty(t, resp.Error)
 }
 
+// noopStriker is a request.Striker that ignores strike timeouts; the pruning test does not exercise the strike
+// callbacks.
+type noopStriker struct{}
+
+func (noopStriker) OnFirstStrikeTimeout([]byte) {}
+
+func (noopStriker) OnSecondStrikeTimeout() {}
+
+// Scenario: focused unit test of the memory-pool pruning that the batcher performs on reconfiguration. On a live
+// reconfiguration, the batcher re-verifies every request still in the memory pool against the new configuration's
+// request verifier and drops the ones that no longer pass, keeping the rest. This test drives that exact seam
+// directly - a request pool pruned by a real request verifier - instead of through a full multi-node
+// reconfiguration:
+//  1. Build a batcher configuration and its request verifier.
+//  2. Submit a mix of valid requests and requests that fail verification (empty payload) into a request pool.
+//  3. Prune the pool with the verifier, exactly as the batcher does on a live reconfiguration.
+//  4. Verify that only the valid requests remain and the invalid ones were dropped.
+func TestBatcherReconfigMempoolPruneDropsInvalidRequests(t *testing.T) {
+	parties := []types.PartyID{1}
+	numOfShards := 1
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	updateFileStorePath(t, dir, parties, numOfShards)
+
+	netInfo.CleanUp()
+
+	// read the batcher configuration and build its request verifier, the same verifier the batcher uses to prune
+	// the memory pool after a reconfiguration
+	nodeConfigPath := filepath.Join(dir, "config", "party1", "local_config_batcher1.yaml")
+	nodeConfig, lastConfigBlock, err := config.ReadConfig(nodeConfigPath, testutil.CreateLoggerForModule(t, "ReadConfigBatcher", zap.DebugLevel))
+	require.NoError(t, err)
+	batcherConfig := nodeConfig.ExtractBatcherConfig(lastConfigBlock)
+	require.NotNil(t, batcherConfig)
+
+	logger := testutil.CreateLogger(t, int(parties[0]))
+	riv := batcher.NewRequestsInspectorVerifier(logger, batcherConfig, nil, batcher.DefaultRequestID)
+
+	// build a request pool wired with the same options the batcher's memory pool uses
+	opts := request.PoolOptions{
+		MaxSize:               batcherConfig.MemPoolMaxSize,
+		BatchMaxSize:          batcherConfig.BatchMaxSize,
+		BatchMaxSizeBytes:     batcherConfig.BatchMaxBytes,
+		RequestMaxBytes:       batcherConfig.RequestMaxBytes,
+		SubmitTimeout:         batcherConfig.SubmitTimeout,
+		FirstStrikeThreshold:  batcherConfig.FirstStrikeThreshold,
+		SecondStrikeThreshold: batcherConfig.SecondStrikeThreshold,
+		AutoRemoveTimeout:     batcherConfig.AutoRemoveTimeout,
+	}
+	pool := request.NewPool(logger, batcher.DefaultRequestID, opts, noopStriker{})
+	pool.Restart(true)
+	defer pool.Close()
+
+	// requests are stored in the pool as marshaled envelopes, exactly as the batcher stores them when submitting
+	makeReq := func(payload []byte, signature []byte) []byte {
+		raw, err := proto.Marshal(&common.Envelope{Payload: payload, Signature: signature})
+		require.NoError(t, err)
+		return raw
+	}
+
+	// three valid requests that pass verification
+	validReqs := [][]byte{}
+	for i := 0; i < 3; i++ {
+		structured := tx.CreateStructuredRequest([]byte(fmt.Sprintf("valid-tx-%d", i)))
+		validReqs = append(validReqs, makeReq(structured.Payload, structured.Signature))
+	}
+
+	// two requests that fail verification: an empty payload is rejected by the batcher's PayloadNotEmpty rule. The
+	// distinct signatures give them distinct request IDs so both are accepted into the pool.
+	invalidReqs := [][]byte{
+		makeReq(nil, []byte("sig-a")),
+		makeReq(nil, []byte("sig-b")),
+	}
+
+	// sanity check: the verifier accepts the valid requests and rejects the invalid ones
+	for _, r := range validReqs {
+		require.NoError(t, riv.VerifyRequest(r))
+	}
+	for _, r := range invalidReqs {
+		require.Error(t, riv.VerifyRequest(r))
+	}
+
+	// submit all requests into the pool
+	for _, r := range append(append([][]byte{}, validReqs...), invalidReqs...) {
+		require.NoError(t, pool.Submit(r))
+	}
+	require.Equal(t, int64(len(validReqs)+len(invalidReqs)), pool.RequestCount())
+
+	// prune the pool with the request verifier, exactly as the batcher does on a live reconfiguration
+	pool.Prune(riv.VerifyRequest)
+
+	// only the valid requests remain; the invalid ones were dropped
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	remaining := pool.NextRequests(ctx)
+	require.Len(t, remaining, len(validReqs))
+	for _, r := range remaining {
+		require.NoError(t, riv.VerifyRequest(r))
+	}
+}
+
 // Scenario: evict the shard primary, then add a new party, verifying the shard keeps ordering txs across both
 // reconfigurations. Each reconfiguration changes the party count, so consensus bumps the shard term, which in
 // turn moves the primary (primary index = (shardID + term) % N over the parties sorted by ID).
@@ -312,9 +418,8 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// because the party count changed, consensus bumps the shard term (see DefaultConfigApplier.ApplyConfigToState).
-	// After a reconfigured batcher restarts it waits for a fresh state, so deliver the post-reconfig state (N 3,
-	// term 1) to the surviving batchers.
+	// because the party count changed, consensus bumps the shard term. After a reconfigured batcher restarts it
+	// waits for a fresh state, so deliver the post-reconfig state (N 3, term 1) to the surviving batchers.
 	survivingParties := []types.PartyID{1, 3, 4}
 	stEvicted := &state.State{N: uint16(len(survivingParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 1}}}
 	for j := range parties {
