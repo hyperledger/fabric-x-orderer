@@ -107,6 +107,116 @@ func TestBatcherReconfigAutoRemoveTimeoutReachesPendingAdmin(t *testing.T) {
 	}
 }
 
+// Scenario: a RequestMaxBytes change lowers the maximal request size, and after the resulting admin restart the
+// batcher rejects requests that exceed the new limit. The scenario runs with a single party, so its one batcher is
+// the shard primary throughout.
+//  1. Create a single party (one shard) and verify its batcher runs at config sequence 0.
+//  2. Deliver a config block that lowers RequestMaxBytes. Because RequestMaxBytes is a memory-pool option, the
+//     change requires an admin operation, so the batcher appends the config block and reaches pending admin
+//     (see Batcher.hasBatchingParamsChanged / ApplyConfig).
+//  3. Perform the admin restart: fully stop the pending-admin batcher and recreate it. A fresh batcher resumes
+//     from the last block in its config store (config.ReadConfig), so it comes up at config sequence 1 with the
+//     lowered RequestMaxBytes wired into its request pool.
+//  4. Deliver the (unchanged) state so the batcher runs as the shard primary, then verify that a request exceeding
+//     the new limit is rejected while a request under the limit is accepted.
+func TestBatcherReconfigRequestMaxBytesRejectsOversizedRequests(t *testing.T) {
+	parties := []types.PartyID{1}
+	numOfShards := 1
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	updateFileStorePath(t, dir, parties, numOfShards)
+
+	netInfo.CleanUp()
+	stubConsenters := createStubConsenters(t, dir, parties)
+	batchers, genesisBlock, bundle := createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
+	startBatcherNodes(batchers)
+
+	defer func() {
+		for _, sc := range stubConsenters {
+			sc.StopNet()
+		}
+		for _, b := range batchers {
+			b.Stop()
+		}
+	}()
+
+	// make sure the genesis block is stored in the config store
+	blocks, err := batchers[0].ConfigStore.ListBlockNumbers()
+	require.NoError(t, err)
+	require.Equal(t, 1, len(blocks))
+
+	// make sure the batcher is running with the initial config sequence 0
+	require.Eventually(t, func() bool {
+		status := batchers[0].GetStatus()
+		return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(0)
+	}, 60*time.Second, 10*time.Millisecond)
+
+	// create a config block that lowers the maximal request size
+	const newRequestMaxBytes = 1000
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdatePbData := configUpdateBuilder.UpdateBatchRequestMaxBytes(t, newRequestMaxBytes)
+	require.NotNil(t, configUpdatePbData)
+	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
+	require.NoError(t, err)
+
+	// send the config block to the batcher by the stub consenter
+	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	stubConsenters[0].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
+
+	// wait for the batcher to append the config tx to the config store
+	require.Eventually(t, func() bool {
+		block, err1 := batchers[0].ConfigStore.Last()
+		blockNumbers, err2 := batchers[0].ConfigStore.ListBlockNumbers()
+		return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 2
+	}, 60*time.Second, 10*time.Millisecond)
+
+	// a memory-pool option changed, so the batcher requires an admin operation and reaches pending admin
+	require.Eventually(t, func() bool {
+		return batchers[0].GetStatus().GetState() == node_utils.StatePendingAdmin
+	}, 60*time.Second, 10*time.Millisecond)
+
+	// perform the admin restart: fully stop the pending-admin batcher and recreate it. A fresh batcher resumes
+	// from the last block in its config store (now the config block with the lowered RequestMaxBytes), so it comes
+	// up at config sequence 1 with the new pool option.
+	batchers[0].Stop()
+	batchers, _, _ = createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
+	startBatcherNodes(batchers)
+
+	// with a single party the batcher is the shard primary (batchers[(shardID + term) % N] = batchers[0]). Deliver
+	// the (unchanged) state so the restarted batcher runs as primary and starts its request pool.
+	stubConsenters[0].UpdateState(st)
+	require.Eventually(t, func() bool {
+		status := batchers[0].GetStatus()
+		return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(1) && batchers[0].GetPrimaryID() == parties[0]
+	}, 60*time.Second, 10*time.Millisecond)
+
+	routerCtx := routerContextForParty(t, dir, parties[0])
+
+	// a request whose size exceeds the new RequestMaxBytes is rejected. Retry until the batcher's request pool is
+	// running (the pool rejects an oversized request only once started), then assert the rejection reason is the
+	// request size limit.
+	oversizedReq := tx.CreateStructuredRequest(make([]byte, 4*newRequestMaxBytes))
+	oversizedReq.ConfigSeq = 1
+	require.Eventually(t, func() bool {
+		resp, err := batchers[0].Submit(routerCtx, oversizedReq)
+		return err == nil && bytes.Contains([]byte(resp.Error), []byte("bigger than request max bytes"))
+	}, 60*time.Second, 10*time.Millisecond)
+
+	// a request under the new limit is still accepted
+	smallReq := tx.CreateStructuredRequest([]byte{42})
+	smallReq.ConfigSeq = 1
+	resp, err := batchers[0].Submit(routerCtx, smallReq)
+	require.NoError(t, err)
+	require.Empty(t, resp.Error)
+}
+
 // Scenario: evict the shard primary, then add a new party, verifying the shard keeps ordering txs across both
 // reconfigurations. Each reconfiguration changes the party count, so consensus bumps the shard term, which in
 // turn moves the primary (primary index = (shardID + term) % N over the parties sorted by ID).
