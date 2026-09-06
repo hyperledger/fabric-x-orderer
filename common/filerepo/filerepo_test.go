@@ -181,7 +181,7 @@ func TestFileRepo_FileToBaseName(t *testing.T) {
 }
 
 func TestFileRepo_InvalidBaseName(t *testing.T) {
-	r, err := filerepo.New("testdata", "join")
+	r, err := filerepo.New(t.TempDir(), "join")
 	require.NoError(t, err)
 
 	tests := []struct {
