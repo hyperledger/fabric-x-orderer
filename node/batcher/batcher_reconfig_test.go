@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package batcher_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -23,6 +24,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
+	"github.com/hyperledger/fabric-x-orderer/config/generate"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -581,6 +583,288 @@ func TestBatcherReconfigPrimaryEndpointChange(t *testing.T) {
 			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(1)
 		}, 60*time.Second, 10*time.Millisecond)
 	}
+}
+
+// Scenario:
+//  1. Create config and crypto material for 4 parties, one shard.
+//  2. Create Batchers and stub Consenters, and verify that all batchers are running with config sequence 0.
+//  3. Generate a new TLS certificate and a new signing certificate for the shard primary (party 2), both signed
+//     by the party's existing CAs, and build a config block that sets them.
+//  4. Have the stub consenters deliver the config block.
+//  5. Verify the batcher whose certificates changed reaches pending admin state (a change to a batcher's own
+//     identity requires an admin restart), while the other batchers reconfigure and return to running state with
+//     the new config sequence.
+func TestBatcherReconfigPrimaryCertChange(t *testing.T) {
+	parties := []types.PartyID{1, 2, 3, 4}
+	numOfShards := 1
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	updateFileStorePath(t, dir, parties, numOfShards)
+
+	// capture the node IPs before cleaning up the network; they are used as SANs for the generated certificates
+	nodesIPs := testutil.GetNodesIPsFromNetInfo(netInfo)
+	require.NotNil(t, nodesIPs)
+
+	netInfo.CleanUp()
+	stubConsenters := createStubConsenters(t, dir, parties)
+	batchers, genesisBlock, bundle := createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
+	startBatcherNodes(batchers)
+
+	defer func() {
+		for _, sc := range stubConsenters {
+			sc.StopNet()
+		}
+		for _, b := range batchers {
+			b.Stop()
+		}
+	}()
+
+	// make sure the genesis block is stored in the config store
+	for i := range parties {
+		blocks, err := batchers[i].ConfigStore.ListBlockNumbers()
+		require.NoError(t, err)
+		require.Equal(t, 1, len(blocks))
+	}
+
+	// make sure all batchers are running with the initial config sequence 0
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			status := batchers[j].GetStatus()
+			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(0)
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// the shard primary is batchers[(shardID + term) % N] once sorted by party ID; for shard 1, term 0, N 4 this is party 2
+	partyToChange := types.PartyID(2)
+	shardToChange := types.ShardID(1)
+
+	// generate a new TLS certificate and a new signing certificate for the shard primary's batcher, each signed by
+	// the party's existing CA so that the config update is accepted
+	org := fmt.Sprintf("org%d", partyToChange)
+	tlsCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "tlsca", fmt.Sprintf("tls%s-CA-cert.pem", org))
+	tlsCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "tlsca", "priv_sk")
+	signCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "ca", fmt.Sprintf("%s-CA-cert.pem", org))
+	signCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "ca", "priv_sk")
+
+	partyDir := filepath.Join(dir, "crypto", "ordererOrganizations", org, "orderers", fmt.Sprintf("party%d", partyToChange), fmt.Sprintf("batcher%d", shardToChange))
+	newBatcherTLSCert, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", filepath.Join(partyDir, "tls", "server.crt"), filepath.Join(partyDir, "tls", "server.key"), nodesIPs)
+	require.NoError(t, err)
+	require.NotNil(t, newBatcherTLSCert)
+
+	newBatcherSignCert, err := armageddon.CreateNewCertificateFromCA(signCACertPath, signCAPrivKeyPath, "sign", filepath.Join(partyDir, "msp", "signcerts", fmt.Sprintf("batcher%d-cert.pem", shardToChange)), filepath.Join(partyDir, "msp", "keystore", "priv_sk"), nodesIPs)
+	require.NoError(t, err)
+	require.NotNil(t, newBatcherSignCert)
+
+	// create a config block that changes the shard primary's TLS and signing certificates
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdateBuilder.UpdateBatcherTLSCert(t, partyToChange, shardToChange, newBatcherTLSCert)
+	configUpdatePbData := configUpdateBuilder.UpdateBatcherSignCert(t, partyToChange, shardToChange, newBatcherSignCert)
+	require.NotNil(t, configUpdatePbData)
+	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
+	require.NoError(t, err)
+
+	// send the config block to the batchers by the stub consenters
+	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	for i := range parties {
+		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
+	}
+
+	// wait for batchers to append the config tx to the config store
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			block, err1 := batchers[j].ConfigStore.Last()
+			blockNumbers, err2 := batchers[j].ConfigStore.ListBlockNumbers()
+			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 2
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// wait for the batcher whose certificates changed to reach pending admin state, and for the other batchers to
+	// reconfigure and return to running state with the new config sequence
+	for j := range parties {
+		partyID := parties[j]
+		if partyID == partyToChange {
+			require.Eventually(t, func() bool {
+				return batchers[j].GetStatus().GetState() == node_utils.StatePendingAdmin
+			}, 60*time.Second, 10*time.Millisecond)
+			continue
+		}
+		require.Eventually(t, func() bool {
+			status := batchers[j].GetStatus()
+			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(1)
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+}
+
+// Scenario:
+//  1. Create config and crypto material for 4 parties, one shard.
+//  2. Create Batchers and stub Consenters, and verify that all batchers are running with config sequence 0.
+//  3. Generate a fresh CA for party 1 and build a config block that appends its signing CA certificate to the
+//     party's CACerts and its TLS CA certificate to the party's TLSCACerts.
+//  4. Have the stub consenters deliver the config block.
+//  5. Verify that a party CA change is applied as a normal reconfiguration: all batchers (including party 1's own
+//     batcher) reconfigure and return to running state with the new config sequence, none reach pending admin, and
+//     the new CA certificates are reflected in the batchers' shared configuration.
+func TestBatcherReconfigCACerts(t *testing.T) {
+	parties := []types.PartyID{1, 2, 3, 4}
+	numOfShards := 1
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	updateFileStorePath(t, dir, parties, numOfShards)
+
+	partyToChange := types.PartyID(1)
+	// build the party's network config (endpoints) before cleaning up the network; it is used to regenerate a fresh
+	// CA for the party
+	partyNetworkConfig := partyNetworkConfigFromNetInfo(t, netInfo, partyToChange, numOfShards)
+
+	netInfo.CleanUp()
+	stubConsenters := createStubConsenters(t, dir, parties)
+	batchers, genesisBlock, bundle := createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
+	startBatcherNodes(batchers)
+
+	defer func() {
+		for _, sc := range stubConsenters {
+			sc.StopNet()
+		}
+		for _, b := range batchers {
+			b.Stop()
+		}
+	}()
+
+	// make sure the genesis block is stored in the config store
+	for i := range parties {
+		blocks, err := batchers[i].ConfigStore.ListBlockNumbers()
+		require.NoError(t, err)
+		require.Equal(t, 1, len(blocks))
+	}
+
+	// make sure all batchers are running with the initial config sequence 0
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			status := batchers[j].GetStatus()
+			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(0)
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// generate a fresh CA for the party in a temporary directory and read its new signing and TLS CA certificates
+	configUpdateDir := filepath.Join(dir, "config_update")
+	require.NoError(t, os.MkdirAll(configUpdateDir, 0o755))
+	_, err := armageddon.GenerateCryptoConfigWithProfile(&generate.Network{Parties: []generate.Party{*partyNetworkConfig}}, configUpdateDir)
+	require.NoError(t, err)
+
+	org := fmt.Sprintf("org%d", partyToChange)
+	newSignCACert, err := os.ReadFile(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", org, "msp", "cacerts", fmt.Sprintf("%s-CA-cert.pem", org)))
+	require.NoError(t, err)
+	newTLSCACert, err := os.ReadFile(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", org, "msp", "tlscacerts", fmt.Sprintf("tls%s-CA-cert.pem", org)))
+	require.NoError(t, err)
+
+	// build a config block that appends the new CA certificates to the party's CACerts and TLSCACerts. Appending
+	// (rather than replacing) keeps the party's existing node certificates valid.
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdateBuilder.AppendPartyCACerts(t, partyToChange, [][]byte{newSignCACert})
+	configUpdatePbData := configUpdateBuilder.AppendPartyTLSCACerts(t, partyToChange, [][]byte{newTLSCACert})
+	require.NotNil(t, configUpdatePbData)
+	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
+	require.NoError(t, err)
+
+	// send the config block to the batchers by the stub consenters
+	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	for i := range parties {
+		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
+	}
+
+	// wait for batchers to append the config tx to the config store
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			block, err1 := batchers[j].ConfigStore.Last()
+			blockNumbers, err2 := batchers[j].ConfigStore.ListBlockNumbers()
+			return err1 == nil && err2 == nil && block.Header.Number == uint64(1) && len(blockNumbers) == 2
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// a party CA change is not an identity change, so every batcher (including party 1's own batcher) reconfigures
+	// and returns to running state with the new config sequence; none reach pending admin
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			status := batchers[j].GetStatus()
+			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(1)
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// verify that the new CA certificates are reflected in every batcher's shared configuration for the changed party
+	for j := range parties {
+		caCerts, tlsCACerts := partyCACertsFromBatcher(t, batchers[j], partyToChange)
+		require.True(t, containsCert(caCerts, newSignCACert), "new signing CA cert not found in party %d CACerts of batcher %d", partyToChange, parties[j])
+		require.True(t, containsCert(tlsCACerts, newTLSCACert), "new TLS CA cert not found in party %d TLSCACerts of batcher %d", partyToChange, parties[j])
+	}
+}
+
+// partyNetworkConfigFromNetInfo builds a generate.Party describing the given party's node endpoints, read from the
+// network information. It is used to regenerate crypto material (a fresh CA) for that party.
+func partyNetworkConfigFromNetInfo(t *testing.T, netInfo testutil.ArmaNodesInfoMap, partyID types.PartyID, numOfShards int) *generate.Party {
+	router := netInfo[testutil.NodeName{PartyID: partyID, NodeType: testutil.Router}]
+	require.NotNil(t, router)
+	consenter := netInfo[testutil.NodeName{PartyID: partyID, NodeType: testutil.Consensus}]
+	require.NotNil(t, consenter)
+	assembler := netInfo[testutil.NodeName{PartyID: partyID, NodeType: testutil.Assembler}]
+	require.NotNil(t, assembler)
+
+	var batchersEndpoints []string
+	for shardID := types.ShardID(1); int(shardID) <= numOfShards; shardID++ {
+		b := netInfo[testutil.NodeName{PartyID: partyID, NodeType: testutil.Batcher, ShardID: shardID}]
+		require.NotNil(t, b)
+		batchersEndpoints = append(batchersEndpoints, b.Listener.Addr().String())
+	}
+
+	return &generate.Party{
+		ID:                partyID,
+		RouterEndpoint:    router.Listener.Addr().String(),
+		ConsenterEndpoint: consenter.Listener.Addr().String(),
+		AssemblerEndpoint: assembler.Listener.Addr().String(),
+		BatchersEndpoints: batchersEndpoints,
+	}
+}
+
+// partyCACertsFromBatcher extracts the CACerts and TLSCACerts of the given party from the batcher's shared
+// configuration (the SharedConfig carried in the batcher's config bundle).
+func partyCACertsFromBatcher(t *testing.T, b *batcher.Batcher, partyID types.PartyID) (caCerts [][]byte, tlsCACerts [][]byte) {
+	ordererConfig, ok := b.GetConfig().Bundle.OrdererConfig()
+	require.True(t, ok, "failed to extract orderer config from the batcher's bundle")
+
+	sharedConfig := ordererpb.SharedConfig{}
+	require.NoError(t, proto.Unmarshal(ordererConfig.ConsensusMetadata(), &sharedConfig))
+
+	for _, partyConfig := range sharedConfig.GetPartiesConfig() {
+		if partyConfig.PartyID == uint32(partyID) {
+			return partyConfig.GetCACerts(), partyConfig.GetTLSCACerts()
+		}
+	}
+
+	require.FailNow(t, fmt.Sprintf("party %d not found in the batcher's shared configuration", partyID))
+	return nil, nil
+}
+
+// containsCert reports whether certs contains a certificate equal to target.
+func containsCert(certs [][]byte, target []byte) bool {
+	for _, cert := range certs {
+		if bytes.Equal(cert, target) {
+			return true
+		}
+	}
+	return false
 }
 
 func createBatcherNodes(t *testing.T, dir string, parties []types.PartyID, numOfShards int, consenters []*stubConsenter) ([]*batcher.Batcher, *common.Block, channelconfig.Resources) {
