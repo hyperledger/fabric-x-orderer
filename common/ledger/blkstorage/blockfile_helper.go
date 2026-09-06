@@ -8,6 +8,7 @@ package blkstorage
 
 import (
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -52,6 +53,9 @@ func constructBlockfilesInfo(rootDir string) (*blockfilesInfo, error) {
 		return nil, err
 	}
 
+	// Note this stays safe on a pruned ledger: if the last file holds no complete block it is the active
+	// file, so lastPersistedBlock lives in the file directly below it. Pruning never removes the
+	// file holding lastPersistedBlock, so that predecessor is always present.
 	if numBlocksInFile == 0 && lastFileNum > 0 {
 		secondLastFileNum := lastFileNum - 1
 		fileInfo := getFileInfoOrPanic(rootDir, secondLastFileNum)
@@ -123,6 +127,31 @@ func retrieveLastFileSuffix(rootDir string) (int, error) {
 	}
 	logger.Debugf("retrieveLastFileSuffix() - biggestFileNum = %d", biggestFileNum)
 	return biggestFileNum, err
+}
+
+// blockfileNumsIn returns the suffix numbers of the block files present in rootDir, ascending. Pruning
+// lists them rather than probing upwards from zero, because a pruned ledger's files no longer start at
+// blockfile_000000 and a file an earlier prune failed to unlink may sit anywhere below the ones it did.
+func blockfileNumsIn(rootDir string) ([]int, error) {
+	entries, err := os.ReadDir(rootDir)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error reading dir %s", rootDir)
+	}
+
+	nums := make([]int, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !isBlockFileName(e.Name()) {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(e.Name(), blockfilePrefix))
+		if err != nil {
+			return nil, errors.Wrapf(err, "unexpected block file name %s", e.Name())
+		}
+		nums = append(nums, n)
+	}
+
+	slices.Sort(nums)
+	return nums, nil
 }
 
 func isBlockFileName(name string) bool {

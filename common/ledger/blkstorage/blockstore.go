@@ -73,6 +73,20 @@ func (store *BlockStore) RetrieveBlockByNumber(blockNum uint64) (*common.Block, 
 	return store.fileMgr.retrieveBlockByNumber(blockNum)
 }
 
+// PruneBefore removes the block files whose blocks all lie below blockNum, advancing a durable bound so
+// that reads below it fail with ErrPruned. blockNum is an upper bound: files are removed on whole-file
+// boundaries, so the bound lands at or below it. Height() is unchanged, and the last block always survives.
+// Idempotent and monotone: a request below the bound in force does not lower it.
+func (store *BlockStore) PruneBefore(blockNum uint64) error {
+	return store.fileMgr.pruneBefore(blockNum)
+}
+
+// FirstAvailableBlockNumber returns the lowest block number this store can serve. It is 0 unless the
+// ledger has been pruned. Reads below it fail with ErrPruned.
+func (store *BlockStore) FirstAvailableBlockNumber() uint64 {
+	return store.fileMgr.pruner.firstReadableBlockNum()
+}
+
 // TxIDExists returns true if a transaction with the txID is ever committed
 func (store *BlockStore) TxIDExists(txID string) (bool, error) {
 	return store.fileMgr.txIDExists(txID)
