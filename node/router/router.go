@@ -95,7 +95,7 @@ func NewRouter(config *nodeconfig.RouterNodeConfig, configuration *config.Config
 		signer:       signer,
 		mainExitChan: mainExitChan,
 		shardIDs:     shardIDs,
-		mapper:       CreateMapperCRC64(logger, uint16(len(shardIDs))),
+		mapper:       CreateMapperCRC64(uint16(len(shardIDs))),
 		status:       node_utils.NodeStatus{},
 	}
 
@@ -482,7 +482,6 @@ func (r *Router) initRand() *rand2.Rand {
 func (r *Router) getShardRouterAndReqID(req *protos.Request) ([]byte, *ShardRouter) {
 	shardIndex, reqID := r.mapper.Map(req.Payload)
 	shardId := r.shardIDs[shardIndex]
-	r.logger.Debugf("request %x is mapped to shard %d", req.Payload, shardId)
 	shardRouter, exists := r.shardRouters[shardId]
 	if !exists {
 		r.logger.Panicf("Mapped request %d to a non existent shard", shardId)
@@ -502,8 +501,6 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID, trace: trace}
 	tr.request.ConfigSeq = r.configSeq
 	shardRouter.Forward(tr)
-
-	r.logger.Debugf("Forwarded request %x", request.Payload)
 
 	var response Response
 	select {
