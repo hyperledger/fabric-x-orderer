@@ -194,16 +194,16 @@ func validateBaseName(baseName string) error {
 	}
 
 	if baseName == "." || baseName == ".." {
-		return errors.Errorf("baseName [%s] illegal, cannot be '.' or '..'", baseName)
+		return errors.Errorf("baseName %q illegal, cannot be '.' or '..'", baseName)
 	}
 
 	if strings.Contains(baseName, "/") || strings.Contains(baseName, "\\") {
-		return errors.Errorf("baseName [%s] illegal, cannot contain os path separator", baseName)
+		return errors.Errorf("baseName %q illegal, cannot contain path separator", baseName)
 	}
 
 	for _, r := range baseName {
 		if unicode.IsControl(r) {
-			return errors.Errorf("baseName [%s] illegal, cannot contain control characters", baseName)
+			return errors.Errorf("baseName %q illegal, cannot contain control characters", baseName)
 		}
 	}
 
