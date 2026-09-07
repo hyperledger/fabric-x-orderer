@@ -11,11 +11,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/hyperledger/fabric-x-orderer/config"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
 func TestNewThrottler_DisabledPolicies(t *testing.T) {
-	for _, policy := range []string{"", ThrottlingDisabled} {
+	for _, policy := range []string{"", config.ThrottlingPolicyDisabled} {
 		th, err := newThrottler(nodeconfig.RouterThrottlingConfig{Policy: policy})
 		require.NoError(t, err)
 		require.NotNil(t, th)
@@ -28,7 +29,7 @@ func TestNewThrottler_DisabledPolicies(t *testing.T) {
 
 func TestNewThrottler_GlobalPolicy(t *testing.T) {
 	const rate, burst = 1000, 10
-	th, err := newThrottler(nodeconfig.RouterThrottlingConfig{Policy: ThrottlingGlobal, Rate: rate, Burst: burst})
+	th, err := newThrottler(nodeconfig.RouterThrottlingConfig{Policy: config.ThrottlingPolicyGlobal, Rate: rate, Burst: burst})
 	require.NoError(t, err)
 	require.NotNil(t, th.global)
 
@@ -43,11 +44,12 @@ func TestNewThrottler_GlobalPolicy(t *testing.T) {
 	require.False(t, th.Allow())
 }
 
-func TestNewThrottler_GlobalPolicyZeroRateDisables(t *testing.T) {
-	th, err := newThrottler(nodeconfig.RouterThrottlingConfig{Policy: ThrottlingGlobal, Rate: 0})
-	require.NoError(t, err)
-	require.Nil(t, th.global, "global policy with rate 0 installs no limiter")
-	require.True(t, th.Allow())
+func TestNewThrottler_GlobalPolicyZeroRateErrors(t *testing.T) {
+	for _, rate := range []int{0, -1} {
+		th, err := newThrottler(nodeconfig.RouterThrottlingConfig{Policy: config.ThrottlingPolicyGlobal, Rate: rate})
+		require.Error(t, err, "global policy with non-positive rate is a misconfiguration")
+		require.Nil(t, th)
+	}
 }
 
 func TestNewThrottler_UnknownPolicy(t *testing.T) {

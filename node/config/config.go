@@ -108,10 +108,10 @@ type RouterNodeConfig struct {
 }
 
 // RouterThrottlingConfig is the runtime throttling configuration for a router.
-// Policy selects the throttling strategy (see the Throttling* constants in
-// node/router); Rate and Burst parameterize the rate limiter. The struct is
-// intentionally a container so future policies (e.g. per-client/per-org) can add
-// parameters without changing existing call sites.
+// Policy selects the throttling strategy (see the ThrottlingPolicy* constants in
+// the config package); Rate and Burst parameterize the rate limiter. The struct
+// is intentionally a container so future policies (e.g. per-client/per-org) can
+// add parameters without changing existing call sites.
 type RouterThrottlingConfig struct {
 	Policy string
 	Rate   int

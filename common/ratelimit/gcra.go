@@ -6,10 +6,11 @@ SPDX-License-Identifier: Apache-2.0
 
 // Package ratelimit provides a lock-free token-bucket rate limiter suitable for
 // hot paths that must admit or reject requests at very high rates with minimal
-// contention.
+// contention. It implements the Generic Cell Rate Algorithm (GCRA).
 package ratelimit
 
 import (
+	"math"
 	"sync/atomic"
 	"time"
 )
@@ -55,9 +56,14 @@ func newWithClock(rate float64, burst int, nowFn func() int64) *Limiter {
 	if burst < 1 {
 		burst = 1
 	}
+	burstOffset := interval * int64(burst)
+	if burstOffset/int64(burst) != interval {
+		// Multiplication overflowed int64; treat as an effectively unbounded burst.
+		burstOffset = math.MaxInt64
+	}
 	return &Limiter{
 		intervalNanos:    interval,
-		burstOffsetNanos: interval * int64(burst),
+		burstOffsetNanos: burstOffset,
 		nowFn:            nowFn,
 	}
 }
@@ -66,6 +72,9 @@ func newWithClock(rate float64, burst int, nowFn func() int64) *Limiter {
 // over-budget request is rejected immediately (returning false). Rejections do
 // not mutate state (no CAS), so they are cheaper than admissions.
 func (l *Limiter) Allow() bool {
+	if l == nil {
+		return true // a nil Limiter is "unlimited"
+	}
 	now := l.nowFn()
 	for {
 		tat := l.tatNanos.Load()

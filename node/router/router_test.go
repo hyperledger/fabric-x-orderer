@@ -193,7 +193,7 @@ func withThrottling(policy string, rate, burst int) func(*config.RouterNodeConfi
 // rejections carrying the throttle message while the initial burst succeeds, and
 // that the router_requests_throttled metric is incremented.
 func TestBroadcastThrottled(t *testing.T) {
-	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(router.ThrottlingGlobal, 1, 1))
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(fabricx_config.ThrottlingPolicyGlobal, 1, 1))
 	err := createServerTLSClientConnection(testSetup, testSetup.ca)
 	require.NoError(t, err)
 	require.NotNil(t, testSetup.clientConn)
@@ -222,7 +222,7 @@ func TestBroadcastThrottled(t *testing.T) {
 // TestSubmitThrottled verifies that unary Submit calls over the global rate limit
 // are rejected with the throttle error.
 func TestSubmitThrottled(t *testing.T) {
-	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(router.ThrottlingGlobal, 1, 1))
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(fabricx_config.ThrottlingPolicyGlobal, 1, 1))
 	err := createServerTLSClientConnection(testSetup, testSetup.ca)
 	require.NoError(t, err)
 	require.NotNil(t, testSetup.clientConn)
@@ -240,7 +240,7 @@ func TestSubmitThrottled(t *testing.T) {
 // TestThrottlingDisabledPassThrough verifies that with the disabled policy, all
 // requests pass through and none are throttled.
 func TestThrottlingDisabledPassThrough(t *testing.T) {
-	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(router.ThrottlingDisabled, 0, 0))
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(fabricx_config.ThrottlingPolicyDisabled, 0, 0))
 	err := createServerTLSClientConnection(testSetup, testSetup.ca)
 	require.NoError(t, err)
 	require.NotNil(t, testSetup.clientConn)

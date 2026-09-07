@@ -413,7 +413,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		if !r.throttler.Load().Allow() {
 			r.metrics.throttledTxs.Add(1)
-			r.sendBroadcastResponse(stream, Response{err: ErrThrottled})
+			feedbackChan <- Response{err: ErrThrottled}
 			continue
 		}
 
@@ -422,10 +422,10 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		select {
 		case <-r.stopChan:
-			r.sendBroadcastResponse(stream, Response{
+			feedbackChan <- Response{
 				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 				reqID: reqID,
-			})
+			}
 		default:
 			// create a routing request with nil trace. the request is not traced in router.
 			tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID}
@@ -466,20 +466,20 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 
 		r.metrics.incomingTxs.Add(1)
 
-		reqID, shardRouter := r.getShardRouterAndReqID(req)
-
 		if !r.throttler.Load().Allow() {
 			r.metrics.throttledTxs.Add(1)
-			r.sendSubmitResponse(stream, Response{err: ErrThrottled, reqID: reqID})
+			feedbackChan <- Response{err: ErrThrottled}
 			continue
 		}
 
+		reqID, shardRouter := r.getShardRouterAndReqID(req)
+
 		select {
 		case <-r.stopChan:
-			r.sendSubmitResponse(stream, Response{
+			feedbackChan <- Response{
 				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 				reqID: reqID,
-			})
+			}
 		default:
 			trace := createTraceID(rand)
 			tr := &TrackedRequest{request: req, responses: feedbackChan, reqID: reqID, trace: trace}
@@ -514,12 +514,12 @@ func (r *Router) getShardRouterAndReqID(req *protos.Request) ([]byte, *ShardRout
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
 	r.metrics.incomingTxs.Add(1)
 
-	reqID, shardRouter := r.getShardRouterAndReqID(request)
-
 	if !r.throttler.Load().Allow() {
 		r.metrics.throttledTxs.Add(1)
-		return responseToSubmitResponse(&Response{err: ErrThrottled, reqID: reqID}), nil
+		return responseToSubmitResponse(&Response{err: ErrThrottled}), nil
 	}
+
+	reqID, shardRouter := r.getShardRouterAndReqID(request)
 
 	trace := createTraceID(nil)
 
@@ -573,14 +573,6 @@ func (r *Router) sendFeedbackOnSubmitStream(stream protos.RequestTransmit_Submit
 	}
 }
 
-func (r *Router) sendSubmitResponse(stream protos.RequestTransmit_SubmitStreamServer, response Response) {
-	err := stream.Send(responseToSubmitResponse(&response))
-	if err != nil {
-		r.logger.Errorf("error sending response to client: %v", err)
-	}
-	r.metrics.increaseErrorCount(response.err)
-}
-
 func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, feedbackChan chan Response) {
 	r.feedbackWG.Add(1)
 	defer r.feedbackWG.Done()
@@ -600,14 +592,6 @@ func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_Br
 			}
 		}
 	}
-}
-
-func (r *Router) sendBroadcastResponse(stream orderer.AtomicBroadcast_BroadcastServer, response Response) {
-	err := stream.Send(responseToBroadcastResponse(&response))
-	if err != nil {
-		r.logger.Errorf("error sending response to client: %v", err)
-	}
-	r.metrics.increaseErrorCount(response.err)
 }
 
 func createTraceID(rand *rand2.Rand) []byte {

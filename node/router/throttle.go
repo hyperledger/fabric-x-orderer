@@ -10,16 +10,8 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/hyperledger/fabric-x-orderer/common/ratelimit"
+	"github.com/hyperledger/fabric-x-orderer/config"
 	nodeconfig "github.com/hyperledger/fabric-x-orderer/node/config"
-)
-
-// Throttling policy names. These are the values accepted by
-// RouterThrottlingConfig.Policy (mirrored by the ThrottlingPolicy* constants in
-// the config package).
-const (
-	ThrottlingDisabled = "disabled" // no throttling (default)
-	ThrottlingGlobal   = "global"   // one aggregate rate limit across all clients
-	// Future: ThrottlingPerClient, ThrottlingPerOrg (issue #349, Goal 2).
 )
 
 // RateLimiter admits or rejects a single request. Implementations must be safe
@@ -54,15 +46,18 @@ func (t *throttler) Allow() bool {
 // startup (and on reconfig).
 func newThrottler(cfg nodeconfig.RouterThrottlingConfig) (*throttler, error) {
 	switch cfg.Policy {
-	case "", ThrottlingDisabled:
+	case "", config.ThrottlingPolicyDisabled:
 		return &throttler{}, nil
-	case ThrottlingGlobal:
-		// ratelimit.New returns nil for Rate <= 0. Leave global as a nil interface
-		// (not a non-nil interface wrapping a nil pointer) so Allow() short-circuits;
-		// this yields an effectively-disabled container for a "global" policy with no rate.
+	case config.ThrottlingPolicyGlobal:
+		// A "global" policy with no positive rate is a misconfiguration: fail fast
+		// rather than silently running with throttling disabled.
+		if cfg.Rate <= 0 {
+			return nil, errors.Errorf("router throttling policy %q requires Rate > 0, got %d", cfg.Policy, cfg.Rate)
+		}
 		lim := ratelimit.New(float64(cfg.Rate), cfg.Burst)
 		if lim == nil {
-			return &throttler{}, nil
+			// Rate > 0 but so large that the per-token interval rounds to zero ns.
+			return nil, errors.Errorf("router throttling policy %q: Rate %d is too high (per-token interval rounds to zero)", cfg.Policy, cfg.Rate)
 		}
 		return &throttler{global: lim}, nil
 	default:

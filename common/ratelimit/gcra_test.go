@@ -31,6 +31,35 @@ func TestNew_DisabledReturnsNil(t *testing.T) {
 	require.Nil(t, New(2e18, 1), "rate beyond nanosecond resolution disables throttling")
 }
 
+func TestAllow_NilLimiter(t *testing.T) {
+	var l *Limiter // nil means "unlimited"
+	require.NotPanics(t, func() {
+		require.True(t, l.Allow(), "a nil Limiter admits every request")
+	})
+}
+
+// TestNew_BurstOverflowGuard checks that a burst large enough to overflow
+// interval*burst does not wrap the burst offset negative (which would otherwise
+// flip the limiter into rejecting every request); it must behave as an
+// effectively unbounded burst instead.
+func TestNew_BurstOverflowGuard(t *testing.T) {
+	clk := &testClock{}
+	clk.set(time.Second)
+	// rate 1 => interval 1e9 ns; this burst overflows interval*burst in int64.
+	const rate, burst = 1, 1 << 34
+	l := newWithClock(rate, burst, clk.now)
+	require.NotNil(t, l)
+
+	admitted := 0
+	const attempts = 100000
+	for i := 0; i < attempts; i++ {
+		if l.Allow() {
+			admitted++
+		}
+	}
+	require.Equal(t, attempts, admitted, "an overflowing burst must behave as effectively unbounded, not reject everything")
+}
+
 func TestAllow_BurstThenReject(t *testing.T) {
 	clk := &testClock{}
 	clk.set(time.Second) // start away from zero to exercise the cold-start catch-up

@@ -183,11 +183,14 @@ type ThrottlingParams struct {
 	Burst int `yaml:"Burst,omitempty"`
 }
 
-// Throttling policy names (mirrored by the ThrottlingDisabled/ThrottlingGlobal
-// constants consumed in node/router).
+// Throttling policy names accepted by ThrottlingParams.Policy (and carried
+// through to the router's RouterThrottlingConfig.Policy). This is the single
+// source of truth for these values, shared by the config layer (which reads them
+// from YAML) and the router (which dispatches on them).
 const (
-	ThrottlingPolicyDisabled = "disabled"
-	ThrottlingPolicyGlobal   = "global"
+	ThrottlingPolicyDisabled = "disabled" // no throttling (default)
+	ThrottlingPolicyGlobal   = "global"   // one aggregate rate limit across all clients
+	// Future: per-client / per-org policies (issue #349, Goal 2).
 )
 
 type ConsensusParams struct {
