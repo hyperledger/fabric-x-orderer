@@ -150,15 +150,19 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 
 Each component exposes its metrics via an HTTP endpoint that Prometheus scrapes.
 
-Locate the `local_config_*.yaml` files (where `*` is the component name:   `assembler`, `consenter`, `batcher`, or `router`) and add the following fields **below** the `MetricsLogInterval` field.
+Locate the `local_config_*.yaml` files (where `*` is the component name:   `assembler`, `consenter`, `batcher`, or `router`) and set the operations endpoint on which the component serves `/metrics`.
 
 ### Example: `party1/local_config_assembler.yaml`
 
 ```yaml
-...
-MetricsLogInterval: 10s
-MonitoringListenAddress: "0.0.0.0"
-MonitoringListenPort: 9001
+Operations:
+  ListenAddress: "0.0.0.0"
+  ListenPort: 9001
+
+Metrics:
+  Provider: prometheus
+  MetricsLogInterval: 10s
+  PrometheusAddress: "http://localhost:9090"
 ```
 ---
 
