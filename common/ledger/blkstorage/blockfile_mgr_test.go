@@ -11,12 +11,9 @@ import (
 	"os"
 	"testing"
 
-	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
-	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protowire"
 )
@@ -28,7 +25,6 @@ func TestBlockfileMgrBlockReadWrite(t *testing.T) {
 	defer blkfileMgrWrapper.close()
 	blocks := testutil.ConstructTestBlocks(t, 10)
 	blkfileMgrWrapper.addBlocks(blocks)
-	blkfileMgrWrapper.testGetBlockByHash(blocks)
 	blkfileMgrWrapper.testGetBlockByNumber(blocks)
 }
 
@@ -172,209 +168,6 @@ func TestBlockfileMgrBlockchainInfo(t *testing.T) {
 	require.Equal(t, uint64(10), bcInfo.Height)
 }
 
-func TestTxIDExists(t *testing.T) {
-	t.Run("green-path", func(t *testing.T) {
-		env := newTestEnv(t, NewConf(t.TempDir(), 0))
-		defer env.Cleanup()
-
-		blkStore, err := env.provider.Open("testLedger")
-		require.NoError(t, err)
-		defer blkStore.Shutdown()
-
-		blocks := testutil.ConstructTestBlocks(t, 2)
-		for _, blk := range blocks {
-			require.NoError(t, blkStore.AddBlock(blk))
-		}
-
-		for _, blk := range blocks {
-			for i := range blk.Data.Data {
-				txID, err := protoutil.GetOrComputeTxIDFromEnvelope(blk.Data.Data[i])
-				require.NoError(t, err)
-				exists, err := blkStore.TxIDExists(txID)
-				require.NoError(t, err)
-				require.True(t, exists)
-			}
-		}
-		exists, err := blkStore.TxIDExists("non-existent-txid")
-		require.NoError(t, err)
-		require.False(t, exists)
-	})
-
-	t.Run("error-path", func(t *testing.T) {
-		env := newTestEnv(t, NewConf(t.TempDir(), 0))
-		defer env.Cleanup()
-
-		blkStore, err := env.provider.Open("testLedger")
-		require.NoError(t, err)
-		defer blkStore.Shutdown()
-
-		env.provider.Close()
-		exists, err := blkStore.TxIDExists("random")
-		require.EqualError(t, err, "error while trying to check the presence of TXID [random]: internal leveldb error while obtaining db iterator: leveldb: closed")
-		require.False(t, exists)
-	})
-}
-
-func TestBlockfileMgrGetTxById(t *testing.T) {
-	env := newTestEnv(t, NewConf(t.TempDir(), 0))
-	defer env.Cleanup()
-	blkfileMgrWrapper := newTestBlockfileWrapper(env, "testLedger")
-	defer blkfileMgrWrapper.close()
-	blocks := testutil.ConstructTestBlocks(t, 2)
-	blkfileMgrWrapper.addBlocks(blocks)
-	for _, blk := range blocks {
-		for j, txEnvelopeBytes := range blk.Data.Data {
-			// blockNum starts with 0
-			txID, err := protoutil.GetOrComputeTxIDFromEnvelope(blk.Data.Data[j])
-			require.NoError(t, err)
-			txEnvelopeFromFileMgr, err := blkfileMgrWrapper.blockfileMgr.retrieveTransactionByID(txID)
-			require.NoError(t, err, "Error while retrieving tx from blkfileMgr")
-			txEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
-			require.NoError(t, err, "Error while unmarshalling tx")
-			require.Equal(t, txEnvelope, txEnvelopeFromFileMgr)
-		}
-	}
-}
-
-// TestBlockfileMgrGetTxByIdDuplicateTxid tests that a transaction with an existing txid
-// (within same block or a different block) should not over-write the index by-txid (FAB-8557)
-func TestBlockfileMgrGetTxByIdDuplicateTxid(t *testing.T) {
-	env := newTestEnv(t, NewConf(t.TempDir(), 0))
-	defer env.Cleanup()
-	blkStore, err := env.provider.Open("testLedger")
-	require.NoError(env.t, err)
-	blkFileMgr := blkStore.fileMgr
-	bg, gb := testutil.NewBlockGenerator(t, "testLedger", false)
-	require.NoError(t, blkFileMgr.addBlock(gb))
-
-	block1 := bg.NextBlockWithTxid(
-		[][]byte{
-			[]byte("tx with id=txid-1"),
-			[]byte("tx with id=txid-2"),
-			[]byte("another tx with existing id=txid-1"),
-		},
-		[]string{"txid-1", "txid-2", "txid-1"},
-	)
-	txValidationFlags := xcommon_txflags.New(3)
-	txValidationFlags.SetFlag(0, peer.TxValidationCode_VALID)
-	txValidationFlags.SetFlag(1, peer.TxValidationCode_INVALID_OTHER_REASON)
-	txValidationFlags.SetFlag(2, peer.TxValidationCode_DUPLICATE_TXID)
-	block1.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txValidationFlags
-	require.NoError(t, blkFileMgr.addBlock(block1))
-
-	block2 := bg.NextBlockWithTxid(
-		[][]byte{
-			[]byte("tx with id=txid-3"),
-			[]byte("yet another tx with existing id=txid-1"),
-		},
-		[]string{"txid-3", "txid-1"},
-	)
-	txValidationFlags = xcommon_txflags.New(2)
-	txValidationFlags.SetFlag(0, peer.TxValidationCode_VALID)
-	txValidationFlags.SetFlag(1, peer.TxValidationCode_DUPLICATE_TXID)
-	block2.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER] = txValidationFlags
-	require.NoError(t, blkFileMgr.addBlock(block2))
-
-	txenvp1, err := protoutil.GetEnvelopeFromBlock(block1.Data.Data[0])
-	require.NoError(t, err)
-	txenvp2, err := protoutil.GetEnvelopeFromBlock(block1.Data.Data[1])
-	require.NoError(t, err)
-	txenvp3, err := protoutil.GetEnvelopeFromBlock(block2.Data.Data[0])
-	require.NoError(t, err)
-
-	indexedTxenvp, _ := blkFileMgr.retrieveTransactionByID("txid-1")
-	require.Equal(t, txenvp1, indexedTxenvp)
-	indexedTxenvp, _ = blkFileMgr.retrieveTransactionByID("txid-2")
-	require.Equal(t, txenvp2, indexedTxenvp)
-	indexedTxenvp, _ = blkFileMgr.retrieveTransactionByID("txid-3")
-	require.Equal(t, txenvp3, indexedTxenvp)
-
-	blk, _ := blkFileMgr.retrieveBlockByTxID("txid-1")
-	require.Equal(t, block1, blk)
-	blk, _ = blkFileMgr.retrieveBlockByTxID("txid-2")
-	require.Equal(t, block1, blk)
-	blk, _ = blkFileMgr.retrieveBlockByTxID("txid-3")
-	require.Equal(t, block2, blk)
-
-	validationCode, blkNum, _ := blkFileMgr.retrieveTxValidationCodeByTxID("txid-1")
-	require.Equal(t, peer.TxValidationCode_VALID, validationCode)
-	require.Equal(t, uint64(1), blkNum)
-	validationCode, blkNum, _ = blkFileMgr.retrieveTxValidationCodeByTxID("txid-2")
-	require.Equal(t, peer.TxValidationCode_INVALID_OTHER_REASON, validationCode)
-	require.Equal(t, uint64(1), blkNum)
-	validationCode, blkNum, _ = blkFileMgr.retrieveTxValidationCodeByTxID("txid-3")
-	require.Equal(t, peer.TxValidationCode_VALID, validationCode)
-	require.Equal(t, uint64(2), blkNum)
-
-	// though we do not expose an API for retrieving all the txs by same id but we may in future
-	// and the data is persisted to support this. below code tests this behavior internally
-	w := &testBlockfileMgrWrapper{
-		t:            t,
-		blockfileMgr: blkFileMgr,
-	}
-	w.testGetMultipleDataByTxID(
-		"txid-1",
-		[]*expectedBlkTxValidationCode{
-			{
-				blk:            block1,
-				txEnv:          protoutil.ExtractEnvelopeOrPanic(block1, 0),
-				validationCode: peer.TxValidationCode_VALID,
-			},
-			{
-				blk:            block1,
-				txEnv:          protoutil.ExtractEnvelopeOrPanic(block1, 2),
-				validationCode: peer.TxValidationCode_DUPLICATE_TXID,
-			},
-			{
-				blk:            block2,
-				txEnv:          protoutil.ExtractEnvelopeOrPanic(block2, 1),
-				validationCode: peer.TxValidationCode_DUPLICATE_TXID,
-			},
-		},
-	)
-
-	w.testGetMultipleDataByTxID(
-		"txid-2",
-		[]*expectedBlkTxValidationCode{
-			{
-				blk:            block1,
-				txEnv:          protoutil.ExtractEnvelopeOrPanic(block1, 1),
-				validationCode: peer.TxValidationCode_INVALID_OTHER_REASON,
-			},
-		},
-	)
-
-	w.testGetMultipleDataByTxID(
-		"txid-3",
-		[]*expectedBlkTxValidationCode{
-			{
-				blk:            block2,
-				txEnv:          protoutil.ExtractEnvelopeOrPanic(block2, 0),
-				validationCode: peer.TxValidationCode_VALID,
-			},
-		},
-	)
-}
-
-func TestBlockfileMgrGetTxByBlockNumTranNum(t *testing.T) {
-	env := newTestEnv(t, NewConf(t.TempDir(), 0))
-	defer env.Cleanup()
-	blkfileMgrWrapper := newTestBlockfileWrapper(env, "testLedger")
-	defer blkfileMgrWrapper.close()
-	blocks := testutil.ConstructTestBlocks(t, 10)
-	blkfileMgrWrapper.addBlocks(blocks)
-	for blockIndex, blk := range blocks {
-		for tranIndex, txEnvelopeBytes := range blk.Data.Data {
-			// blockNum and tranNum both start with 0
-			txEnvelopeFromFileMgr, err := blkfileMgrWrapper.blockfileMgr.retrieveTransactionByBlockNumTranNum(uint64(blockIndex), uint64(tranIndex))
-			require.NoError(t, err, "Error while retrieving tx from blkfileMgr")
-			txEnvelope, err := protoutil.GetEnvelopeFromBlock(txEnvelopeBytes)
-			require.NoError(t, err, "Error while unmarshalling tx")
-			require.Equal(t, txEnvelope, txEnvelopeFromFileMgr)
-		}
-	}
-}
-
 func TestBlockfileMgrRestart(t *testing.T) {
 	env := newTestEnv(t, NewConf(t.TempDir(), 0))
 	defer env.Cleanup()
@@ -389,7 +182,7 @@ func TestBlockfileMgrRestart(t *testing.T) {
 	blkfileMgrWrapper = newTestBlockfileWrapper(env, ledgerid)
 	defer blkfileMgrWrapper.close()
 	require.Equal(t, 9, int(blkfileMgrWrapper.blockfileMgr.blockfilesInfo.lastPersistedBlock))
-	blkfileMgrWrapper.testGetBlockByHash(blocks)
+	blkfileMgrWrapper.testGetBlockByNumber(blocks)
 	require.Equal(t, expectedHeight, blkfileMgrWrapper.blockfileMgr.getBlockchainInfo().Height)
 }
 
@@ -397,7 +190,7 @@ func TestBlockfileMgrFileRolling(t *testing.T) {
 	blocks := testutil.ConstructTestBlocks(t, 200)
 	size := 0
 	for _, block := range blocks[:100] {
-		by, _ := serializeBlock(block, false)
+		by := serializeBlock(block)
 		blockBytesSize := len(by)
 		encodedLen := protowire.AppendVarint(nil, uint64(blockBytesSize))
 		size += blockBytesSize + len(encodedLen)
@@ -410,34 +203,14 @@ func TestBlockfileMgrFileRolling(t *testing.T) {
 	blkfileMgrWrapper := newTestBlockfileWrapper(env, ledgerid)
 	blkfileMgrWrapper.addBlocks(blocks[:100])
 	require.Equal(t, 1, blkfileMgrWrapper.blockfileMgr.blockfilesInfo.latestFileNumber)
-	blkfileMgrWrapper.testGetBlockByHash(blocks[:100])
+	blkfileMgrWrapper.testGetBlockByNumber(blocks[:100])
 	blkfileMgrWrapper.close()
 
 	blkfileMgrWrapper = newTestBlockfileWrapper(env, ledgerid)
 	defer blkfileMgrWrapper.close()
 	blkfileMgrWrapper.addBlocks(blocks[100:])
 	require.Equal(t, 2, blkfileMgrWrapper.blockfileMgr.blockfilesInfo.latestFileNumber)
-	blkfileMgrWrapper.testGetBlockByHash(blocks[100:])
-}
-
-func TestBlockfileMgrGetBlockByTxID(t *testing.T) {
-	env := newTestEnv(t, NewConf(t.TempDir(), 0))
-	defer env.Cleanup()
-	blkfileMgrWrapper := newTestBlockfileWrapper(env, "testLedger")
-	defer blkfileMgrWrapper.close()
-	blocks := testutil.ConstructTestBlocks(t, 10)
-	blkfileMgrWrapper.addBlocks(blocks)
-	for _, blk := range blocks {
-		for j := range blk.Data.Data {
-			// blockNum starts with 1
-			txID, err := protoutil.GetOrComputeTxIDFromEnvelope(blk.Data.Data[j])
-			require.NoError(t, err)
-
-			blockFromFileMgr, err := blkfileMgrWrapper.blockfileMgr.retrieveBlockByTxID(txID)
-			require.NoError(t, err, "Error while retrieving block from blkfileMgr")
-			require.Equal(t, blk, blockFromFileMgr)
-		}
-	}
+	blkfileMgrWrapper.testGetBlockByNumber(blocks[100:])
 }
 
 func TestBlockfileMgrSimulateCrashAtFirstBlockInFile(t *testing.T) {

@@ -36,17 +36,11 @@ func NewBatchLedgerArray(shardID types.ShardID, partyID types.PartyID, parties [
 
 	ledgerPartsMap := make(map[types.PartyID]*BatchLedgerPart)
 
-	// TODO We are using the Fabric block storage for now even though it is not ideal.
-	// (1) We don't need the hash chain, and
-	// (2) we don't need to index TXs.
-	// In addition, in the future we may want to (3) prune batches that had already been received by a quorum of
+	// TODO We are using the Fabric block storage for now even though it is not ideal:
+	// we don't need the hash chain.
+	// In addition, in the future we may want to prune batches that had already been received by a quorum of
 	// assemblers; this however requires additional protocols between assemblers and consensus.
-	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(batchLedgerDir, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{},
-	)
+	provider, err := blkstorage.NewProvider(blkstorage.NewConf(batchLedgerDir, -1), &disabled.Provider{})
 	if err != nil {
 		return nil, errors.Errorf("failed creating block provider: %s", err)
 	}

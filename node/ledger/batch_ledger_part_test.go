@@ -26,12 +26,7 @@ func TestBatchLedgerPart(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 	metrics := newTestBatchLedgerMetrics()
 
-	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(dir, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{},
-	)
+	provider, err := blkstorage.NewProvider(blkstorage.NewConf(dir, -1), &disabled.Provider{})
 	require.NoError(t, err)
 
 	part, err := newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger, metrics)
@@ -77,12 +72,7 @@ func TestBatchLedgerPart_AppendWithDigest(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 	metrics := newTestBatchLedgerMetrics()
 
-	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(t.TempDir(), -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{},
-	)
+	provider, err := blkstorage.NewProvider(blkstorage.NewConf(t.TempDir(), -1), &disabled.Provider{})
 	require.NoError(t, err)
 	t.Cleanup(provider.Close)
 
@@ -105,12 +95,7 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 	logger := flogging.MustGetLogger("test")
 	metrics := newTestBatchLedgerMetrics()
 
-	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(dir, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{},
-	)
+	provider, err := blkstorage.NewProvider(blkstorage.NewConf(dir, -1), &disabled.Provider{})
 	require.NoError(t, err)
 
 	part, err := newBatchLedgerPart(provider, 1, 1, 2, "test-channel", logger, metrics)
