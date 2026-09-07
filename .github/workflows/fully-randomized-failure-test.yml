@@ -170,7 +170,9 @@ jobs:
         if: failure()
         id: failure_reason
         run: |
-          if [ -f test-results/startup_failure.txt ]; then
+          if [ -f test-results/failure_reason.txt ]; then
+            echo "reason=$(cat test-results/failure_reason.txt)" >> $GITHUB_OUTPUT
+          elif [ -f test-results/startup_failure.txt ]; then
             echo "reason=$(cat test-results/startup_failure.txt)" >> $GITHUB_OUTPUT
           else
             echo "reason=The test job failed to run (possibly due to insufficient runner resources or an infrastructure issue)" >> $GITHUB_OUTPUT
