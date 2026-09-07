@@ -14,7 +14,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// //  WRITER ////
 type blockfileWriter struct {
 	filePath string
 	file     *os.File
@@ -61,31 +60,4 @@ func (w *blockfileWriter) open() error {
 
 func (w *blockfileWriter) close() error {
 	return errors.WithStack(w.file.Close())
-}
-
-// //  READER ////
-type blockfileReader struct {
-	file *os.File
-}
-
-func newBlockfileReader(filePath string) (*blockfileReader, error) {
-	file, err := os.OpenFile(filePath, os.O_RDONLY, 0o600)
-	if err != nil {
-		return nil, errors.Wrapf(err, "error opening block file reader for file %s", filePath)
-	}
-	reader := &blockfileReader{file}
-	return reader, nil
-}
-
-func (r *blockfileReader) read(offset int, length int) ([]byte, error) {
-	b := make([]byte, length)
-	_, err := r.file.ReadAt(b, int64(offset))
-	if err != nil {
-		return nil, errors.Wrapf(err, "error reading block file for offset %d and length %d", offset, length)
-	}
-	return b, nil
-}
-
-func (r *blockfileReader) close() error {
-	return errors.WithStack(r.file.Close())
 }

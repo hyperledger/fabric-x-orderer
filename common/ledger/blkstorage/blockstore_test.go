@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package blkstorage
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
@@ -32,53 +31,27 @@ func TestWrongBlockNumber(t *testing.T) {
 	require.Error(t, err, "Error shold have been thrown when adding block number 4 while block number 3 is expected")
 }
 
-func TestTxIDIndexErrorPropagations(t *testing.T) {
+func TestBlockNumIndexErrorPropagation(t *testing.T) {
+	// Scenario:
+	// 1. Open a store and add three blocks.
+	// 2. Close the underlying leveldb provider under the store.
+	// 3. Retrieve a block by number and expect the leveldb failure to surface.
 	env := newTestEnv(t, NewConf(t.TempDir(), 0))
 	defer env.Cleanup()
 
 	provider := env.provider
-	store, _ := provider.Open("testLedger")
+	store, err := provider.Open("testLedger")
+	require.NoError(t, err)
 	defer store.Shutdown()
+
 	blocks := testutil.ConstructTestBlocks(t, 3)
-	for i := 0; i < 3; i++ {
-		err := store.AddBlock(blocks[i])
-		require.NoError(t, err)
-	}
-
-	index := store.fileMgr.db
-
-	txIDBasedFunctions := []func() error{
-		func() error {
-			_, err := store.RetrieveTxByID("junkTxID")
-			return err
-		},
-		func() error {
-			_, err := store.RetrieveBlockByTxID("junkTxID")
-			return err
-		},
-		func() error {
-			_, _, err := store.RetrieveTxValidationCodeByTxID("junkTxID")
-			return err
-		},
-	}
-
-	index.Put(
-		constructTxIDKey("junkTxID", 5, 4),
-		[]byte("junkValue"),
-		false,
-	)
-	expectedErrMsg := fmt.Sprintf("unexpected error while unmarshalling bytes [%#v] into TxIDIndexValProto:", []byte("junkValue"))
-	for _, f := range txIDBasedFunctions {
-		err := f()
-		require.Error(t, err)
-		require.Contains(t, err.Error(), expectedErrMsg)
+	for _, b := range blocks {
+		require.NoError(t, store.AddBlock(b))
 	}
 
 	env.provider.leveldbProvider.Close()
-	expectedErrMsg = "error while trying to retrieve transaction info by TXID [junkTxID]:"
-	for _, f := range txIDBasedFunctions {
-		err := f()
-		require.Error(t, err)
-		require.Contains(t, err.Error(), expectedErrMsg)
-	}
+
+	block, err := store.RetrieveBlockByNumber(1)
+	require.Nil(t, block)
+	require.ErrorContains(t, err, "leveldb: closed")
 }
