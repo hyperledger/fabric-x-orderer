@@ -146,20 +146,20 @@ func (sr *ShardRouter) Forward(trackedReq *TrackedRequest) {
 
 // streamIndexes maps a request ID onto one of the
 // router2batcherConnPoolSize*router2batcherStreamsPerConn streams, by first reducing the request
-// ID to a single slot index over the whole set of streams, and then splitting that slot into a
-// (connection, stream-in-connection) pair.
+// ID's leading bytes to a single slot index over the whole set of streams, and then splitting that
+// slot into a (connection, stream-in-connection) pair.
 func (sr *ShardRouter) streamIndexes(reqID []byte) (connIndex int, streamInConnIndex int) {
-	var reqToSlot uint64
-	if len(reqID) >= 8 {
-		reqToSlot = binary.BigEndian.Uint64(reqID)
-	} else {
-		var buff [8]byte
-		copy(buff[:], reqID)
-		reqToSlot = binary.BigEndian.Uint64(buff[:])
-	}
+	// The request ID is a CRC64 checksum in big-endian order, and a shard is selected by narrowing
+	// that checksum to a uint16, so from its trailing two bytes. A stream is therefore selected
+	// from the leading ones, which the shard selection cannot reach.
+	// A request ID shorter than the leading bytes is zero-padded, and a longer one is truncated,
+	// so that neither is rejected here.
+	var leadingBytes [4]byte
+	copy(leadingBytes[:], reqID)
 
 	numOfSlots := sr.router2batcherConnPoolSize * sr.router2batcherStreamsPerConn
-	slot := int(reqToSlot % uint64(numOfSlots))
+	slot := int(binary.BigEndian.Uint32(leadingBytes[:])) % numOfSlots
+
 	return slot / sr.router2batcherStreamsPerConn, slot % sr.router2batcherStreamsPerConn
 }
 
