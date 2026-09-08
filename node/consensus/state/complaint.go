@@ -106,7 +106,7 @@ func (c *Complaint) ToBeSigned() []byte {
 		Reason:    c.Reason,
 		ConfigSeq: c.ConfigSeq,
 	}
-	return toBeSignedComplaint.Bytes()
+	return types.PrefixWithDomain(types.DomainComplaint, toBeSignedComplaint.Bytes())
 }
 
 func (c *Complaint) String() string {

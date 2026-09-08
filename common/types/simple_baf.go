@@ -182,7 +182,7 @@ func (s *SimpleBatchAttestationFragment) ToBeSigned() []byte {
 	if err != nil {
 		panic(err)
 	}
-	return result
+	return PrefixWithDomain(DomainBAF, result)
 }
 
 // Deserialize unmarshals every field including the signatures using protobuf.
