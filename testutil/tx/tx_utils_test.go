@@ -162,6 +162,56 @@ func TestShortModeEnvelopeBuilderSignsEveryEnvelope(t *testing.T) {
 	require.NotEqual(t, envelopes[1].Payload, envelopes[2].Payload)
 }
 
+func TestShortModeEnvelopeBuilderSizesTheWholeEnvelope(t *testing.T) {
+	// Scenario:
+	// 1. Create a signing identity and a builder.
+	// 2. Build an envelope for each of several requested sizes above the envelope's own overhead.
+	// 3. Confirm no envelope exceeds the size requested.
+	// 4. Confirm every envelope is within four bytes of the size requested.
+	// 5. Compare each size against the envelope the unsigned mode produces for the same request.
+	signer, certPEM := signingIdentity(t)
+	sessionNumber := []byte("0123456789abcdef")
+
+	builder, err := NewShortModeEnvelopeBuilder(signer, certPEM, "org1")
+	require.NoError(t, err)
+
+	// A DER encoded signature loses a byte whenever a leading zero drops out of r or s, so a run of
+	// envelopes covers the sizes one identity produces rather than a single one.
+	for _, envSize := range []int{300, 500, 1000, 4096} {
+		for txNumber := 0; txNumber < 64; txNumber++ {
+			envelope, err := builder.Envelope(txNumber, envSize, sessionNumber)
+			require.NoError(t, err)
+
+			size := proto.Size(envelope)
+			require.LessOrEqual(t, size, envSize)
+			require.Greater(t, size, envSize-4)
+		}
+
+		unsigned := PrepareUnsignedEnvelope(0, envSize, sessionNumber)
+		require.Equal(t, envSize, proto.Size(unsigned))
+	}
+}
+
+func TestShortModeEnvelopeBuilderSizesTheTransactionWhenTheEnvelopeCannotFit(t *testing.T) {
+	// Scenario:
+	// 1. Create a signing identity and a builder.
+	// 2. Request an envelope smaller than the overhead an envelope carries.
+	// 3. Confirm the transaction in it is the size requested instead.
+	signer, certPEM := signingIdentity(t)
+
+	builder, err := NewShortModeEnvelopeBuilder(signer, certPEM, "org1")
+	require.NoError(t, err)
+	require.Greater(t, builder.overheadSize, 0)
+
+	envSize := builder.overheadSize - 1
+	envelope, err := builder.Envelope(1, envSize, []byte("0123456789abcdef"))
+	require.NoError(t, err)
+
+	payload := &common.Payload{}
+	require.NoError(t, proto.Unmarshal(envelope.Payload, payload))
+	require.Len(t, payload.Data, envSize)
+}
+
 func TestShortModeEnvelopeBuilderRejectsACertificateItCannotParse(t *testing.T) {
 	// Scenario:
 	// 1. Create a signing identity.
