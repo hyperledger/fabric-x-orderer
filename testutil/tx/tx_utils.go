@@ -227,16 +227,33 @@ func PrepareUnsignedEnvelope(txNumber int, envSize int, sessionNumber []byte) *c
 
 // PrepareSignedEnvelopeWithCertificate prepares an fully signed envelope.
 // this method will be used for creating signed envelope for full signing mode.
-func PrepareSignedEnvelopeWithCertificate(txNumber int, envSize int, sessionNumber []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
-	data := PrepareTxWithTimestamp(txNumber, envSize, sessionNumber)
+// dataSize sizes the transaction, not the envelope: unlike PrepareUnsignedEnvelope, what the envelope
+// carries around the transaction is not subtracted from it.
+func PrepareSignedEnvelopeWithCertificate(
+	txNumber int,
+	dataSize int,
+	sessionNumber []byte,
+	signer *crypto.ECDSASigner,
+	certBytes []byte,
+	org string,
+) *common.Envelope {
+	data := PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
 	return CreateSignedStructuredEnvelope(data, signer, certBytes, org)
 }
 
 // PrepareSignedEnvelopeWithCertificateID is used for creating signed envelopes for the "short" (known-identity) signing mode.
-// A caller that prepares many envelopes for one signing identity should use ShortModeEnvelopeBuilder
-// instead, because this function derives the identity's invariant parts on every call.
-func PrepareSignedEnvelopeWithCertificateID(txNumber int, envSize int, sessionNumber []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
-	data := PrepareTxWithTimestamp(txNumber, envSize, sessionNumber)
+// dataSize sizes the transaction, not the envelope. A caller that wants an envelope of a given size, or
+// that prepares many envelopes for one signing identity, should use ShortModeEnvelopeBuilder instead:
+// this function sizes only the transaction and derives the identity's invariant parts on every call.
+func PrepareSignedEnvelopeWithCertificateID(
+	txNumber int,
+	dataSize int,
+	sessionNumber []byte,
+	signer *crypto.ECDSASigner,
+	certBytes []byte,
+	org string,
+) *common.Envelope {
+	data := PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
 	return CreateSignedStructuredEnvelopeWithCertID(data, signer, certBytes, org)
 }
 
@@ -265,10 +282,21 @@ type ShortModeEnvelopeBuilder struct {
 	signer          *crypto.ECDSASigner
 	channelHeader   []byte
 	signatureHeader []byte
+	overheadSize    int
 }
 
+// shortModeOverheadProbes is how many envelopes are built to measure the overhead. The DER encoding of
+// an ECDSA signature is a byte or two shorter whenever a leading zero drops out, so the largest of
+// several measurements is taken, which keeps an envelope at or just under the size asked for.
+const shortModeOverheadProbes = 16
+
+// shortModeProbeDataSize is the transaction size the overhead is measured at. A payload is prefixed
+// with its length as a varint, so the overhead grows by a byte at each of that prefix's boundaries;
+// measuring past the first boundary is right for every envelope size a load run asks for.
+const shortModeProbeDataSize = 128
+
 // NewShortModeEnvelopeBuilder derives everything a "short" mode envelope carries besides the
-// transaction and its signature.
+// transaction and its signature, and measures what all of it adds to an envelope.
 func NewShortModeEnvelopeBuilder(
 	signer *crypto.ECDSASigner,
 	certBytes []byte,
@@ -284,16 +312,52 @@ func NewShortModeEnvelopeBuilder(
 		Nonce:   []byte("nonce"),
 	}
 
-	return &ShortModeEnvelopeBuilder{
+	builder := &ShortModeEnvelopeBuilder{
 		signer:          signer,
 		channelHeader:   deterministicMarshall(createChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)),
 		signatureHeader: deterministicMarshall(signatureHeader),
-	}, nil
+	}
+
+	builder.overheadSize, err = builder.measureOverhead()
+	if err != nil {
+		return nil, err
+	}
+
+	return builder, nil
 }
 
-// Envelope builds and signs an envelope carrying one transaction of the given size.
+// measureOverhead returns how many bytes an envelope adds to the transaction it carries: both headers,
+// the creator identity naming the signer's certificate, the signature, and the protobuf framing of all
+// of them.
+func (b *ShortModeEnvelopeBuilder) measureOverhead() (int, error) {
+	data := make([]byte, shortModeProbeDataSize)
+
+	overhead := 0
+	for i := 0; i < shortModeOverheadProbes; i++ {
+		envelope, err := b.envelopeForData(data)
+		if err != nil {
+			return 0, err
+		}
+
+		if measured := proto.Size(envelope) - len(data); measured > overhead {
+			overhead = measured
+		}
+	}
+
+	return overhead, nil
+}
+
+// Envelope builds and signs an envelope of envSize bytes, counting what the envelope carries around
+// the transaction as well as the transaction itself, so that an envelope is the size a load run asks
+// for whichever signing mode produced it. An envelope cannot be smaller than its own overhead, so an
+// envSize below that sizes the transaction instead, as the unsigned mode does.
 func (b *ShortModeEnvelopeBuilder) Envelope(txNumber int, envSize int, sessionNumber []byte) (*common.Envelope, error) {
-	return b.envelopeForData(PrepareTxWithTimestamp(txNumber, envSize, sessionNumber))
+	dataSize := envSize
+	if envSize > b.overheadSize {
+		dataSize = envSize - b.overheadSize
+	}
+
+	return b.envelopeForData(PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber))
 }
 
 // envelopeForData signs the given transaction content. The header bytes it places in the payload are
