@@ -197,27 +197,27 @@ func TestFileRepo_InvalidBaseName(t *testing.T) {
 		{
 			testName:    "dot",
 			baseName:    ".",
-			expectedErr: "baseName [.] illegal, cannot be '.' or '..'",
+			expectedErr: "baseName \".\" illegal, cannot be '.' or '..'",
 		},
 		{
 			testName:    "dot-dot",
 			baseName:    "..",
-			expectedErr: "baseName [..] illegal, cannot be '.' or '..'",
+			expectedErr: "baseName \"..\" illegal, cannot be '.' or '..'",
 		},
 		{
 			testName:    "slash",
 			baseName:    "foo/bar",
-			expectedErr: "baseName [foo/bar] illegal, cannot contain os path separator",
+			expectedErr: "baseName \"foo/bar\" illegal, cannot contain path separator",
 		},
 		{
 			testName:    "backslash",
 			baseName:    `foo\bar`,
-			expectedErr: `baseName [foo\bar] illegal, cannot contain os path separator`,
+			expectedErr: "baseName \"foo\\\\bar\" illegal, cannot contain path separator",
 		},
 		{
 			testName:    "control character",
 			baseName:    "foo\nbar",
-			expectedErr: "baseName [foo\nbar] illegal, cannot contain control characters",
+			expectedErr: "baseName \"foo\\nbar\" illegal, cannot contain control characters",
 		},
 	}
 
@@ -242,7 +242,7 @@ func TestFileRepo_InvalidBaseName(t *testing.T) {
 		escaped := filepath.Join(parent, "escaped.join")
 
 		err = repo.Save("../escaped", []byte("payload"))
-		require.EqualError(t, err, "baseName [../escaped] illegal, cannot contain os path separator")
+		require.EqualError(t, err, "baseName \"../escaped\" illegal, cannot contain path separator")
 		require.NoFileExists(t, escaped)
 	})
 }
