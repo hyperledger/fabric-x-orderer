@@ -22,6 +22,23 @@ import (
 // background goroutine and no ticker: contention is bounded by GOMAXPROCS rather
 // than by the number of concurrent callers.
 //
+// Classical GCRA keeps a theoretical arrival time (TAT) and, for an emission
+// interval T = 1/rate and a tolerance tau, admits a request arriving at "now"
+// when now >= TAT - tau, then advances TAT to max(TAT, now) + T. tau is a
+// duration — how far ahead of the theoretical schedule a request may run — so
+// the number of requests admissible back to back is tau/T + 1.
+//
+// This implementation is parameterised instead by an integer burst — the bucket
+// capacity, i.e. the number of requests admissible at a single instant — with
+// tau = (burst-1)*T. It also folds the emission increment into the test: it
+// computes newTAT = max(TAT, now) + T and rejects when now < newTAT - burstOffset,
+// where burstOffset = burst*T = tau + T. The extra T inside newTAT and inside
+// burstOffset cancel, so this is exactly the classical "now < TAT - tau" in the
+// binding (TAT > now) case; the single max(...)+T form just lets the idle and
+// bunched branches — and the CAS — share one value. So burst 1 => tau 0 => the
+// steady rate with no bunching, burst N => N admitted at once, and burst < 1
+// (which would be a negative tau, rejecting everything) is coerced to 1 in New.
+//
 // A nil *Limiter is a valid value meaning "unlimited": callers gate the hot path
 // with a single `lim != nil` check, so a disabled limiter costs nothing.
 //
@@ -29,7 +46,7 @@ import (
 type Limiter struct {
 	tatNanos         atomic.Int64 // theoretical arrival time, in the nowFn timeline
 	intervalNanos    int64        // nanoseconds per token = 1e9 / rate
-	burstOffsetNanos int64        // intervalNanos * burst (how far TAT may lag "now")
+	burstOffsetNanos int64        // burst*interval; classical tolerance tau = (burst-1)*interval
 	nowFn            func() int64 // monotonic clock; time.Since(base) in production
 }
 

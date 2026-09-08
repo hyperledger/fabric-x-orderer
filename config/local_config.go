@@ -179,7 +179,10 @@ type ThrottlingParams struct {
 	Policy string `yaml:"Policy,omitempty"`
 	// Rate is the aggregate cap in requests/second across all clients (global policy).
 	Rate int `yaml:"Rate,omitempty"`
-	// Burst is the token-bucket capacity. When 0 it defaults to Rate (one second of tokens).
+	// Burst is the token-bucket capacity: the maximum number of requests that may
+	// be admitted at a single instant before the steady Rate applies. A value
+	// below 1 (including unset) is coerced to 1 by the rate limiter — i.e. no
+	// bursting, just the steady Rate, one request at a time.
 	Burst int `yaml:"Burst,omitempty"`
 }
 
@@ -598,10 +601,6 @@ func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *fl
 			if t.Policy == "" {
 				t.Policy = ThrottlingPolicyDisabled
 				logger.Infof("Router.Throttling.Policy is not set, using default value: %q", t.Policy)
-			}
-			if t.Policy == ThrottlingPolicyGlobal && t.Rate > 0 && t.Burst == 0 {
-				t.Burst = t.Rate
-				logger.Infof("Router.Throttling.Burst is not set, defaulting to Rate: %d", t.Burst)
 			}
 		}
 
