@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-const SubmitConfigAckTimeout = 60 * time.Second // TODO: expose in local config
+var SubmitConfigAckTimeout = 60 * time.Second // TODO: expose in local config
 
 type Sender interface {
 	Stop()
