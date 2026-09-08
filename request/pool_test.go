@@ -195,6 +195,49 @@ func TestRestartPool(t *testing.T) {
 	assert.Equal(t, 10, len(batch5))
 }
 
+func TestPoolContains(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
+	requestInspector := &reqInspector{}
+
+	pool := NewPool(sugaredLogger, requestInspector.RequestID, PoolOptions{
+		FirstStrikeThreshold:  time.Second * 5,
+		SecondStrikeThreshold: time.Minute / 2,
+		BatchMaxSize:          1000,
+		BatchMaxSizeBytes:     1000 * 32,
+		MaxSize:               1000,
+		RequestMaxBytes:       100 * 1024,
+		AutoRemoveTimeout:     time.Second * 10,
+		SubmitTimeout:         time.Second * 10,
+	}, &striker{})
+	defer pool.Close()
+
+	// A secondary batcher runs the pool in pending mode (batching disabled).
+	pool.Restart(false)
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqID := requestInspector.RequestID(req)
+
+	// A request that was never submitted is not present.
+	assert.False(t, pool.Contains(reqID))
+
+	// After submission the request is present.
+	require.NoError(t, pool.Submit(req))
+	assert.True(t, pool.Contains(reqID))
+
+	// After removal the request is no longer present.
+	pool.RemoveRequests(reqID)
+	assert.False(t, pool.Contains(reqID))
+
+	// In batching mode (primary) Contains is not supported and returns false,
+	// so callers conservatively fall back to full verification.
+	pool.Restart(true)
+	req2 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req2, uint64(2))
+	require.NoError(t, pool.Submit(req2))
+	assert.False(t, pool.Contains(requestInspector.RequestID(req2)))
+}
+
 func TestBasicBatching(t *testing.T) {
 	sugaredLogger := testutil.CreateLogger(t, 0)
 

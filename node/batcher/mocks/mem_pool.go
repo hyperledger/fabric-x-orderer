@@ -13,6 +13,17 @@ type FakeMemPool struct {
 	closeMutex       sync.RWMutex
 	closeArgsForCall []struct {
 	}
+	ContainsStub        func(string) bool
+	containsMutex       sync.RWMutex
+	containsArgsForCall []struct {
+		arg1 string
+	}
+	containsReturns struct {
+		result1 bool
+	}
+	containsReturnsOnCall map[int]struct {
+		result1 bool
+	}
 	HaltStub        func()
 	haltMutex       sync.RWMutex
 	haltArgsForCall []struct {
@@ -90,6 +101,67 @@ func (fake *FakeMemPool) CloseCalls(stub func()) {
 	fake.closeMutex.Lock()
 	defer fake.closeMutex.Unlock()
 	fake.CloseStub = stub
+}
+
+func (fake *FakeMemPool) Contains(arg1 string) bool {
+	fake.containsMutex.Lock()
+	ret, specificReturn := fake.containsReturnsOnCall[len(fake.containsArgsForCall)]
+	fake.containsArgsForCall = append(fake.containsArgsForCall, struct {
+		arg1 string
+	}{arg1})
+	stub := fake.ContainsStub
+	fakeReturns := fake.containsReturns
+	fake.recordInvocation("Contains", []interface{}{arg1})
+	fake.containsMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeMemPool) ContainsCallCount() int {
+	fake.containsMutex.RLock()
+	defer fake.containsMutex.RUnlock()
+	return len(fake.containsArgsForCall)
+}
+
+func (fake *FakeMemPool) ContainsCalls(stub func(string) bool) {
+	fake.containsMutex.Lock()
+	defer fake.containsMutex.Unlock()
+	fake.ContainsStub = stub
+}
+
+func (fake *FakeMemPool) ContainsArgsForCall(i int) string {
+	fake.containsMutex.RLock()
+	defer fake.containsMutex.RUnlock()
+	argsForCall := fake.containsArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *FakeMemPool) ContainsReturns(result1 bool) {
+	fake.containsMutex.Lock()
+	defer fake.containsMutex.Unlock()
+	fake.ContainsStub = nil
+	fake.containsReturns = struct {
+		result1 bool
+	}{result1}
+}
+
+func (fake *FakeMemPool) ContainsReturnsOnCall(i int, result1 bool) {
+	fake.containsMutex.Lock()
+	defer fake.containsMutex.Unlock()
+	fake.ContainsStub = nil
+	if fake.containsReturnsOnCall == nil {
+		fake.containsReturnsOnCall = make(map[int]struct {
+			result1 bool
+		})
+	}
+	fake.containsReturnsOnCall[i] = struct {
+		result1 bool
+	}{result1}
 }
 
 func (fake *FakeMemPool) Halt() {
@@ -397,6 +469,8 @@ func (fake *FakeMemPool) Invocations() map[string][][]interface{} {
 	defer fake.invocationsMutex.RUnlock()
 	fake.closeMutex.RLock()
 	defer fake.closeMutex.RUnlock()
+	fake.containsMutex.RLock()
+	defer fake.containsMutex.RUnlock()
 	fake.haltMutex.RLock()
 	defer fake.haltMutex.RUnlock()
 	fake.nextRequestsMutex.RLock()

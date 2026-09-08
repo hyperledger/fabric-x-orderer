@@ -31,6 +31,13 @@ type RequestVerifier interface {
 	VerifyStructureAndClassify(request *comm.Request) (common.HeaderType, error)
 }
 
+// PooledRequests reports whether a request is currently held in the mem pool.
+// A request in the pool was already verified when it entered it, so it need not
+// be re-verified when it later arrives inside a pulled batch.
+type PooledRequests interface {
+	Contains(reqID string) bool
+}
+
 type RequestsInspectorVerifier struct {
 	requestMaxBytes uint64
 	batchMaxBytes   uint32
@@ -42,9 +49,10 @@ type RequestsInspectorVerifier struct {
 	requestVerifier RequestVerifier
 	requestIDFunc   func(req []byte) string
 	configSeq       uint32
+	pool            PooledRequests
 }
 
-func NewRequestsInspectorVerifier(logger *flogging.FabricLogger, config *config.BatcherNodeConfig, requestVerifier RequestVerifier, requestIDFunc func(req []byte) string) *RequestsInspectorVerifier {
+func NewRequestsInspectorVerifier(logger *flogging.FabricLogger, config *config.BatcherNodeConfig, requestVerifier RequestVerifier, requestIDFunc func(req []byte) string, pool PooledRequests) *RequestsInspectorVerifier {
 	riv := &RequestsInspectorVerifier{
 		logger:          logger,
 		shardID:         config.ShardId,
@@ -54,6 +62,7 @@ func NewRequestsInspectorVerifier(logger *flogging.FabricLogger, config *config.
 		requestMaxBytes: config.RequestMaxBytes,
 		requestIDFunc:   requestIDFunc,
 		configSeq:       uint32(config.Bundle.ConfigtxValidator().Sequence()),
+		pool:            pool,
 	}
 	if requestVerifier != nil {
 		riv.requestVerifier = requestVerifier
@@ -103,6 +112,14 @@ func (r *RequestsInspectorVerifier) VerifyBatchedRequests(reqs types.BatchedRequ
 				default:
 				}
 				if workerID != j%numWorkers {
+					continue
+				}
+				// A request already present in the mem pool was verified when it entered
+				// the pool (by this party's router, or via VerifyRequest on the batcher
+				// forward path) and remains valid under the current config (the pool is
+				// pruned and re-verified on reconfiguration). Skip re-verifying it.
+				// TODO: maybe add a metric counting skipped verifications to measure the hit rate.
+				if r.pool.Contains(r.RequestID(reqs[j])) {
 					continue
 				}
 				if err := r.VerifyRequest(reqs[j]); err != nil {
