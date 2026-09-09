@@ -1,0 +1,44 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+# Prometheus, Grafana and the test client, added to the Arma network of
+# ../compose.yaml. Both files are used together by scripts/run_sample.sh, which
+# generates everything mounted below.
+
+name: arma-grafana
+
+services:
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    ports:
+      - "9090"
+    volumes:
+      - /tmp/arma-sample/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:13.2.1
+    ports:
+      - "3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - /tmp/arma-sample/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /tmp/arma-sample/grafana/dashboards:/etc/grafana/dashboards:ro
+
+  # Started by run_sample.sh once the network is up, hence the profile.
+  submitter:
+    image: arma
+    profiles:
+      - client
+    entrypoint: /usr/local/bin/armageddon
+    command: submit
+      --config /tmp/arma-sample/config/party1/user_config.yaml
+      --transactions ${TRANSACTIONS:-300000}
+      --rate ${RATE:-1000}
+      --txSize ${TX_SIZE:-300}
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
