@@ -133,6 +133,87 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	require.Zero(t, pool.NextRequestsCallCount())
 }
 
+// Scenario: a secondary batcher, running at config sequence K, pulls a batch that the primary stamped with the
+// previous config sequence K-1. This models the timing skew where pulling batches from a
+// primary and pulling configs from consensus are asynchronous. The secondary logs a warning about the config
+// sequence mismatch but still verifies and appends the batch, and the BAF it emits
+// carries the secondary's current config sequence K.
+func TestSecondaryBatcherPullsLowerConfigSeqBatch(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := arma_types.PartyID(2)
+	shardID := arma_types.ShardID(0)
+
+	// the batcher's current config sequence (K) and the older config sequence the pulled batch is stamped with (K-1)
+	const currentConfigSeq = arma_types.ConfigSequence(1)
+	const batchConfigSeq = arma_types.ConfigSequence(0)
+
+	logger := testutil.CreateLogger(t, int(batcherID))
+	batcher := createBatcher(t, batcherID, shardID, batchers, N, logger)
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(currentConfigSeq)
+	batcher.ConfigSequenceGetter = configSeqGet
+
+	// the BAF creator stamps the batcher's current config sequence, mirroring the production;
+	// this is what lets a fragment for a lower-seq batch still be counted at the current config sequence.
+	bafCreator := &mocks.FakeBAFCreator{}
+	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64, primarySignature []byte) arma_types.BatchAttestationFragment {
+		return arma_types.NewSimpleBatchAttestationFragment(si, primary, seq, digest, batcherID, configSeqGet.ConfigSequence(), txCount, primarySignature)
+	})
+	batcher.BAFCreator = bafCreator
+
+	bafSender := &mocks.FakeBAFSender{}
+	batcher.BAFSender = bafSender
+
+	ledger := &mocks.FakeBatchLedger{}
+	batcher.Ledger = ledger
+
+	pool := &mocks.FakeMemPool{}
+	batcher.MemPool = pool
+
+	stateProvider := &mocks.FakeStateProvider{}
+	batcher.StateProvider = stateProvider
+
+	// the pulled batch: primary 1, seq 0 (matching the secondary's initial ledger height), stamped with the older
+	// config sequence K-1
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	reqs := arma_types.BatchedRequests{req}
+	batch := arma_types.NewSimpleBatch(shardID, 1, 0, reqs, batchConfigSeq, nil)
+
+	batchPuller := &mocks.FakeBatchesPuller{}
+	batchChan := make(chan arma_types.Batch)
+	batchPuller.PullBatchesReturns(batchChan)
+	batcher.BatchPuller = batchPuller
+
+	batcher.Start()
+	defer batcher.Stop()
+
+	require.Eventually(t, func() bool {
+		return stateProvider.GetLatestStateChanCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	batchChan <- batch
+
+	// verifyBatch logs a warning about the config-sequence mismatch but does not reject the batch; a successful
+	// append is proof that the batch was verified and accepted despite the skew
+	require.Eventually(t, func() bool {
+		return ledger.AppendCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// the batch is recorded under the secondary's current config sequence K, not the batch's K-1
+	_, _, appendedConfigSeq, _, _, _ := ledger.AppendArgsForCall(0)
+	require.Equal(t, currentConfigSeq, appendedConfigSeq)
+
+	// the BAF the secondary emits carries the current config sequence K
+	require.Eventually(t, func() bool {
+		return bafSender.SendBAFCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+	sentBAF, _ := bafSender.SendBAFArgsForCall(0)
+	require.Equal(t, currentConfigSeq, sentBAF.ConfigSequence())
+}
+
 func TestPrimaryChangeToSecondary(t *testing.T) {
 	N := uint16(4)
 	batchers := []arma_types.PartyID{1, 2, 3, 4}
