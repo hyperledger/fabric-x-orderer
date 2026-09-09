@@ -31,6 +31,24 @@ func TestNew_DisabledReturnsNil(t *testing.T) {
 	require.Nil(t, New(2e18, 1), "rate beyond nanosecond resolution disables throttling")
 }
 
+func TestNew_TinyRateClampedToMinimum(t *testing.T) {
+	clk := &testClock{}
+	clk.set(time.Second)
+	// A rate far below the supported minimum is clamped to ~once per day, not
+	// overflowed into nil ("unlimited").
+	l := newWithClock(1e-12, 1, clk.now)
+	require.NotNil(t, l, "a sub-minimum rate must not disable throttling")
+
+	require.True(t, l.Allow(), "the initial token is admitted")
+	require.False(t, l.Allow(), "then further requests are rejected")
+
+	clk.advance(23 * time.Hour)
+	require.False(t, l.Allow(), "still rejected before a full day elapses")
+
+	clk.advance(time.Hour) // a full day since the first admission
+	require.True(t, l.Allow(), "one request admitted after ~a day")
+}
+
 func TestAllow_NilLimiter(t *testing.T) {
 	var l *Limiter // nil means "unlimited"
 	require.NotPanics(t, func() {

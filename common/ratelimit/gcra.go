@@ -53,7 +53,10 @@ type Limiter struct {
 // New returns a Limiter admitting an average of rate requests per second with a
 // bucket capacity of burst tokens. It returns nil (meaning "unlimited", i.e.
 // throttling disabled) when rate <= 0, or when rate is so large that the
-// per-token interval rounds down to zero nanoseconds.
+// per-token interval rounds down to zero nanoseconds. A rate below the slowest
+// supported value (~one request per day) is clamped up to that minimum, so a
+// tiny rate can't overflow the interval conversion and be mistaken for
+// "unlimited".
 //
 // A burst < 1 is coerced to 1. This is only a defensive floor — it prevents a
 // zero-capacity, reject-everything limiter (burst 0 => negative tolerance); it
@@ -67,13 +70,25 @@ func New(rate float64, burst int) *Limiter {
 	return newWithClock(rate, burst, func() int64 { return int64(time.Since(base)) })
 }
 
+// maxIntervalNanos caps the per-token interval so the slowest rate New supports
+// is roughly one request per day. A smaller rate is clamped up to this, keeping
+// the interval math well clear of int64 overflow.
+const maxIntervalNanos = int64(24 * time.Hour)
+
 // newWithClock is New with an injectable monotonic clock, used by tests to make
 // time deterministic. nowFn must return nanoseconds from a fixed, monotonic base.
 func newWithClock(rate float64, burst int, nowFn func() int64) *Limiter {
 	if rate <= 0 {
 		return nil
 	}
-	interval := int64(float64(time.Second) / rate)
+	intervalFloat := float64(time.Second) / rate
+	if intervalFloat > float64(maxIntervalNanos) {
+		// Rate is below the slowest supported value (~once per day); clamp to that
+		// minimum so a tiny rate can't overflow the int64 conversion and be
+		// mistaken for "unlimited".
+		intervalFloat = float64(maxIntervalNanos)
+	}
+	interval := int64(intervalFloat)
 	if interval <= 0 {
 		// Rate is effectively unlimited at nanosecond resolution.
 		return nil
