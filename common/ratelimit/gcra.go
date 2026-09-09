@@ -53,7 +53,15 @@ type Limiter struct {
 // New returns a Limiter admitting an average of rate requests per second with a
 // bucket capacity of burst tokens. It returns nil (meaning "unlimited", i.e.
 // throttling disabled) when rate <= 0, or when rate is so large that the
-// per-token interval rounds down to zero nanoseconds. A burst < 1 is coerced to 1.
+// per-token interval rounds down to zero nanoseconds.
+//
+// A burst < 1 is coerced to 1. This is only a defensive floor — it prevents a
+// zero-capacity, reject-everything limiter (burst 0 => negative tolerance); it
+// is not the intended "unset burst" default. That default belongs to the
+// caller: the router defaults an omitted Burst to Rate in its local config (see
+// config.applyNodeDefaults and the Router.Throttling.Burst docs), because a
+// burst of 1 has zero bunching tolerance and would throttle bursty ingress well
+// below the configured rate. New should therefore normally receive a burst >= 1.
 func New(rate float64, burst int) *Limiter {
 	base := time.Now()
 	return newWithClock(rate, burst, func() int64 { return int64(time.Since(base)) })

@@ -180,9 +180,18 @@ type ThrottlingParams struct {
 	// Rate is the aggregate cap in requests/second across all clients (global policy).
 	Rate int `yaml:"Rate,omitempty"`
 	// Burst is the token-bucket capacity: the maximum number of requests that may
-	// be admitted at a single instant before the steady Rate applies. A value
-	// below 1 (including unset) is coerced to 1 by the rate limiter — i.e. no
-	// bursting, just the steady Rate, one request at a time.
+	// be admitted at a single instant before the steady Rate applies.
+	//
+	// When unset (0) under the "global" policy, applyNodeDefaults sets Burst to
+	// Rate — one second of tokens. This default is deliberate: real ingress is
+	// bursty (many concurrent streams, ~Poisson arrivals), so a Burst of 1 gives
+	// zero bunching tolerance — it admits only requests spaced at least 1/Rate
+	// apart — and throttles a large share of traffic even well below the cap (in
+	// simulation, ~1/3 dropped at half the configured Rate). Defaulting Burst to
+	// Rate absorbs normal bunching so the limiter only bites above Rate.
+	//
+	// applyNodeDefaults is the single owner of this default; the rate limiter's
+	// own "burst < 1 -> 1" clamp is only a defensive floor (see ratelimit.New).
 	Burst int `yaml:"Burst,omitempty"`
 }
 
@@ -193,7 +202,7 @@ type ThrottlingParams struct {
 const (
 	ThrottlingPolicyDisabled = "disabled" // no throttling (default)
 	ThrottlingPolicyGlobal   = "global"   // one aggregate rate limit across all clients
-	// Future: per-client / per-org policies (issue #349, Goal 2).
+	// Future: reserved for more advanced policies like per-client / per-org or adaptive throttling.
 )
 
 type ConsensusParams struct {
@@ -601,6 +610,10 @@ func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *fl
 			if t.Policy == "" {
 				t.Policy = ThrottlingPolicyDisabled
 				logger.Infof("Router.Throttling.Policy is not set, using default value: %q", t.Policy)
+			}
+			if t.Policy == ThrottlingPolicyGlobal && t.Rate > 0 && t.Burst == 0 {
+				t.Burst = t.Rate
+				logger.Infof("Router.Throttling.Burst is not set, defaulting to Rate: %d", t.Burst)
 			}
 		}
 
