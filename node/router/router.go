@@ -465,14 +465,16 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		}
 
 		r.metrics.incomingTxs.Add(1)
+		// Map before the throttle check so a throttled reject can carry reqID:
+		// SubmitResponse has a ReqID field and clients correlate stream responses
+		// by it, unlike Broadcast (whose response carries no reqID).
+		reqID, shardRouter := r.getShardRouterAndReqID(req)
 
 		if !r.throttler.Load().Allow() {
 			r.metrics.throttledTxs.Add(1)
-			feedbackChan <- Response{err: ErrThrottled}
+			feedbackChan <- Response{err: ErrThrottled, reqID: reqID}
 			continue
 		}
-
-		reqID, shardRouter := r.getShardRouterAndReqID(req)
 
 		select {
 		case <-r.stopChan:
@@ -514,12 +516,12 @@ func (r *Router) getShardRouterAndReqID(req *protos.Request) ([]byte, *ShardRout
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
 	r.metrics.incomingTxs.Add(1)
 
+	// Map before the throttle check so the reject can carry reqID (see SubmitStream).
+	reqID, shardRouter := r.getShardRouterAndReqID(request)
 	if !r.throttler.Load().Allow() {
 		r.metrics.throttledTxs.Add(1)
-		return responseToSubmitResponse(&Response{err: ErrThrottled}), nil
+		return responseToSubmitResponse(&Response{err: ErrThrottled, reqID: reqID}), nil
 	}
-
-	reqID, shardRouter := r.getShardRouterAndReqID(request)
 
 	trace := createTraceID(nil)
 

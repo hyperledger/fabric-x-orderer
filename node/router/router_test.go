@@ -220,7 +220,8 @@ func TestBroadcastThrottled(t *testing.T) {
 }
 
 // TestSubmitThrottled verifies that unary Submit calls over the global rate limit
-// are rejected with the throttle error.
+// are rejected with the throttle error, and that each throttled response carries
+// its ReqID for client correlation.
 func TestSubmitThrottled(t *testing.T) {
 	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(fabricx_config.ThrottlingPolicyGlobal, 1, 1))
 	err := createServerTLSClientConnection(testSetup, testSetup.ca)
@@ -228,13 +229,63 @@ func TestSubmitThrottled(t *testing.T) {
 	require.NotNil(t, testSetup.clientConn)
 	defer testSetup.Close()
 
+	cl := protos.NewRequestTransmitClient(testSetup.clientConn)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	throttleRe := regexp.MustCompile("throttled")
 	throttled := 0
+	buff := make([]byte, 300)
 	for i := 0; i < 50; i++ {
-		if err := submitRequest(testSetup.clientConn); err != nil && regexp.MustCompile("throttled").MatchString(err.Error()) {
+		binary.BigEndian.PutUint32(buff, uint32(i))
+		resp, submitErr := cl.Submit(ctx, tx.CreateStructuredRequest(buff))
+		require.NoError(t, submitErr)
+		if throttleRe.MatchString(resp.Error) {
 			throttled++
+			require.NotEmpty(t, resp.ReqID, "a throttled Submit response must carry its ReqID for client correlation")
 		}
 	}
 	require.Positive(t, throttled, "unary Submit over the rate should be throttled")
+}
+
+// TestSubmitStreamThrottled verifies that SubmitStream requests over the global
+// rate limit are rejected with the throttle error, and that each throttled
+// response carries its ReqID so a client can correlate it on the stream.
+func TestSubmitStreamThrottled(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false, withThrottling(fabricx_config.ThrottlingPolicyGlobal, 1, 1))
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+
+	cl := protos.NewRequestTransmitClient(testSetup.clientConn)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stream, err := cl.SubmitStream(ctx)
+	require.NoError(t, err)
+
+	const numRequests = 50
+	go func() {
+		buff := make([]byte, 300)
+		for j := 0; j < numRequests; j++ {
+			binary.BigEndian.PutUint32(buff, uint32(j))
+			if sendErr := stream.Send(tx.CreateStructuredRequest(buff)); sendErr != nil {
+				return
+			}
+		}
+	}()
+
+	throttleRe := regexp.MustCompile("throttled")
+	throttled := 0
+	for j := 0; j < numRequests; j++ {
+		resp, recvErr := stream.Recv()
+		require.NoError(t, recvErr)
+		if throttleRe.MatchString(resp.Error) {
+			throttled++
+			require.NotEmpty(t, resp.ReqID, "a throttled SubmitStream response must carry its ReqID for client correlation")
+		}
+	}
+	require.Positive(t, throttled, "requests over the rate should be throttled")
 }
 
 // TestThrottlingDisabledPassThrough verifies that with the disabled policy, all
