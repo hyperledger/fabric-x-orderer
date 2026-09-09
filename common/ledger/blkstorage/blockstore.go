@@ -13,7 +13,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util/leveldbhelper"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 )
 
 // BlockStore - filesystem based implementation for `BlockStore`
@@ -25,10 +24,8 @@ type BlockStore struct {
 }
 
 // newBlockStore constructs a `BlockStore`
-func newBlockStore(id string, conf *Conf, indexConfig *IndexConfig,
-	dbHandle *leveldbhelper.DBHandle, stats *stats,
-) (*BlockStore, error) {
-	fileMgr, err := newBlockfileMgr(id, conf, indexConfig, dbHandle)
+func newBlockStore(id string, conf *Conf, dbHandle *leveldbhelper.DBHandle, stats *stats) (*BlockStore, error) {
+	fileMgr, err := newBlockfileMgr(id, conf, dbHandle)
 	if err != nil {
 		return nil, err
 	}
@@ -63,39 +60,9 @@ func (store *BlockStore) RetrieveBlocks(startNum uint64) (ledger.ResultsIterator
 	return store.fileMgr.retrieveBlocks(startNum)
 }
 
-// RetrieveBlockByHash returns the block for given block-hash
-func (store *BlockStore) RetrieveBlockByHash(blockHash []byte) (*common.Block, error) {
-	return store.fileMgr.retrieveBlockByHash(blockHash)
-}
-
 // RetrieveBlockByNumber returns the block at a given blockchain height
 func (store *BlockStore) RetrieveBlockByNumber(blockNum uint64) (*common.Block, error) {
 	return store.fileMgr.retrieveBlockByNumber(blockNum)
-}
-
-// TxIDExists returns true if a transaction with the txID is ever committed
-func (store *BlockStore) TxIDExists(txID string) (bool, error) {
-	return store.fileMgr.txIDExists(txID)
-}
-
-// RetrieveTxByID returns a transaction for given transaction id
-func (store *BlockStore) RetrieveTxByID(txID string) (*common.Envelope, error) {
-	return store.fileMgr.retrieveTransactionByID(txID)
-}
-
-// RetrieveTxByBlockNumTranNum returns a transaction for the given <blockNum, tranNum>
-func (store *BlockStore) RetrieveTxByBlockNumTranNum(blockNum uint64, tranNum uint64) (*common.Envelope, error) {
-	return store.fileMgr.retrieveTransactionByBlockNumTranNum(blockNum, tranNum)
-}
-
-// RetrieveBlockByTxID returns the block for the specified txID
-func (store *BlockStore) RetrieveBlockByTxID(txID string) (*common.Block, error) {
-	return store.fileMgr.retrieveBlockByTxID(txID)
-}
-
-// RetrieveTxValidationCodeByTxID returns validation code and blocknumber for the specified txID
-func (store *BlockStore) RetrieveTxValidationCodeByTxID(txID string) (peer.TxValidationCode, uint64, error) {
-	return store.fileMgr.retrieveTxValidationCodeByTxID(txID)
 }
 
 // Shutdown shuts down the block store

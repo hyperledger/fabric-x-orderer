@@ -20,45 +20,21 @@ import (
 
 var logger = flogging.MustGetLogger("blkstorage")
 
-// IndexableAttr represents an indexable attribute
-type IndexableAttr string
-
-// constants for indexable attributes
-const (
-	IndexableAttrBlockNum        = IndexableAttr("BlockNum")
-	IndexableAttrBlockHash       = IndexableAttr("BlockHash")
-	IndexableAttrTxID            = IndexableAttr("TxID")
-	IndexableAttrBlockNumTranNum = IndexableAttr("BlockNumTranNum")
-)
-
-// IndexConfig - a configuration that includes a list of attributes that should be indexed
-type IndexConfig struct {
-	AttrsToIndex []IndexableAttr
-}
-
-// Contains returns true iff the supplied parameter is present in the IndexConfig.AttrsToIndex
-func (c *IndexConfig) Contains(indexableAttr IndexableAttr) bool {
-	for _, a := range c.AttrsToIndex {
-		if a == indexableAttr {
-			return true
-		}
-	}
-	return false
-}
-
 // BlockStoreProvider provides handle to block storage - this is not thread-safe
 type BlockStoreProvider struct {
 	conf            *Conf
-	indexConfig     *IndexConfig
 	leveldbProvider *leveldbhelper.Provider
 	stats           *stats
 }
 
 // NewProvider constructs a filesystem based block store provider
-func NewProvider(conf *Conf, indexConfig *IndexConfig, metricsProvider metrics.Provider) (*BlockStoreProvider, error) {
+func NewProvider(conf *Conf, metricsProvider metrics.Provider) (*BlockStoreProvider, error) {
 	dbConf := &leveldbhelper.Conf{
-		DBPath:         conf.getIndexDir(),
-		ExpectedFormat: dataFormatVersion(indexConfig),
+		DBPath: conf.getIndexDir(),
+		// The index holds only the block-number index, which is the format every orderer ledger has
+		// ever been written in. An empty expected format also means the index carries no format
+		// stamp, so it stays rebuildable by deleting it.
+		ExpectedFormat: dataformat.PreviousFormat,
 	}
 
 	p, err := leveldbhelper.NewProvider(dbConf)
@@ -79,7 +55,7 @@ func NewProvider(conf *Conf, indexConfig *IndexConfig, metricsProvider metrics.P
 	}
 
 	stats := newStats(metricsProvider)
-	return &BlockStoreProvider{conf, indexConfig, p, stats}, nil
+	return &BlockStoreProvider{conf, p, stats}, nil
 }
 
 // Open opens a block store for given ledgerid.
@@ -87,7 +63,7 @@ func NewProvider(conf *Conf, indexConfig *IndexConfig, metricsProvider metrics.P
 // This method should be invoked only once for a particular ledgerid
 func (p *BlockStoreProvider) Open(ledgerid string) (*BlockStore, error) {
 	indexStoreHandle := p.leveldbProvider.GetDBHandle(ledgerid)
-	return newBlockStore(ledgerid, p.conf, p.indexConfig, indexStoreHandle, p.stats)
+	return newBlockStore(ledgerid, p.conf, indexStoreHandle, p.stats)
 }
 
 // Exists tells whether the BlockStore with given id exists
@@ -126,12 +102,4 @@ func (p *BlockStoreProvider) List() ([]string, error) {
 // Close closes the BlockStoreProvider
 func (p *BlockStoreProvider) Close() {
 	p.leveldbProvider.Close()
-}
-
-func dataFormatVersion(indexConfig *IndexConfig) string {
-	// in version 2.0 we merged three indexable into one `IndexableAttrTxID`
-	if indexConfig.Contains(IndexableAttrTxID) {
-		return dataformat.CurrentFormat
-	}
-	return dataformat.PreviousFormat
 }

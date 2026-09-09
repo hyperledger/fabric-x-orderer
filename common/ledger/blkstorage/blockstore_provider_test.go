@@ -10,28 +10,12 @@ import (
 	"fmt"
 	"testing"
 
-	xcommon_txflags "github.com/hyperledger/fabric-x-common/tools/pkg/txflags"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/require"
 )
-
-func TestIndexConfig(t *testing.T) {
-	ic := &IndexConfig{
-		AttrsToIndex: []IndexableAttr{
-			IndexableAttrBlockNum,
-			IndexableAttrTxID,
-		},
-	}
-
-	require := require.New(t)
-	require.True(ic.Contains(IndexableAttrBlockNum))
-	require.True(ic.Contains(IndexableAttrTxID))
-	require.False(ic.Contains(IndexableAttrBlockNumTranNum))
-}
 
 func TestMultipleBlockStores(t *testing.T) {
 	tempdir := t.TempDir()
@@ -107,57 +91,15 @@ func checkBlocks(t *testing.T, expectedBlocks []*common.Block, store *BlockStore
 
 	for blockNum := 0; blockNum < len(expectedBlocks); blockNum++ {
 		block := expectedBlocks[blockNum]
-		flags := xcommon_txflags.ValidationFlags(block.Metadata.Metadata[common.BlockMetadataIndex_TRANSACTIONS_FILTER])
 		retrievedBlock, _ := store.RetrieveBlockByNumber(uint64(blockNum))
 		require.Equal(t, block, retrievedBlock)
-
-		retrievedBlock, _ = store.RetrieveBlockByHash(protoutil.BlockHeaderHash(block.Header))
-		require.Equal(t, block, retrievedBlock)
-
-		for txNum := 0; txNum < len(block.Data.Data); txNum++ {
-			txEnvBytes := block.Data.Data[txNum]
-			txEnv, _ := protoutil.GetEnvelopeFromBlock(txEnvBytes)
-			txid, err := protoutil.GetOrComputeTxIDFromEnvelope(txEnvBytes)
-			require.NoError(t, err)
-
-			retrievedBlock, _ := store.RetrieveBlockByTxID(txid)
-			require.Equal(t, block, retrievedBlock)
-
-			retrievedTxEnv, _ := store.RetrieveTxByID(txid)
-			require.Equal(t, txEnv, retrievedTxEnv)
-
-			retrievedTxEnv, _ = store.RetrieveTxByBlockNumTranNum(uint64(blockNum), uint64(txNum))
-			require.Equal(t, txEnv, retrievedTxEnv)
-
-			retrievedTxValCode, blkNum, err := store.RetrieveTxValidationCodeByTxID(txid)
-			require.NoError(t, err)
-			require.Equal(t, flags.Flag(txNum), retrievedTxValCode)
-			require.Equal(t, uint64(blockNum), blkNum)
-		}
 	}
 }
 
 func checkWithWrongInputs(t *testing.T, store *BlockStore, numBlocks int) {
-	block, err := store.RetrieveBlockByHash([]byte("non-existent-hash"))
+	block, err := store.RetrieveBlockByNumber(uint64(numBlocks + 1))
 	require.Nil(t, block)
-	require.EqualError(t, err, fmt.Sprintf("no such block hash [%x] in index", []byte("non-existent-hash")))
-
-	block, err = store.RetrieveBlockByTxID("non-existent-txid")
-	require.Nil(t, block)
-	require.EqualError(t, err, "no such transaction ID [non-existent-txid] in index")
-
-	tx, err := store.RetrieveTxByID("non-existent-txid")
-	require.Nil(t, tx)
-	require.EqualError(t, err, "no such transaction ID [non-existent-txid] in index")
-
-	tx, err = store.RetrieveTxByBlockNumTranNum(uint64(numBlocks+1), uint64(0))
-	require.Nil(t, tx)
-	require.EqualError(t, err, fmt.Sprintf("no such blockNumber, transactionNumber <%d, 0> in index", numBlocks+1))
-
-	txCode, blkNum, err := store.RetrieveTxValidationCodeByTxID("non-existent-txid")
-	require.Equal(t, peer.TxValidationCode(-1), txCode)
-	require.Equal(t, uint64(0), blkNum)
-	require.EqualError(t, err, "no such transaction ID [non-existent-txid] in index")
+	require.EqualError(t, err, fmt.Sprintf("no such block number [%d] in index", numBlocks+1))
 }
 
 func TestBlockStoreProvider(t *testing.T) {

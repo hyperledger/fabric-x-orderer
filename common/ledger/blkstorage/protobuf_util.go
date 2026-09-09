@@ -45,8 +45,3 @@ func (b *buffer) DecodeRawBytes(alloc bool) ([]byte, error) {
 	}
 	return v, nil
 }
-
-// GetBytesConsumed returns the offset of the current position in the underlying []byte
-func (b *buffer) GetBytesConsumed() int {
-	return b.position
-}

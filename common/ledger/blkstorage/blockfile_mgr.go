@@ -17,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/util/leveldbhelper"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -59,14 +58,7 @@ The blockfile manager stores blocks of data into a file system.  That file
 storage is done by creating sequentially numbered files of a configured size
 i.e blockfile_000000, blockfile_000001, etc..
 
-Each transaction in a block is stored with information about the number of
-bytes in that transaction
-
-	Adding txLoc [fileSuffixNum=0, offset=3, bytesLength=104] for tx [1:0] to index
-	Adding txLoc [fileSuffixNum=0, offset=107, bytesLength=104] for tx [1:1] to index
-
-Each block is stored with the total encoded length of that block as well as the
-tx location offsets.
+Each block is stored with the total encoded length of that block.
 
 Remember that these steps are only done once at start-up of the system.
 At start up a new manager:
@@ -80,7 +72,7 @@ At start up a new manager:
 			-- If blockfilesInfo and file system are not in sync, syncs blockfilesInfo from FS
 	  *) Starts a new file writer
 			-- truncates file per blockfilesInfo to remove any excess past last block
-	  *) Determines the index information used to find tx and blocks in
+	  *) Determines the index information used to find blocks in
 	  the file blkstorage
 			-- Instantiates a new blockIdxInfo
 			-- Loads the index from the db if exists
@@ -88,7 +80,7 @@ At start up a new manager:
 			-- If index and file system are not in sync, syncs index from the FS
 	  *)  Updates blockchain info used by the APIs
 */
-func newBlockfileMgr(id string, conf *Conf, indexConfig *IndexConfig, indexStore *leveldbhelper.DBHandle) (*blockfileMgr, error) {
+func newBlockfileMgr(id string, conf *Conf, indexStore *leveldbhelper.DBHandle) (*blockfileMgr, error) {
 	logger.Debugf("newBlockfileMgr() initializing file-based block storage for ledger: %s ", id)
 	rootDir := conf.getLedgerBlockDir(id)
 	_, err := fileutil.CreateDirIfMissing(rootDir)
@@ -124,9 +116,7 @@ func newBlockfileMgr(id string, conf *Conf, indexConfig *IndexConfig, indexStore
 	if err != nil {
 		panic(fmt.Sprintf("Could not truncate current file to known size in db: %s", err))
 	}
-	if mgr.index, err = newBlockIndex(indexConfig, indexStore); err != nil {
-		panic(fmt.Sprintf("error in block index: %s", err))
-	}
+	mgr.index = newBlockIndex(indexStore)
 
 	mgr.blockfilesInfo = blockfilesInfo
 	mgr.currentFileWriter = currentFileWriter
@@ -238,11 +228,8 @@ func (mgr *blockfileMgr) addBlock(block *common.Block) error {
 			bcInfo.CurrentBlockHash, block.Header.PreviousHash,
 		)
 	}
-	// In the orderer we do not index TXs, so we don't need to compute TX IDs.
-	blockBytes, info := serializeBlock(block, mgr.index.isAttributeIndexed(IndexableAttrTxID))
+	blockBytes := serializeBlock(block)
 	blockHash := protoutil.BlockHeaderHash(block.Header)
-	// Get the location / offset where each transaction starts in the block and where the block ends
-	txOffsets := info.txOffsets
 	currentOffset := mgr.blockfilesInfo.latestFileSize
 
 	blockBytesLen := len(blockBytes)
@@ -291,15 +278,8 @@ func (mgr *blockfileMgr) addBlock(block *common.Block) error {
 	// Index block file location pointer updated with file suffex and offset for the new block
 	blockFLP := &fileLocPointer{fileSuffixNum: newBlkfilesInfo.latestFileNumber}
 	blockFLP.offset = currentOffset
-	// shift the txoffset because we prepend length of bytes before block bytes
-	for _, txOffset := range txOffsets {
-		txOffset.loc.offset += len(blockBytesEncodedLen)
-	}
 	// save the index in the database
-	if err = mgr.index.indexBlock(&blockIdxInfo{
-		blockNum: block.Header.Number, blockHash: blockHash,
-		flp: blockFLP, txOffsets: txOffsets, metadata: block.Metadata,
-	}); err != nil {
+	if err = mgr.index.indexBlock(&blockIdxInfo{blockNum: block.Header.Number, flp: blockFLP}); err != nil {
 		return err
 	}
 
@@ -385,27 +365,17 @@ func (mgr *blockfileMgr) syncIndex() error {
 		if blockBytes == nil {
 			break
 		}
-		info, err := extractSerializedBlockInfo(blockBytes)
+		blockHeader, err := extractSerializedBlockHeader(blockBytes)
 		if err != nil {
 			return err
 		}
 
-		// The blockStartOffset will get applied to the txOffsets prior to indexing within indexBlock(),
-		// therefore just shift by the difference between blockBytesOffset and blockStartOffset
-		numBytesToShift := int(blockPlacementInfo.blockBytesOffset - blockPlacementInfo.blockStartOffset)
-		for _, offset := range info.txOffsets {
-			offset.loc.offset += numBytesToShift
-		}
-
 		// Update the blockIndexInfo with what was actually stored in file system
-		blockIdxInfo.blockHash = protoutil.BlockHeaderHash(info.blockHeader)
-		blockIdxInfo.blockNum = info.blockHeader.Number
+		blockIdxInfo.blockNum = blockHeader.Number
 		blockIdxInfo.flp = &fileLocPointer{
 			fileSuffixNum: blockPlacementInfo.fileNum,
 			locPointer:    locPointer{offset: int(blockPlacementInfo.blockStartOffset)},
 		}
-		blockIdxInfo.txOffsets = info.txOffsets
-		blockIdxInfo.metadata = info.metadata
 
 		logger.Debugf("syncIndex() indexing block [%d]", blockIdxInfo.blockNum)
 		if err = mgr.index.indexBlock(blockIdxInfo); err != nil {
@@ -442,19 +412,10 @@ func (mgr *blockfileMgr) updateBlockchainInfo(latestBlockHash []byte, latestBloc
 	mgr.bcInfo.Store(newBCInfo)
 }
 
-func (mgr *blockfileMgr) retrieveBlockByHash(blockHash []byte) (*common.Block, error) {
-	logger.Debugf("retrieveBlockByHash() - blockHash = [%#v]", blockHash)
-	loc, err := mgr.index.getBlockLocByHash(blockHash)
-	if err != nil {
-		return nil, err
-	}
-	return mgr.fetchBlock(loc)
-}
-
 // TODO: when ledger pruning lands, the reads keyed by block number need a front-boundary guard again:
 // a block below the prune point must be reported as pruned rather than as missing from the index. The
-// guard belongs at the top of retrieveBlockByNumber, retrieveBlockHeaderByNumber, retrieveBlocks and
-// retrieveTransactionByBlockNumTranNum, where the snapshot-bootstrap guard used to sit.
+// guard belongs at the top of retrieveBlockByNumber, retrieveBlockHeaderByNumber and retrieveBlocks,
+// where the snapshot-bootstrap guard used to sit.
 func (mgr *blockfileMgr) retrieveBlockByNumber(blockNum uint64) (*common.Block, error) {
 	logger.Debugf("retrieveBlockByNumber() - blockNum = [%d]", blockNum)
 
@@ -467,21 +428,6 @@ func (mgr *blockfileMgr) retrieveBlockByNumber(blockNum uint64) (*common.Block, 
 		return nil, err
 	}
 	return mgr.fetchBlock(loc)
-}
-
-func (mgr *blockfileMgr) retrieveBlockByTxID(txID string) (*common.Block, error) {
-	logger.Debugf("retrieveBlockByTxID() - txID = [%s]", txID)
-	loc, err := mgr.index.getBlockLocByTxID(txID)
-	if err != nil {
-		return nil, err
-	}
-	return mgr.fetchBlock(loc)
-}
-
-func (mgr *blockfileMgr) retrieveTxValidationCodeByTxID(txID string) (peer.TxValidationCode, uint64, error) {
-	logger.Debugf("retrieveTxValidationCodeByTxID() - txID = [%s]", txID)
-	validationCode, blkNum, err := mgr.index.getTxValidationCodeByTxID(txID)
-	return validationCode, blkNum, err
 }
 
 func (mgr *blockfileMgr) retrieveBlockHeaderByNumber(blockNum uint64) (*common.BlockHeader, error) {
@@ -502,28 +448,6 @@ func (mgr *blockfileMgr) retrieveBlocks(startNum uint64) (*blocksItr, error) {
 	return newBlockItr(mgr, startNum), nil
 }
 
-func (mgr *blockfileMgr) txIDExists(txID string) (bool, error) {
-	return mgr.index.txIDExists(txID)
-}
-
-func (mgr *blockfileMgr) retrieveTransactionByID(txID string) (*common.Envelope, error) {
-	logger.Debugf("retrieveTransactionByID() - txId = [%s]", txID)
-	loc, err := mgr.index.getTxLoc(txID)
-	if err != nil {
-		return nil, err
-	}
-	return mgr.fetchTransactionEnvelope(loc)
-}
-
-func (mgr *blockfileMgr) retrieveTransactionByBlockNumTranNum(blockNum uint64, tranNum uint64) (*common.Envelope, error) {
-	logger.Debugf("retrieveTransactionByBlockNumTranNum() - blockNum = [%d], tranNum = [%d]", blockNum, tranNum)
-	loc, err := mgr.index.getTXLocByBlockNumTranNum(blockNum, tranNum)
-	if err != nil {
-		return nil, err
-	}
-	return mgr.fetchTransactionEnvelope(loc)
-}
-
 func (mgr *blockfileMgr) fetchBlock(lp *fileLocPointer) (*common.Block, error) {
 	blockBytes, err := mgr.fetchBlockBytes(lp)
 	if err != nil {
@@ -536,20 +460,6 @@ func (mgr *blockfileMgr) fetchBlock(lp *fileLocPointer) (*common.Block, error) {
 	return block, nil
 }
 
-func (mgr *blockfileMgr) fetchTransactionEnvelope(lp *fileLocPointer) (*common.Envelope, error) {
-	logger.Debugf("Entering fetchTransactionEnvelope() %v\n", lp)
-	var err error
-	var txEnvelopeBytes []byte
-	if txEnvelopeBytes, err = mgr.fetchRawBytes(lp); err != nil {
-		return nil, err
-	}
-	_, n := protowire.ConsumeVarint(txEnvelopeBytes)
-	if n < 0 {
-		n = 0
-	}
-	return protoutil.GetEnvelopeFromBlock(txEnvelopeBytes[n:])
-}
-
 func (mgr *blockfileMgr) fetchBlockBytes(lp *fileLocPointer) ([]byte, error) {
 	stream, err := newBlockfileStream(mgr.rootDir, lp.fileSuffixNum, int64(lp.offset))
 	if err != nil {
@@ -557,20 +467,6 @@ func (mgr *blockfileMgr) fetchBlockBytes(lp *fileLocPointer) ([]byte, error) {
 	}
 	defer stream.close()
 	b, err := stream.nextBlockBytes()
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
-}
-
-func (mgr *blockfileMgr) fetchRawBytes(lp *fileLocPointer) ([]byte, error) {
-	filePath := deriveBlockfilePath(mgr.rootDir, lp.fileSuffixNum)
-	reader, err := newBlockfileReader(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer reader.close()
-	b, err := reader.read(lp.offset, lp.bytesLength)
 	if err != nil {
 		return nil, err
 	}

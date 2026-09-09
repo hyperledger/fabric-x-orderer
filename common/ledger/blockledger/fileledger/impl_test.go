@@ -18,7 +18,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
-	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -60,8 +59,6 @@ type mockBlockStore struct {
 	blockchainInfo             *cb.BlockchainInfo
 	resultsIterator            cl.ResultsIterator
 	block                      *cb.Block
-	envelope                   *cb.Envelope
-	txValidationCode           peer.TxValidationCode
 	defaultError               error
 	getBlockchainInfoError     error
 	retrieveBlockByNumberError error
@@ -79,28 +76,8 @@ func (mbs *mockBlockStore) RetrieveBlocks(startNum uint64) (cl.ResultsIterator, 
 	return mbs.resultsIterator, mbs.defaultError
 }
 
-func (mbs *mockBlockStore) RetrieveBlockByHash(blockHash []byte) (*cb.Block, error) {
-	return mbs.block, mbs.defaultError
-}
-
 func (mbs *mockBlockStore) RetrieveBlockByNumber(blockNum uint64) (*cb.Block, error) {
 	return mbs.block, mbs.retrieveBlockByNumberError
-}
-
-func (mbs *mockBlockStore) RetrieveTxByID(txID string) (*cb.Envelope, error) {
-	return mbs.envelope, mbs.defaultError
-}
-
-func (mbs *mockBlockStore) RetrieveTxByBlockNumTranNum(blockNum uint64, tranNum uint64) (*cb.Envelope, error) {
-	return mbs.envelope, mbs.defaultError
-}
-
-func (mbs *mockBlockStore) RetrieveBlockByTxID(txID string) (*cb.Block, error) {
-	return mbs.block, mbs.defaultError
-}
-
-func (mbs *mockBlockStore) RetrieveTxValidationCodeByTxID(txID string) (peer.TxValidationCode, error) {
-	return mbs.txValidationCode, mbs.defaultError
 }
 
 func (*mockBlockStore) Shutdown() {

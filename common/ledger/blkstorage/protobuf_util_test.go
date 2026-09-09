@@ -26,11 +26,11 @@ func TestBuffer(t *testing.T) {
 
 	b := newBuffer(pb)
 	b.DecodeVarint()
-	require.Equal(t, pos1, b.GetBytesConsumed())
+	require.Equal(t, pos1, b.position)
 	b.DecodeRawBytes(false)
-	require.Equal(t, pos2, b.GetBytesConsumed())
+	require.Equal(t, pos2, b.position)
 	b.DecodeRawBytes(false)
-	require.Equal(t, pos3, b.GetBytesConsumed())
+	require.Equal(t, pos3, b.position)
 	b.DecodeVarint()
-	require.Equal(t, pos4, b.GetBytesConsumed())
+	require.Equal(t, pos4, b.position)
 }

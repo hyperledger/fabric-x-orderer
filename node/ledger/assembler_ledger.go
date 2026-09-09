@@ -65,12 +65,7 @@ type AssemblerLedger struct {
 
 func NewAssemblerLedger(logger *flogging.FabricLogger, ledgerPath string) (*AssemblerLedger, error) {
 	// Create the ledger
-	provider, err := blkstorage.NewProvider(
-		blkstorage.NewConf(ledgerPath, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		}, &disabled.Provider{},
-	)
+	provider, err := blkstorage.NewProvider(blkstorage.NewConf(ledgerPath, -1), &disabled.Provider{})
 	if err != nil {
 		logger.Panicf("Failed creating provider: %v", err)
 	}
