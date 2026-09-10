@@ -29,11 +29,9 @@ for f in go.mod go.sum; do
 done
 
 # check that vendor/ is in sync with go.mod/go.sum
-go mod vendor
-if [ -n "$(git status --porcelain go.mod go.sum vendor/)" ]; then
-    echo "go.mod/go.sum/vendor are out of date. Run 'go mod tidy && go mod vendor' and commit."
-    git status --porcelain go.mod go.sum vendor/
-    git diff -- go.mod go.sum vendor/
+go mod vendor -o "${dep_tempdir}/vendor"
+if ! diff -rq "${dep_tempdir}/vendor" "${arma_dir}/vendor"; then
+    echo "vendor/ is out of date. Please run 'go mod tidy && go mod vendor'."
     exit 1
 fi
 
