@@ -80,6 +80,11 @@ type State struct {
 	Pending    []types.BatchAttestationFragment
 	Complaints []Complaint
 	AppContext []byte
+	// StaleConfigBAFs holds BAFs whose config sequence is exactly one behind the current one. They are
+	// surfaced for a single decision (recomputed each round in Process) so that a batcher which fell
+	// behind a config change can detect its own BAF here and revive the batch's requests, rather than
+	// having them silently dropped. It is never used to extract a Batch Attestation.
+	StaleConfigBAFs []types.BatchAttestationFragment
 }
 
 func (s *State) String() string {
@@ -148,12 +153,22 @@ func (s *State) Serialize() []byte {
 		protoPending[i] = simpleBAF.ToProto()
 	}
 
+	protoStaleConfigBAFs := make([]*stateprotos.BatchAttestationFragment, len(s.StaleConfigBAFs))
+	for i, baf := range s.StaleConfigBAFs {
+		simpleBAF, ok := baf.(*types.SimpleBatchAttestationFragment)
+		if !ok {
+			panic("unexpected type for BatchAttestationFragment")
+		}
+		protoStaleConfigBAFs[i] = simpleBAF.ToProto()
+	}
+
 	protoState := &stateprotos.State{
 		NumberOfParties: uint32(s.N),
 		Shards:          protoShards,
 		Pending:         protoPending,
 		Complaints:      protoComplaints,
 		AppContext:      s.AppContext,
+		StaleConfigBafs: protoStaleConfigBAFs,
 	}
 
 	buff, err := proto.MarshalOptions{Deterministic: true}.Marshal(protoState)
@@ -185,6 +200,7 @@ func (s *State) Deserialize(rawBytes []byte) error {
 	s.Shards = nil
 	s.Pending = nil
 	s.Complaints = nil
+	s.StaleConfigBAFs = nil
 
 	// Load shards
 	if len(ps.Shards) > 0 {
@@ -222,6 +238,18 @@ func (s *State) Deserialize(rawBytes []byte) error {
 		}
 	}
 
+	// Load stale config BAFs
+	if len(ps.StaleConfigBafs) > 0 {
+		s.StaleConfigBAFs = make([]types.BatchAttestationFragment, 0, len(ps.StaleConfigBafs))
+		for _, bafProto := range ps.StaleConfigBafs {
+			baf := &types.SimpleBatchAttestationFragment{}
+			if err := baf.FromProto(bafProto); err != nil {
+				return fmt.Errorf("failed loading stale config batch attestation fragment: %v", err)
+			}
+			s.StaleConfigBAFs = append(s.StaleConfigBAFs, baf)
+		}
+	}
+
 	// Load app context - ensure it's never nil, always []byte{} at minimum
 	s.AppContext = []byte{}
 	if ps.AppContext != nil {
@@ -239,7 +267,12 @@ type ShardTerm struct {
 func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {
 	nextState := s.Clone()
 
-	filteredCEs := filterCEsWithDiffConfigSeq(configSeq, l, ces...)
+	// StaleConfigBAFs is recomputed fresh every round so it surfaces a stale BAF for exactly one
+	// decision (Clone copied the parent's, so reset it here before repopulating).
+	nextState.StaleConfigBAFs = nil
+
+	filteredCEs, staleConfigBAFs := filterCEsWithDiffConfigSeq(configSeq, l, ces...)
+	nextState.StaleConfigBAFs = staleConfigBAFs
 
 	nextState.FilterPendingEventsWithDiffConfigSeq(configSeq, l)
 	nextState.CollectAndDeduplicateEvents(l, filteredCEs...)
@@ -258,9 +291,11 @@ func (s *State) Clone() *State {
 	s2.Shards = make([]ShardTerm, len(s.Shards))
 	s2.Pending = make([]types.BatchAttestationFragment, len(s.Pending))
 	s2.Complaints = make([]Complaint, len(s.Complaints))
+	s2.StaleConfigBAFs = make([]types.BatchAttestationFragment, len(s.StaleConfigBAFs))
 	copy(s2.Shards, s.Shards)
 	copy(s2.Pending, s.Pending)
 	copy(s2.Complaints, s.Complaints)
+	copy(s2.StaleConfigBAFs, s.StaleConfigBAFs)
 	s2.AppContext = nil
 	if s.AppContext != nil {
 		s2.AppContext = make([]byte, 0, len(s.AppContext))
@@ -417,13 +452,24 @@ func (s *State) CollectAndDeduplicateEvents(l *flogging.FabricLogger, ces ...Con
 	}
 }
 
-func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent) []ControlEvent {
+// filterCEsWithDiffConfigSeq keeps only control events whose config sequence matches the current one.
+// BAFs that are exactly one config behind are not simply dropped: they are returned separately as
+// staleConfigBAFs so they can be surfaced for one decision. Complaints and config
+// requests with a mismatched config sequence are still dropped.
+func filterCEsWithDiffConfigSeq(
+	configSeq types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent,
+) ([]ControlEvent, []types.BatchAttestationFragment) {
 	filteredEvents := make([]ControlEvent, 0)
+	var staleConfigBAFs []types.BatchAttestationFragment
 	for _, ce := range ces {
 		if ce.BAF != nil {
-			if ce.BAF.ConfigSequence() == configSeq {
+			switch {
+			case ce.BAF.ConfigSequence() == configSeq:
 				filteredEvents = append(filteredEvents, ce)
-			} else {
+			case configSeq > 0 && ce.BAF.ConfigSequence() == configSeq-1:
+				l.Warnf("baf is one config behind (currently %d); surfacing as stale for revival; %s", configSeq, ce.BAF.String())
+				staleConfigBAFs = append(staleConfigBAFs, ce.BAF)
+			default:
 				l.Debugf("filtering ce baf with mismatch config seq (currently %d); %s", configSeq, ce.BAF.String())
 			}
 		}
@@ -447,7 +493,7 @@ func filterCEsWithDiffConfigSeq(configSeq types.ConfigSequence, l *flogging.Fabr
 			}
 		}
 	}
-	return filteredEvents
+	return filteredEvents, staleConfigBAFs
 }
 
 func (s *State) FilterPendingEventsWithDiffConfigSeq(configSeq types.ConfigSequence, l *flogging.FabricLogger) {
