@@ -42,7 +42,7 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
-	pool.NextRequestsReturnsOnCall(1, reqs)
+	pool.NextRequestsReturnsOnCall(1, reqs, nil)
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
@@ -232,7 +232,7 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
-	pool.NextRequestsReturnsOnCall(1, reqs)
+	pool.NextRequestsReturnsOnCall(1, reqs, nil)
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
@@ -318,7 +318,7 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
-	pool.NextRequestsReturnsOnCall(1, reqs)
+	pool.NextRequestsReturnsOnCall(1, reqs, nil)
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
@@ -513,7 +513,7 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
-	pool.NextRequestsReturnsOnCall(1, reqs)
+	pool.NextRequestsReturnsOnCall(1, reqs, nil)
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
@@ -587,7 +587,7 @@ func TestPrimaryWaiting(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
-	pool.NextRequestsReturns(reqs)
+	pool.NextRequestsReturns(reqs, nil)
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
@@ -630,7 +630,7 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
-	pool.NextRequestsReturns(reqs)
+	pool.NextRequestsReturns(reqs, nil)
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
@@ -714,7 +714,7 @@ func TestResubmitPending(t *testing.T) {
 	reqs := make(arma_types.BatchedRequests, 0, 1)
 	reqs = append(reqs, req)
 
-	pool.NextRequestsReturnsOnCall(1, reqs)
+	pool.NextRequestsReturnsOnCall(1, reqs, nil)
 
 	ledger := &mocks.FakeBatchLedger{}
 	batcher.Ledger = ledger
@@ -812,7 +812,7 @@ func TestVerifyBatch(t *testing.T) {
 	logger := testutil.CreateLogger(t, batcherID)
 	secondaryBatcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
 	verifier := &mocks.FakeBatchedRequestsVerifier{}
-	verifier.VerifyBatchedRequestsReturns(nil)
+	verifier.VerifyBatchedRequestsReturns(nil, nil)
 	secondaryBatcher.BatchedRequestsVerifier = verifier
 	complainer := &mocks.FakeComplainer{}
 	secondaryBatcher.Complainer = complainer
@@ -872,12 +872,12 @@ func TestVerifyBatch(t *testing.T) {
 		return complainer.ComplainCallCount() == 4
 	}, 10*time.Second, 10*time.Millisecond)
 
-	verifier.VerifyBatchedRequestsReturns(errors.New(""))
+	verifier.VerifyBatchedRequestsReturns(nil, errors.New(""))
 	batchChan <- batch
 	require.Eventually(t, func() bool {
 		return complainer.ComplainCallCount() == 5
 	}, 10*time.Second, 10*time.Millisecond)
-	verifier.VerifyBatchedRequestsReturns(nil)
+	verifier.VerifyBatchedRequestsReturns(nil, nil)
 
 	batch = arma_types.NewSimpleBatch(0, 1, 1, reqs, 1, nil) // config seq mismatch, log as warning but append anyway
 	batchChan <- batch

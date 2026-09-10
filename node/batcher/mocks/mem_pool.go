@@ -28,16 +28,18 @@ type FakeMemPool struct {
 	haltMutex       sync.RWMutex
 	haltArgsForCall []struct {
 	}
-	NextRequestsStub        func(context.Context) [][]byte
+	NextRequestsStub        func(context.Context) ([][]byte, []string)
 	nextRequestsMutex       sync.RWMutex
 	nextRequestsArgsForCall []struct {
 		arg1 context.Context
 	}
 	nextRequestsReturns struct {
 		result1 [][]byte
+		result2 []string
 	}
 	nextRequestsReturnsOnCall map[int]struct {
 		result1 [][]byte
+		result2 []string
 	}
 	PruneStub        func(func([]byte) error)
 	pruneMutex       sync.RWMutex
@@ -188,7 +190,7 @@ func (fake *FakeMemPool) HaltCalls(stub func()) {
 	fake.HaltStub = stub
 }
 
-func (fake *FakeMemPool) NextRequests(arg1 context.Context) [][]byte {
+func (fake *FakeMemPool) NextRequests(arg1 context.Context) ([][]byte, []string) {
 	fake.nextRequestsMutex.Lock()
 	ret, specificReturn := fake.nextRequestsReturnsOnCall[len(fake.nextRequestsArgsForCall)]
 	fake.nextRequestsArgsForCall = append(fake.nextRequestsArgsForCall, struct {
@@ -202,9 +204,9 @@ func (fake *FakeMemPool) NextRequests(arg1 context.Context) [][]byte {
 		return stub(arg1)
 	}
 	if specificReturn {
-		return ret.result1
+		return ret.result1, ret.result2
 	}
-	return fakeReturns.result1
+	return fakeReturns.result1, fakeReturns.result2
 }
 
 func (fake *FakeMemPool) NextRequestsCallCount() int {
@@ -213,7 +215,7 @@ func (fake *FakeMemPool) NextRequestsCallCount() int {
 	return len(fake.nextRequestsArgsForCall)
 }
 
-func (fake *FakeMemPool) NextRequestsCalls(stub func(context.Context) [][]byte) {
+func (fake *FakeMemPool) NextRequestsCalls(stub func(context.Context) ([][]byte, []string)) {
 	fake.nextRequestsMutex.Lock()
 	defer fake.nextRequestsMutex.Unlock()
 	fake.NextRequestsStub = stub
@@ -226,27 +228,30 @@ func (fake *FakeMemPool) NextRequestsArgsForCall(i int) context.Context {
 	return argsForCall.arg1
 }
 
-func (fake *FakeMemPool) NextRequestsReturns(result1 [][]byte) {
+func (fake *FakeMemPool) NextRequestsReturns(result1 [][]byte, result2 []string) {
 	fake.nextRequestsMutex.Lock()
 	defer fake.nextRequestsMutex.Unlock()
 	fake.NextRequestsStub = nil
 	fake.nextRequestsReturns = struct {
 		result1 [][]byte
-	}{result1}
+		result2 []string
+	}{result1, result2}
 }
 
-func (fake *FakeMemPool) NextRequestsReturnsOnCall(i int, result1 [][]byte) {
+func (fake *FakeMemPool) NextRequestsReturnsOnCall(i int, result1 [][]byte, result2 []string) {
 	fake.nextRequestsMutex.Lock()
 	defer fake.nextRequestsMutex.Unlock()
 	fake.NextRequestsStub = nil
 	if fake.nextRequestsReturnsOnCall == nil {
 		fake.nextRequestsReturnsOnCall = make(map[int]struct {
 			result1 [][]byte
+			result2 []string
 		})
 	}
 	fake.nextRequestsReturnsOnCall[i] = struct {
 		result1 [][]byte
-	}{result1}
+		result2 []string
+	}{result1, result2}
 }
 
 func (fake *FakeMemPool) Prune(arg1 func([]byte) error) {

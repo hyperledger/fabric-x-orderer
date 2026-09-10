@@ -29,7 +29,7 @@ type RequestInspector interface {
 
 //go:generate counterfeiter -o mocks/mem_pool.go . MemPool
 type MemPool interface {
-	NextRequests(ctx context.Context) [][]byte
+	NextRequests(ctx context.Context) ([][]byte, []string)
 	RemoveRequests(requests ...string)
 	Submit(request []byte) error
 	Halt()
@@ -59,7 +59,10 @@ type Complainer interface {
 
 // BatchedRequestsVerifier verifies batched requests
 type BatchedRequestsVerifier interface {
-	VerifyBatchedRequests(types.BatchedRequests) error
+	// VerifyBatchedRequests verifies the batch and returns the ids of its
+	// requests, corresponding by index, so callers can reuse them without
+	// recomputing.
+	VerifyBatchedRequests(types.BatchedRequests) ([]string, error)
 	// VerifyRequest verifies a single request unconditionally (it does not consult
 	// the mem pool), unlike VerifyBatchedRequests which skips already-pooled requests.
 	VerifyRequest(req []byte) error
@@ -338,6 +341,7 @@ func (b *BatcherRole) runPrimary() {
 	b.MemPool.Restart(true)
 
 	var currentBatch types.BatchedRequests
+	var reqIDs []string
 	var digest []byte
 
 	for {
@@ -355,7 +359,7 @@ func (b *BatcherRole) runPrimary() {
 			}
 			mempoolStart := time.Now()
 			ctx, cancel := context.WithTimeout(b.stopCtx, b.BatchTimeout)
-			currentBatch = b.MemPool.NextRequests(ctx)
+			currentBatch, reqIDs = b.MemPool.NextRequests(ctx)
 
 			b.Metrics.batchMempoolNextRequestsLatency.Observe(time.Since(mempoolStart).Seconds())
 
@@ -404,18 +408,16 @@ func (b *BatcherRole) runPrimary() {
 
 		b.seq++
 
-		b.removeRequests(currentBatch)
+		b.removeRequestsByIDs(reqIDs)
 
 		// TODO find out from the state if old batches need to be resubmitted (not enough BAFs collected)
 	}
 }
 
-func (b *BatcherRole) removeRequests(batch types.BatchedRequests) {
-	reqInfos := make([]string, 0, len(batch))
-	for _, req := range batch {
-		reqInfos = append(reqInfos, b.RequestInspector.RequestID(req))
-	}
-	b.MemPool.RemoveRequests(reqInfos...)
+// removeRequestsByIDs removes the given request ids from the mem pool. Used by
+// the primary, which gets the ids from NextRequests and so avoids recomputing them.
+func (b *BatcherRole) removeRequestsByIDs(reqIDs []string) {
+	b.MemPool.RemoveRequests(reqIDs...)
 	b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
 }
 
@@ -441,7 +443,7 @@ func (b *BatcherRole) runSecondary() {
 				b.BatchPuller.Stop()
 				return
 			}
-			err := b.verifyBatch(batch)
+			reqIDs, err := b.verifyBatch(batch)
 			b.Metrics.batchVerifyLatency.Observe(time.Since(verifyStart).Seconds())
 
 			if err != nil {
@@ -486,42 +488,44 @@ func (b *BatcherRole) runSecondary() {
 			}
 
 			b.Metrics.batchedTxsTotal.Add(float64(len(requests)))
-			b.removeRequests(requests)
+			b.removeRequestsByIDs(reqIDs)
 			b.BatchAcker.Ack(baf.Seq(), b.primary)
 			b.seq++
 		}
 	}
 }
 
-func (b *BatcherRole) verifyBatch(batch types.Batch) error {
+// verifyBatch verifies the pulled batch and returns the ids of its requests (corresponding by index)
+func (b *BatcherRole) verifyBatch(batch types.Batch) ([]string, error) {
 	if batch.ConfigSequence() != b.ConfigSequenceGetter.ConfigSequence() {
 		b.Logger.Warnf("Batch config seq (%d) does not match batcher's current config seq (%d)", batch.ConfigSequence(), b.ConfigSequenceGetter.ConfigSequence())
 	}
 	if batch.Primary() != b.primary {
-		return errors.Errorf("batch primary (%d) not equal to expected primary (%d)", batch.Primary(), b.primary)
+		return nil, errors.Errorf("batch primary (%d) not equal to expected primary (%d)", batch.Primary(), b.primary)
 	}
 	if batch.Shard() != b.Shard {
-		return errors.Errorf("batch shard (%d) not equal to expected shard (%d)", batch.Shard(), b.Shard)
+		return nil, errors.Errorf("batch shard (%d) not equal to expected shard (%d)", batch.Shard(), b.Shard)
 	}
 	if batch.Seq() != b.seq {
-		return errors.Errorf("batch seq (%d) not equal to expected seq (%d)", batch.Seq(), b.seq)
+		return nil, errors.Errorf("batch seq (%d) not equal to expected seq (%d)", batch.Seq(), b.seq)
 	}
 	if len(batch.Requests()) == 0 {
-		return errors.Errorf("empty batch")
+		return nil, errors.Errorf("empty batch")
 	}
 	br := batch.Requests()
 	digestStart := time.Now()
 	computedDigest := br.Digest()
 	b.Metrics.batchHashingLatency.Observe(time.Since(digestStart).Seconds())
 	if !slices.Equal(batch.Digest(), computedDigest) {
-		return errors.Errorf("batch digest (%v) is not equal to calculated digest (%v)", batch.Digest(), computedDigest)
+		return nil, errors.Errorf("batch digest (%v) is not equal to calculated digest (%v)", batch.Digest(), computedDigest)
 	}
 	primaryBAF := types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), batch.Primary(), batch.ConfigSequence(), uint64(len(batch.Requests())), nil)
 	if err := b.SigVerifier.VerifySignature(batch.Primary(), batch.Shard(), primaryBAF.ToBeSigned(), batch.PrimarySignature()); err != nil {
-		return errors.Wrapf(err, "failed verifying primary signature for batch seq %d", b.seq)
+		return nil, errors.Wrapf(err, "failed verifying primary signature for batch seq %d", b.seq)
 	}
-	if err := b.BatchedRequestsVerifier.VerifyBatchedRequests(batch.Requests()); err != nil {
-		return errors.Errorf("failed verifying requests for batch seq %d; err: %v", b.seq, err)
+	reqIDs, err := b.BatchedRequestsVerifier.VerifyBatchedRequests(batch.Requests())
+	if err != nil {
+		return nil, errors.Errorf("failed verifying requests for batch seq %d; err: %v", b.seq, err)
 	}
-	return nil
+	return reqIDs, nil
 }

@@ -9,16 +9,18 @@ import (
 )
 
 type FakeBatchedRequestsVerifier struct {
-	VerifyBatchedRequestsStub        func(types.BatchedRequests) error
+	VerifyBatchedRequestsStub        func(types.BatchedRequests) ([]string, error)
 	verifyBatchedRequestsMutex       sync.RWMutex
 	verifyBatchedRequestsArgsForCall []struct {
 		arg1 types.BatchedRequests
 	}
 	verifyBatchedRequestsReturns struct {
-		result1 error
+		result1 []string
+		result2 error
 	}
 	verifyBatchedRequestsReturnsOnCall map[int]struct {
-		result1 error
+		result1 []string
+		result2 error
 	}
 	VerifyRequestStub        func([]byte) error
 	verifyRequestMutex       sync.RWMutex
@@ -35,7 +37,7 @@ type FakeBatchedRequestsVerifier struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequests(arg1 types.BatchedRequests) error {
+func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequests(arg1 types.BatchedRequests) ([]string, error) {
 	fake.verifyBatchedRequestsMutex.Lock()
 	ret, specificReturn := fake.verifyBatchedRequestsReturnsOnCall[len(fake.verifyBatchedRequestsArgsForCall)]
 	fake.verifyBatchedRequestsArgsForCall = append(fake.verifyBatchedRequestsArgsForCall, struct {
@@ -49,9 +51,9 @@ func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequests(arg1 types.Batche
 		return stub(arg1)
 	}
 	if specificReturn {
-		return ret.result1
+		return ret.result1, ret.result2
 	}
-	return fakeReturns.result1
+	return fakeReturns.result1, fakeReturns.result2
 }
 
 func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsCallCount() int {
@@ -60,7 +62,7 @@ func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsCallCount() int {
 	return len(fake.verifyBatchedRequestsArgsForCall)
 }
 
-func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsCalls(stub func(types.BatchedRequests) error) {
+func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsCalls(stub func(types.BatchedRequests) ([]string, error)) {
 	fake.verifyBatchedRequestsMutex.Lock()
 	defer fake.verifyBatchedRequestsMutex.Unlock()
 	fake.VerifyBatchedRequestsStub = stub
@@ -73,27 +75,30 @@ func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsArgsForCall(i int)
 	return argsForCall.arg1
 }
 
-func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsReturns(result1 error) {
+func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsReturns(result1 []string, result2 error) {
 	fake.verifyBatchedRequestsMutex.Lock()
 	defer fake.verifyBatchedRequestsMutex.Unlock()
 	fake.VerifyBatchedRequestsStub = nil
 	fake.verifyBatchedRequestsReturns = struct {
-		result1 error
-	}{result1}
+		result1 []string
+		result2 error
+	}{result1, result2}
 }
 
-func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsReturnsOnCall(i int, result1 error) {
+func (fake *FakeBatchedRequestsVerifier) VerifyBatchedRequestsReturnsOnCall(i int, result1 []string, result2 error) {
 	fake.verifyBatchedRequestsMutex.Lock()
 	defer fake.verifyBatchedRequestsMutex.Unlock()
 	fake.VerifyBatchedRequestsStub = nil
 	if fake.verifyBatchedRequestsReturnsOnCall == nil {
 		fake.verifyBatchedRequestsReturnsOnCall = make(map[int]struct {
-			result1 error
+			result1 []string
+			result2 error
 		})
 	}
 	fake.verifyBatchedRequestsReturnsOnCall[i] = struct {
-		result1 error
-	}{result1}
+		result1 []string
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *FakeBatchedRequestsVerifier) VerifyRequest(arg1 []byte) error {
