@@ -33,8 +33,28 @@ NUM_PARTIES=${NUM_PARTIES:-4}
 NUM_SHARDS=${NUM_SHARDS:-2}
 FAILURE_RUNNER_ENABLED=${FAILURE_RUNNER_ENABLED:-true}
 
-# Export variables so subprocesses (receivers, loader, etc.) can access them
+# How long submit keeps pulling blocks after it finished sending, waiting for
+# the last in-flight transactions to appear in every party's ledger.  This is a
+# deadline, not a delay: submit exits as soon as every transaction it sent has been
+# confirmed, so a generous value costs nothing on a healthy run.  It must be
+# larger than FAILURE_RUNNER_STOP_DURATION + FAILURE_RUNNER_RESTART_WAIT, because
+# the failure runner finishes the component it is on after being told to stop.
+SUBMIT_DRAIN_SECONDS=${SUBMIT_DRAIN_SECONDS:-420}
+
+# How long the failure runner waits before its first kill.  Without it the first
+# component goes down in the same second submit starts, so the run never has a
+# healthy baseline and the first status snapshot is meaningless.
+FAILURE_RUNNER_START_DELAY=${FAILURE_RUNNER_START_DELAY:-60}
+
+# How long to wait for every assembler to reach the same block height once the run
+# has finished.  Assemblers that were restarted late in the run need time to catch
+# up, so this must exceed FAILURE_RUNNER_STOP_DURATION + FAILURE_RUNNER_RESTART_WAIT.
+# It costs nothing when they agree straight away.
+ASSEMBLER_HEIGHT_TIMEOUT=${ASSEMBLER_HEIGHT_TIMEOUT:-180}
+
+# Export variables so subprocesses (submit, arma nodes) can access them
 export DURATION TX_RATE TX_SIZE NUM_PARTIES NUM_SHARDS FAILURE_RUNNER_ENABLED
+export SUBMIT_DRAIN_SECONDS FAILURE_RUNNER_START_DELAY ASSEMBLER_HEIGHT_TIMEOUT
 
 # ---------------------------------------------------------------------------
 # wait_for_healthz
@@ -72,7 +92,7 @@ wait_for_healthz() {
 
   if [ -z "$url" ]; then
     local reason="${label} failed to start: health check URL never appeared in log within ${phase_timeout}s"
-    echo "❌ ${reason}"
+    echo "${reason}"
     mkdir -p test-results
     echo "${reason}" > test-results/startup_failure.txt
     exit 1
@@ -84,7 +104,7 @@ wait_for_healthz() {
   elapsed=0
   while [ $elapsed -lt $phase_timeout ]; do
     if curl -sf "$url" > /dev/null 2>&1; then
-      echo "  ✅ ${label} healthy"
+      echo "  ${label} healthy"
       return 0
     fi
     sleep 1
@@ -92,7 +112,7 @@ wait_for_healthz() {
   done
 
   local reason="${label} failed to start: /healthz at ${url} did not return HTTP 200 within ${phase_timeout}s"
-  echo "❌ ${reason}"
+  echo "${reason}"
   mkdir -p test-results
   echo "${reason}" > test-results/startup_failure.txt
   exit 1
@@ -182,7 +202,7 @@ start_arma_network() {
   done
 
   echo "=========================================="
-  echo "✅ ARMA network started — all components healthy"
+  echo "ARMA network started, all components healthy"
   echo "=========================================="
 }
 
@@ -205,6 +225,7 @@ run_failure_runner() {
   # Read timing configuration from environment or use defaults
   local STOP_WAIT=${FAILURE_RUNNER_STOP_DURATION:-60}
   local START_WAIT=${FAILURE_RUNNER_RESTART_WAIT:-60}
+  local START_DELAY=${FAILURE_RUNNER_START_DELAY:-60}
 
   # Get PID directory and working directory
   local PID_DIR="${TEST_DIR}/pids"
@@ -217,6 +238,7 @@ run_failure_runner() {
   echo "Failure Runner Started"
   echo "=========================================="
   echo "Configuration:"
+  echo "  Start delay: ${START_DELAY}s"
   echo "  Stop duration: ${STOP_WAIT}s"
   echo "  Restart wait: ${START_WAIT}s"
   echo "  PID directory: ${PID_DIR}"
@@ -224,8 +246,22 @@ run_failure_runner() {
   echo "  Stop signal file: ${STOP_SIGNAL}"
   echo "=========================================="
 
-  # No initial wait needed — start_arma_network already confirmed all components
-  # are healthy via /healthz before returning.
+  # Short one-line events for the console.  Everything this function prints
+  # normally goes to failure_runner.log (the caller redirects it there); fd 3 is
+  # the console, saved by main() before the runner is started.  The verbose
+  # detail — PIDs, waits, force-kills — stays in the log.
+  _console() { printf '  %s  %s\n' "$(date '+%H:%M:%S')" "$*" >&3 2>/dev/null || true; }
+
+  # Let the network reach a healthy steady state and submit connect to every
+  # assembler before the first kill.  start_arma_network already confirmed
+  # /healthz on every component, so this is only about giving traffic a moment to
+  # flow — without it the first component goes down in the same second submit
+  # starts, and the run has no healthy baseline to compare against.
+  if [ "${START_DELAY}" -gt 0 ] 2>/dev/null; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Waiting ${START_DELAY}s before the first kill..."
+    _console "waiting ${START_DELAY}s before the first kill"
+    sleep "${START_DELAY}"
+  fi
 
   # Inner helper: kill and restart a single component
   # Args: component  party  shard(optional)  config_file  log_file
@@ -276,6 +312,7 @@ run_failure_runner() {
     fi
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${component} (party ${party}${shard:+ shard ${shard}}) DOWN — waiting ${STOP_WAIT} seconds"
+    _console "${component} party ${party}${shard:+ shard ${shard}} down for ${STOP_WAIT}s"
     sleep $STOP_WAIT
 
     # Restart the component from the correct working directory
@@ -285,6 +322,7 @@ run_failure_runner() {
     echo ${NEW_PID} > ${pid_file}
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting ${component} (party ${party}${shard:+ shard ${shard}}) - PID ${NEW_PID}"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${component} (party ${party}${shard:+ shard ${shard}}) UP — waiting ${START_WAIT} seconds"
+    _console "${component} party ${party}${shard:+ shard ${shard}} back up"
     sleep $START_WAIT
   }
 
@@ -308,6 +346,7 @@ run_failure_runner() {
       echo "----------------------------------------------------"
       echo "[$(date '+%Y-%m-%d %H:%M:%S')] PARTY ${party} — starting failure sequence"
       echo "----------------------------------------------------"
+      _console "party ${party} failure sequence starting"
 
       # 1. Assembler
       _kill_and_restart "assembler" ${party} "" \
@@ -332,6 +371,7 @@ run_failure_runner() {
       done
 
       echo "[$(date '+%Y-%m-%d %H:%M:%S')] PARTY ${party} — failure sequence DONE"
+      _console "party ${party} failure sequence done"
       # Signal monitor that this party's failure cycle is complete
       touch "${TEST_DIR}/failure_runner_party${party}_done"
     done
@@ -342,25 +382,31 @@ run_failure_runner() {
 
 # ---------------------------------------------------------------------------
 # monitor_completion
-#   Monitors test execution until the configured duration is reached or all
-#   components finish early.
+#   Monitors test execution until the configured duration is reached or submit
+#   finishes early.  All progress numbers are read from submit.log.
 #
 #   - In failure runner mode: prints a status snapshot after each party's full
 #     failure cycle completes.
 #   - Without failure runner: prints a status snapshot every 5 minutes.
-#   - Always: stops when the configured duration is reached or when the loader
-#     and all receivers finish early.
+#   - Always: stops when the configured duration is reached, or as soon as
+#     submit logs "Submit Finished" (it exits once every transaction it sent has
+#     been confirmed).
 #
-#   After duration expires, stops the loader immediately then gives receivers a
-#   30-second drain window before killing them.
+#   Afterwards it signals the failure runner to stop and gives submit up to
+#   SUBMIT_DRAIN_SECONDS to confirm the transactions still in flight.  submit
+#   exits by itself once every tx it sent has been confirmed; if it is still
+#   waiting when the window closes it is stopped, in which case it logs no
+#   verification result.  collect_results reads that result from submit.log and
+#   records the test outcome in ${TEST_DIR}/test_rc for main() to exit with.
 #
-# Args: NUM_PARTIES  TOTAL_TXS  TEST_DIR  DURATION_MINUTES
+# Args: NUM_PARTIES  TOTAL_TXS  TEST_DIR  DURATION_MINUTES  SUBMIT_PID
 # ---------------------------------------------------------------------------
 monitor_completion() {
   local NUM_PARTIES=$1
   local TOTAL_TXS=$2
   local TEST_DIR=$3
   local DURATION_MINUTES=$4
+  local SUBMIT_PID=$5
 
   # Calculate end time
   local START_TIME=$(date +%s)
@@ -381,46 +427,54 @@ monitor_completion() {
     [ $CURRENT_TIME -ge $END_TIME ]
   }
 
-  # Helper: print current stats snapshot
+  # Helper: print current stats snapshot.
+  # Every number comes from submit.log, which submit writes as it runs:
+  #   "all N txs were sent to the routers"
+  #   "BroadcastClientToRouter<P> ... sent N transactions in the last 10s"
+  #
+  # submit logs the verification result only at the end, so mid-run this shows how
+  # much each router has accepted.  A router that was killed shows its count go
+  # flat, which is the live signal worth having.
+  #
+  # $1 is an optional headline (e.g. which failure cycle just finished) folded
+  # into the snapshot's own banner, so each snapshot is one block rather than two
+  # stacked banners.
   _get_current_stats() {
+    local HEADLINE="${1:-}"
     echo ""
     echo "=========================================="
+    if [ -n "$HEADLINE" ]; then
+      echo "$HEADLINE"
+    fi
     echo "Current Status at $(date '+%Y-%m-%d %H:%M:%S')"
     echo "=========================================="
 
-    # Check loader
-    # Actual log line: "Load command finished, sent N TXs in ..."
-    if grep -q "Load command finished" loader.log 2>/dev/null; then
-      local SENT=$(grep "Load command finished" loader.log 2>/dev/null | tail -1 | grep -oP 'sent \K[0-9]+')
-      echo "Loader: ✅ Completed - Sent ${SENT:-unknown} txs total"
+    if grep -q "txs were sent to the routers" submit.log 2>/dev/null; then
+      echo "Submit: all ${TOTAL_TXS} txs sent, waiting for the last blocks"
     else
-      # Sum all per-10s Report lines per router to get exact cumulative sent count per router.
-      # Actual log line: "BroadcastClient to Router 127.0.0.1:XXXX sent N transactions in the last 10s"
-      echo "Loader: 🔄 Running"
-      for i in $(seq 1 $NUM_PARTIES); do
-        local SENT_ROUTER=$(grep "BroadcastClientToRouter${i}.*Report" loader.log 2>/dev/null \
-          | grep -oP 'sent \K[0-9]+(?= transactions in the last)' \
-          | awk '{sum+=$1} END {print sum}')
-        echo "  → Router ${i}: ${SENT_ROUTER:-0} txs sent so far"
-      done
+      echo "Submit: sending (target ${TOTAL_TXS} txs)"
     fi
 
-    # Check receivers
+    # Per-router accepted counts, summed from the 10-second report lines.
     for i in $(seq 1 $NUM_PARTIES); do
-      if grep -q "Receive command finished" receiver${i}.log 2>/dev/null; then
-        # Actual log line: "N txs were expected and overall N were successfully received"
-        local RECEIVED=$(grep "were successfully received" receiver${i}.log 2>/dev/null | tail -1 | grep -oP 'overall \K[0-9]+')
-        echo "Party ${i}: ✅ Completed - Received ${RECEIVED:-unknown} txs"
-      else
-        # For running receivers, read cumulative txs from CSV (column 2 = num txs, column 3 = num blocks)
-        if [ -f "${TEST_DIR}/output${i}/statistics.csv" ]; then
-          local RECEIVED=$(tail -n +3 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | awk -F',' '{sum+=$2} END {print sum}')
-          echo "Party ${i}: 🔄 Running - Received ${RECEIVED:-0} txs so far"
-        else
-          echo "Party ${i}: 🔄 Running - Received 0 txs so far"
-        fi
-      fi
+      local SENT_ROUTER
+      SENT_ROUTER=$(grep "BroadcastClientToRouter${i}.*Report" submit.log 2>/dev/null \
+        | grep -oP 'sent \K[0-9]+(?= transactions in the last)' \
+        | awk '{sum+=$1} END {print sum+0}') || true
+      echo "  → Router ${i}: ${SENT_ROUTER:-0} txs accepted"
     done
+
+    # Assembler contact: report how many outages submit has recovered from, and
+    # only print a line when it is out of contact right now, so a recovery from
+    # earlier in the run is not shown as if it were still happening.
+    local LOST RECOVERED LAST_EVENT
+    LOST=$(grep -c "lost connection to assembler" submit.log 2>/dev/null) || LOST=0
+    RECOVERED=$(grep -c "reconnected to assembler" submit.log 2>/dev/null) || RECOVERED=0
+    echo "  assembler 1: ${RECOVERED:-0} of ${LOST:-0} outage(s) recovered"
+    if [ "${LOST:-0}" -gt "${RECOVERED:-0}" ]; then
+      LAST_EVENT=$(grep "lost connection to assembler" submit.log 2>/dev/null | tail -1 | sed 's/^.*-> //') || true
+      echo "  out of contact now: ${LAST_EVENT}"
+    fi
 
     local CURRENT_TIME=$(date +%s)
     local ELAPSED=$((CURRENT_TIME - START_TIME))
@@ -434,6 +488,15 @@ monitor_completion() {
     echo "Time elapsed: $((ELAPSED / 60)) minutes"
     echo "Time remaining: $((REMAINING / 60)) minutes"
     echo "=========================================="
+  }
+
+  # Emit a snapshot as a single write.  The failure runner prints short event
+  # lines to the same console concurrently; capturing the whole snapshot first
+  # means those lines can land between snapshots but never inside one.
+  _print_stats() {
+    local BLOCK
+    BLOCK=$(_get_current_stats "${1:-}")
+    printf '%s\n' "$BLOCK"
   }
 
   # Determine if failure runner mode is active via a marker written by main()
@@ -451,35 +514,15 @@ monitor_completion() {
 
     # Check if duration reached
     if _time_limit_reached; then
-      echo ""
-      echo "=========================================="
-      echo "⏰ Duration limit reached (${DURATION_MINUTES} minutes)"
-      echo "=========================================="
-      _get_current_stats
+      _print_stats "Duration limit reached (${DURATION_MINUTES} minutes)"
       break
     fi
 
-    # Check if all completed early
-    local LOADER_DONE=false
-    local ALL_RECEIVERS_DONE=true
-
-    if grep -q "Load command finished" loader.log 2>/dev/null; then
-      LOADER_DONE=true
-    fi
-
-    for i in $(seq 1 $NUM_PARTIES); do
-      if ! grep -q "Receive command finished" receiver${i}.log 2>/dev/null; then
-        ALL_RECEIVERS_DONE=false
-        break
-      fi
-    done
-
-    if [ "$LOADER_DONE" = "true" ] && [ "$ALL_RECEIVERS_DONE" = "true" ]; then
-      echo ""
-      echo "=========================================="
-      echo "✅ All components completed before timeout!"
-      echo "=========================================="
-      _get_current_stats
+    # Check if submit finished early: it exits as soon as every party has
+    # confirmed every transaction it sent, and prints this sentinel on every
+    # exit path (natural completion, duration cap, or signal).
+    if grep -q "Submit Finished" submit.log 2>/dev/null; then
+      _print_stats "Submit finished before the duration limit"
       break
     fi
 
@@ -488,18 +531,14 @@ monitor_completion() {
       for party in $(seq 1 $NUM_PARTIES); do
         local SIGNAL_FILE="${TEST_DIR}/failure_runner_party${party}_done"
         if [ -f "$SIGNAL_FILE" ]; then
-          echo ""
-          echo "=========================================="
-          echo "🔥 Party ${party} failure cycle complete"
-          echo "=========================================="
-          _get_current_stats
+          _print_stats "Party ${party} failure cycle complete"
           rm -f "$SIGNAL_FILE"
         fi
       done
     else
       # No failure runner: print stats every 5 minutes
       if [ $((CURRENT_TIME - LAST_STATS_TIME)) -ge 300 ]; then
-        _get_current_stats
+        _print_stats
         LAST_STATS_TIME=$CURRENT_TIME
       fi
     fi
@@ -507,81 +546,50 @@ monitor_completion() {
     sleep 5
   done
 
-  # Final statistics
-  echo ""
-  echo "=========================================="
-  echo "Final Test Statistics"
-  echo "=========================================="
-
-  # Loader final stats
-  if grep -q "Load command finished" loader.log 2>/dev/null; then
-    local SENT=$(grep "Load command finished" loader.log 2>/dev/null | tail -1 | grep -oP 'sent \K[0-9]+')
-    echo "Total Sent: ${SENT:-unknown} transactions"
-  else
-    local SENT=$(grep -oP 'sent \K[0-9]+(?= transactions in the last)' loader.log 2>/dev/null | tail -1)
-    echo "Total Sent: ${SENT:-0} transactions (incomplete)"
-  fi
-
-  echo ""
-  echo "Received per party:"
-  for i in $(seq 1 $NUM_PARTIES); do
-    if grep -q "Receive command finished" receiver${i}.log 2>/dev/null; then
-      local RECEIVED=$(grep "were successfully received" receiver${i}.log 2>/dev/null | tail -1 | grep -oP 'overall \K[0-9]+')
-      echo "  Party ${i}: ${RECEIVED:-unknown} txs"
-    else
-      local RECEIVED=$(tail -n +3 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | awk -F',' '{sum+=$2} END {print sum}')
-      echo "  Party ${i}: ${RECEIVED:-0} txs (incomplete)"
-    fi
-  done
-
-  echo "=========================================="
-
-  # Signal failure runner and other processes to stop
+  # Signal the failure runner to stop before we start waiting for submit to
+  # drain, so no new components go down during the drain window.
   if [ -n "$TEST_DIR" ]; then
     local STOP_SIGNAL="${TEST_DIR}/failure_runner_stop_signal"
     touch "${STOP_SIGNAL}"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Created stop signal: ${STOP_SIGNAL}"
   fi
 
-  # Stop loader first — no more txs should be sent
-  pkill -f "armageddon load" || true
+  # Give submit the drain window to confirm the transactions that were still in
+  # flight when the clock ran out.  It exits by itself once every tx it sent has
+  # been confirmed, and logs the verification result on the way out.  If a tx was
+  # never confirmed submit keeps waiting, so the window bounds the run: stopping
+  # it here means no verification result was logged, which collect_results treats
+  # as a failure.
+  echo "Waiting up to ${SUBMIT_DRAIN_SECONDS}s for submit to confirm the last txs..."
+  ( sleep "${SUBMIT_DRAIN_SECONDS}"
+    kill -TERM "$SUBMIT_PID" 2>/dev/null || true
+    sleep 60
+    kill -KILL "$SUBMIT_PID" 2>/dev/null || true ) &
+  local WATCHDOG=$!
 
-  # Give receivers a drain window to pull remaining blocks from assemblers
-  # before killing them.  30s is enough for the assembler backlog to clear.
-  echo "Waiting 30s for receivers to drain remaining blocks..."
-  local DRAIN_DEADLINE=$(( $(date +%s) + 30 ))
-  local ALL_DONE=false
-  while [ $(date +%s) -lt $DRAIN_DEADLINE ]; do
-    ALL_DONE=true
-    for i in $(seq 1 $NUM_PARTIES); do
-      if ! grep -q "Receive command finished" receiver${i}.log 2>/dev/null; then
-        ALL_DONE=false
-        break
-      fi
-    done
-    if [ "$ALL_DONE" = "true" ]; then
-      echo "All receivers finished draining"
-      break
-    fi
-    sleep 2
-  done
+  set +e
+  wait "$SUBMIT_PID"
+  local SUBMIT_RC=$?
+  set -e
+  kill "$WATCHDOG" 2>/dev/null || true
 
-  if [ "$ALL_DONE" = "false" ]; then
-    echo "Drain window elapsed, stopping receivers"
-  fi
-  pkill -f "armageddon receive" || true
+  # submit's own exit status is only a diagnostic here: it exits 0 whether or not
+  # verification passed, so collect_results decides the outcome from submit.log.
+  echo "submit exited with code ${SUBMIT_RC}"
 
   echo "=========================================="
-  echo "✅ Monitoring completed"
+  echo "Monitoring completed"
   echo "=========================================="
 }
 
 # ---------------------------------------------------------------------------
 # collect_results
-#   Cleans the test-results/ directory from any previous run, then extracts
-#   loader and receiver statistics, copies all component and loader/receiver
-#   logs into test-results/logs/ and compresses them with gzip, collects
-#   receiver statistics CSV files, and creates a summary report.
+#   Cleans the test-results/ directory from any previous run, extracts the
+#   per-party results and the verdict from submit.log, copies all component
+#   logs plus submit.log into test-results/logs/ and gzips them, writes a
+#   single-block summary.txt (plus failure_reason.txt when the verdict is not
+#   a pass), and finally deletes the working-directory logs now that the
+#   compressed copies exist.
 #
 # Args: TEST_DIR  NUM_PARTIES  DURATION
 # ---------------------------------------------------------------------------
@@ -594,178 +602,220 @@ collect_results() {
   echo "Collecting Results"
   echo "=========================================="
 
-  # Clean and recreate results directories so previous run artifacts never mix in
+  # Clean and recreate the results directory so previous run artifacts never mix in
   rm -rf test-results
   mkdir -p test-results/logs
-  mkdir -p test-results/statistics
 
-  # Extract statistics BEFORE compressing/moving logs
-  echo "Extracting statistics from logs..."
+  # -------------------------------------------------------------------------
+  # Extract the verification result from submit.log, before the logs are
+  # compressed and removed.  submit logs exactly one of:
+  #   "Verification passed, all N txs were received"
+  #   "Verification failed, some of the N txs were not received"
+  #
+  # NOTE: each grep is `local X=$(...)` or `|| true` guarded.  A bare assignment
+  # from a grep that matches nothing aborts the script under `set -e`, which
+  # would destroy the summary on exactly the runs that matter.
+  # -------------------------------------------------------------------------
+  echo "Extracting the verification result from submit.log..."
 
-  # Extract loader statistics
-  local SENT LOADER_STATUS
-  if grep -q "Load command finished" loader.log 2>/dev/null; then
-    SENT=$(grep "Load command finished" loader.log 2>/dev/null | tail -1 | grep -oP 'sent \K[0-9]+')
-    LOADER_STATUS="completed"
-  else
-    SENT=$(grep -o "Sent [0-9]* transactions" loader.log 2>/dev/null | tail -1 | awk '{print $2}')
-    LOADER_STATUS="timeout"
+  # Did submit finish sending before it stopped?
+  local ALL_SENT=false
+  if grep -q "txs were sent to the routers" submit.log 2>/dev/null; then
+    ALL_SENT=true
   fi
 
-  # Extract receiver statistics
-  declare -a RECEIVER_STATS
-  declare -a RECEIVER_STATUS
-  for i in $(seq 1 $NUM_PARTIES); do
-    if grep -q "Receive command finished" receiver${i}.log 2>/dev/null; then
-      # Extract from "1800000 txs were expected and overall 1800186 were successfully received" example from the log
-      local RECEIVED=$(grep "were successfully received" receiver${i}.log 2>/dev/null | tail -1 | grep -oP 'overall \K\d+(?= were successfully received)')
-      RECEIVER_STATS[$i]="${RECEIVED:-unknown}"
-      RECEIVER_STATUS[$i]="completed"
-    else
-      # For stopped receivers, check the statistics CSV file
-      if [ -f "${TEST_DIR}/output${i}/statistics.csv" ]; then
-        local BLOCKS=$(tail -n +2 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | wc -l)
-        local RECEIVED=$(tail -n +2 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | awk -F',' '{sum+=$3} END {print sum}')
-        RECEIVER_STATS[$i]="${RECEIVED:-0}"
-        RECEIVER_STATUS[$i]="timeout"
-      else
-        RECEIVER_STATS[$i]="0"
-        RECEIVER_STATUS[$i]="no_data"
+  # submit logs one verification result, from the map of txs it sent: every tx is
+  # added when it is sent and removed when it is seen in a block from assembler 1,
+  # so an empty map means all of them arrived.  A missing result means submit never
+  # got that far — it was stopped at the drain deadline, or it exited early.
+  local VERDICT="none"
+  if grep -q "Verification passed" submit.log 2>/dev/null; then
+    VERDICT="passed"
+  elif grep -q "Verification failed" submit.log 2>/dev/null; then
+    VERDICT="failed"
+  fi
+
+  # How many times each component outage was recovered from, as evidence that the
+  # run really did exercise the failures.
+  local ROUTER_OUTAGES ASSEMBLER_RECONNECTS
+  ROUTER_OUTAGES=$(grep -c "mark router .* as broken" submit.log 2>/dev/null) || ROUTER_OUTAGES=0
+  ASSEMBLER_RECONNECTS=$(grep -c "reconnected to assembler" submit.log 2>/dev/null) || ASSEMBLER_RECONNECTS=0
+
+  echo "  Verdict: ${VERDICT}, router outages recovered: ${ROUTER_OUTAGES:-0}, assembler reconnects: ${ASSEMBLER_RECONNECTS:-0}"
+
+  # -------------------------------------------------------------------------
+  # Every assembler must end at the same block height.  submit only verifies its
+  # txs against assembler 1, so this is what shows the blocks reached the other
+  # parties' ledgers too.
+  #
+  # Each assembler logs its own height every MetricsLogInterval (10s by default,
+  # set in the generated config):
+  #   "ASSEMBLER_METRICS: total: party_id=1, TXs=..., blocks=6542, ..."
+  # blocks= is seeded from the ledger height when the assembler starts, so it
+  # survives the restarts the failure runner performs.  TXs= is seeded with only
+  # the last block's count, so it is not comparable across restarts and must not
+  # be used here.
+  #
+  # The heights are polled rather than sampled once: when submit finishes, the
+  # other assemblers can still be a few blocks behind, and one that the runner
+  # restarted late in the run needs time to catch up.  A height that cannot be
+  # read at all counts as a failure, never as a match, so a change to the log
+  # message cannot turn this check into a silent no-op.
+  # -------------------------------------------------------------------------
+  echo "Checking that every assembler reached the same block height..."
+
+  local HEIGHT_STATE="mismatch"
+  local HEIGHT_NOTE=""
+  local HEIGHT_DEADLINE=$(( $(date +%s) + ASSEMBLER_HEIGHT_TIMEOUT ))
+  local H HEIGHTS NOTE UNREADABLE
+  while true; do
+    HEIGHTS=""
+    NOTE=""
+    UNREADABLE=false
+    for i in $(seq 1 $NUM_PARTIES); do
+      H=$(grep -oP 'ASSEMBLER_METRICS.*\bblocks=\K[0-9]+' assembler${i}.log 2>/dev/null | tail -1) || true
+      if [ -z "${H}" ]; then
+        UNREADABLE=true
+        NOTE="could not read a block height for assembler ${i}"
+        break
       fi
+      HEIGHTS="${HEIGHTS}${H} "
+      NOTE="${NOTE}party${i}=${H} "
+    done
+    HEIGHT_NOTE="${NOTE% }"
+
+    # sort -u collapses equal heights to a single line, so one line means they agree
+    if [ "${UNREADABLE}" = false ] && [ "$(echo ${HEIGHTS} | tr ' ' '\n' | sort -u | wc -l)" = 1 ]; then
+      HEIGHT_STATE="ok"
+      HEIGHT_NOTE="all ${NUM_PARTIES} assemblers at block ${H}"
+      break
     fi
+
+    if [ "$(date +%s)" -ge "${HEIGHT_DEADLINE}" ]; then
+      if [ "${UNREADABLE}" = true ]; then
+        HEIGHT_STATE="unreadable"
+      fi
+      break
+    fi
+    sleep 5
   done
 
-  echo "  Loader: ${SENT:-0} txs (${LOADER_STATUS})"
-  for i in $(seq 1 $NUM_PARTIES); do
-    echo "  Party ${i}: ${RECEIVER_STATS[$i]} txs (${RECEIVER_STATUS[$i]})"
-  done
+  echo "  Heights: ${HEIGHT_STATE} - ${HEIGHT_NOTE}"
 
-  # Collect all logs — always, regardless of duration — and gzip them
+  # -------------------------------------------------------------------------
+  # Collect and compress logs
+  # -------------------------------------------------------------------------
   echo "Collecting and compressing logs..."
   cp consenter*.log test-results/logs/ 2>/dev/null || true
   cp batcher*.log test-results/logs/ 2>/dev/null || true
   cp assembler*.log test-results/logs/ 2>/dev/null || true
   cp router*.log test-results/logs/ 2>/dev/null || true
-  cp loader.log test-results/logs/ 2>/dev/null || true
-  cp receiver*.log test-results/logs/ 2>/dev/null || true
+  cp submit.log test-results/logs/ 2>/dev/null || true
+  cp failure_runner.log test-results/logs/ 2>/dev/null || true
   gzip test-results/logs/*.log 2>/dev/null || true
   echo "  All logs collected and compressed"
 
-  # Collect statistics from receivers
-  echo "Collecting statistics..."
-  for i in $(seq 1 $NUM_PARTIES); do
-    if [ -f "${TEST_DIR}/output${i}/statistics.csv" ]; then
-      cp "${TEST_DIR}/output${i}/statistics.csv" test-results/statistics/party${i}_statistics.csv
-      echo "  Collected statistics for party ${i}"
-    fi
-  done
-
-  # Create summary report
+  # -------------------------------------------------------------------------
+  # Summary report — one block, no repeated banners.  This is the file the
+  # workflow prints into the GitHub job summary.
+  # -------------------------------------------------------------------------
   echo "Creating summary report..."
-  cat > test-results/summary.txt <<EOF
-========================================
-Deterministic Failure Test Summary
-========================================
-Date: $(date)
-Duration: ${DURATION} minutes
-TX Rate: ${TX_RATE} tx/s
-TX Size: ${TX_SIZE} bytes
-Total TXs Expected: $((DURATION * 60 * TX_RATE))
-Parties: ${NUM_PARTIES}
-Shards: ${NUM_SHARDS}
-Failure Runner Enabled: ${FAILURE_RUNNER_ENABLED}
 
-========================================
-Loader Results
-========================================
-EOF
+  local VERDICT_LINE
+  case "$VERDICT" in
+    passed)
+      VERDICT_LINE="PASSED: assembler 1 confirmed every tx that was sent"
+      ;;
+    failed)
+      VERDICT_LINE="FAILED: txs were sent but never confirmed by assembler 1, see submit.log"
+      ;;
+    *)
+      VERDICT_LINE="FAILED: submit reported no verification result, it was stopped at the drain deadline, crashed, or could not run"
+      ;;
+  esac
 
-  # Use pre-extracted statistics
-  if [ "$LOADER_STATUS" = "completed" ]; then
-    echo "✅ Loader completed" >> test-results/summary.txt
-    echo "Sent: ${SENT:-unknown} transactions" >> test-results/summary.txt
-  else
-    echo "⏰ Loader stopped by timeout" >> test-results/summary.txt
-    echo "Sent: ${SENT:-0} transactions (incomplete)" >> test-results/summary.txt
+  # the run passes only when both checks pass: the txs submit sent were confirmed,
+  # and every assembler ended at the same height
+  local HEIGHT_LINE=""
+  case "$HEIGHT_STATE" in
+    ok) ;;
+    unreadable)
+      HEIGHT_LINE="${HEIGHT_NOTE}, so the assembler heights could not be compared"
+      ;;
+    *)
+      HEIGHT_LINE="assemblers did not reach the same block height within ${ASSEMBLER_HEIGHT_TIMEOUT}s, see the Heights line"
+      ;;
+  esac
+
+  if [ -n "${HEIGHT_LINE}" ]; then
+    if [ "$VERDICT" = "passed" ]; then
+      VERDICT_LINE="FAILED: ${HEIGHT_LINE}"
+    else
+      # a lost tx is the failure this test hunts, so it stays first
+      VERDICT_LINE="${VERDICT_LINE}; also ${HEIGHT_LINE}"
+    fi
   fi
 
-  cat >> test-results/summary.txt <<EOF
+  # whether submit got through the whole send before it stopped
+  local SENT_NOTE="all sent"
+  if [ "$ALL_SENT" != "true" ]; then
+    SENT_NOTE="stopped while still sending"
+  fi
 
-========================================
-Receiver Results
-========================================
-EOF
+  local RUNNER_NOTE="failure runner disabled"
+  if [ "$FAILURE_RUNNER_ENABLED" = "true" ]; then
+    RUNNER_NOTE="failure runner enabled"
+  fi
 
-  # Use pre-extracted receiver statistics
-  local TOTAL_RECEIVED=0
-  local REPRESENTATIVE_RECEIVED
+  {
+    echo "Deterministic Failure Test - Summary"
+    echo "==================================="
+    echo "Date      : $(date)"
+    echo "Duration  : ${DURATION} minutes"
+    echo "Load      : ${TOTAL_TXS} txs at ${TX_RATE} tx/s, ${TX_SIZE} bytes each, ${SENT_NOTE}"
+    echo "Network   : ${NUM_PARTIES} parties, ${NUM_SHARDS} shards, ${RUNNER_NOTE}"
+    echo "Outages   : ${ROUTER_OUTAGES:-0} router, ${ASSEMBLER_RECONNECTS:-0} assembler, recovered by submit"
+    case "$HEIGHT_STATE" in
+      ok)         echo "Heights   : ${HEIGHT_NOTE}" ;;
+      unreadable) echo "Heights   : UNREADABLE - ${HEIGHT_NOTE}" ;;
+      *)          echo "Heights   : MISMATCH - ${HEIGHT_NOTE}" ;;
+    esac
+    echo ""
+    echo "${VERDICT_LINE}"
+  } > test-results/summary.txt
+
+  # Machine-readable reason for the Slack notification step.
+  if [ "$VERDICT" != "passed" ] || [ "$HEIGHT_STATE" != "ok" ]; then
+    echo "${VERDICT_LINE}" > test-results/failure_reason.txt
+  fi
+
+  # submit always exits 0, so the checks recorded here are what decide whether the
+  # test passed.  Record the outcome for main() to exit with.
+  if [ "$VERDICT" = "passed" ] && [ "$HEIGHT_STATE" = "ok" ]; then
+    echo 0 > "${TEST_DIR}/test_rc"
+  else
+    echo 1 > "${TEST_DIR}/test_rc"
+  fi
+
+  # -------------------------------------------------------------------------
+  # Remove the working-directory logs.  They are already preserved under
+  # test-results/logs/ (gzipped), so keeping the originals doubles the disk
+  # used by a multi-hour run and leaves them behind in the checkout.
+  # -------------------------------------------------------------------------
+  echo "Removing working-directory logs (already preserved under test-results/logs/)..."
+  rm -f submit.log failure_runner.log
   for i in $(seq 1 $NUM_PARTIES); do
-    echo "Party ${i}:" >> test-results/summary.txt
-
-    local RECEIVED="${RECEIVER_STATS[$i]}"
-    local STATUS="${RECEIVER_STATUS[$i]}"
-
-    if [ "$STATUS" = "completed" ]; then
-      echo "  ✅ Completed - Received: ${RECEIVED} txs" >> test-results/summary.txt
-      if [ -n "$RECEIVED" ] && [ "$RECEIVED" != "unknown" ] && [ "$RECEIVED" -gt 0 ] 2>/dev/null; then
-        TOTAL_RECEIVED=$((TOTAL_RECEIVED + RECEIVED))
-      fi
-    elif [ "$STATUS" = "timeout" ]; then
-      # Get block count from CSV
-      if [ -f "${TEST_DIR}/output${i}/statistics.csv" ]; then
-        local BLOCKS=$(tail -n +2 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | wc -l)
-        echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs in ${BLOCKS} blocks" >> test-results/summary.txt
-      else
-        echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs" >> test-results/summary.txt
-      fi
-      if [ -n "$RECEIVED" ] && [ "$RECEIVED" -gt 0 ] 2>/dev/null; then
-        TOTAL_RECEIVED=$((TOTAL_RECEIVED + RECEIVED))
-      fi
-    else
-      echo "  ❌ No statistics available" >> test-results/summary.txt
-    fi
+    rm -f consenter${i}.log assembler${i}.log router${i}.log
+    for j in $(seq 1 $NUM_SHARDS); do
+      rm -f batcher${i}-${j}.log
+    done
   done
 
-  # Overall statistics: each party independently receives all sent txs, so the
-  # meaningful metric is per-party success rate, not a cross-party sum.
-  local PARTY_SUCCESS_RATE=0
-  REPRESENTATIVE_RECEIVED=${RECEIVER_STATS[1]:-0}
-  if [ -n "$SENT" ] && [ "$SENT" -gt 0 ]; then
-    # Use the first party as representative received count
-    if [ -n "$REPRESENTATIVE_RECEIVED" ] && [ "$REPRESENTATIVE_RECEIVED" -gt 0 ] 2>/dev/null; then
-      PARTY_SUCCESS_RATE=$((REPRESENTATIVE_RECEIVED * 100 / SENT))
-    fi
-  fi
-
-  cat >> test-results/summary.txt <<EOF
-
-========================================
-Overall Statistics
-========================================
-Sent: ${SENT:-0} transactions
-Expected per party: ${SENT:-0} transactions
-Received per party: ${REPRESENTATIVE_RECEIVED:-0} transactions
-Success Rate: ${PARTY_SUCCESS_RATE}%
-EOF
-
-  # Create a simple pass/fail indicator
-  echo "" >> test-results/summary.txt
-  echo "========================================" >> test-results/summary.txt
-  echo "Test Status" >> test-results/summary.txt
-  echo "========================================" >> test-results/summary.txt
-
-  if [ -n "$SENT" ] && [ "$SENT" -gt 0 ] && [ "${REPRESENTATIVE_RECEIVED:-0}" -gt 0 ] 2>/dev/null; then
-    echo "✅ PASSED - Test ran for ${DURATION} minutes" >> test-results/summary.txt
-    echo "   Sent: ${SENT} txs, each party received: ${REPRESENTATIVE_RECEIVED} txs (${PARTY_SUCCESS_RATE}%)" >> test-results/summary.txt
-  else
-    echo "❌ FAILED - No transactions processed" >> test-results/summary.txt
-  fi
-
   echo "=========================================="
-  echo "✅ Results collected in test-results/"
+  echo "Results collected in test-results/"
   echo "=========================================="
 
-  # Display summary
+  # Display the summary (the only place these numbers are printed)
   cat test-results/summary.txt
 }
 
@@ -862,10 +912,7 @@ EOF
 
   # Remove log files from any previous run so the monitor does not read stale data
   echo "Cleaning up log files from previous runs..."
-  rm -f loader.log
-  for i in $(seq 1 $NUM_PARTIES); do
-    rm -f receiver${i}.log
-  done
+  rm -f submit.log failure_runner.log
   for i in $(seq 1 $NUM_PARTIES); do
     rm -f consenter${i}.log assembler${i}.log router${i}.log
     for j in $(seq 1 $NUM_SHARDS); do
@@ -878,35 +925,19 @@ EOF
   echo "Starting ARMA network..."
   start_arma_network "${TEST_DIR}" "${NUM_PARTIES}" "${NUM_SHARDS}"
 
-  # Create output directories for receivers
-  echo "Creating output directories for receivers..."
-  for i in $(seq 1 $NUM_PARTIES); do
-    mkdir -p ${TEST_DIR}/output${i}
-    echo "  Created: ${TEST_DIR}/output${i}"
-  done
-
-  # Start receivers (background)
-  echo "Starting receivers..."
-  for i in $(seq 1 $NUM_PARTIES); do
-    ./bin/armageddon receive \
-      --config=${TEST_DIR}/config/party${i}/user_config.yaml \
-      --pullFromPartyId=${i} \
-      --expectedTxs=${TOTAL_TXS} \
-      --output=${TEST_DIR}/output${i} \
-      >> receiver${i}.log 2>&1 &
-    echo "Started receiver for party ${i} (PID: $!)"
-  done
-
-  # Start loader (background)
-  echo "Starting loader..."
-  ./bin/armageddon load \
+  # Start submit (background).  One submit replaces the loader and the receivers:
+  # it sends txs to every router and verifies that assembler 1 confirmed each one.
+  # submit exits by itself once every tx it sent has been seen in a block, so the
+  # script waits for it and only stops it if the drain window closes first.
+  echo "Starting submit (load + verify)..."
+  ./bin/armageddon submit \
     --config=${TEST_DIR}/config/party1/user_config.yaml \
     --transactions=${TOTAL_TXS} \
     --rate=${TX_RATE} \
     --txSize=${TX_SIZE} \
-    >> loader.log 2>&1 &
-  local LOADER_PID=$!
-  echo "Started loader (PID: ${LOADER_PID})"
+    >> submit.log 2>&1 &
+  local SUBMIT_PID=$!
+  echo "Started submit (PID: ${SUBMIT_PID})"
 
   # Start failure runner (if enabled)
   local FAILURE_RUNNER_PID=""
@@ -914,14 +945,18 @@ EOF
     echo "Starting failure runner..."
     # Write marker so monitor_completion knows failure runner mode is active
     touch "${TEST_DIR}/failure_runner_enabled"
-    run_failure_runner "${TEST_DIR}" "${NUM_PARTIES}" "${NUM_SHARDS}" &
+    # Save the console on fd 3, then send the runner's verbose output to a log.
+    # The runner writes only short one-line events to fd 3, which keeps the
+    # console readable and stops it cutting into status snapshots.
+    exec 3>&1
+    run_failure_runner "${TEST_DIR}" "${NUM_PARTIES}" "${NUM_SHARDS}" >> failure_runner.log 2>&1 &
     FAILURE_RUNNER_PID=$!
-    echo "Started failure runner (PID: ${FAILURE_RUNNER_PID})"
+    echo "Started failure runner (PID: ${FAILURE_RUNNER_PID}) — verbose output in failure_runner.log"
   fi
 
   # Monitor completion (with duration timeout)
   echo "Monitoring test completion..."
-  monitor_completion "${NUM_PARTIES}" "${TOTAL_TXS}" "${TEST_DIR}" "${DURATION}"
+  monitor_completion "${NUM_PARTIES}" "${TOTAL_TXS}" "${TEST_DIR}" "${DURATION}" "${SUBMIT_PID}"
 
   # Wait a bit for failure runner to see the stop signal and exit gracefully
   if [ "$FAILURE_RUNNER_ENABLED" = "true" ] && [ -n "$FAILURE_RUNNER_PID" ]; then
@@ -946,9 +981,23 @@ EOF
   pkill -f "arma " || true
   pkill -f "armageddon" || true
 
+  # Exit on the verification result that collect_results read from submit.log, so
+  # a tx that was sent but never confirmed turns the CI job red and triggers the
+  # Slack notification.  Anything other than a pass, including submit never
+  # reporting at all, counts as a failure.
+  local RC
+  RC=$(cat "${TEST_DIR}/test_rc" 2>/dev/null) || true
+  : "${RC:=1}"
+
   echo "=========================================="
-  echo "✅ Deterministic failure test completed successfully!"
+  if [ "$RC" = "0" ]; then
+    echo "Deterministic failure test completed, all txs verified"
+  else
+    echo "Deterministic failure test FAILED, see test-results/summary.txt"
+  fi
   echo "=========================================="
+
+  exit "$RC"
 }
 
 main
