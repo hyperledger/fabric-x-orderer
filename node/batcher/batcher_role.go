@@ -269,37 +269,56 @@ func (b *BatcherRole) ResubmitPendingBAFs(state *state.State, prevPrimary types.
 				continue
 			}
 			b.Logger.Debugf("found pending BAF signed by me (id: %d) from primary: %d ; %s", b.ID, baf.Primary(), baf.String())
-			batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
-			if batch == nil {
-				b.Logger.Panicf("Error: No such batch; pending BAF signed by me (id: %d) from primary: %d ; %s", b.ID, baf.Primary(), baf.String())
+			b.reviveBAFRequests(baf)
+		}
+	}
+}
+
+// ResubmitStaleConfigBAFs revives the requests of this batcher's own BAFs that consensus surfaced as
+// exactly one config behind (state.StaleConfigBAFs). Unlike ResubmitPendingBAFs, it is checked on
+// every delivered decision (the array lives for a single decision) and has no prevPrimary filter.
+// Because decisions are applied in order, the batcher has already applied the config block by the time
+// such a BAF is surfaced, so the revived requests re-batch under the new config sequence.
+func (b *BatcherRole) ResubmitStaleConfigBAFs(state *state.State) {
+	for _, baf := range state.StaleConfigBAFs {
+		if baf.Shard() == b.Shard && baf.Signer() == b.ID {
+			b.Logger.Infof("reviving requests of stale-config BAF signed by me (id: %d) from primary: %d; %s",
+				b.ID, baf.Primary(), baf.String())
+			b.reviveBAFRequests(baf)
+		}
+	}
+}
+
+// reviveBAFRequests re-reads, from the local ledger, the batch that baf attests and resubmits its
+// requests to the mempool so they can be re-batched. When baf was created under an older config the
+// channel policies may have changed since, so the requests are not guaranteed to still satisfy the
+// current policy: they must be re-verified before re-entering the pool (the secondary pull path treats
+// pool membership as "already verified under the current config" and skips re-verifying pooled
+// requests). When baf is from the current config the requests were already verified under it, so
+// re-verification is unnecessary.
+func (b *BatcherRole) reviveBAFRequests(baf types.BatchAttestationFragment) {
+	batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
+	if batch == nil {
+		b.Logger.Panicf("Error: No such batch; BAF signed by me (id: %d) from primary: %d; %s",
+			b.ID, baf.Primary(), baf.String())
+	}
+	reverify := baf.ConfigSequence() < b.ConfigSequenceGetter.ConfigSequence()
+	for _, req := range batch.Requests() {
+		if reverify {
+			// Verify one request at a time so a single offending request is dropped
+			// without discarding the rest of the batch.
+			if err := b.BatchedRequestsVerifier.VerifyRequest(req); err != nil {
+				b.Logger.Errorf("Dropping request that failed verification under the current config before resubmitting; err: %v",
+					err)
+				continue
 			}
-			// These requests are read from an old ledger batch. If the BAF was created
-			// under an older config, the channel policies may have changed since, so the
-			// requests are not guaranteed to still satisfy the current policy. They must
-			// be re-verified before being resubmitted to the pool: the secondary pull
-			// path treats pool membership as "already verified under the current config"
-			// and skips re-verifying pooled requests, so an unverified request must never
-			// enter the pool. When the BAF is from the current config (e.g. a plain term
-			// change) the requests were already verified under it, so re-verification is
-			// unnecessary.
-			reverify := baf.ConfigSequence() < b.ConfigSequenceGetter.ConfigSequence()
-			for _, req := range batch.Requests() {
-				if reverify {
-					// Verify one request at a time so a single offending request is dropped
-					// without discarding the rest of the batch.
-					if err := b.BatchedRequestsVerifier.VerifyRequest(req); err != nil {
-						b.Logger.Errorf("Dropping request that failed verification under the current config before resubmitting to pool; err: %v", err)
-						continue
-					}
-				}
-				if err := b.MemPool.Submit(req); err != nil {
-					if strings.Contains(err.Error(), "already inserted") {
-						b.Logger.Debugf("Failed submitting request to pool; err: %v", err)
-						continue
-					}
-					b.Logger.Errorf("Failed submitting request to pool; err: %v", err)
-				}
+		}
+		if err := b.MemPool.Submit(req); err != nil {
+			if strings.Contains(err.Error(), "already inserted") {
+				b.Logger.Debugf("Failed submitting request to pool; err: %v", err)
+				continue
 			}
+			b.Logger.Errorf("Failed submitting request to pool; err: %v", err)
 		}
 	}
 }

@@ -539,7 +539,11 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		if err != nil {
 			return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
 		}
-		if configSeq != c.VerificationSequence() {
+		verSeq := c.VerificationSequence()
+		// A control event one config behind is accepted (a stale-by-one BAF is surfaced for revival),
+		// so it must still be verified here and reflected in reqInfos, consistently with the leader.
+		// Anything staler is ignored.
+		if configSeq != verSeq && !(verSeq > 0 && configSeq == verSeq-1) {
 			continue // ignore (no need to verify) request with mismatch config sequence
 		}
 		reqID, err := c.VerifyRequest(rawReq)
@@ -1269,7 +1273,11 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		}
 		return reqID, ce, c.SigVerifier.VerifySignature(ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
 	} else if ce.BAF != nil {
-		if ce.BAF.ConfigSequence() != configSeq {
+		// Accept a BAF whose config sequence is exactly one behind, in addition to the current one, so
+		// that a batcher which fell behind a config change is not silently dropped: consensus surfaces it
+		// in State.StaleConfigBAFs for one decision and the batcher revives the batch's requests. Its
+		// signature is still verified below. BAFs staler than one config behind are rejected.
+		if ce.BAF.ConfigSequence() != configSeq && !(configSeq > 0 && ce.BAF.ConfigSequence() == configSeq-1) {
 			return reqID, ce, errors.Errorf("mismatch config sequence; the BAF's config seq is %d while the config seq should be %d", ce.BAF.ConfigSequence(), configSeq)
 		}
 		if ce.BAF.Primary() != ce.BAF.Signer() {

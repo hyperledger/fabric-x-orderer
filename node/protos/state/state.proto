@@ -60,4 +60,5 @@ message State {
   repeated BatchAttestationFragment pending = 3;  // Pending batch attestation fragments received by consenters from batchers
   repeated Complaint complaints = 4; // Complaints received by consenters from batchers
   bytes app_context = 5; // Auxiliary data that may be served as context to the application
+  repeated BatchAttestationFragment stale_config_bafs = 6; // BAFs one config behind, surfaced for one decision so batchers can revive their requests
 }

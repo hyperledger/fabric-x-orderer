@@ -953,6 +953,62 @@ func TestResubmitPendingBAFsReverifiesOnConfigChange(t *testing.T) {
 	require.Equal(t, validReq, pool.SubmitArgsForCall(0))
 }
 
+// TestResubmitStaleConfigBAFs covers the stale-config revive path: a BAF that consensus surfaced as one
+// config behind (in State.StaleConfigBAFs) has its batch's requests re-read from the ledger,
+// re-verified under the current config, and resubmitted to the pool. BAFs signed by other batchers
+// are ignored.
+func TestResubmitStaleConfigBAFs(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := arma_types.PartyID(2)
+	shardID := arma_types.ShardID(0)
+	logger := testutil.CreateLogger(t, int(batcherID))
+
+	b := createBatcher(t, batcherID, shardID, batchers, N, logger)
+
+	validReq := []byte("valid-request")
+	invalidReq := []byte("invalid-request")
+	reqs := arma_types.BatchedRequests{validReq, invalidReq}
+
+	// The stale BAF and its ledger batch were created under config seq 0.
+	batch := arma_types.NewSimpleBatch(shardID, 1, 0, reqs, 0, nil)
+	ledger := &mocks.FakeBatchLedger{}
+	ledger.RetrieveBatchByNumberReturns(batch)
+	b.Ledger = ledger
+
+	// Current config seq (1) is newer than the BAF's (0), so its requests are re-verified.
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(1)
+	b.ConfigSequenceGetter = configSeqGet
+
+	verifier := &mocks.FakeBatchedRequestsVerifier{}
+	verifier.VerifyRequestStub = func(req []byte) error {
+		if string(req) == string(invalidReq) {
+			return errors.New("fails current policy")
+		}
+		return nil
+	}
+	b.BatchedRequestsVerifier = verifier
+
+	pool := &mocks.FakeMemPool{}
+	b.MemPool = pool
+
+	myBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), batcherID, 0, 0, nil)
+	notMyBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), batcherID+1, 0, 0, nil)
+	st := &state.State{
+		Shards:          []state.ShardTerm{{Shard: shardID, Term: 1}},
+		StaleConfigBAFs: []arma_types.BatchAttestationFragment{myBAF, notMyBAF},
+	}
+
+	b.ResubmitStaleConfigBAFs(st)
+
+	// Only my BAF's requests are revived: both re-verified, only the valid one resubmitted; the other
+	// batcher's BAF is ignored (no extra ledger read / verify).
+	require.Equal(t, 2, verifier.VerifyRequestCallCount())
+	require.Equal(t, 1, pool.SubmitCallCount())
+	require.Equal(t, validReq, pool.SubmitArgsForCall(0))
+}
+
 func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger *flogging.FabricLogger) *batcher.BatcherRole {
 	bafCreator := &mocks.FakeBAFCreator{}
 	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64, primarySignature []byte) arma_types.BatchAttestationFragment {
