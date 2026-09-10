@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hyperledger-labs/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -58,6 +59,7 @@ type Router struct {
 	wal          *wal.WriteAheadLogFile
 	signer       identity.SignerSerializer
 
+	throttler        atomic.Pointer[throttler] // request rate limiter; always non-nil after init, read lock-free on the hot path
 	lock             sync.RWMutex
 	status           node_utils.NodeStatus
 	configuration    *config.Configuration
@@ -133,6 +135,13 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.configSeq = uint32(configSeq)
 
 	r.verifier = createVerifier(rconfig)
+
+	t, err := newThrottler(rconfig.Throttling)
+	if err != nil {
+		r.logger.Panicf("Failed creating router throttler: %s", err)
+	}
+	r.throttler.Store(t)
+	r.logger.Infof("Router throttling policy: %q (rate=%d, burst=%d)", rconfig.Throttling.Policy, rconfig.Throttling.Rate, rconfig.Throttling.Burst)
 
 	r.configSubmitter = NewConfigSubmitter(rconfig, r.logger, r.verifier, r.signer, configUpdateProposer, configRulesVerifier)
 
@@ -386,7 +395,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		close(exit)
 	}()
 
-	feedbackChan := make(chan Response, 1000)
+	feedbackChan := make(chan Response, 10000)
 	go r.sendFeedbackOnBroadcastStream(stream, exit, feedbackChan)
 
 	for {
@@ -402,15 +411,27 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		r.metrics.incomingTxs.Add(1)
 
+		if !r.throttler.Load().Allow() {
+			r.metrics.throttledTxs.Add(1)
+			feedbackChan <- Response{err: ErrThrottled}
+			// TODO deal with drain signal leaving this channel with no reader
+			continue
+		}
+
 		request := &protos.Request{Payload: reqEnv.Payload, Signature: reqEnv.Signature, ConfigSeq: r.configSeq}
 		reqID, shardRouter := r.getShardRouterAndReqID(request)
 
 		select {
 		case <-r.stopChan:
-			r.sendBroadcastResponse(stream, Response{
+			// The router is stopping, so it is ok to send feedback best effort rather than block
+			select {
+			case feedbackChan <- Response{
 				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 				reqID: reqID,
-			})
+			}:
+			default:
+			}
+
 		default:
 			// create a routing request with nil trace. the request is not traced in router.
 			tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID}
@@ -437,7 +458,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		close(exit)
 	}()
 
-	feedbackChan := make(chan Response, 100)
+	feedbackChan := make(chan Response, 10000)
 	go r.sendFeedbackOnSubmitStream(stream, exit, feedbackChan)
 
 	for {
@@ -450,15 +471,28 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		}
 
 		r.metrics.incomingTxs.Add(1)
-
+		// Map before the throttle check so a throttled reject can carry reqID:
+		// SubmitResponse has a ReqID field and clients correlate stream responses
+		// by it, unlike Broadcast (whose response carries no reqID).
 		reqID, shardRouter := r.getShardRouterAndReqID(req)
+
+		if !r.throttler.Load().Allow() {
+			r.metrics.throttledTxs.Add(1)
+			feedbackChan <- Response{err: ErrThrottled, reqID: reqID}
+			// TODO deal with drain signal leaving this channel with no reader
+			continue
+		}
 
 		select {
 		case <-r.stopChan:
-			r.sendSubmitResponse(stream, Response{
+			// The router is stopping, so it is ok to send feedback best effort rather than block
+			select {
+			case feedbackChan <- Response{
 				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 				reqID: reqID,
-			})
+			}:
+			default:
+			}
 		default:
 			trace := createTraceID(rand)
 			tr := &TrackedRequest{request: req, responses: feedbackChan, reqID: reqID, trace: trace}
@@ -493,7 +527,12 @@ func (r *Router) getShardRouterAndReqID(req *protos.Request) ([]byte, *ShardRout
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
 	r.metrics.incomingTxs.Add(1)
 
+	// Map before the throttle check so the reject can carry reqID (see SubmitStream).
 	reqID, shardRouter := r.getShardRouterAndReqID(request)
+	if !r.throttler.Load().Allow() {
+		r.metrics.throttledTxs.Add(1)
+		return responseToSubmitResponse(&Response{err: ErrThrottled, reqID: reqID}), nil
+	}
 
 	trace := createTraceID(nil)
 
@@ -547,14 +586,6 @@ func (r *Router) sendFeedbackOnSubmitStream(stream protos.RequestTransmit_Submit
 	}
 }
 
-func (r *Router) sendSubmitResponse(stream protos.RequestTransmit_SubmitStreamServer, response Response) {
-	err := stream.Send(responseToSubmitResponse(&response))
-	if err != nil {
-		r.logger.Errorf("error sending response to client: %v", err)
-	}
-	r.metrics.increaseErrorCount(response.err)
-}
-
 func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, feedbackChan chan Response) {
 	r.feedbackWG.Add(1)
 	defer r.feedbackWG.Done()
@@ -574,14 +605,6 @@ func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_Br
 			}
 		}
 	}
-}
-
-func (r *Router) sendBroadcastResponse(stream orderer.AtomicBroadcast_BroadcastServer, response Response) {
-	err := stream.Send(responseToBroadcastResponse(&response))
-	if err != nil {
-		r.logger.Errorf("error sending response to client: %v", err)
-	}
-	r.metrics.increaseErrorCount(response.err)
 }
 
 func createTraceID(rand *rand2.Rand) []byte {

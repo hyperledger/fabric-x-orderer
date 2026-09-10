@@ -284,6 +284,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		ClientRootCAs:                       trustedRoots,
 		RequestMaxBytes:                     config.SharedConfig.BatchingConfig.RequestMaxBytes,
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
+		Throttling:                          extractRouterThrottlingConfig(config.LocalConfig.NodeLocalConfig.RouterParams.Throttling),
 		Bundle:                              bundle,
 		BCCSP:                               bccsp,
 		Operations: &operations.Operations{
@@ -302,6 +303,19 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		},
 	}
 	return routerConfig
+}
+
+// extractRouterThrottlingConfig maps the local throttling YAML into the runtime
+// config. A nil block (throttling omitted) yields the disabled policy.
+func extractRouterThrottlingConfig(t *ThrottlingParams) nodeconfig.RouterThrottlingConfig {
+	if t == nil {
+		return nodeconfig.RouterThrottlingConfig{Policy: ThrottlingPolicyDisabled}
+	}
+	return nodeconfig.RouterThrottlingConfig{
+		Policy: t.Policy,
+		Rate:   t.Rate,
+		Burst:  t.Burst,
+	}
 }
 
 func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *nodeconfig.BatcherNodeConfig {
