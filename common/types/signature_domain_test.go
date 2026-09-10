@@ -30,7 +30,8 @@ func TestPrefixWithDomain(t *testing.T) {
 func TestPrefixWithDomainSeparatesDomains(t *testing.T) {
 	// The same payload signed under two different domains must never collide.
 	msg := []byte{1, 2, 3}
-	require.NotEqual(t,
+	require.NotEqual(
+		t,
 		types.PrefixWithDomain(types.DomainBAF, msg),
 		types.PrefixWithDomain(types.DomainComplaint, msg),
 	)
