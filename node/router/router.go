@@ -395,7 +395,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		close(exit)
 	}()
 
-	feedbackChan := make(chan Response, 1000)
+	feedbackChan := make(chan Response, 10000)
 	go r.sendFeedbackOnBroadcastStream(stream, exit, feedbackChan)
 
 	for {
@@ -414,6 +414,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		if !r.throttler.Load().Allow() {
 			r.metrics.throttledTxs.Add(1)
 			feedbackChan <- Response{err: ErrThrottled}
+			// TODO deal with drain signal leaving this channel with no reader
 			continue
 		}
 
@@ -422,10 +423,15 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		select {
 		case <-r.stopChan:
-			feedbackChan <- Response{
+			// The router is stopping, so it is ok to send feedback best effort rather than block
+			select {
+			case feedbackChan <- Response{
 				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 				reqID: reqID,
+			}:
+			default:
 			}
+
 		default:
 			// create a routing request with nil trace. the request is not traced in router.
 			tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID}
@@ -452,7 +458,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		close(exit)
 	}()
 
-	feedbackChan := make(chan Response, 100)
+	feedbackChan := make(chan Response, 10000)
 	go r.sendFeedbackOnSubmitStream(stream, exit, feedbackChan)
 
 	for {
@@ -473,14 +479,19 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		if !r.throttler.Load().Allow() {
 			r.metrics.throttledTxs.Add(1)
 			feedbackChan <- Response{err: ErrThrottled, reqID: reqID}
+			// TODO deal with drain signal leaving this channel with no reader
 			continue
 		}
 
 		select {
 		case <-r.stopChan:
-			feedbackChan <- Response{
+			// The router is stopping, so it is ok to send feedback best effort rather than block
+			select {
+			case feedbackChan <- Response{
 				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 				reqID: reqID,
+			}:
+			default:
 			}
 		default:
 			trace := createTraceID(rand)
