@@ -151,7 +151,6 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		lastBlockNumber++
 		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq, lastBlockNumber, "")
 		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq+1, lastBlockNumber, "mismatch config sequence")
-		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq-1, lastBlockNumber, "mismatch config sequence")
 	})
 
 	t.Run("config update with consenter's certificate change", func(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	consensus_state "github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -502,6 +503,69 @@ func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 	assert.Equal(t, types.ConfigSequence(2), state.Pending[0].ConfigSequence())
 	assert.Len(t, state.Complaints, 1)
 	assert.Equal(t, types.ConfigSequence(2), state.Complaints[0].ConfigSeq)
+}
+
+// TestProcessSurfacesStaleConfigBAFsOneBehind verifies that Process diverts an incoming BAF that is
+// exactly one config behind into StaleConfigBAFs (rather than dropping it or placing it in Pending),
+// leaves it out of BA extraction, drops BAFs staler than one config behind, and clears the array the
+// next round.
+func TestProcessSurfacesStaleConfigBAFsOneBehind(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+	st := consensus_state.State{
+		N:         4,
+		Threshold: 2,
+		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+	}
+	const cur = types.ConfigSequence(2)
+
+	currentBAF := bafCE(1, 1, 10, []byte{1}, 2, cur, 0, nil)  // exact match -> Pending
+	staleOne := bafCE(1, 1, 11, []byte{2}, 2, cur-1, 0, nil)  // one behind -> StaleConfigBAFs
+	twoBehind := bafCE(1, 1, 12, []byte{3}, 2, cur-2, 0, nil) // two behind -> dropped
+
+	next, extracted, _ := st.Process(logger, cur, currentBAF, staleOne, twoBehind)
+
+	// exact-match BAF collected into Pending
+	require.Len(t, next.Pending, 1)
+	assert.Equal(t, cur, next.Pending[0].ConfigSequence())
+
+	// stale-by-one surfaced separately, and never extracted as a BA
+	require.Len(t, next.StaleConfigBAFs, 1)
+	assert.Equal(t, cur-1, next.StaleConfigBAFs[0].ConfigSequence())
+	assert.Empty(t, extracted)
+
+	// two-behind dropped entirely (not surfaced, not pending)
+	for _, baf := range next.StaleConfigBAFs {
+		assert.NotEqual(t, cur-2, baf.ConfigSequence())
+	}
+
+	// one decision only: a subsequent Process without the stale CE clears StaleConfigBAFs,
+	// while Pending is unaffected.
+	next2, _, _ := next.Process(logger, cur)
+	assert.Empty(t, next2.StaleConfigBAFs)
+	assert.Len(t, next2.Pending, 1)
+}
+
+// TestStateSerializeDeserializeStaleConfigBAFs verifies StaleConfigBAFs round-trips through
+// Serialize/Deserialize, which is what carries it (deterministically) to batchers and into the
+// VerifyProposal state byte-compare.
+func TestStateSerializeDeserializeStaleConfigBAFs(t *testing.T) {
+	baf := types.NewSimpleBatchAttestationFragment(1, 1, 5, []byte{7}, 2, 3, 0, nil)
+	baf.SetSignature([]byte{9})
+	st := consensus_state.State{
+		N:               4,
+		Threshold:       2,
+		Quorum:          3,
+		Shards:          []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+		StaleConfigBAFs: []types.BatchAttestationFragment{baf},
+	}
+
+	var got consensus_state.State
+	require.NoError(t, got.Deserialize(st.Serialize()))
+
+	require.Len(t, got.StaleConfigBAFs, 1)
+	assert.Equal(t, types.ConfigSequence(3), got.StaleConfigBAFs[0].ConfigSequence())
+	assert.Equal(t, types.BatchSequence(5), got.StaleConfigBAFs[0].Seq())
+	assert.Empty(t, got.Pending)
 }
 
 func TestPrimaryRotateDueToComplaints(t *testing.T) {
