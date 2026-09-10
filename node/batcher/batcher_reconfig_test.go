@@ -317,7 +317,7 @@ func TestBatcherReconfigMempoolPruneDropsInvalidRequests(t *testing.T) {
 	// only the valid requests remain; the invalid ones were dropped
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	remaining := pool.NextRequests(ctx)
+	remaining, _ := pool.NextRequests(ctx)
 	require.Len(t, remaining, len(validReqs))
 	for _, r := range remaining {
 		require.NoError(t, riv.VerifyRequest(r))

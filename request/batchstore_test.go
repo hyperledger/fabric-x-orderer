@@ -18,7 +18,18 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// requireMatchingBatchIDs asserts that Fetch returned exactly one id per
+// request, and that each id is the RequestID of the request at the same index.
+func requireMatchingBatchIDs(t *testing.T, requestID func([]byte) string, batch, ids []interface{}) {
+	t.Helper()
+	require.Len(t, ids, len(batch), "expected one id per request")
+	for i := range batch {
+		require.Equal(t, requestID(batch[i].([]byte)), ids[i].(string), "id at index %d does not match its request", i)
+	}
+}
 
 func TestBatchStore(t *testing.T) {
 	max := uint32(100)
@@ -34,8 +45,9 @@ func TestBatchStore(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	fetched := bs.Fetch(ctx)
+	fetched, ids := bs.Fetch(ctx)
 	assert.Len(t, fetched, 0)
+	assert.Len(t, ids, 0)
 
 	requestInspector := &reqInspector{}
 
@@ -73,8 +85,10 @@ func TestBatchStore(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		fetched = bs.Fetch(ctx)
+		fetched, ids = bs.Fetch(ctx)
 		assert.Len(t, fetched, int(max))
+		assert.Len(t, ids, int(max))
+		requireMatchingBatchIDs(t, requestInspector.RequestID, fetched, ids)
 	}
 
 	wg.Add(workerNum)
