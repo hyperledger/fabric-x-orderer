@@ -277,6 +277,11 @@ func (b *Batcher) replicateDecision() {
 				}
 			}
 			state := header.State
+			// Revive requests of any of this batcher's BAFs that consensus surfaced as one config
+			// behind. Done here, per decision, rather than off b.stateChan, because that
+			// channel is buffer-1 and can coalesce states, which would miss the single-decision window
+			// StaleConfigBAFs lives for.
+			b.batcher.ResubmitStaleConfigBAFs(state)
 			b.stateChan <- state
 			primaryID, term := b.getPrimaryIDAndTerm(state)
 			changed := false

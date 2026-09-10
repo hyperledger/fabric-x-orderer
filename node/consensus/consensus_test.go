@@ -837,6 +837,49 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	}
 }
 
+// TestVerifyRequestAcceptsStaleByOneConfigSeq verifies the config-sequence gate in verifyCE (reached
+// via the exported VerifyRequest): a BAF at the current sequence or exactly one behind is accepted (so
+// consensus can surface a one-behind BAF for revival), while a BAF two or more behind is rejected.
+func TestVerifyRequestAcceptsStaleByOneConfigSeq(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	signer := crypto.ECDSASigner(*sk)
+	verifier := make(crypto.ECDSAVerifier)
+	for _, shard := range []arma_types.ShardID{1, arma_types.ShardIDConsensus} {
+		verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(1), Shard: shard}] = signer.PublicKey
+	}
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.SequenceReturns(2) // current config sequence
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	c := &node_consensus.Consensus{
+		Logger:      logger,
+		SigVerifier: verifier,
+		Config:      &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
+	}
+
+	dig123 := append([]byte{1, 2, 3}, make([]byte, 32-3)...)
+	// primary == signer (party 1), so verifyCE checks only the signer signature.
+	bafReqAtConfigSeq := func(configSeq arma_types.ConfigSequence) []byte {
+		baf, err := batcher.CreateBAF(signer, 1, 1, dig123, 1, 1, configSeq, 0, nil)
+		require.NoError(t, err)
+		return (&state.ControlEvent{BAF: baf}).Bytes()
+	}
+
+	_, err = c.VerifyRequest(bafReqAtConfigSeq(2)) // current sequence -> accepted
+	require.NoError(t, err)
+
+	_, err = c.VerifyRequest(bafReqAtConfigSeq(1)) // exactly one behind -> accepted (surfaced for revival)
+	require.NoError(t, err)
+
+	_, err = c.VerifyRequest(bafReqAtConfigSeq(0)) // two behind -> rejected
+	require.ErrorContains(t, err, "mismatch config sequence")
+}
+
 // configReqEnvelopeWithID builds a config request envelope whose config envelope carries the given
 // sequence and a LastUpdate (CONFIG_UPDATE) envelope whose channel header carries the given tx id,
 // so that ConfigRequest.ConfigSequence and ConfigRequest.ID both resolve.
