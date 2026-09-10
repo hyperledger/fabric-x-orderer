@@ -81,13 +81,14 @@ func createBatcherRulesVerifier(config *config.BatcherNodeConfig) *requestfilter
 	return rv
 }
 
-func (r *RequestsInspectorVerifier) VerifyBatchedRequests(reqs types.BatchedRequests) error {
+// VerifyBatchedRequests verifies the batch and returns the ids of its requests, corresponding by index
+func (r *RequestsInspectorVerifier) VerifyBatchedRequests(reqs types.BatchedRequests) ([]string, error) {
 	if len(reqs) == 0 {
-		return errors.New("empty batch")
+		return nil, errors.New("empty batch")
 	}
 
 	if len(reqs) > int(r.batchMaxSize) {
-		return errors.Errorf("batch is too big; has %d requests", len(reqs))
+		return nil, errors.Errorf("batch is too big; has %d requests", len(reqs))
 	}
 
 	size := 0
@@ -96,8 +97,10 @@ func (r *RequestsInspectorVerifier) VerifyBatchedRequests(reqs types.BatchedRequ
 	}
 
 	if size > int(r.batchMaxBytes) {
-		return errors.Errorf("batch is too big; size in bytes is %d", size)
+		return nil, errors.Errorf("batch is too big; size in bytes is %d", size)
 	}
+
+	ids := make([]string, len(reqs))
 
 	g, ctx := errgroup.WithContext(context.Background())
 	numWorkers := runtime.NumCPU()
@@ -114,16 +117,18 @@ func (r *RequestsInspectorVerifier) VerifyBatchedRequests(reqs types.BatchedRequ
 				if workerID != j%numWorkers {
 					continue
 				}
+				reqID := r.RequestID(reqs[j])
+				ids[j] = reqID
 				// A request already present in the mem pool was verified when it entered
 				// the pool (by this party's router, or via VerifyRequest on the batcher
 				// forward path) and remains valid under the current config (the pool is
 				// pruned and re-verified on reconfiguration). Skip re-verifying it.
 				// TODO: maybe add a metric counting skipped verifications to measure the hit rate.
-				if r.pool.Contains(r.RequestID(reqs[j])) {
+				if r.pool.Contains(reqID) {
 					continue
 				}
 				if err := r.VerifyRequest(reqs[j]); err != nil {
-					return errors.Errorf("failed verifying request in index %d; req ID: %s; err: %v", j, r.RequestID(reqs[j]), err)
+					return errors.Errorf("failed verifying request in index %d; req ID: %s; err: %v", j, reqID, err)
 				}
 			}
 			return nil
@@ -131,10 +136,10 @@ func (r *RequestsInspectorVerifier) VerifyBatchedRequests(reqs types.BatchedRequ
 	}
 
 	if err := g.Wait(); err != nil {
-		return errors.Errorf("failed verifying batch; err: %v", err)
+		return nil, errors.Errorf("failed verifying batch; err: %v", err)
 	}
 
-	return nil
+	return ids, nil
 }
 
 func (r *RequestsInspectorVerifier) VerifyRequestShard(req *comm.Request) error {

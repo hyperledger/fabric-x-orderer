@@ -85,7 +85,8 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 		reqs[0] = largeReq
 		reqs[1] = largeReq
 		reqs[2] = largeReq
-		require.ErrorContains(t, verifier.VerifyBatchedRequests(reqs), "too big")
+		_, err := verifier.VerifyBatchedRequests(reqs)
+		require.ErrorContains(t, err, "too big")
 	})
 
 	t.Run("verify request with mapping", func(t *testing.T) {
@@ -107,7 +108,8 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 
 	t.Run("verify batched requests with empty batch", func(t *testing.T) {
 		reqs := make([][]byte, 0)
-		require.ErrorContains(t, verifier.VerifyBatchedRequests(reqs), "empty batch")
+		_, err := verifier.VerifyBatchedRequests(reqs)
+		require.ErrorContains(t, err, "empty batch")
 	})
 
 	t.Run("verify batched requests with empty request", func(t *testing.T) {
@@ -118,10 +120,13 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 		reqs[0] = req1
 		reqs[1] = req1
 		reqs[2] = rawEmptyReq
-		require.ErrorContains(t, verifier.VerifyBatchedRequests(reqs), "empty")
+		_, err = verifier.VerifyBatchedRequests(reqs)
+		require.ErrorContains(t, err, "empty")
 
 		reqs[2] = req1
-		require.NoError(t, verifier.VerifyBatchedRequests(reqs))
+		ids, err := verifier.VerifyBatchedRequests(reqs)
+		require.NoError(t, err)
+		requireMatchingBatchedIDs(t, verifier, reqs, ids)
 	})
 
 	t.Run("verify batched requests with too many requests", func(t *testing.T) {
@@ -129,11 +134,25 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 		reqs[0] = req1
 		reqs[1] = req1
 		reqs[2] = req1
-		require.NoError(t, verifier.VerifyBatchedRequests(reqs))
+		ids, err := verifier.VerifyBatchedRequests(reqs)
+		require.NoError(t, err)
+		requireMatchingBatchedIDs(t, verifier, reqs, ids)
 
 		reqs = append(reqs, req1)
-		require.ErrorContains(t, verifier.VerifyBatchedRequests(reqs), "too big")
+		_, err = verifier.VerifyBatchedRequests(reqs)
+		require.ErrorContains(t, err, "too big")
 	})
+}
+
+// requireMatchingBatchedIDs asserts that VerifyBatchedRequests returned exactly
+// one id per request, and that each id is the RequestID of the request at the
+// same index.
+func requireMatchingBatchedIDs(t *testing.T, verifier *batcher.RequestsInspectorVerifier, reqs [][]byte, ids []string) {
+	t.Helper()
+	require.Len(t, ids, len(reqs), "expected one id per request")
+	for i, req := range reqs {
+		require.Equal(t, verifier.RequestID(req), ids[i], "id at index %d does not match its request", i)
+	}
 }
 
 // fakeRequestPool is a test double for batcher.RequestPool. A request is reported
@@ -182,7 +201,9 @@ func TestVerifyBatchedRequestsSkipsPooledRequests(t *testing.T) {
 		}
 		verifier := batcher.NewRequestsInspectorVerifier(logger, config, reqVerifier, batcher.DefaultRequestID, pool)
 
-		require.NoError(t, verifier.VerifyBatchedRequests(reqs))
+		ids, err := verifier.VerifyBatchedRequests(reqs)
+		require.NoError(t, err)
+		requireMatchingBatchedIDs(t, verifier, reqs, ids)
 		require.Equal(t, 5, reqVerifier.VerifyCallCount())
 	})
 
@@ -196,7 +217,9 @@ func TestVerifyBatchedRequestsSkipsPooledRequests(t *testing.T) {
 		}
 		verifier := batcher.NewRequestsInspectorVerifier(logger, config, reqVerifier, batcher.DefaultRequestID, allPooled)
 
-		require.NoError(t, verifier.VerifyBatchedRequests(reqs))
+		ids, err := verifier.VerifyBatchedRequests(reqs)
+		require.NoError(t, err)
+		requireMatchingBatchedIDs(t, verifier, reqs, ids)
 		require.Zero(t, reqVerifier.VerifyCallCount())
 	})
 }
@@ -232,13 +255,16 @@ func TestRequestVerificationStopEarly(t *testing.T) {
 
 	reqVerifier.VerifyReturns(nil)
 
-	require.NoError(t, verifier.VerifyBatchedRequests(reqs))
+	ids, err := verifier.VerifyBatchedRequests(reqs)
+	require.NoError(t, err)
+	requireMatchingBatchedIDs(t, verifier, reqs, ids)
 
 	require.Equal(t, 100, reqVerifier.VerifyCallCount())
 
 	reqVerifier.VerifyReturns(errors.New("error"))
 
-	require.Error(t, verifier.VerifyBatchedRequests(reqs))
+	_, err = verifier.VerifyBatchedRequests(reqs)
+	require.Error(t, err)
 
 	require.Less(t, reqVerifier.VerifyCallCount(), 200)
 	t.Log(reqVerifier.VerifyCallCount())
