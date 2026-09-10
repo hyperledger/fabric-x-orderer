@@ -67,6 +67,8 @@ type Metrics struct {
 	Provider string `yaml:"Provider,omitempty"`
 	// MetricsLogInterval defines metrics log period; 0 disables.
 	MetricsLogInterval time.Duration `yaml:"MetricsLogInterval,omitempty"`
+	// PrometheusAddress is the URL of the Prometheus server.
+	PrometheusAddress string `yaml:"PrometheusAddress,omitempty"`
 }
 
 // LocalConfig saves the node local config and the TLS and cluster settings with embedded crypto (not paths).

@@ -446,6 +446,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+			PrometheusAddress:  config.LocalConfig.NodeLocalConfig.MetricsConfig.PrometheusAddress,
 		},
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,

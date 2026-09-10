@@ -58,12 +58,13 @@ var (
 )
 
 type ConsensusMetrics struct {
-	partyID   arma_types.PartyID
-	logger    *flogging.FabricLogger
-	interval  time.Duration
-	stopChan  chan struct{}
-	stopOnce  sync.Once
-	startOnce sync.Once
+	partyID     arma_types.PartyID
+	logger      *flogging.FabricLogger
+	interval    time.Duration
+	stopChan    chan struct{}
+	stopOnce    sync.Once
+	startOnce   sync.Once
+	promAddress string
 
 	// metrics
 	decisionsCount  metrics.Counter
@@ -88,10 +89,11 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisi
 	txsCount.Add(float64(txCount))
 
 	return &ConsensusMetrics{
-		interval: consenterNodeConfig.Metrics.MetricsLogInterval,
-		partyID:  consenterNodeConfig.PartyId,
-		logger:   logger,
-		stopChan: make(chan struct{}),
+		interval:    consenterNodeConfig.Metrics.MetricsLogInterval,
+		promAddress: consenterNodeConfig.Metrics.PrometheusAddress,
+		partyID:     consenterNodeConfig.PartyId,
+		logger:      logger,
+		stopChan:    make(chan struct{}),
 
 		decisionsCount:  decisionsCount,
 		blocksCount:     provider.NewCounter(metrics.CounterOpts(blocksCountOpts)).With([]string{partyID}...),
@@ -124,6 +126,7 @@ func (m *ConsensusMetrics) StopMetricsTracker() {
 
 func (m *ConsensusMetrics) trackMetrics() {
 	prevDec, prevBlk := uint64(0), uint64(0)
+	prevPromDec, prevPromBlk := uint64(0), uint64(0)
 	sec := m.interval.Seconds()
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
@@ -148,8 +151,56 @@ func (m *ConsensusMetrics) trackMetrics() {
 
 			prevDec, prevBlk = dec, blk
 
+			promDec, err := m.count(decisionsCountOpts)
+			if err != nil {
+				m.logger.Warnf("Skipping Prometheus metrics report: %s", err)
+				continue
+			}
+			promBlk, err := m.count(blocksCountOpts)
+			if err != nil {
+				m.logger.Warnf("Skipping Prometheus metrics report: %s", err)
+				continue
+			}
+			promBafs, err := m.count(bafsCountOpts)
+			if err != nil {
+				m.logger.Warnf("Skipping Prometheus metrics report: %s", err)
+				continue
+			}
+			promComplaints, err := m.count(complaintsCountOpts)
+			if err != nil {
+				m.logger.Warnf("Skipping Prometheus metrics report: %s", err)
+				continue
+			}
+
+			m.logger.Infof(
+				"CONSENSUS_METRICS_PROMETHEUS party_id=%d: interval=%.2f sec, decisions: interval=%d, rate=%.4f, total=%d, blocks: interval=%d, rate=%.4f, total=%d, bafs: total=%d, complaints: total=%d",
+				m.partyID,
+				sec,
+				promDec-prevPromDec, float64(promDec-prevPromDec)/sec,
+				promDec,
+				promBlk-prevPromBlk, float64(promBlk-prevPromBlk)/sec,
+				promBlk,
+				promBafs,
+				promComplaints,
+			)
+
+			prevPromDec, prevPromBlk = promDec, promBlk
+
 		case <-m.stopChan:
 			return
 		}
 	}
+}
+
+// count queries Prometheus for the current value of a counter.
+func (m *ConsensusMetrics) count(opts metrics.CounterOpts) (uint64, error) {
+	partyID := fmt.Sprintf("%d", m.partyID)
+	selector := monitoring.Selector(opts.Namespace, opts.Name, opts.LabelNames, []string{partyID})
+
+	value, err := monitoring.Query(m.promAddress, selector)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(value), nil
 }

@@ -58,6 +58,7 @@ type Operations struct {
 type Metrics struct {
 	Provider           string
 	MetricsLogInterval time.Duration
+	PrometheusAddress  string
 }
 
 // MetricsOptions contains configuration for the metrics provider.
