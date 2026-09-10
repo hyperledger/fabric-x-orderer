@@ -22,8 +22,17 @@ go mod tidy -modfile="${dep_tempdir}/go.mod"
 
 for f in go.mod go.sum; do
     if ! diff -q "${arma_dir}/$f" "${dep_tempdir}/$f"; then
-        echo "It appears $f is stale. Please run 'go mod tidy' and 'go mod vendor'."
+        echo "It appears $f is stale. Please run 'go mod tidy && go mod vendor'."
         diff -u "${arma_dir}/$f" "${dep_tempdir}/$f"
         exit 1
     fi
 done
+
+# check that vendor/ is in sync with go.mod/go.sum
+go mod vendor -o "${dep_tempdir}/vendor"
+if ! diff -rq "${dep_tempdir}/vendor" "${arma_dir}/vendor"; then
+    echo "vendor/ is out of date. Please run 'go mod tidy && go mod vendor'."
+    exit 1
+fi
+
+go mod verify

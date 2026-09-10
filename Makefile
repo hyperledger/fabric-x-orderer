@@ -5,7 +5,7 @@
 
 # This makefile defines the following targets
 
-#   - check-deps: check for vendored dependencies that are no longer used
+#   - check-deps: check go.mod/go.sum are tidy and vendor/ is in sync
 #   - linter: runs all code checks
 #   - binary: compiles arma and tools (armageddon) into ./bin directory
 #   - clean-binary: removes all contents of the ./bin directory
