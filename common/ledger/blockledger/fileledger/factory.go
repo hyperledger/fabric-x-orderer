@@ -104,9 +104,6 @@ func (f *fileLedgerFactory) Close() {
 func New(directory string, metricsProvider metrics.Provider) (blockledger.Factory, error) {
 	p, err := blkstorage.NewProvider(
 		blkstorage.NewConf(directory, -1),
-		&blkstorage.IndexConfig{
-			AttrsToIndex: []blkstorage.IndexableAttr{blkstorage.IndexableAttrBlockNum},
-		},
 		metricsProvider,
 	)
 	if err != nil {
