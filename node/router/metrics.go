@@ -43,6 +43,20 @@ var (
 		Help:       "The number of incoming requests rejected by the rate limiter.",
 		LabelNames: []string{"party_id"},
 	}
+
+	batcherReconnectsOpts = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "batcher_reconnects",
+		Help:       "The number of times the router reconnected a gRPC connection to a batcher, identified by its shard id.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	batcherConnectedOpts = metrics.GaugeOpts{
+		Namespace:  "router",
+		Name:       "batcher_connected",
+		Help:       "Whether the router currently has at least one healthy stream to a batcher, identified by its shard id: 1 = connected, 0 = disconnected.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
 )
 
 type RouterMetrics struct {
@@ -50,6 +64,8 @@ type RouterMetrics struct {
 	rejectedTxsWithCode400 metrics.Counter
 	rejectedTxsWithCode500 metrics.Counter
 	throttledTxs           metrics.Counter
+	batcherReconnectsVec   metrics.Counter
+	batcherConnectedVec    metrics.Gauge
 	incomingTxsLastValue   uint64
 	logger                 *flogging.FabricLogger
 	interval               time.Duration
@@ -76,6 +92,8 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		rejectedTxsWithCode400: rejectedTxs.With([]string{"400", partyID}...),
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
 		throttledTxs:           provider.NewCounter(throttledTxs).With([]string{partyID}...),
+		batcherReconnectsVec:   provider.NewCounter(batcherReconnectsOpts),
+		batcherConnectedVec:    provider.NewGauge(batcherConnectedOpts),
 		partyID:                routerNodeConfig.PartyID,
 	}
 }
