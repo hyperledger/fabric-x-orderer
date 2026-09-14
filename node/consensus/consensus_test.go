@@ -980,6 +980,12 @@ func TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs(t *testing.T) {
 	// Both proposed requests are reported in reqInfos (so both are removed from the request pool); the
 	// BAF was verified, the complaint was not.
 	require.Len(t, reqInfos, 2)
+
+	// RequestsFromProposal runs post-agreement (only to report request info for pool cleanup) and must
+	// not panic on a stale request; it reports every request in the payload.
+	require.NotPanics(t, func() {
+		require.Len(t, c.RequestsFromProposal(proposal), 2)
+	})
 }
 
 // configReqEnvelopeWithID builds a config request envelope whose config envelope carries the given
