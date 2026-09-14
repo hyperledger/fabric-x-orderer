@@ -390,6 +390,9 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		r.logger.Infof("Client's certificate: \n%s", utils.CertificateToString(clientCert))
 	}
 
+	r.metrics.activeBroadcastStreams.Add(1)
+	defer r.metrics.activeBroadcastStreams.Add(-1)
+
 	exit := make(chan struct{})
 	defer func() {
 		close(exit)
@@ -452,6 +455,9 @@ func (r *Router) Deliver(server orderer.AtomicBroadcast_DeliverServer) error {
 
 func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) error {
 	rand := r.initRand()
+
+	r.metrics.activeSubmitStreams.Add(1)
+	defer r.metrics.activeSubmitStreams.Add(-1)
 
 	exit := make(chan struct{})
 	defer func() {
@@ -526,6 +532,7 @@ func (r *Router) getShardRouterAndReqID(req *protos.Request) ([]byte, *ShardRout
 
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
 	r.metrics.incomingTxs.Add(1)
+	r.metrics.submitInvocations.Add(1)
 
 	// Map before the throttle check so the reject can carry reqID (see SubmitStream).
 	reqID, shardRouter := r.getShardRouterAndReqID(request)
