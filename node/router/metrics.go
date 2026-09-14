@@ -36,12 +36,20 @@ var (
 		Help:       "The number of incomming requests that have been rejected.",
 		LabelNames: []string{"code", "party_id"},
 	}
+
+	throttledTxs = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "requests_throttled",
+		Help:       "The number of incoming requests rejected by the rate limiter.",
+		LabelNames: []string{"party_id"},
+	}
 )
 
 type RouterMetrics struct {
 	incomingTxs            metrics.Counter
 	rejectedTxsWithCode400 metrics.Counter
 	rejectedTxsWithCode500 metrics.Counter
+	throttledTxs           metrics.Counter
 	incomingTxsLastValue   uint64
 	logger                 *flogging.FabricLogger
 	interval               time.Duration
@@ -67,6 +75,7 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		incomingTxs:            provider.NewCounter(incomingTxs).With([]string{partyID}...),
 		rejectedTxsWithCode400: rejectedTxs.With([]string{"400", partyID}...),
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
+		throttledTxs:           provider.NewCounter(throttledTxs).With([]string{partyID}...),
 		partyID:                routerNodeConfig.PartyID,
 	}
 }
@@ -106,9 +115,10 @@ func (m *RouterMetrics) reportMetrics() {
 	txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
 	txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
 	txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
+	txThrottled := monitoring.GetMetricValue(m.throttledTxs.(prometheus.Metric), m.logger)
 	incomingTxsLastValue := atomic.LoadUint64(&m.incomingTxsLastValue)
-	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d",
-		m.partyID, int(txCount), float64(txCount-float64(incomingTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500))
+	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d",
+		m.partyID, int(txCount), float64(txCount-float64(incomingTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled))
 
 	atomic.StoreUint64(&m.incomingTxsLastValue, uint64(txCount))
 }

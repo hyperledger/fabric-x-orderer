@@ -166,7 +166,44 @@ type RouterParams struct {
 	NumberOfConnectionsPerBatcher int `yaml:"NumberOfConnectionsPerBatcher,omitempty"`
 	// NumberOfStreamsPerConnection specifies the number of streams per connection that are opened between Router and Batcher
 	NumberOfStreamsPerConnection int `yaml:"NumberOfStreamsPerConnection,omitempty"`
+	// Throttling configures request rate limiting. When omitted, throttling is disabled.
+	Throttling *ThrottlingParams `yaml:"Throttling,omitempty"`
 }
+
+// ThrottlingParams configures the router's request throttling. The Policy field
+// selects the strategy and keeps the config schema stable as new strategies are
+// added (e.g. per-client/per-org in a later phase); Rate and Burst parameterize
+// the rate limiter.
+type ThrottlingParams struct {
+	// Policy selects the throttling strategy: "disabled" (default) or "global".
+	Policy string `yaml:"Policy,omitempty"`
+	// Rate is the aggregate cap in requests/second across all clients (global policy).
+	Rate int `yaml:"Rate,omitempty"`
+	// Burst is the token-bucket capacity: the maximum number of requests that may
+	// be admitted at a single instant before the steady Rate applies.
+	//
+	// When unset (0) under the "global" policy, applyNodeDefaults sets Burst to
+	// Rate — one second of tokens. This default is deliberate: real ingress is
+	// bursty (many concurrent streams, ~Poisson arrivals), so a Burst of 1 gives
+	// zero bunching tolerance — it admits only requests spaced at least 1/Rate
+	// apart — and throttles a large share of traffic even well below the cap (in
+	// simulation, ~1/3 dropped at half the configured Rate). Defaulting Burst to
+	// Rate absorbs normal bunching so the limiter only bites above Rate.
+	//
+	// applyNodeDefaults is the single owner of this default; the rate limiter's
+	// own "burst < 1 -> 1" clamp is only a defensive floor (see ratelimit.New).
+	Burst int `yaml:"Burst,omitempty"`
+}
+
+// Throttling policy names accepted by ThrottlingParams.Policy (and carried
+// through to the router's RouterThrottlingConfig.Policy). This is the single
+// source of truth for these values, shared by the config layer (which reads them
+// from YAML) and the router (which dispatches on them).
+const (
+	ThrottlingPolicyDisabled = "disabled" // no throttling (default)
+	ThrottlingPolicyGlobal   = "global"   // one aggregate rate limit across all clients
+	// Future: reserved for more advanced policies like per-client / per-org or adaptive throttling.
+)
 
 type ConsensusParams struct {
 	//  WALDir specifies the location at which Write Ahead Logs for SmartBFT are stored
@@ -567,6 +604,17 @@ func applyNodeDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *fl
 		if nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection == 0 {
 			nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection = DefaultRouterParams.NumberOfStreamsPerConnection
 			logger.Infof("Router.NumberOfStreamsPerConnection is not set, using default value: %d", nodeLocalConfig.RouterParams.NumberOfStreamsPerConnection)
+		}
+
+		if t := nodeLocalConfig.RouterParams.Throttling; t != nil {
+			if t.Policy == "" {
+				t.Policy = ThrottlingPolicyDisabled
+				logger.Infof("Router.Throttling.Policy is not set, using default value: %q", t.Policy)
+			}
+			if t.Policy == ThrottlingPolicyGlobal && t.Rate > 0 && t.Burst == 0 {
+				t.Burst = t.Rate
+				logger.Infof("Router.Throttling.Burst is not set, defaulting to Rate: %d", t.Burst)
+			}
 		}
 
 	case BatcherStr:
