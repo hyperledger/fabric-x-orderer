@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/grpclog"
 
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -127,10 +128,14 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
 	bundle.ConfigtxValidatorReturns(configtxValidator)
+	shardID := types.ShardID(1)
 	conf := &config.RouterNodeConfig{
+		PartyID:                             partyID,
 		RequestMaxBytes:                     1 << 10,
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,
+		Metrics:                             &operations.Metrics{Provider: "disabled"},
+		Shards:                              []config.ShardInfo{{ShardId: shardID}},
 	}
 
 	verifier := requestfilter.NewRulesVerifier(nil)
@@ -138,10 +143,11 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	verifier.AddRule(requestfilter.NewMaxSizeFilter(conf))
 	verifier.AddStructureRule(requestfilter.NewSigFilter(conf, policies.ChannelWriters))
 	// create stub batcher
-	batcher := stub.NewStubBatcher(t, ca, partyID, types.ShardID(1))
+	batcher := stub.NewStubBatcher(t, ca, partyID, shardID)
 
 	// create shard router
-	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier, nil)
+	metrics := router.NewRouterMetrics(conf, logger)
+	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier, nil, shardID, metrics)
 
 	// start the batcher
 	batcher.Start()

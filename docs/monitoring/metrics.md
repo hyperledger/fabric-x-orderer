@@ -28,6 +28,16 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Name**: "requests_rejected"  
   **Help**: "The number of incoming requests that have been rejected."
 
+- **Namespace**: "router"  
+  **Name**: "batcher_reconnects"  
+  **Help**: "The number of times the router reconnected a gRPC connection to a batcher."  
+  **Labels**: "shard_id" identifies the shard whose batcher was reconnected to.
+
+- **Namespace**: "router"  
+  **Name**: "batcher_connected"  
+  **Help**: "Whether the router currently has at least one healthy connection to the shard's batcher: 1 = connected, 0 = disconnected."  
+  **Labels**: "shard_id" identifies the shard. Sum across shards for the number of connected batchers.
+
 ---
 
 ### Assembler
