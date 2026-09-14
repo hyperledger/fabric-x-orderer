@@ -880,6 +880,108 @@ func TestVerifyRequestAcceptsStaleByOneConfigSeq(t *testing.T) {
 	require.ErrorContains(t, err, "mismatch config sequence")
 }
 
+// TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs covers the VerifyProposal reqInfos loop
+// (consensus.go) during a config bump. A BAF exactly one config behind is still verified and reported
+// in reqInfos, so the follower's reqInfos stay consistent with the leader's while consensus surfaces
+// the BAF for revival (and reporting it in reqInfos is what removes it from the request pool, so it is
+// not re-proposed and re-surfaced every decision). A one-behind complaint — the same distance behind,
+// but not revivable — must NOT be verified (verifyCE's exact-match check would fail and reject the
+// whole proposal); it is reported in reqInfos without verification so it is removed from the pool too.
+// So every proposed request appears in reqInfos, but only the state-affecting ones are verified.
+func TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	dir, err := os.MkdirTemp("", strings.Replace(t.Name(), "/", "-", -1))
+	require.NoError(t, err)
+
+	db, err := badb.NewBatchAttestationDB(dir, logger)
+	require.NoError(t, err)
+
+	verifier := make(crypto.ECDSAVerifier)
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.SequenceReturns(1) // current (verification) config sequence; one-behind == 0
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	config := &nodeconfig.ConsenterNodeConfig{Bundle: bundle, RequestMaxBytes: 1000}
+	requestVerifier := node_consensus.CreateConsensusRulesVerifier(config)
+
+	numOfParties := 4
+	sks := make([]*ecdsa.PrivateKey, numOfParties)
+	for i := 0; i < numOfParties; i++ {
+		sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		require.NoError(t, err)
+		sks[i] = sk
+		signer := crypto.ECDSASigner(*sk)
+		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
+			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+		}
+	}
+
+	dig := make([]byte, 32-3)
+	dig123 := append([]byte{1, 2, 3}, dig...)
+
+	// A BAF one config behind (configSeq 0 while current is 1). primary == signer (party 1), so
+	// verifyCE checks only the signer signature.
+	oneBehindBAF, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0, 0, nil)
+	require.NoError(t, err)
+
+	// A complaint one config behind (ConfigSeq 0), modeling one retained across the config bump. The
+	// revival exception must not admit it to verifyCE.
+	oneBehindComplaint := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 1, ConfigSeq: 0}
+	sig, err := crypto.ECDSASigner(*sks[0]).Sign(oneBehindComplaint.ToBeSigned())
+	require.NoError(t, err)
+	oneBehindComplaint.Signature = sig
+
+	initialState := &state.State{
+		N:          4,
+		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Threshold:  2,
+		Quorum:     3,
+		AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 0}),
+	}
+
+	consenter := &node_consensus.Consenter{DB: db, Logger: logger}
+	c := &node_consensus.Consensus{
+		Arma:            consenter,
+		State:           initialState,
+		Logger:          logger,
+		SigVerifier:     verifier,
+		RequestVerifier: requestVerifier,
+		Config:          config,
+		PartyID:         config.PartyId,
+	}
+
+	// The proposal payload carries both stale control events verbatim: the one-behind BAF (accepted and
+	// surfaced for revival) and a one-behind complaint (filtered out of the computed state). Neither
+	// produces an available block, so this is a zero-block proposal.
+	reqs := [][]byte{
+		(&state.ControlEvent{BAF: oneBehindBAF}).Bytes(),
+		(&state.ControlEvent{Complaint: oneBehindComplaint}).Bytes(),
+	}
+
+	mBytes, err := proto.Marshal(&smartbftprotos.ViewMetadata{LatestSequence: 0})
+	require.NoError(t, err)
+
+	proposal := c.AssembleProposal(mBytes, reqs)
+	require.NotNil(t, proposal)
+
+	// The one-behind BAF was surfaced for revival; the complaint had no effect on the computed state.
+	hdr := &state.Header{}
+	require.NoError(t, hdr.Deserialize(proposal.Header))
+	require.Len(t, hdr.State.StaleConfigBAFs, 1)
+	require.Empty(t, hdr.State.Pending)
+	require.Empty(t, hdr.State.Complaints)
+	require.Empty(t, hdr.AvailableCommonBlocks)
+
+	reqInfos, err := c.VerifyProposal(proposal)
+	require.NoError(t, err) // the one-behind complaint must not reject the proposal
+	// Both proposed requests are reported in reqInfos (so both are removed from the request pool); the
+	// BAF was verified, the complaint was not.
+	require.Len(t, reqInfos, 2)
+}
+
 // configReqEnvelopeWithID builds a config request envelope whose config envelope carries the given
 // sequence and a LastUpdate (CONFIG_UPDATE) envelope whose channel header carries the given tx id,
 // so that ConfigRequest.ConfigSequence and ConfigRequest.ID both resolve.

@@ -267,10 +267,6 @@ type ShardTerm struct {
 func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence, ces ...ControlEvent) (*State, []types.BatchAttestationFragment, []*ConfigRequest) {
 	nextState := s.Clone()
 
-	// StaleConfigBAFs is recomputed fresh every round so it surfaces a stale BAF for exactly one
-	// decision (Clone copied the parent's, so reset it here before repopulating).
-	nextState.StaleConfigBAFs = nil
-
 	filteredCEs, staleConfigBAFs := filterCEsWithDiffConfigSeq(configSeq, l, ces...)
 	nextState.StaleConfigBAFs = staleConfigBAFs
 
@@ -467,7 +463,7 @@ func filterCEsWithDiffConfigSeq(
 			case ce.BAF.ConfigSequence() == configSeq:
 				filteredEvents = append(filteredEvents, ce)
 			case configSeq > 0 && ce.BAF.ConfigSequence() == configSeq-1:
-				l.Warnf("baf is one config behind (currently %d); surfacing as stale for revival; %s", configSeq, ce.BAF.String())
+				l.Infof("baf is one config behind (currently %d); surfacing as stale for revival; %s", configSeq, ce.BAF.String())
 				staleConfigBAFs = append(staleConfigBAFs, ce.BAF)
 			default:
 				l.Debugf("filtering ce baf with mismatch config seq (currently %d); %s", configSeq, ce.BAF.String())
