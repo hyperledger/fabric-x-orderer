@@ -41,6 +41,14 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Name**: "submit_invocations"  
   **Help**: "The number of times the Submit RPC was invoked."
 
+- **Namespace**: "router"  
+  **Name**: "batcher_reconnects"  
+  **Help**: "The number of times the router reconnected a gRPC connection to a batcher, identified by its shard id."
+
+- **Namespace**: "router"  
+  **Name**: "batcher_connected"  
+  **Help**: "Whether the router currently has at least one healthy stream to a batcher, identified by its shard id: 1 = connected, 0 = disconnected."
+
 ---
 
 ### Assembler

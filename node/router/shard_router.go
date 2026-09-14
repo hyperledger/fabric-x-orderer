@@ -16,7 +16,9 @@ import (
 	"google.golang.org/grpc/connectivity"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 
@@ -71,6 +73,8 @@ type ShardRouter struct {
 	closeReconnect               chan struct{}
 	verifier                     *requestfilter.RulesVerifier
 	configSubmitter              ConfigurationSubmitter
+	batcherReconnects            metrics.Counter
+	batcherConnected             metrics.Gauge
 }
 
 func NewShardRouter(l *flogging.FabricLogger,
@@ -82,6 +86,8 @@ func NewShardRouter(l *flogging.FabricLogger,
 	numOfgRPCStreamsPerConnection int,
 	verifier *requestfilter.RulesVerifier,
 	configSubmitter ConfigurationSubmitter,
+	shardID types.ShardID,
+	routerMetrics *RouterMetrics,
 ) *ShardRouter {
 	cc := comm.ClientConfig{
 		AsyncConnect: false,
@@ -99,6 +105,9 @@ func NewShardRouter(l *flogging.FabricLogger,
 		DialTimeout: time.Second * 20,
 	}
 
+	partyID := fmt.Sprintf("%d", routerMetrics.partyID)
+	shard := fmt.Sprintf("%d", shardID)
+
 	sr := &ShardRouter{
 		tlsCert:                      tlsCert,
 		tlsKey:                       tlsKey,
@@ -112,6 +121,8 @@ func NewShardRouter(l *flogging.FabricLogger,
 		closeReconnect:               make(chan struct{}),
 		verifier:                     verifier,
 		configSubmitter:              configSubmitter,
+		batcherReconnects:            routerMetrics.batcherReconnectsVec.With(partyID, shard),
+		batcherConnected:             routerMetrics.batcherConnectedVec.With(partyID, shard),
 	}
 
 	return sr
@@ -222,11 +233,13 @@ func (sr *ShardRouter) reconnect(connIndex int) error {
 			if err != nil {
 				interval = min(interval*2, maxRetryInterval)
 				sr.logger.Errorf("Reconnection failed: %v, trying again in: %s", err, interval)
+				sr.refreshBatcherConnected()
 				continue
 			} else {
 				sr.lock.Lock()
 				sr.connPool[connIndex] = conn
 				sr.lock.Unlock()
+				sr.batcherReconnects.Add(1)
 				sr.logger.Debugf("Reconnection succeeded for connection %d", connIndex)
 				return nil
 			}
@@ -237,8 +250,19 @@ func (sr *ShardRouter) reconnect(connIndex int) error {
 func (sr *ShardRouter) InitShardRouter() {
 	sr.initOnce.Do(func() {
 		sr.initConnPoolAndStreams()
+		sr.refreshBatcherConnected()
 		sr.startReconnectionRoutine()
 	})
+}
+
+// refreshBatcherConnected updates the connectivity gauge for this shard.
+// It reads the streams, so it must only be called after initConnPoolAndStreams and without holding sr.lock.
+func (sr *ShardRouter) refreshBatcherConnected() {
+	if sr.IsConnectionsToBatcherDown() {
+		sr.batcherConnected.Set(0)
+		return
+	}
+	sr.batcherConnected.Set(1)
 }
 
 func (sr *ShardRouter) fillConnPool() error {
@@ -375,6 +399,7 @@ func (sr *ShardRouter) reconnectRoutine() {
 					if err := sr.maybeReconnectStream(req.connNumber, req.streamInConn); err == nil {
 						reconnected = true
 					}
+					sr.refreshBatcherConnected()
 				}
 			}
 		}
@@ -439,7 +464,6 @@ func (sr *ShardRouter) IsAllStreamsOKinSR() bool {
 }
 
 // IsConnectionsToBatcherDown checks that all the streams are faulty (disconnected from batcher).
-// Use for testing only.
 func (sr *ShardRouter) IsConnectionsToBatcherDown() bool {
 	sr.lock.RLock()
 	defer sr.lock.RUnlock()

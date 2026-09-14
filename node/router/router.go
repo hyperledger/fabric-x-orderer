@@ -177,15 +177,16 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 			tlsCAsOfBatchers[shard.ShardId] = tlsCAsOfBatcher
 		}
 	}
+	r.metrics = NewRouterMetrics(rconfig, r.logger)
+
 	r.shardRouters = make(map[types.ShardID]*ShardRouter)
 	for _, shardId := range r.shardIDs {
-		r.shardRouters[shardId] = NewShardRouter(r.logger, batcherEndpoints[shardId], tlsCAsOfBatchers[shardId], r.routerNodeConfig.TLSCertificateFile, r.routerNodeConfig.TLSPrivateKeyFile, r.routerNodeConfig.NumOfConnectionsForBatcher, r.routerNodeConfig.NumOfgRPCStreamsPerConnection, r.verifier, r.configSubmitter)
+		r.shardRouters[shardId] = NewShardRouter(r.logger, batcherEndpoints[shardId], tlsCAsOfBatchers[shardId], r.routerNodeConfig.TLSCertificateFile, r.routerNodeConfig.TLSPrivateKeyFile, r.routerNodeConfig.NumOfConnectionsForBatcher, r.routerNodeConfig.NumOfgRPCStreamsPerConnection, r.verifier, r.configSubmitter, shardId, r.metrics)
 	}
 
 	// TODO - pull decisions from all consenter nodes, not only the one in party
 	r.decisionPuller = CreateConsensusDecisionReplicator(rconfig, seekInfo, r.logger)
 
-	r.metrics = NewRouterMetrics(rconfig, r.logger)
 	r.opsSystem = operations.NewOperationsSystem(*rconfig.Operations, *rconfig.Metrics)
 
 	RegisterHealthCheckers(r)

@@ -57,6 +57,20 @@ var (
 		Help:       "The number of times the Submit RPC was invoked.",
 		LabelNames: []string{"party_id"},
 	}
+
+	batcherReconnectsOpts = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "batcher_reconnects",
+		Help:       "The number of times the router reconnected a gRPC connection to a batcher, identified by its shard id.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	batcherConnectedOpts = metrics.GaugeOpts{
+		Namespace:  "router",
+		Name:       "batcher_connected",
+		Help:       "Whether the router currently has at least one healthy stream to a batcher, identified by its shard id: 1 = connected, 0 = disconnected.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
 )
 
 type RouterMetrics struct {
@@ -67,6 +81,8 @@ type RouterMetrics struct {
 	activeBroadcastStreams metrics.Gauge
 	activeSubmitStreams    metrics.Gauge
 	submitInvocations      metrics.Counter
+	batcherReconnectsVec   metrics.Counter
+	batcherConnectedVec    metrics.Gauge
 	incomingTxsLastValue   uint64
 	logger                 *flogging.FabricLogger
 	interval               time.Duration
@@ -97,6 +113,8 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		activeBroadcastStreams: activeStreams.With([]string{partyID, "broadcast"}...),
 		activeSubmitStreams:    activeStreams.With([]string{partyID, "submit_stream"}...),
 		submitInvocations:      provider.NewCounter(submitInvocationsOpts).With([]string{partyID}...),
+		batcherReconnectsVec:   provider.NewCounter(batcherReconnectsOpts),
+		batcherConnectedVec:    provider.NewGauge(batcherConnectedOpts),
 		partyID:                routerNodeConfig.PartyID,
 	}
 }
