@@ -747,12 +747,7 @@ func (c *Consensus) RequestsFromProposal(proposal smartbft_types.Proposal) []sma
 	}
 	reqInfos := make([]smartbft_types.RequestInfo, 0, len(batch))
 	for _, rawReq := range batch {
-		reqID, err := c.VerifyRequest(rawReq)
-		if err != nil {
-			panic(fmt.Errorf("invalid request %s: %v", rawReq, err))
-		}
-
-		reqInfos = append(reqInfos, reqID)
+		reqInfos = append(reqInfos, c.RequestID(rawReq))
 	}
 
 	return reqInfos
