@@ -32,6 +32,34 @@ func requireMatchingBatchIDs(t *testing.T, requestID func([]byte) string, batch,
 	}
 }
 
+// TestFetchWithCanceledContext reproduces a deadlock:
+// when the context passed to Fetch is canceled around the time Fetch is called,
+// the ctx.Done goroutine may Signal before Fetch reaches signal.Wait(). Since a
+// sync.Cond signal delivered with no waiter is lost, Wait() then blocks forever
+// while holding bs.lock, which in turn deadlocks Pool.Close.
+func TestFetchWithCanceledContext(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
+
+	for i := 0; i < 2000; i++ {
+		bs := NewBatchStore(100, 100*8, func(string) {}, sugaredLogger)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // context is already canceled before Fetch is called
+
+		done := make(chan struct{})
+		go func() {
+			bs.Fetch(ctx) // must return promptly; canceled ctx => empty batch
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("Fetch deadlocked on a canceled context (iteration %d)", i)
+		}
+	}
+}
+
 func TestBatchStore(t *testing.T) {
 	max := uint32(100)
 	lenByte := uint32(8)

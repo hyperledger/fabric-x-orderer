@@ -157,20 +157,26 @@ func (bs *BatchStore) Fetch(ctx context.Context) ([]interface{}, []interface{}) 
 	go func() {
 		select {
 		case <-ctx.Done():
+			// Acquire the lock before signaling. This guarantees the signal is
+			// delivered only after Fetch is actually waiting on it (Wait releases
+			// the lock atomically); otherwise a signal fired before Wait would be
+			// lost, leaving Fetch blocked forever while holding bs.lock and thus
+			// deadlocking Pool.Close.
+			bs.lock.Lock()
 			bs.signal.Signal()
+			bs.lock.Unlock()
 			return
 		case <-finished:
 			return
 		}
 	}()
 
-	if len(bs.readyBatches) > 0 {
-		return bs.dequeueBatch()
+	// Wait for a batch to become ready or for the context to be done. The loop
+	// re-checks the condition to tolerate a lost or spurious wakeup, including
+	// the case where ctx is already done when Fetch is entered.
+	for len(bs.readyBatches) == 0 && ctx.Err() == nil {
+		bs.signal.Wait()
 	}
-
-	// Else, either wait for the timeout
-	// or for a new batch to be enqueued.
-	bs.signal.Wait()
 
 	// Prefer a ready and full batch over a non-empty one
 	for len(bs.readyBatches) > 0 {
