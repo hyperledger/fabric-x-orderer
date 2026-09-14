@@ -43,6 +43,20 @@ var (
 		Help:       "The number of incoming requests rejected by the rate limiter.",
 		LabelNames: []string{"party_id"},
 	}
+
+	activeStreamsOpts = metrics.GaugeOpts{
+		Namespace:  "router",
+		Name:       "active_streams",
+		Help:       "The number of currently active client gRPC streams.",
+		LabelNames: []string{"party_id", "stream_type"},
+	}
+
+	submitInvocationsOpts = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "submit_invocations",
+		Help:       "The number of times the Submit RPC was invoked.",
+		LabelNames: []string{"party_id"},
+	}
 )
 
 type RouterMetrics struct {
@@ -50,6 +64,9 @@ type RouterMetrics struct {
 	rejectedTxsWithCode400 metrics.Counter
 	rejectedTxsWithCode500 metrics.Counter
 	throttledTxs           metrics.Counter
+	activeBroadcastStreams metrics.Gauge
+	activeSubmitStreams    metrics.Gauge
+	submitInvocations      metrics.Counter
 	incomingTxsLastValue   uint64
 	logger                 *flogging.FabricLogger
 	interval               time.Duration
@@ -65,6 +82,7 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 	provider := monitoring.NewProvider(routerNodeConfig.Metrics.Provider, logger)
 
 	rejectedTxs := provider.NewCounter(rejectedTxs)
+	activeStreams := provider.NewGauge(activeStreamsOpts)
 	versionGauge := monitoring.VersionGauge(provider)
 	versionGauge.With(metadata.Version).Set(1)
 
@@ -76,6 +94,9 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		rejectedTxsWithCode400: rejectedTxs.With([]string{"400", partyID}...),
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
 		throttledTxs:           provider.NewCounter(throttledTxs).With([]string{partyID}...),
+		activeBroadcastStreams: activeStreams.With([]string{partyID, "broadcast"}...),
+		activeSubmitStreams:    activeStreams.With([]string{partyID, "submit_stream"}...),
+		submitInvocations:      provider.NewCounter(submitInvocationsOpts).With([]string{partyID}...),
 		partyID:                routerNodeConfig.PartyID,
 	}
 }
@@ -116,9 +137,12 @@ func (m *RouterMetrics) reportMetrics() {
 	txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
 	txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
 	txThrottled := monitoring.GetMetricValue(m.throttledTxs.(prometheus.Metric), m.logger)
+	activeBroadcastStreams := monitoring.GetMetricValue(m.activeBroadcastStreams.(prometheus.Metric), m.logger)
+	activeSubmitStreams := monitoring.GetMetricValue(m.activeSubmitStreams.(prometheus.Metric), m.logger)
+	submitInvocations := monitoring.GetMetricValue(m.submitInvocations.(prometheus.Metric), m.logger)
 	incomingTxsLastValue := atomic.LoadUint64(&m.incomingTxsLastValue)
-	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d",
-		m.partyID, int(txCount), float64(txCount-float64(incomingTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled))
+	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d, active_broadcast_streams=%d, active_submit_streams=%d, submit_invocations=%d",
+		m.partyID, int(txCount), float64(txCount-float64(incomingTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled), int(activeBroadcastStreams), int(activeSubmitStreams), int(submitInvocations))
 
 	atomic.StoreUint64(&m.incomingTxsLastValue, uint64(txCount))
 }

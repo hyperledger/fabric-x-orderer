@@ -183,6 +183,105 @@ func TestSubmitToStubBatchersGetMetrics(t *testing.T) {
 
 // Scenario:
 // 1. start a client, router and stub batcher
+// 2. check both active stream gauges report zero before any stream is opened
+// 3. open two broadcast streams and check the gauge accumulates to two
+// 4. close them one at a time and check the gauge decreases back to zero
+// 5. open a submit stream and check it is counted separately from broadcast
+func TestRouterActiveStreamsMetric(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+
+	URL := testSetup.router.MonitoringServiceAddress()
+	require.NotEmpty(t, URL, "monitoring service address should not be empty")
+
+	activeStreams := func(streamType string) int {
+		re := regexp.MustCompile(fmt.Sprintf(`router_active_streams\{party_id="%d",stream_type="%s"\} \d+`, types.PartyID(1), streamType))
+		return testutil.FetchPrometheusMetricValue(t, re, URL)
+	}
+
+	// used where the gauge changes asynchronously, that is while a stream is torn down
+	requireActiveStreams := func(streamType string, expected int) {
+		require.Eventually(t, func() bool {
+			return activeStreams(streamType) == expected
+		}, 10*time.Second, 500*time.Millisecond, "%s active streams should reach %d", streamType, expected)
+	}
+
+	// both series exist at zero before any stream is opened
+	requireActiveStreams("broadcast", 0)
+	require.Equal(t, 0, activeStreams("submit_stream"))
+
+	buff := make([]byte, 300)
+
+	firstBroadcastCtx, cancelFirstBroadcast := context.WithCancel(context.Background())
+	defer cancelFirstBroadcast()
+	firstBroadcast, err := ab.NewAtomicBroadcastClient(testSetup.clientConn).Broadcast(firstBroadcastCtx)
+	require.NoError(t, err)
+	// exchange a request so the server side of the stream is certainly running
+	require.NoError(t, firstBroadcast.Send(tx.CreateStructuredEnvelope(buff)))
+	_, err = firstBroadcast.Recv()
+	require.NoError(t, err)
+	requireActiveStreams("broadcast", 1)
+
+	secondBroadcastCtx, cancelSecondBroadcast := context.WithCancel(context.Background())
+	defer cancelSecondBroadcast()
+	secondBroadcast, err := ab.NewAtomicBroadcastClient(testSetup.clientConn).Broadcast(secondBroadcastCtx)
+	require.NoError(t, err)
+	require.NoError(t, secondBroadcast.Send(tx.CreateStructuredEnvelope(buff)))
+	_, err = secondBroadcast.Recv()
+	require.NoError(t, err)
+	requireActiveStreams("broadcast", 2)
+	require.Equal(t, 0, activeStreams("submit_stream"))
+
+	cancelFirstBroadcast()
+	requireActiveStreams("broadcast", 1)
+
+	cancelSecondBroadcast()
+	requireActiveStreams("broadcast", 0)
+
+	submitCtx, cancelSubmit := context.WithCancel(context.Background())
+	defer cancelSubmit()
+	submitStream, err := protos.NewRequestTransmitClient(testSetup.clientConn).SubmitStream(submitCtx)
+	require.NoError(t, err)
+	require.NoError(t, submitStream.Send(tx.CreateStructuredRequest(buff)))
+	_, err = submitStream.Recv()
+	require.NoError(t, err)
+	requireActiveStreams("submit_stream", 1)
+	require.Equal(t, 0, activeStreams("broadcast"))
+
+	cancelSubmit()
+	requireActiveStreams("submit_stream", 0)
+}
+
+// Scenario:
+// 1. start a client, router and stub batcher
+// 2. submit 10 requests by client to router using the unary Submit RPC
+// 3. check that the router_submit_invocations metric counts all 10
+func TestRouterSubmitInvocationsMetric(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+
+	URL := testSetup.router.MonitoringServiceAddress()
+	require.NotEmpty(t, URL, "monitoring service address should not be empty")
+
+	const numOfRequests = 10
+	for range numOfRequests {
+		require.NoError(t, submitRequest(testSetup.clientConn))
+	}
+
+	re := regexp.MustCompile(fmt.Sprintf(`router_submit_invocations\{party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, re, URL) == numOfRequests
+	}, 10*time.Second, 500*time.Millisecond)
+}
+
+// Scenario:
+// 1. start a client, router and stub batcher
 // 2. submit a request by client to router
 // 3. broadcast a request by client to router
 // 4. check that the batcher received one request
