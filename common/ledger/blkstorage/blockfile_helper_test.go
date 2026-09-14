@@ -8,6 +8,7 @@ package blkstorage
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
@@ -92,4 +93,45 @@ func checkBlockfilesInfoFromFS(t *testing.T, blkStoreDir string, expected *block
 	blkfilesInfo, err := constructBlockfilesInfo(blkStoreDir)
 	require.NoError(t, err)
 	require.Equal(t, expected, blkfilesInfo)
+}
+
+// Scenario:
+//  1. Create a directory holding three block files, a stray file of another name, and the prune store's
+//     subdirectory.
+//  2. Expect blockfileNumsIn to return only the block file numbers, ascending.
+//  3. Add a file whose name starts with the block file prefix but does not end in a number.
+//  4. Expect an error naming it, rather than that file being skipped.
+func TestBlockfileNumsIn(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{
+		blockfilePrefix + "000002",
+		blockfilePrefix + "000000",
+		blockfilePrefix + "000010",
+		"__backupGenesisBlockBytes",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), nil, 0o600))
+	}
+	// The prune store sits in the ledger's own directory, so directories must be skipped.
+	require.NoError(t, os.Mkdir(filepath.Join(dir, pruneStoreFileSuffix), 0o750))
+
+	nums, err := blockfileNumsIn(dir)
+	require.NoError(t, err)
+	require.Equal(t, []int{0, 2, 10}, nums)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, blockfilePrefix+"bogus"), nil, 0o600))
+
+	_, err = blockfileNumsIn(dir)
+	require.ErrorContains(t, err, "unexpected block file name "+blockfilePrefix+"bogus")
+}
+
+// Scenario:
+// 1. Call blockfileNumsIn on an empty directory and expect no numbers and no error.
+// 2. Call it on a directory that does not exist and expect an error.
+func TestBlockfileNumsInEdgeCases(t *testing.T) {
+	nums, err := blockfileNumsIn(t.TempDir())
+	require.NoError(t, err)
+	require.Empty(t, nums)
+
+	_, err = blockfileNumsIn(filepath.Join(t.TempDir(), "missing"))
+	require.ErrorContains(t, err, "error reading dir")
 }
