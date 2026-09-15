@@ -268,8 +268,9 @@ Router:
     #   disabled - no throttling (default)
     #   global   - a single aggregate rate limit shared by all clients on this router
     Policy: disabled
-    # Rate is the aggregate cap, in requests per second, across all clients
-    # (used by the global policy). 0 disables throttling.
+    # Rate is the aggregate cap, in requests per second, across all clients.
+    # Used only by the global policy, which requires Rate > 0 (the router fails
+    # to start otherwise). To disable throttling set Policy: disabled, not Rate: 0.
     Rate: 0
     # Burst is the token-bucket capacity (the largest momentary burst admitted).
     # When 0 it defaults to Rate, i.e. one second's worth of tokens.
