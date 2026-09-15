@@ -19,7 +19,6 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -57,6 +56,7 @@ type RouterMetrics struct {
 	stopOnce               sync.Once
 	startOnce              sync.Once
 	partyID                arma_types.PartyID
+	promAddress            string
 }
 
 // NewRouterMetrics creates the Metrics
@@ -77,6 +77,7 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
 		throttledTxs:           provider.NewCounter(throttledTxs).With([]string{partyID}...),
 		partyID:                routerNodeConfig.PartyID,
+		promAddress:            routerNodeConfig.Metrics.PrometheusAddress,
 	}
 }
 
@@ -112,15 +113,30 @@ func (m *RouterMetrics) trackMetrics() {
 }
 
 func (m *RouterMetrics) reportMetrics() {
-	txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
-	txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
-	txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
-	txThrottled := monitoring.GetMetricValue(m.throttledTxs.(prometheus.Metric), m.logger)
-	incomingTxsLastValue := atomic.LoadUint64(&m.incomingTxsLastValue)
-	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d",
-		m.partyID, int(txCount), float64(txCount-float64(incomingTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled))
+	partyID := fmt.Sprintf("%d", m.partyID)
+	reader := monitoring.NewReader(m.promAddress, m.interval)
 
-	atomic.StoreUint64(&m.incomingTxsLastValue, uint64(txCount))
+	txCount := reader.Total(incomingTxs, partyID)
+	txRejected400 := reader.Total(rejectedTxs, "400", partyID)
+	txRejected500 := reader.Total(rejectedTxs, "500", partyID)
+	txThrottled := reader.Total(throttledTxs, partyID)
+
+	if err := reader.Err(); err != nil {
+		m.logger.Warnf("Skipping metrics report: %s", err)
+		return
+	}
+
+	incomingTxsLastValue := atomic.LoadUint64(&m.incomingTxsLastValue)
+
+	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d",
+		m.partyID,
+		txCount,
+		(float64(txCount)-float64(incomingTxsLastValue))/m.interval.Seconds(),
+		txRejected400,
+		txRejected500,
+		int(txThrottled))
+
+	atomic.StoreUint64(&m.incomingTxsLastValue, txCount)
 }
 
 func (m *RouterMetrics) increaseErrorCount(err error) {
