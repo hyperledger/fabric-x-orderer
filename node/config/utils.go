@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
@@ -40,6 +41,10 @@ func (c *ConsenterNodeConfig) GetPolicyManager() policies.Manager {
 	return c.Bundle.PolicyManager()
 }
 
+func (c *ConsenterNodeConfig) GetMSPManager() msp.IdentityDeserializer {
+	return c.Bundle.MSPManager()
+}
+
 func (c *BatcherNodeConfig) GetRequestMaxBytes() uint64 {
 	return c.RequestMaxBytes
 }
@@ -56,6 +61,10 @@ func (c *BatcherNodeConfig) GetPolicyManager() policies.Manager {
 	return c.Bundle.PolicyManager()
 }
 
+func (c *BatcherNodeConfig) GetMSPManager() msp.IdentityDeserializer {
+	return c.Bundle.MSPManager()
+}
+
 func (rfc *RouterNodeConfig) GetRequestMaxBytes() uint64 {
 	return rfc.RequestMaxBytes
 }
@@ -70,6 +79,10 @@ func (rfc *RouterNodeConfig) GetChannelID() string {
 
 func (rfc *RouterNodeConfig) GetPolicyManager() policies.Manager {
 	return rfc.Bundle.PolicyManager()
+}
+
+func (rfc *RouterNodeConfig) GetMSPManager() msp.IdentityDeserializer {
+	return rfc.Bundle.MSPManager()
 }
 
 func (c *AssemblerNodeConfig) GetChannelID() string {

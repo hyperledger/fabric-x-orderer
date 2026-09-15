@@ -140,7 +140,6 @@ func (sr *ShardRouter) Forward(trackedReq *TrackedRequest) {
 		trackedReq.request.TraceId = trackedReq.trace
 	}
 
-	sr.logger.Debugf("enter request %x to the requests list", trackedReq.reqID)
 	stream.requestsChannel <- trackedReq
 }
 

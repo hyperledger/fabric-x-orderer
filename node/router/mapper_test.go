@@ -13,16 +13,13 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMultiShardMapper(t *testing.T) {
-	logger := testutil.CreateLogger(t, 0)
-
 	// test MapperCRC64 with 4 shards
 	var numShards uint16 = 4
-	m := MapperCRC64{logger, numShards}
+	m := MapperCRC64{numShards}
 
 	// check that a request consistently receives the same shard and request-ID (i.e., no randomness in the mapping).
 	t.Run("Remap Test", func(t *testing.T) {
@@ -73,10 +70,8 @@ func TestMultiShardMapper(t *testing.T) {
 }
 
 func TestOneShardMapper(t *testing.T) {
-	logger := testutil.CreateLogger(t, 0)
-
 	// test MapperCRC64 with 1 shard
-	m := MapperCRC64{logger, 1}
+	m := MapperCRC64{1}
 
 	// check that with a single shard, requests are consistently mapped to the same shard.
 	t.Run("One Shard Test", func(t *testing.T) {

@@ -58,7 +58,6 @@ func (s *stream) readResponses() {
 				s.cancelOnServerError(withBackoff)
 				return
 			}
-			s.logger.Debugf("read response from batcher %s on request with trace id %x", s.endpoint, resp.TraceId)
 			err = s.forwardResponseToClient(resp)
 			if err != nil {
 				s.logger.Debugf("received a response from batcher %s for a request with trace id %x, which does not exist in the map, dropping response", s.endpoint, resp.TraceId)
@@ -93,7 +92,6 @@ func (s *stream) sendRequests() {
 				// forward to consenter. configSubmitter will handle sending response to client.
 				s.configSubmitter.Forward(tr)
 			} else {
-				s.logger.Debugf("received request with type %s, forwarding to batcher %s", reqType, s.endpoint)
 				err = s.requestTransmitSubmitStreamClient.Send(tr.request)
 				if err != nil {
 					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
@@ -149,7 +147,6 @@ func (s *stream) forwardResponseToClient(response *protos.SubmitResponse) error 
 	s.reconnectBackoffInterval = minRetryInterval
 	s.lock.Unlock()
 	if exists {
-		s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", traceID)
 		ch <- Response{
 			SubmitResponse: response,
 		}
