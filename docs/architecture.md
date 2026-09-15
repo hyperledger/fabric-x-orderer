@@ -145,6 +145,17 @@ Common sections include:
 - `FileStore`: local path for ledgers, databases, WALs, and role state.
 - Role-specific section: exactly one of `Router`, `Batcher`, `Consensus`, or `Assembler`.
 
+The `Router` section optionally carries a `Throttling` sub-block that rate-limits the
+router's request ingress, protecting the node from resource exhaustion and greedy or
+faulty clients. It is a per-node setting (each router is throttled independently) and is
+**disabled by default** — if the block is omitted, no throttling is applied. The current
+`Policy` values are `disabled` and `global` (a single aggregate cap shared by all clients
+on the router); `global` takes a `Rate` (requests/second) and an optional `Burst`
+(token-bucket capacity, defaulting to `Rate`). Requests over the limit are rejected
+immediately — `Broadcast` returns `SERVICE_UNAVAILABLE` and keeps the stream open — rather
+than being slowed with back-pressure. See `config/sample/local_config.yaml` for the
+documented fields.
+
 Network-wide membership comes from the shared configuration, which is encoded in a config block. To boostrap a network, all nodes must be given the same genesis block. The path to the genesis block is referenced by `General.Bootstrap` key. 
 All nodes in a deployment must use the same genesis block configuration.
 
