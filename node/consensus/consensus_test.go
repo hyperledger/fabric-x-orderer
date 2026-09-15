@@ -1061,6 +1061,23 @@ func TestVerifyProposal(t *testing.T) {
 	require.Equal(t, c.RequestID(brs[0]), infos[0])
 	require.Equal(t, c.RequestID(brs[1]), infos[1])
 
+	// 1b. a proposal carrying an assembler decision report is verified and the report is returned.
+	// The report is inert in state processing, so it does not affect the computed state / blocks;
+	// it must still be dispatched by getReqConfigSeq and RequestID (not rejected as an empty event).
+	t.Log("proposal with assembler decision report")
+	report := &state.ControlEvent{AssemblerReport: &state.AssemblerDecisionReport{Party: 2, DecisionNum: 100, Signature: []byte{1, 2, 3}}}
+	reqsWithReport := append(append([][]byte{}, reqs...), report.Bytes())
+	brsWithReport := arma_types.BatchedRequests(reqsWithReport)
+	infosWithReport, err := c.VerifyProposal(smartbft_types.Proposal{
+		Header:   header.Serialize(),
+		Payload:  brsWithReport.Serialize(),
+		Metadata: mBytes,
+	})
+	require.NoError(t, err)
+	require.Len(t, infosWithReport, len(reqsWithReport))
+	require.Equal(t, c.RequestID(reqsWithReport[2]), infosWithReport[2])
+	require.NotEmpty(t, infosWithReport[2].ID)
+
 	// 2. nil header
 	t.Log("nil header")
 	verifyProposalRequireError(t, c, nil, brs.Serialize(), mBytes)

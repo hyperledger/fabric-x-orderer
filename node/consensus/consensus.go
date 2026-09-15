@@ -776,7 +776,7 @@ func (c *Consensus) RequestID(req []byte) smartbft_types.RequestInfo {
 		return smartbft_types.RequestInfo{}
 	}
 
-	if ce.Complaint == nil && ce.BAF == nil && ce.ConfigRequest == nil {
+	if ce.Complaint == nil && ce.BAF == nil && ce.ConfigRequest == nil && ce.AssemblerReport == nil {
 		c.Logger.Warnf("Empty control event")
 		return smartbft_types.RequestInfo{}
 	}
@@ -1247,6 +1247,11 @@ func (c *Consensus) getReqConfigSeq(req []byte) (uint64, error) {
 			return 0, nil
 		}
 		return uint64(configSeq) - 1, nil
+	case ce.AssemblerReport != nil:
+		// Assembler decision reports carry no config sequence of their own; report the current
+		// verification sequence so they are always treated as current and verified (never skipped
+		// or rejected as stale) in VerifyProposal.
+		return c.VerificationSequence(), nil
 	default:
 		return 0, errors.New("empty control event")
 
@@ -1301,6 +1306,13 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 			return reqID, ce, errors.Wrap(err, "failed to validate config transition rules")
 		}
 		// TODO: revisit this return
+		return reqID, ce, nil
+	} else if ce.AssemblerReport != nil {
+		// TODO: verify the assembler's signature over the report once the signing scheme is
+		// defined. For now we only reject unsigned reports; the cryptographic check is deferred.
+		if len(ce.AssemblerReport.Signature) == 0 {
+			return reqID, ce, errors.New("missing assembler decision report signature")
+		}
 		return reqID, ce, nil
 	} else {
 		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")

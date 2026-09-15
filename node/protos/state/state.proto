@@ -44,12 +44,21 @@ message ConfigRequest {
   bytes envelope = 1;  // common.Envelope serialized
 }
 
+// AssemblerDecisionReport is an assembler's report of the highest global decision number it has
+// committed. Consensus aggregates these to agree on a durable watermark used for batcher pruning.
+message AssemblerDecisionReport {
+  uint32 party = 1;        // the reporting assembler's party
+  uint64 decision_num = 2; // the highest committed decision number
+  bytes signature = 3;     // the reporting assembler's signature over the report
+}
+
 // ControlEvent represents a control event that can be one of several types
 message ControlEvent {
   oneof event {
     BatchAttestationFragment baf = 1; // BatchAttestationFragment from a batcher
     Complaint complaint = 2;          // Complaint from a batcher
     ConfigRequest config_request = 3; // Configuration update request
+    AssemblerDecisionReport assembler_decision_report = 4; // Committed-decision report from an assembler
   }
 }
 
