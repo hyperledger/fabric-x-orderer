@@ -86,7 +86,7 @@ For each party i, all cryptographic materials for party{i} are located under `ar
 For example, all cryptographic materials for party1 are located under `arma-config/crypto/ordererOrganizations/org1`:
    - The Certificate Authority (CA) certificates are stored in `arma-config/crypto/ordererOrganizations/org1/msp/cacerts`.
    - The TLS Certificate Authority (TLS CA) certificates are stored in `arma-config/crypto/ordererOrganizations/org1/msp/tlscacerts`.
-   - Each node within party1 has its own TLS certificates and keys located in `arma-config/crypto/ordererOrganizations/org1/orderers/party1/{node}`. For batchers and cosenters nodes a signing certificate with a corresponding key are generated. 
+   - Each node within party1 has its own TLS certificates and keys located in `arma-config/crypto/ordererOrganizations/org1/orderers/party1/{node}`. For each node a signing certificate with a corresponding key are generated. 
    - TLS certificate and key for user of party1 is stored in `arma-config/crypto/ordererOrganizations/org1/users`.
 NOTE: A fake CA is created for each party.
 

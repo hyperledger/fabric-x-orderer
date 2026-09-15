@@ -79,9 +79,10 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 		partyLocalConfig := networkLocalConfig.PartiesLocalConfig[i]
 
 		routerConfig := config.RouterNodeConfig{
-			Host:    partyLocalConfig.RouterLocalConfig.GeneralConfig.ListenAddress,
-			Port:    partyLocalConfig.RouterLocalConfig.GeneralConfig.ListenPort,
-			TLSCert: partyLocalConfig.RouterLocalConfig.GeneralConfig.TLSConfig.Certificate,
+			Host:     partyLocalConfig.RouterLocalConfig.GeneralConfig.ListenAddress,
+			Port:     partyLocalConfig.RouterLocalConfig.GeneralConfig.ListenPort,
+			SignCert: filepath.Join(partyLocalConfig.RouterLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "router-cert.pem"),
+			TLSCert:  partyLocalConfig.RouterLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 
 		var batchersConfig []config.BatcherNodeConfig
@@ -104,9 +105,10 @@ func createPartiesConfig(network Network, networkLocalConfig *NetworkLocalConfig
 		}
 
 		assemblerConfig := config.AssemblerNodeConfig{
-			Host:    partyLocalConfig.AssemblerLocalConfig.GeneralConfig.ListenAddress,
-			Port:    partyLocalConfig.AssemblerLocalConfig.GeneralConfig.ListenPort,
-			TLSCert: partyLocalConfig.AssemblerLocalConfig.GeneralConfig.TLSConfig.Certificate,
+			Host:     partyLocalConfig.AssemblerLocalConfig.GeneralConfig.ListenAddress,
+			Port:     partyLocalConfig.AssemblerLocalConfig.GeneralConfig.ListenPort,
+			SignCert: filepath.Join(partyLocalConfig.AssemblerLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "assembler-cert.pem"),
+			TLSCert:  partyLocalConfig.AssemblerLocalConfig.GeneralConfig.TLSConfig.Certificate,
 		}
 
 		orgDir := filepath.Join(cryptoBaseDir, "crypto", "ordererOrganizations", fmt.Sprintf("org%d", party.ID))

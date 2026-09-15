@@ -62,7 +62,7 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfigYaml) (*ordererpb.Share
 			return nil, err
 		}
 
-		routerConfig, err := loadRouterConfig(partyConfig.RouterConfig.Host, partyConfig.RouterConfig.Port, partyConfig.RouterConfig.TLSCert)
+		routerConfig, err := loadRouterConfig(partyConfig.RouterConfig.Host, partyConfig.RouterConfig.Port, partyConfig.RouterConfig.TLSCert, partyConfig.RouterConfig.SignCert)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func parseSharedConfigYaml(sharedConfigYaml *SharedConfigYaml) (*ordererpb.Share
 			return nil, err
 		}
 
-		assemblerConfig, err := loadAssemblerConfig(partyConfig.AssemblerConfig.Host, partyConfig.AssemblerConfig.Port, partyConfig.AssemblerConfig.TLSCert)
+		assemblerConfig, err := loadAssemblerConfig(partyConfig.AssemblerConfig.Host, partyConfig.AssemblerConfig.Port, partyConfig.AssemblerConfig.TLSCert, partyConfig.AssemblerConfig.SignCert)
 		if err != nil {
 			return nil, err
 		}
@@ -161,15 +161,21 @@ func loadCACerts(caCertsPaths []string, tlsCACertsPaths []string) ([][]byte, [][
 	return caCerts, TLSCACerts, nil
 }
 
-func loadRouterConfig(host string, port uint32, tlsCertPath string) (*ordererpb.RouterNodeConfig, error) {
+func loadRouterConfig(host string, port uint32, tlsCertPath string, signCertPath string) (*ordererpb.RouterNodeConfig, error) {
 	TLSCert, err := utils.ReadPem(tlsCertPath)
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read router tls cert failed, err: %v", err)
 	}
+
+	signCert, err := utils.ReadPem(signCertPath)
+	if err != nil {
+		return nil, fmt.Errorf("load shared config failed, read router sign cert failed, err: %v", err)
+	}
 	return &ordererpb.RouterNodeConfig{
-		Host:    host,
-		Port:    port,
-		TlsCert: TLSCert,
+		Host:     host,
+		Port:     port,
+		SignCert: signCert,
+		TlsCert:  TLSCert,
 	}, nil
 }
 
@@ -201,12 +207,12 @@ func loadBatchersConfig(batchersConfigYaml []BatcherNodeConfig) ([]*ordererpb.Ba
 func loadConsenterConfig(host string, port uint32, tlsCertPath string, signCertPath string) (*ordererpb.ConsenterNodeConfig, error) {
 	TLSCert, err := utils.ReadPem(tlsCertPath)
 	if err != nil {
-		return nil, fmt.Errorf("load shared config failed, read consenster tls cert failed, err: %v", err)
+		return nil, fmt.Errorf("load shared config failed, read consenter tls cert failed, err: %v", err)
 	}
 
 	signCert, err := utils.ReadPem(signCertPath)
 	if err != nil {
-		return nil, fmt.Errorf("load shared config failed, read consenster sign cert failed, err: %v", err)
+		return nil, fmt.Errorf("load shared config failed, read consenter sign cert failed, err: %v", err)
 	}
 	return &ordererpb.ConsenterNodeConfig{
 		Host:     host,
@@ -216,14 +222,20 @@ func loadConsenterConfig(host string, port uint32, tlsCertPath string, signCertP
 	}, nil
 }
 
-func loadAssemblerConfig(host string, port uint32, tlsCertPath string) (*ordererpb.AssemblerNodeConfig, error) {
+func loadAssemblerConfig(host string, port uint32, tlsCertPath string, signCertPath string) (*ordererpb.AssemblerNodeConfig, error) {
 	TLSCert, err := utils.ReadPem(tlsCertPath)
 	if err != nil {
 		return nil, fmt.Errorf("load shared config failed, read assembler tls cert failed, err: %v", err)
 	}
+
+	signCert, err := utils.ReadPem(signCertPath)
+	if err != nil {
+		return nil, fmt.Errorf("load shared config failed, read assembler sign cert failed, err: %v", err)
+	}
 	return &ordererpb.AssemblerNodeConfig{
-		Host:    host,
-		Port:    port,
-		TlsCert: TLSCert,
+		Host:     host,
+		Port:     port,
+		SignCert: signCert,
+		TlsCert:  TLSCert,
 	}, nil
 }

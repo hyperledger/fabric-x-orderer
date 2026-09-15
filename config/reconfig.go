@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"net"
+	"reflect"
 	"strconv"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -23,12 +24,6 @@ type NodeConfig interface {
 	GetHost() string
 	GetPort() uint32
 	GetTlsCert() []byte
-}
-
-// NodeConfigWithSign extends NodeConfig and exposes also a sign certificate.
-// This interface is implemented by Batcher and Consensus only, see config/protos/configuration.pb.go
-type NodeConfigWithSign interface {
-	NodeConfig
 	GetSignCert() []byte
 }
 
@@ -62,7 +57,7 @@ func FindParty(partyID types.PartyID, config *Configuration) (*ordererpb.PartyCo
 // A restart is required if any of the following parts were updated:
 //   - host or port
 //   - TLS certificate
-//   - sign certificate (this is checked if both configs implement NodeConfigWithSign)
+//   - sign certificate
 //
 // Both arguments must represent the same node type and be non-nil.
 func IsNodeConfigChangeRestartRequired(currentConfig, newConfig NodeConfig, logger *flogging.FabricLogger) (bool, error) {
@@ -74,9 +69,7 @@ func IsNodeConfigChangeRestartRequired(currentConfig, newConfig NodeConfig, logg
 		return false, errors.New("new config is nil")
 	}
 
-	extendedCurrConfig, currOK := currentConfig.(NodeConfigWithSign)
-	extendedNewConfig, newOK := newConfig.(NodeConfigWithSign)
-	if currOK != newOK {
+	if reflect.TypeOf(currentConfig) != reflect.TypeOf(newConfig) {
 		return false, errors.New("type mismatch: current node config and new node config are not from the same type")
 	}
 
@@ -94,7 +87,7 @@ func IsNodeConfigChangeRestartRequired(currentConfig, newConfig NodeConfig, logg
 	}
 
 	// TODO: enable dynamic reconfig without restart when private and public key dont change
-	if currOK && !bytes.Equal(extendedCurrConfig.GetSignCert(), extendedNewConfig.GetSignCert()) {
+	if !bytes.Equal(currentConfig.GetSignCert(), newConfig.GetSignCert()) {
 		logger.Infof("Nodes sign certificate changed")
 		return true, nil
 	}

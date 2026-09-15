@@ -29,8 +29,7 @@ import (
 
 // GenerateCryptoConfigWithProfile provides all crypto material of Arma network, divided into parties and written to files in a folder structure.
 // For each party for all nodes (i.e. Router, Batchers, Consenter and Assembler) it is required to provide TLS certificate and private key for secure communications between nodes using TLS.
-// For Batchers and Consenters is it also required to provide a signing certificate with a corresponding private key that are used to sign BAS's by Batchers and blocks by Consenter.
-// NOTE: for compatability with Fabric cryptogen tool and for future use, signing certificate and a corresponding private key will be created for all nodes.
+// For all nodes it is also required to provide a signing certificate with a corresponding private key, used to sign BAFs by Batchers and blocks by Consenter, and pinned in the shared configuration for every node so that a mismatch between a node's local identity and the network's view of it is detected at startup.
 //
 // Folder structure:
 //

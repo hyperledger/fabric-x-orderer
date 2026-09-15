@@ -10,26 +10,28 @@ Parties:
     TLSCACerts:
       - /var/dec-trust/crypto/ordererOrganizations/org1/tlsca/tlsca-cert.pem
     RouterConfig:
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/router/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/router/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60609
     BatchersConfig:
       - ShardID: 1
-        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher1/msp/signcerts/sign-cert.pem
+        SignCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher1/msp/signcerts/sign-cert.pem
         TLSCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher1/tls/tls-cert.pem
         Host: 127.0.0.1
         Port: 60610
       - ShardID: 2
-        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher2/msp/signcerts/sign-cert.pem
+        SignCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher2/msp/signcerts/sign-cert.pem
         TLSCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/batcher2/tls/tls-cert.pem
         Host: 127.0.0.1
         Port: 60611
     ConsenterConfig:
-      PublicKey: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/msp/signcerts/sign-cert.pem
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/consenter/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60608
     AssemblerConfig:
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/assembler/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org1/orderers/party1/assembler/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60607
@@ -39,26 +41,28 @@ Parties:
     TLSCACerts:
       - /var/dec-trust/crypto/ordererOrganizations/org2/tlsca/tlsca-cert.pem
     RouterConfig:
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/router/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/router/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60614
     BatchersConfig:
       - ShardID: 1
-        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/batcher1/msp/signcerts/sign-cert.pem
+        SignCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/batcher1/msp/signcerts/sign-cert.pem
         TLSCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/batcher1/tls/tls-cert.pem
         Host: 127.0.0.1
         Port: 60615
       - ShardID: 2
-        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/batcher2/msp/signcerts/sign-cert.pem
+        SignCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/batcher2/msp/signcerts/sign-cert.pem
         TLSCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/batcher2/tls/tls-cert.pem
         Host: 127.0.0.1
         Port: 60616
     ConsenterConfig:
-      PublicKey: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/consenter/msp/signcerts/sign-cert.pem
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/consenter/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/consenter/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60613
     AssemblerConfig:
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/assembler/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org2/orderers/party2/assembler/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60612
@@ -68,26 +72,28 @@ Parties:
     TLSCACerts:
       - /var/dec-trust/crypto/ordererOrganizations/org3/tlsca/tlsca-cert.pem
     RouterConfig:
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/router/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/router/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60619
     BatchersConfig:
       - ShardID: 1
-        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher1/msp/signcerts/sign-cert.pem
+        SignCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher1/msp/signcerts/sign-cert.pem
         TLSCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher1/tls/tls-cert.pem
         Host: 127.0.0.1
         Port: 60620
       - ShardID: 2
-        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher2/msp/signcerts/sign-cert.pem
+        SignCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher2/msp/signcerts/sign-cert.pem
         TLSCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/batcher2/tls/tls-cert.pem
         Host: 127.0.0.1
         Port: 60621
     ConsenterConfig:
-      PublicKey: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/msp/signcerts/sign-cert.pem
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/consenter/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60618
     AssemblerConfig:
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/assembler/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org3/orderers/party3/assembler/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60617
@@ -97,26 +103,28 @@ Parties:
     TLSCACerts:
       - /var/dec-trust/crypto/ordererOrganizations/org4/tlsca/tlsca-cert.pem
     RouterConfig:
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/router/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/router/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60624
     BatchersConfig:
       - ShardID: 1
-        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/batcher1/msp/signcerts/sign-cert.pem
+        SignCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/batcher1/msp/signcerts/sign-cert.pem
         TLSCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/batcher1/tls/tls-cert.pem
         Host: 127.0.0.1
         Port: 60625
       - ShardID: 2
-        PublicKey: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/batcher2/msp/signcerts/sign-cert.pem
+        SignCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/batcher2/msp/signcerts/sign-cert.pem
         TLSCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/batcher2/tls/tls-cert.pem
         Host: 127.0.0.1
         Port: 60626
     ConsenterConfig:
-      PublicKey: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/consenter/msp/signcerts/sign-cert.pem
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/consenter/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/consenter/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60623
     AssemblerConfig:
+      SignCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/assembler/msp/signcerts/sign-cert.pem
       TLSCert: /var/dec-trust/crypto/ordererOrganizations/org4/orderers/party4/assembler/tls/tls-cert.pem
       Host: 127.0.0.1
       Port: 60622

@@ -34,10 +34,12 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
@@ -81,7 +83,8 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert: []byte("invalid"),
+				TlsCert:  []byte("invalid"),
+				SignCert: signCertPEM,
 			},
 		}
 
@@ -97,7 +100,8 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 			TLSCACerts: [][]byte{differentTLSCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 		}
 
@@ -114,10 +118,12 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  expiredConsenterTLSCert,
@@ -177,10 +183,12 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
@@ -200,10 +208,12 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{differentSignCACertPEM}, // Different CA
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
@@ -211,9 +221,11 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			},
 		}
 
+		// every node's signing cert comes from the different CA, so the first one
+		// validated, the router's, is the one reported
 		err := validatePartyCertificates(partyConfig, false)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "consenter signing certificate validation failed")
+		require.Contains(t, err.Error(), "router signing certificate validation failed")
 	})
 
 	t.Run("Expired consenter signing certificate", func(t *testing.T) {
@@ -223,10 +235,12 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
@@ -254,10 +268,12 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
@@ -283,10 +299,12 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert: tlsCertPEM,
+				TlsCert:  tlsCertPEM,
+				SignCert: signCertPEM,
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
 				TlsCert:  tlsCertPEM,
