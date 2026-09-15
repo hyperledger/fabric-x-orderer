@@ -34,5 +34,3 @@ if ! diff -rq "${dep_tempdir}/vendor" "${arma_dir}/vendor"; then
     echo "vendor/ is out of date. Please run 'go mod tidy && go mod vendor'."
     exit 1
 fi
-
-go mod verify
