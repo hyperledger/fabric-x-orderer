@@ -463,6 +463,25 @@ func (c *ConfigUpdateBuilder) UpdateSmartBFTConfig(t *testing.T, smartBFTConfig 
 	return c.createConfigUpdate(t, c.configData)
 }
 
+func (c *ConfigUpdateBuilder) UpdateRouterSignCert(t *testing.T, partyID types.PartyID, cert []byte) []byte {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			routerConfig := partyMap["RouterConfig"].(map[string]any)
+			routerConfig["sign_cert"] = cert
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	return c.createConfigUpdate(t, c.configData)
+}
+
 func (c *ConfigUpdateBuilder) UpdateBatcherSignCert(t *testing.T, partyID types.PartyID, shardID types.ShardID, cert []byte) []byte {
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
 	partiesConfigList := partiesConfig.([]any)
@@ -519,6 +538,25 @@ func (c *ConfigUpdateBuilder) UpdateConsenterSignCert(t *testing.T, partyID type
 	}
 	require.True(t, found, "PartyID %d not found in ConsenterMapping", partyID)
 	c.syncBlockValidationPolicy(t, mappingList)
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) UpdateAssemblerSignCert(t *testing.T, partyID types.PartyID, cert []byte) []byte {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			assemblerConfig := partyMap["AssemblerConfig"].(map[string]any)
+			assemblerConfig["sign_cert"] = cert
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
 	return c.createConfigUpdate(t, c.configData)
 }
 
