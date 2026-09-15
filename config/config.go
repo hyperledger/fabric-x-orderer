@@ -300,6 +300,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+			PrometheusAddress:  config.LocalConfig.NodeLocalConfig.MetricsConfig.PrometheusAddress,
 		},
 	}
 	return routerConfig
@@ -381,6 +382,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+			PrometheusAddress:  config.LocalConfig.NodeLocalConfig.MetricsConfig.PrometheusAddress,
 		},
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
@@ -526,6 +528,7 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+			PrometheusAddress:  config.LocalConfig.NodeLocalConfig.MetricsConfig.PrometheusAddress,
 		},
 		Bundle: bundle,
 		BCCSP:  bccsp,

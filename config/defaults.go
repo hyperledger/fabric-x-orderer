@@ -37,6 +37,7 @@ var DefaultNodeLocalConfig = NodeLocalConfig{
 	MetricsConfig: &Metrics{
 		Provider:           "prometheus",
 		MetricsLogInterval: 10 * time.Second,
+		PrometheusAddress:  "http://localhost:9090",
 	},
 }
 

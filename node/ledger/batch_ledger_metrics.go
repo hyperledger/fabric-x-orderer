@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	headerHashingLatencyOpts = metrics.HistogramOpts{
+	HeaderHashingLatencyOpts = metrics.HistogramOpts{
 		Namespace:  "batch_ledger",
 		Name:       "header_hashing_latency_seconds",
 		Help:       "The latency to compute the block header hash.",
@@ -19,7 +19,7 @@ var (
 		Buckets:    []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}, // TODO: adjust buckets after reviewing Grafana
 	}
 
-	appendLatencyOpts = metrics.HistogramOpts{
+	AppendLatencyOpts = metrics.HistogramOpts{
 		Namespace:  "batch_ledger",
 		Name:       "append_latency_seconds",
 		Help:       "The latency to append a batch to the ledger.",
@@ -34,6 +34,6 @@ type BatchLedgerMetrics struct {
 }
 
 func (bl *BatchLedgerMetrics) NewBatchLedgerMetrics(p metrics.Provider, partyID, shardID string) {
-	bl.HeaderHashingLatency = p.NewHistogram(headerHashingLatencyOpts).With([]string{partyID, shardID}...)
-	bl.AppendLatency = p.NewHistogram(appendLatencyOpts).With([]string{partyID, shardID}...)
+	bl.HeaderHashingLatency = p.NewHistogram(HeaderHashingLatencyOpts).With([]string{partyID, shardID}...)
+	bl.AppendLatency = p.NewHistogram(AppendLatencyOpts).With([]string{partyID, shardID}...)
 }
