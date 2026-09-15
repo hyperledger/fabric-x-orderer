@@ -18,6 +18,7 @@ package protolator
 
 import (
 	"reflect"
+	"slices"
 
 	"google.golang.org/protobuf/proto"
 )
@@ -29,25 +30,22 @@ func (soff variablyOpaqueFieldFactory) Handles(msg proto.Message, fieldName stri
 	if !ok {
 		return false
 	}
-
-	return stringInSlice(fieldName, opaqueProto.VariablyOpaqueFields())
+	return slices.Contains(opaqueProto.VariablyOpaqueFields(), fieldName)
 }
 
 func (soff variablyOpaqueFieldFactory) NewProtoField(msg proto.Message, fieldName string, fieldType reflect.Type, fieldValue reflect.Value) (protoField, error) {
 	opaqueProto := msg.(VariablyOpaqueFieldProto) // Type checked in Handles
 
 	return &plainField{
-		baseField: baseField{
-			msg:   msg,
-			name:  fieldName,
-			fType: mapStringInterfaceType,
-			vType: bytesType,
-			value: fieldValue,
-		},
-		populateFrom: func(v interface{}, dT reflect.Type) (reflect.Value, error) {
+		msg:   msg,
+		name:  fieldName,
+		fType: mapStringInterfaceType,
+		vType: bytesType,
+		value: fieldValue,
+		populateFrom: func(v any, dT reflect.Type) (reflect.Value, error) {
 			return opaqueFrom(func() (proto.Message, error) { return opaqueProto.VariablyOpaqueFieldProto(fieldName) }, v, dT)
 		},
-		populateTo: func(v reflect.Value) (interface{}, error) {
+		populateTo: func(v reflect.Value) (any, error) {
 			return opaqueTo(func() (proto.Message, error) { return opaqueProto.VariablyOpaqueFieldProto(fieldName) }, v)
 		},
 	}, nil
@@ -61,26 +59,24 @@ func (soff variablyOpaqueMapFieldFactory) Handles(msg proto.Message, fieldName s
 		return false
 	}
 
-	return stringInSlice(fieldName, opaqueProto.VariablyOpaqueMapFields())
+	return slices.Contains(opaqueProto.VariablyOpaqueMapFields(), fieldName)
 }
 
 func (soff variablyOpaqueMapFieldFactory) NewProtoField(msg proto.Message, fieldName string, fieldType reflect.Type, fieldValue reflect.Value) (protoField, error) {
 	opaqueProto := msg.(VariablyOpaqueMapFieldProto) // Type checked in Handles
 
 	return &mapField{
-		baseField: baseField{
-			msg:   msg,
-			name:  fieldName,
-			fType: mapStringInterfaceType,
-			vType: fieldType,
-			value: fieldValue,
-		},
-		populateFrom: func(key string, v interface{}, dT reflect.Type) (reflect.Value, error) {
+		msg:   msg,
+		name:  fieldName,
+		fType: mapStringInterfaceType,
+		vType: fieldType,
+		value: fieldValue,
+		populateFrom: func(key string, v any, dT reflect.Type) (reflect.Value, error) {
 			return opaqueFrom(func() (proto.Message, error) {
 				return opaqueProto.VariablyOpaqueMapFieldProto(fieldName, key)
 			}, v, dT)
 		},
-		populateTo: func(key string, v reflect.Value) (interface{}, error) {
+		populateTo: func(key string, v reflect.Value) (any, error) {
 			return opaqueTo(func() (proto.Message, error) {
 				return opaqueProto.VariablyOpaqueMapFieldProto(fieldName, key)
 			}, v)
@@ -96,26 +92,24 @@ func (soff variablyOpaqueSliceFieldFactory) Handles(msg proto.Message, fieldName
 		return false
 	}
 
-	return stringInSlice(fieldName, opaqueProto.VariablyOpaqueSliceFields())
+	return slices.Contains(opaqueProto.VariablyOpaqueSliceFields(), fieldName)
 }
 
 func (soff variablyOpaqueSliceFieldFactory) NewProtoField(msg proto.Message, fieldName string, fieldType reflect.Type, fieldValue reflect.Value) (protoField, error) {
 	opaqueProto := msg.(VariablyOpaqueSliceFieldProto) // Type checked in Handles
 
 	return &sliceField{
-		baseField: baseField{
-			msg:   msg,
-			name:  fieldName,
-			fType: mapStringInterfaceType,
-			vType: fieldType,
-			value: fieldValue,
-		},
-		populateFrom: func(index int, v interface{}, dT reflect.Type) (reflect.Value, error) {
+		msg:   msg,
+		name:  fieldName,
+		fType: mapStringInterfaceType,
+		vType: fieldType,
+		value: fieldValue,
+		populateFrom: func(index int, v any, dT reflect.Type) (reflect.Value, error) {
 			return opaqueFrom(func() (proto.Message, error) {
 				return opaqueProto.VariablyOpaqueSliceFieldProto(fieldName, index)
 			}, v, dT)
 		},
-		populateTo: func(index int, v reflect.Value) (interface{}, error) {
+		populateTo: func(index int, v reflect.Value) (any, error) {
 			return opaqueTo(func() (proto.Message, error) {
 				return opaqueProto.VariablyOpaqueSliceFieldProto(fieldName, index)
 			}, v)

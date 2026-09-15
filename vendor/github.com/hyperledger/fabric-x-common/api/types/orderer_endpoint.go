@@ -108,8 +108,7 @@ func ParseOrdererEndpoint(valueRaw string) (*OrdererEndpoint, error) {
 }
 
 func unmarshalOrdererEndpoint(valueRaw string, out *OrdererEndpoint) error {
-	metaParts := strings.Split(valueRaw, ",")
-	for _, item := range metaParts {
+	for item := range strings.SplitSeq(valueRaw, ",") {
 		item = strings.TrimSpace(item)
 		equalIdx := strings.Index(item, "=")
 		colonIdx := strings.Index(item, ":")

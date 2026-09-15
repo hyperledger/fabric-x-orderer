@@ -18,12 +18,13 @@ package protolator
 
 import (
 	"reflect"
+	"slices"
 
 	"google.golang.org/protobuf/proto"
 )
 
-func dynamicFrom(dynamicMsg func(underlying proto.Message) (proto.Message, error), value interface{}, destType reflect.Type) (reflect.Value, error) {
-	tree := value.(map[string]interface{}) // Safe, already checked
+func dynamicFrom(dynamicMsg func(underlying proto.Message) (proto.Message, error), value any, destType reflect.Type) (reflect.Value, error) {
+	tree := value.(map[string]any) // Safe, already checked
 	uMsg := reflect.New(destType.Elem())
 	nMsg, err := dynamicMsg(uMsg.Interface().(proto.Message)) // Safe, already checked
 	if err != nil {
@@ -35,7 +36,7 @@ func dynamicFrom(dynamicMsg func(underlying proto.Message) (proto.Message, error
 	return uMsg, nil
 }
 
-func dynamicTo(dynamicMsg func(underlying proto.Message) (proto.Message, error), value reflect.Value) (interface{}, error) {
+func dynamicTo(dynamicMsg func(underlying proto.Message) (proto.Message, error), value reflect.Value) (any, error) {
 	nMsg, err := dynamicMsg(value.Interface().(proto.Message)) // Safe, already checked
 	if err != nil {
 		return nil, err
@@ -51,26 +52,24 @@ func (dff dynamicFieldFactory) Handles(msg proto.Message, fieldName string, fiel
 		return false
 	}
 
-	return stringInSlice(fieldName, dynamicProto.DynamicFields())
+	return slices.Contains(dynamicProto.DynamicFields(), fieldName)
 }
 
 func (dff dynamicFieldFactory) NewProtoField(msg proto.Message, fieldName string, fieldType reflect.Type, fieldValue reflect.Value) (protoField, error) {
 	dynamicProto, _ := msg.(DynamicFieldProto) // Type checked in Handles
 
 	return &plainField{
-		baseField: baseField{
-			msg:   msg,
-			name:  fieldName,
-			fType: mapStringInterfaceType,
-			vType: fieldType,
-			value: fieldValue,
-		},
-		populateFrom: func(v interface{}, dT reflect.Type) (reflect.Value, error) {
+		msg:   msg,
+		name:  fieldName,
+		fType: mapStringInterfaceType,
+		vType: fieldType,
+		value: fieldValue,
+		populateFrom: func(v any, dT reflect.Type) (reflect.Value, error) {
 			return dynamicFrom(func(underlying proto.Message) (proto.Message, error) {
 				return dynamicProto.DynamicFieldProto(fieldName, underlying)
 			}, v, dT)
 		},
-		populateTo: func(v reflect.Value) (interface{}, error) {
+		populateTo: func(v reflect.Value) (any, error) {
 			return dynamicTo(func(underlying proto.Message) (proto.Message, error) {
 				return dynamicProto.DynamicFieldProto(fieldName, underlying)
 			}, v)
@@ -86,26 +85,24 @@ func (dmff dynamicMapFieldFactory) Handles(msg proto.Message, fieldName string, 
 		return false
 	}
 
-	return stringInSlice(fieldName, dynamicProto.DynamicMapFields())
+	return slices.Contains(dynamicProto.DynamicMapFields(), fieldName)
 }
 
 func (dmff dynamicMapFieldFactory) NewProtoField(msg proto.Message, fieldName string, fieldType reflect.Type, fieldValue reflect.Value) (protoField, error) {
 	dynamicProto := msg.(DynamicMapFieldProto) // Type checked by Handles
 
 	return &mapField{
-		baseField: baseField{
-			msg:   msg,
-			name:  fieldName,
-			fType: mapStringInterfaceType,
-			vType: fieldType,
-			value: fieldValue,
-		},
-		populateFrom: func(k string, v interface{}, dT reflect.Type) (reflect.Value, error) {
+		msg:   msg,
+		name:  fieldName,
+		fType: mapStringInterfaceType,
+		vType: fieldType,
+		value: fieldValue,
+		populateFrom: func(k string, v any, dT reflect.Type) (reflect.Value, error) {
 			return dynamicFrom(func(underlying proto.Message) (proto.Message, error) {
 				return dynamicProto.DynamicMapFieldProto(fieldName, k, underlying)
 			}, v, dT)
 		},
-		populateTo: func(k string, v reflect.Value) (interface{}, error) {
+		populateTo: func(k string, v reflect.Value) (any, error) {
 			return dynamicTo(func(underlying proto.Message) (proto.Message, error) {
 				return dynamicProto.DynamicMapFieldProto(fieldName, k, underlying)
 			}, v)
@@ -121,26 +118,24 @@ func (dmff dynamicSliceFieldFactory) Handles(msg proto.Message, fieldName string
 		return false
 	}
 
-	return stringInSlice(fieldName, dynamicProto.DynamicSliceFields())
+	return slices.Contains(dynamicProto.DynamicSliceFields(), fieldName)
 }
 
 func (dmff dynamicSliceFieldFactory) NewProtoField(msg proto.Message, fieldName string, fieldType reflect.Type, fieldValue reflect.Value) (protoField, error) {
 	dynamicProto := msg.(DynamicSliceFieldProto) // Type checked by Handles
 
 	return &sliceField{
-		baseField: baseField{
-			msg:   msg,
-			name:  fieldName,
-			fType: mapStringInterfaceType,
-			vType: fieldType,
-			value: fieldValue,
-		},
-		populateFrom: func(i int, v interface{}, dT reflect.Type) (reflect.Value, error) {
+		msg:   msg,
+		name:  fieldName,
+		fType: mapStringInterfaceType,
+		vType: fieldType,
+		value: fieldValue,
+		populateFrom: func(i int, v any, dT reflect.Type) (reflect.Value, error) {
 			return dynamicFrom(func(underlying proto.Message) (proto.Message, error) {
 				return dynamicProto.DynamicSliceFieldProto(fieldName, i, underlying)
 			}, v, dT)
 		},
-		populateTo: func(i int, v reflect.Value) (interface{}, error) {
+		populateTo: func(i int, v reflect.Value) (any, error) {
 			return dynamicTo(func(underlying proto.Message) (proto.Message, error) {
 				return dynamicProto.DynamicSliceFieldProto(fieldName, i, underlying)
 			}, v)

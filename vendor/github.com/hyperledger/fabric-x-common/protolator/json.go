@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -50,18 +51,18 @@ type protoField interface {
 	// PopulateFrom mutates the underlying object, by taking the intermediate JSON representation
 	// and converting it into the proto representation, then assigning it to the backing value
 	// via reflection
-	PopulateFrom(source interface{}) error
+	PopulateFrom(source any) error
 
 	// PopulateTo does not mutate the underlying object, but instead converts it
 	// into the intermediate JSON representation (ie a struct -> map[string]interface{}
 	// or a slice of structs to []map[string]interface{}
-	PopulateTo() (interface{}, error)
+	PopulateTo() (any, error)
 }
 
 var (
-	protoMsgType           = reflect.TypeOf((*proto.Message)(nil)).Elem()
-	mapStringInterfaceType = reflect.TypeOf(map[string]interface{}{})
-	bytesType              = reflect.TypeOf([]byte{})
+	protoMsgType           = reflect.TypeFor[proto.Message]()
+	mapStringInterfaceType = reflect.TypeFor[map[string]any]()
+	bytesType              = reflect.TypeFor[[]byte]()
 )
 
 type baseField struct {
@@ -78,11 +79,11 @@ func (bf *baseField) Name() string {
 
 type plainField struct {
 	baseField
-	populateFrom func(source interface{}, destType reflect.Type) (reflect.Value, error)
-	populateTo   func(source reflect.Value) (interface{}, error)
+	populateFrom func(source any, destType reflect.Type) (reflect.Value, error)
+	populateTo   func(source reflect.Value) (any, error)
 }
 
-func (pf *plainField) PopulateFrom(source interface{}) error {
+func (pf *plainField) PopulateFrom(source any) error {
 	if source == nil {
 		return nil
 	}
@@ -98,7 +99,7 @@ func (pf *plainField) PopulateFrom(source interface{}) error {
 	return nil
 }
 
-func (pf *plainField) PopulateTo() (interface{}, error) {
+func (pf *plainField) PopulateTo() (any, error) {
 	if !pf.value.Type().AssignableTo(pf.vType) {
 		return nil, fmt.Errorf("expected field %s for message %T to be assignable to %v but was not. Got %T.", pf.name, pf.msg, pf.fType, pf.value)
 	}
@@ -106,7 +107,7 @@ func (pf *plainField) PopulateTo() (interface{}, error) {
 	kind := pf.value.Type().Kind()
 	// Do not try to deeply encode nil fields, as without correct type info etc. they
 	// may return errors
-	if (kind == reflect.Ptr || kind == reflect.Slice || kind == reflect.Map) && pf.value.IsNil() {
+	if (kind == reflect.Pointer || kind == reflect.Slice || kind == reflect.Map) && pf.value.IsNil() {
 		return nil, nil
 	}
 
@@ -119,12 +120,12 @@ func (pf *plainField) PopulateTo() (interface{}, error) {
 
 type mapField struct {
 	baseField
-	populateFrom func(key string, value interface{}, destType reflect.Type) (reflect.Value, error)
-	populateTo   func(key string, value reflect.Value) (interface{}, error)
+	populateFrom func(key string, value any, destType reflect.Type) (reflect.Value, error)
+	populateTo   func(key string, value reflect.Value) (any, error)
 }
 
-func (mf *mapField) PopulateFrom(source interface{}) error {
-	tree, ok := source.(map[string]interface{})
+func (mf *mapField) PopulateFrom(source any) error {
+	tree, ok := source.(map[string]any)
 	if !ok {
 		return fmt.Errorf("expected map field %s for message %T to be assignable from map[string]interface{} but was not. Got %T", mf.name, mf.msg, source)
 	}
@@ -146,8 +147,8 @@ func (mf *mapField) PopulateFrom(source interface{}) error {
 	return nil
 }
 
-func (mf *mapField) PopulateTo() (interface{}, error) {
-	result := make(map[string]interface{})
+func (mf *mapField) PopulateTo() (any, error) {
+	result := make(map[string]any)
 	keys := mf.value.MapKeys()
 	for _, key := range keys {
 		k, ok := key.Interface().(string)
@@ -157,7 +158,7 @@ func (mf *mapField) PopulateTo() (interface{}, error) {
 
 		subValue := mf.value.MapIndex(key)
 		kind := subValue.Type().Kind()
-		if (kind == reflect.Ptr || kind == reflect.Slice || kind == reflect.Map) && subValue.IsNil() {
+		if (kind == reflect.Pointer || kind == reflect.Slice || kind == reflect.Map) && subValue.IsNil() {
 			continue
 		}
 
@@ -177,12 +178,12 @@ func (mf *mapField) PopulateTo() (interface{}, error) {
 
 type sliceField struct {
 	baseField
-	populateTo   func(i int, source reflect.Value) (interface{}, error)
-	populateFrom func(i int, source interface{}, destType reflect.Type) (reflect.Value, error)
+	populateTo   func(i int, source reflect.Value) (any, error)
+	populateFrom func(i int, source any, destType reflect.Type) (reflect.Value, error)
 }
 
-func (sf *sliceField) PopulateFrom(source interface{}) error {
-	slice, ok := source.([]interface{})
+func (sf *sliceField) PopulateFrom(source any) error {
+	slice, ok := source.([]any)
 	if !ok {
 		return fmt.Errorf("expected slice field %s for message %T to be assignable from []interface{} but was not. Got %T", sf.name, sf.msg, source)
 	}
@@ -204,12 +205,12 @@ func (sf *sliceField) PopulateFrom(source interface{}) error {
 	return nil
 }
 
-func (sf *sliceField) PopulateTo() (interface{}, error) {
-	result := make([]interface{}, sf.value.Len())
+func (sf *sliceField) PopulateTo() (any, error) {
+	result := make([]any, sf.value.Len())
 	for i := range result {
 		subValue := sf.value.Index(i)
 		kind := subValue.Type().Kind()
-		if (kind == reflect.Ptr || kind == reflect.Slice || kind == reflect.Map) && subValue.IsNil() {
+		if (kind == reflect.Pointer || kind == reflect.Slice || kind == reflect.Map) && subValue.IsNil() {
 			continue
 		}
 
@@ -225,15 +226,6 @@ func (sf *sliceField) PopulateTo() (interface{}, error) {
 	}
 
 	return result, nil
-}
-
-func stringInSlice(target string, slice []string) bool {
-	for _, name := range slice {
-		if name == target {
-			return true
-		}
-	}
-	return false
 }
 
 // protoToJSON is a simple shortcut wrapper around the proto JSON marshaler
@@ -254,7 +246,7 @@ func protoToJSON(msg proto.Message) ([]byte, error) {
 	return b, nil
 }
 
-func mapToProto(tree map[string]interface{}, msg proto.Message) error {
+func mapToProto(tree map[string]any, msg proto.Message) error {
 	jsonOut, err := json.Marshal(tree)
 	if err != nil {
 		return err
@@ -265,8 +257,8 @@ func mapToProto(tree map[string]interface{}, msg proto.Message) error {
 
 // jsonToMap allocates a map[string]interface{}, unmarshals a JSON document into it
 // and returns it, or error
-func jsonToMap(marshaled []byte) (map[string]interface{}, error) {
-	tree := make(map[string]interface{})
+func jsonToMap(marshaled []byte) (map[string]any, error) {
+	tree := make(map[string]any)
 	d := json.NewDecoder(bytes.NewReader(marshaled))
 	d.UseNumber()
 	err := d.Decode(&tree)
@@ -294,11 +286,11 @@ var fieldFactories = []protoFieldFactory{
 	nestedFieldFactory{},
 }
 
-func protoFields(msg proto.Message, uMsg proto.Message) ([]protoField, error) {
+func protoFields(msg, uMsg proto.Message) ([]protoField, error) {
 	var result []protoField
 
 	pmVal := reflect.ValueOf(uMsg)
-	if pmVal.Kind() != reflect.Ptr {
+	if pmVal.Kind() != reflect.Pointer {
 		return nil, fmt.Errorf("expected proto.Message %T to be pointer kind", uMsg)
 	}
 
@@ -315,11 +307,10 @@ func protoFields(msg proto.Message, uMsg proto.Message) ([]protoField, error) {
 	t := mVal.Type()
 	// TODO, this will skip oneof fields, this should be handled
 	// correctly at some point
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
+	for f := range t.Fields() {
 		fieldName := f.Name
 		tagField := f.Tag.Get("protobuf")
-		for _, s := range strings.Split(tagField, ",") {
+		for s := range strings.SplitSeq(tagField, ",") {
 			if strings.HasPrefix(s, "name=") {
 				fieldName = s[len("name="):]
 				break
@@ -349,14 +340,14 @@ func protoFields(msg proto.Message, uMsg proto.Message) ([]protoField, error) {
 
 	// Loop over the collected fields in reverse order to collect them in
 	// correct dependency order as specified in fieldFactories
-	for i := len(iResult) - 1; i >= 0; i-- {
-		result = append(result, iResult[i]...)
+	for _, i := range slices.Backward(iResult) {
+		result = append(result, i...)
 	}
 
 	return result, nil
 }
 
-func recursivelyCreateTreeFromMessage(msg proto.Message) (tree map[string]interface{}, err error) {
+func recursivelyCreateTreeFromMessage(msg proto.Message) (tree map[string]any, err error) {
 	defer func() {
 		// Because this function is recursive, it's difficult to determine which level
 		// of the proto the error originated from, this wrapper leaves breadcrumbs for debugging
@@ -415,7 +406,7 @@ func DeepMarshalJSON(w io.Writer, msg proto.Message) error {
 	return encoder.Encode(root)
 }
 
-func recursivelyPopulateMessageFromTree(tree map[string]interface{}, msg proto.Message) (err error) {
+func recursivelyPopulateMessageFromTree(tree map[string]any, msg proto.Message) (err error) {
 	defer func() {
 		// Because this function is recursive, it's difficult to determine which level
 		// of the proto the error orginated from, this wrapper leaves breadcrumbs for debugging
@@ -435,7 +426,7 @@ func recursivelyPopulateMessageFromTree(tree map[string]interface{}, msg proto.M
 		return err
 	}
 
-	specialFieldsMap := make(map[string]interface{})
+	specialFieldsMap := make(map[string]any)
 
 	for _, field := range fields {
 		specialField, ok := tree[field.Name()]

@@ -271,13 +271,15 @@ func newSigningIdentity(cert *x509.Certificate, pk bccsp.Key, signer crypto.Sign
 	if err != nil {
 		return nil, err
 	}
+	baseIdentity, ok := mspId.(*identity)
+	if !ok {
+		return nil, fmt.Errorf("unexpected identity type %T", mspId)
+	}
 	return &signingidentity{
-		identity: identity{
-			id:   mspId.(*identity).id,
-			cert: mspId.(*identity).cert,
-			msp:  mspId.(*identity).msp,
-			pk:   mspId.(*identity).pk,
-		},
+		id:     baseIdentity.id,
+		cert:   baseIdentity.cert,
+		msp:    baseIdentity.msp,
+		pk:     baseIdentity.pk,
 		signer: signer,
 	}, nil
 }

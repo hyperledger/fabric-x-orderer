@@ -23,8 +23,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func nestedFrom(value interface{}, destType reflect.Type) (reflect.Value, error) {
-	tree := value.(map[string]interface{}) // Safe, already checked
+func nestedFrom(value any, destType reflect.Type) (reflect.Value, error) {
+	tree := value.(map[string]any) // Safe, already checked
 	result := reflect.New(destType.Elem())
 	nMsg := result.Interface().(proto.Message) // Safe, already checked
 	if err := recursivelyPopulateMessageFromTree(tree, nMsg); err != nil {
@@ -33,30 +33,28 @@ func nestedFrom(value interface{}, destType reflect.Type) (reflect.Value, error)
 	return result, nil
 }
 
-func nestedTo(value reflect.Value) (interface{}, error) {
+func nestedTo(value reflect.Value) (any, error) {
 	nMsg := value.Interface().(proto.Message) // Safe, already checked
 	return recursivelyCreateTreeFromMessage(nMsg)
 }
 
-var timestampType = reflect.TypeOf(&timestamppb.Timestamp{})
+var timestampType = reflect.TypeFor[*timestamppb.Timestamp]()
 
 type nestedFieldFactory struct{}
 
 func (nff nestedFieldFactory) Handles(msg proto.Message, fieldName string, fieldType reflect.Type, fieldValue reflect.Value) bool {
 	// Note, we skip recursing into the field if it is a proto native timestamp, because there is other custom marshaling this conflicts with
 	// this should probably be revisited more generally to prevent custom marshaling of 'well known messages'
-	return fieldType.Kind() == reflect.Ptr && fieldType.AssignableTo(protoMsgType) && !fieldType.AssignableTo(timestampType)
+	return fieldType.Kind() == reflect.Pointer && fieldType.AssignableTo(protoMsgType) && !fieldType.AssignableTo(timestampType)
 }
 
 func (nff nestedFieldFactory) NewProtoField(msg proto.Message, fieldName string, fieldType reflect.Type, fieldValue reflect.Value) (protoField, error) {
 	return &plainField{
-		baseField: baseField{
-			msg:   msg,
-			name:  fieldName,
-			fType: mapStringInterfaceType,
-			vType: fieldType,
-			value: fieldValue,
-		},
+		msg:          msg,
+		name:         fieldName,
+		fType:        mapStringInterfaceType,
+		vType:        fieldType,
+		value:        fieldValue,
 		populateFrom: nestedFrom,
 		populateTo:   nestedTo,
 	}, nil
@@ -70,17 +68,15 @@ func (nmff nestedMapFieldFactory) Handles(msg proto.Message, fieldName string, f
 
 func (nmff nestedMapFieldFactory) NewProtoField(msg proto.Message, fieldName string, fieldType reflect.Type, fieldValue reflect.Value) (protoField, error) {
 	return &mapField{
-		baseField: baseField{
-			msg:   msg,
-			name:  fieldName,
-			fType: mapStringInterfaceType,
-			vType: fieldType,
-			value: fieldValue,
-		},
-		populateFrom: func(k string, v interface{}, dT reflect.Type) (reflect.Value, error) {
+		msg:   msg,
+		name:  fieldName,
+		fType: mapStringInterfaceType,
+		vType: fieldType,
+		value: fieldValue,
+		populateFrom: func(k string, v any, dT reflect.Type) (reflect.Value, error) {
 			return nestedFrom(v, dT)
 		},
-		populateTo: func(k string, v reflect.Value) (interface{}, error) {
+		populateTo: func(k string, v reflect.Value) (any, error) {
 			return nestedTo(v)
 		},
 	}, nil
@@ -94,17 +90,15 @@ func (nmff nestedSliceFieldFactory) Handles(msg proto.Message, fieldName string,
 
 func (nmff nestedSliceFieldFactory) NewProtoField(msg proto.Message, fieldName string, fieldType reflect.Type, fieldValue reflect.Value) (protoField, error) {
 	return &sliceField{
-		baseField: baseField{
-			msg:   msg,
-			name:  fieldName,
-			fType: mapStringInterfaceType,
-			vType: fieldType,
-			value: fieldValue,
-		},
-		populateFrom: func(i int, v interface{}, dT reflect.Type) (reflect.Value, error) {
+		msg:   msg,
+		name:  fieldName,
+		fType: mapStringInterfaceType,
+		vType: fieldType,
+		value: fieldValue,
+		populateFrom: func(i int, v any, dT reflect.Type) (reflect.Value, error) {
 			return nestedFrom(v, dT)
 		},
-		populateTo: func(i int, v reflect.Value) (interface{}, error) {
+		populateTo: func(i int, v reflect.Value) (any, error) {
 			return nestedTo(v)
 		},
 	}, nil
