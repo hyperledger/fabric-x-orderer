@@ -117,3 +117,32 @@ func TestSubmitConfigAck_StopCancelsRetries(t *testing.T) {
 		t.Fatal("SubmitConfigAck did not return after Stop was called")
 	}
 }
+
+// TestSubmitConfigAck_ReturnsErrorOnTimeout verifies that SubmitConfigAck stops
+// retrying and returns an error once the total submission timeout elapses, while
+// the consenter keeps rejecting the ack.
+func TestSubmitConfigAck_ReturnsErrorOnTimeout(t *testing.T) {
+	stubConsenter, configAcker := createTestSetupForConfigAcker(t, protos.NodeType_ROUTER, 0)
+
+	configAcker.submitConfigAckTimeout = 500 * time.Millisecond
+	configAcker.minRetryInterval = 10 * time.Millisecond
+	configAcker.maxRetryInterval = 50 * time.Millisecond
+
+	var callCount int32
+	stubConsenter.AckConfigHandler = func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		atomic.AddInt32(&callCount, 1)
+		return nil, fmt.Errorf("permanent failure")
+	}
+
+	stubConsenter.Start()
+	defer stubConsenter.Stop()
+
+	err := configAcker.SubmitConfigAck(1)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "sending config ack to consensus aborted")
+
+	// The sender retried across multiple attempts until the timeout elapsed, rather than
+	// giving up after a single attempt.
+	require.Greater(t, atomic.LoadInt32(&callCount), int32(1))
+	configAcker.Stop()
+}

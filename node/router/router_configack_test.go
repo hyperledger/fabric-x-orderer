@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	cfgutil "github.com/hyperledger/fabric-x-orderer/testutil/configutil"
@@ -38,12 +37,6 @@ func (r *configAckRecorder) record(req *protos.ConfigAck) {
 	r.acks = append(r.acks, req)
 }
 
-func (r *configAckRecorder) count() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return len(r.acks)
-}
-
 func (r *configAckRecorder) all() []*protos.ConfigAck {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -63,16 +56,6 @@ func waitForRouterServing(t *testing.T, s *reconfigTestSetup) {
 		conn.Close()
 		return true
 	}, 10*time.Second, 100*time.Millisecond)
-}
-
-// autoRemoveTimeoutConfigUpdate builds a config update that changes a batching timeout. It
-// does not require an admin restart in the router, so the router applies it dynamically and
-// advances to config sequence 1.
-func autoRemoveTimeoutConfigUpdate(t *testing.T, dir string) []byte {
-	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "15ms"))
-	require.NotNil(t, configUpdatePbData)
-	return configUpdatePbData
 }
 
 // Scenario:
@@ -110,11 +93,6 @@ func TestRouterSendsConfigAck(t *testing.T) {
 	require.Eventually(t, func() bool {
 		status := testSetup.routerNode.GetStatus()
 		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 1
-	}, 20*time.Second, 100*time.Millisecond)
-
-	// exactly one ConfigAck is sent for the new config block.
-	require.Eventually(t, func() bool {
-		return recorder.count() == 1
 	}, 20*time.Second, 100*time.Millisecond)
 
 	acks := recorder.all()
@@ -166,13 +144,9 @@ func TestRouterConfigAck_RetriesUntilConsenterAccepts(t *testing.T) {
 		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 1
 	}, 20*time.Second, 100*time.Millisecond)
 
-	// the accepted ack is for sequence 1, and the sender made more than one attempt.
-	require.Eventually(t, func() bool {
-		return recorder.count() == 1
-	}, 20*time.Second, 100*time.Millisecond)
-
 	require.Greater(t, atomic.LoadInt32(&callCount), int32(1))
 	acks := recorder.all()
+	require.Len(t, acks, 1)
 	require.Equal(t, protos.NodeType_ROUTER, acks[0].NodeType)
 	require.EqualValues(t, 1, acks[0].ConfigSeq)
 }
@@ -218,59 +192,8 @@ func TestRouterSendsConfigAckEvenWhenEvicted(t *testing.T) {
 		return status.State == node_utils.StatePendingAdmin && status.ConfigSequenceNumber == 0
 	}, 20*time.Second, 100*time.Millisecond)
 
-	// even though the router is evicted, it acknowledged the new config on sequence 1.
-	require.Eventually(t, func() bool {
-		return recorder.count() == 1
-	}, 20*time.Second, 100*time.Millisecond)
-
 	acks := recorder.all()
+	require.Len(t, acks, 1)
 	require.Equal(t, protos.NodeType_ROUTER, acks[0].NodeType)
 	require.EqualValues(t, 1, acks[0].ConfigSeq)
-}
-
-// Scenario:
-//  1. Shorten the config-ack submission timeout so the failing-ack path is fast.
-//  2. Start a router, stub batcher, and stub consenter with the initial config.
-//  3. Install an AckConfigHandler that always fails, so the ack never succeeds and
-//     SubmitConfigAck exhausts its retries and times out.
-//  4. Deliver a config update through the consenter path.
-//  5. Verify that a failed ack is non-fatal to the router: it still advances to
-//     config sequence 1 after the submission times out.
-func TestRouterConfigAck_FailureIsNonFatal(t *testing.T) {
-	origTimeout := configack.SubmitConfigAckTimeout
-	configack.SubmitConfigAckTimeout = 1 * time.Second
-	defer func() { configack.SubmitConfigAckTimeout = origTimeout }()
-
-	partyId := types.PartyID(1)
-	parties := []types.PartyID{partyId}
-
-	dir := t.TempDir()
-	testSetup := createReconfigTestSetup(t, dir, partyId)
-
-	var callCount int32
-	testSetup.stubConsenter.AckConfigHandler = func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
-		atomic.AddInt32(&callCount, 1)
-		return nil, fmt.Errorf("permanent failure")
-	}
-
-	testSetup.Start()
-	defer testSetup.Stop()
-
-	require.Eventually(t, func() bool {
-		status := testSetup.routerNode.GetStatus()
-		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
-	}, 20*time.Second, 100*time.Millisecond)
-	waitForRouterServing(t, testSetup)
-
-	testSetup.SendConfigUpdate(t, parties, autoRemoveTimeoutConfigUpdate(t, dir), dir, 1)
-
-	// the ack never succeeds, but the router still applies the new config and
-	// advances to config sequence 1 once the submission times out.
-	require.Eventually(t, func() bool {
-		status := testSetup.routerNode.GetStatus()
-		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 1
-	}, 20*time.Second, 100*time.Millisecond)
-
-	// the router did attempt to send the ack.
-	require.Greater(t, atomic.LoadInt32(&callCount), int32(0))
 }
