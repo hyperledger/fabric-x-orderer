@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package synchronizer
 
 import (
-	"encoding/pem"
 	"fmt"
 	"maps"
 	"slices"
@@ -16,7 +15,6 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient/blocksprovider"
@@ -234,11 +232,10 @@ func (a *AssemblerBFTSynchronizer) createBFTDeliverer(startHeight uint64, myPart
 	clientConfig.AsyncConnect = false
 	clientConfig.SecOpts.VerifyCertificate = nil
 
-	block, _ := pem.Decode(clientConfig.SecOpts.Certificate)
-	if block == nil {
-		return nil, errors.Errorf("failed to decode TLS certificate: %v", string(clientConfig.SecOpts.Certificate))
+	tlsCertHash, err := protoutil.HashTLSCertificate(clientConfig.SecOpts.Certificate)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed hashing the TLS certificate")
 	}
-	tlsCertHash := util.ComputeSHA256(block.Bytes)
 
 	// The maximal amount of time to wait before retrying to connect.
 	maxRetryInterval := a.LocalConfigCluster.ReplicationMaxRetryInterval

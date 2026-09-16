@@ -38,16 +38,24 @@ type BatchPuller struct {
 	tlsKey     []byte
 	tlsCert    []byte
 	stopPuller context.CancelFunc
+	// tlsCertHash binds a deliver request to the TLS connection it is sent over.
+	tlsCertHash []byte
 }
 
 func NewBatchPuller(config *config.BatcherNodeConfig, ledger BatchLedger, signer identity.SignerSerializer, logger *flogging.FabricLogger) *BatchPuller {
+	tlsCertHash, err := protoutil.HashTLSCertificate(config.TLSCertificateFile)
+	if err != nil {
+		logger.Panicf("Failed hashing the TLS certificate: %s", err)
+	}
+
 	puller := &BatchPuller{
-		ledger:  ledger,
-		logger:  logger,
-		config:  config,
-		signer:  signer,
-		tlsKey:  config.TLSPrivateKeyFile,
-		tlsCert: config.TLSCertificateFile,
+		ledger:      ledger,
+		logger:      logger,
+		config:      config,
+		signer:      signer,
+		tlsKey:      config.TLSPrivateKeyFile,
+		tlsCert:     config.TLSCertificateFile,
+		tlsCertHash: tlsCertHash,
 	}
 	return puller
 }
@@ -71,7 +79,7 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 			delivery.NextSeekInfo(seq),
 			int32(0),
 			uint64(0),
-			nil,
+			bp.tlsCertHash,
 		)
 		if err != nil {
 			bp.logger.Panicf("Failed creating seek envelope: %v", err)
