@@ -40,7 +40,7 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	_, _, _, clean := test_utils.CreateConsenters(t, numParties, consenterNodes, consentersInfo, shards, genesisBlock)
+	_, _, _, clean := test_utils.CreateConsenters(t, numParties, consenterNodes, consentersInfo, shards, genesisBlock, nil, nil, batcherNodesShard0, batcherNodesShard1)
 	defer clean()
 
 	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)

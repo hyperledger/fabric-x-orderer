@@ -39,15 +39,16 @@ func TestABCR(t *testing.T) {
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	_, _, _, cleanConsenters := test_utils.CreateConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock)
+	routerIdentities := test_utils.CreateSigningIdentities(t, numParties)
+	assemblerIdentities := test_utils.CreateSigningIdentities(t, numParties)
+
+	_, _, _, cleanConsenters := test_utils.CreateConsenters(t, numParties, consenterNodes, consenterInfos, shards, genesisBlock, routerIdentities, assemblerIdentities, batcherNodes)
 
 	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
 
-	assemblerIdentities := test_utils.CreateAssemblerSigningIdentities(t, numParties)
-
 	_, _, _, cleanBatchers := test_utils.CreateBatchersForShard(t, numParties, batcherNodes, shards, consenterInfos, routerKeyPairs, shards[0].ShardId, genesisBlock, assemblerIdentities)
 
-	routers, _, _, _ := test_utils.CreateRouters(t, numParties, batcherInfos, ca, routerKeyPairs, shards[0].ShardId, make([]string, numParties), genesisBlock)
+	routers, _, _, _ := test_utils.CreateRouters(t, numParties, batcherInfos, ca, routerKeyPairs, shards[0].ShardId, make([]string, numParties), genesisBlock, routerIdentities)
 
 	for i := range routers {
 		routers[i].StartRouterService()

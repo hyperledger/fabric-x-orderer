@@ -15,6 +15,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -188,7 +189,7 @@ func (sc *stubConsenter) ReplicateDecision() <-chan *state.Header {
 	return sc.headerChan
 }
 
-func (sc *stubConsenter) CreateDecisionConsensusReplicator(conf *config.BatcherNodeConfig, logger *flogging.FabricLogger, num types.DecisionNum) batcher.DecisionReplicator {
+func (sc *stubConsenter) CreateDecisionConsensusReplicator(conf *config.BatcherNodeConfig, signer identity.SignerSerializer, logger *flogging.FabricLogger, num types.DecisionNum) batcher.DecisionReplicator {
 	return sc
 }
 
