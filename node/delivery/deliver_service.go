@@ -14,24 +14,46 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
 
-// DeliverService is a map of a channel name string to a ledger.
-type DeliverService map[string]blockledger.Reader
+// DeliverService serves the decisions of consensus over the single channel they are written to.
+type DeliverService struct {
+	channelName string
+	ledger      blockledger.Reader
+	// accessControl authorizes a request by the node that signed it.
+	accessControl *deliver.NodeVerifier
+}
 
-func (d DeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
+// NewDeliverService serves the decisions of a channel out of the consensus ledger, to the nodes the
+// shared configuration of the bundle holds.
+func NewDeliverService(channelID string, consensusLedger blockledger.Reader, bundle channelconfig.Resources) (*DeliverService, error) {
+	accessControl, err := deliver.NewConsenterDeliverVerifier(bundle)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed building the access control of the consensus deliver service")
+	}
+
+	return &DeliverService{
+		channelName:   DecisionChannelName(channelID),
+		ledger:        consensusLedger,
+		accessControl: accessControl,
+	}, nil
+}
+
+func (d *DeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
 	return fmt.Errorf("not implemented")
 }
 
-func (d DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
+func (d *DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 	handler := &deliver.Handler{
-		ChainManager:     &chainManager{ledgersPerChain: d},
+		ChainManager:     &chainManager{channelName: d.channelName, ledger: d.ledger},
 		BindingInspector: &noopBindingInspector{},
 		TimeWindow:       time.Hour,
 		Metrics:          deliver.NewMetrics(&disabled.Provider{}),
@@ -42,7 +64,7 @@ func (d DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) er
 	}
 
 	return handler.Handle(context.Background(), &deliver.Server{
-		PolicyChecker:  &policyChecker{},
+		PolicyChecker:  d.accessControl,
 		ResponseSender: &responseSender{stream: stream},
 		Receiver:       stream,
 	})
@@ -72,22 +94,17 @@ func (r *responseSender) DataType() string {
 	return "block"
 }
 
-type policyChecker struct{}
-
-func (p *policyChecker) CheckPolicy(envelope *common.Envelope, channelID string) error {
-	return nil
-}
-
 type chainManager struct {
-	ledgersPerChain map[string]blockledger.Reader
+	channelName string
+	ledger      blockledger.Reader
 }
 
 func (c *chainManager) GetChain(chainID string) deliver.Chain {
-	if ledger, exists := c.ledgersPerChain[chainID]; !exists {
+	if chainID != c.channelName {
 		return nil
-	} else {
-		return &chain{ledger: ledger}
 	}
+
+	return &chain{ledger: c.ledger}
 }
 
 type chain struct {

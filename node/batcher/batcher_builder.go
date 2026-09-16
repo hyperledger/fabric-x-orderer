@@ -97,7 +97,7 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 
 	batchPuller := NewBatchPuller(b.config, ledgerArray, b.signer, b.logger)
 
-	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, b.logger, lastKnownDecisionNum)
+	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, b.signer, b.logger, lastKnownDecisionNum)
 
 	if memPool == nil {
 		memPool = createMemPool(b, b.config, DefaultRequestID)
