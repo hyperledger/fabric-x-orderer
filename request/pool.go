@@ -238,9 +238,7 @@ func (rp *Pool) RemoveRequests(requestsIDs ...string) {
 		return
 	}
 
-	for _, requestID := range requestsIDs {
-		rp.batchStore.Remove(requestID)
-	}
+	rp.batchStore.RemoveRequests(requestsIDs...)
 }
 
 // Contains reports whether a request with the given id is currently in the pool.

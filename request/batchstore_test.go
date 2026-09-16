@@ -111,3 +111,47 @@ func TestBatchStore(t *testing.T) {
 
 	assert.Equal(t, workerNum*workPerWorker, int(removed))
 }
+
+func TestBatchStoreRemoveRequests(t *testing.T) {
+	max := uint32(10000)
+	lenByte := uint32(8)
+	var removed uint32
+
+	sugaredLogger := testutil.CreateLogger(t, 0)
+
+	bs := NewBatchStore(max, max*lenByte, func(string) {
+		atomic.AddUint32(&removed, 1)
+	}, sugaredLogger)
+
+	requestInspector := &reqInspector{}
+
+	// Insert n keys and record their ids.
+	const n = 5000
+	keys := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		key := make([]byte, lenByte)
+		binary.BigEndian.PutUint32(key[4:], uint32(i))
+		keyID := requestInspector.RequestID(key)
+		require.True(t, bs.Insert(keyID, key, uint32(len(key))))
+		keys = append(keys, keyID)
+	}
+
+	// Remove them all in parallel via the new fan-out API.
+	bs.RemoveRequests(keys...)
+
+	// onDelete must have fired exactly once per key, and every key must be gone.
+	assert.Equal(t, n, int(atomic.LoadUint32(&removed)))
+	for _, keyID := range keys {
+		_, exists := bs.Lookup(keyID)
+		assert.False(t, exists, "key %s should have been removed", keyID)
+	}
+
+	// Removing again (now-absent keys) plus keys that never existed must be a
+	// no-op: LoadAndDelete misses, so onDelete does not fire again.
+	bs.RemoveRequests(append(keys, "does-not-exist-1", "does-not-exist-2")...)
+	assert.Equal(t, n, int(atomic.LoadUint32(&removed)))
+
+	// An empty call must not panic.
+	bs.RemoveRequests()
+	assert.Equal(t, n, int(atomic.LoadUint32(&removed)))
+}
