@@ -267,6 +267,11 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 	clientConfig.AsyncConnect = false
 	clientConfig.SecOpts.VerifyCertificate = nil
 
+	tlsCertHash, err := protoutil.HashTLSCertificate(clientConfig.SecOpts.Certificate)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed hashing the TLS certificate")
+	}
+
 	// The maximal amount of time to wait before retrying to connect.
 	maxRetryInterval := s.LocalConfigCluster.ReplicationMaxRetryInterval
 	// The minimal amount of time to wait before retrying. The retry interval doubles after every unsuccessful attempt.
@@ -298,7 +303,7 @@ func (s *BFTSynchronizer) createBFTDeliverer(startHeight uint64, myParty arma_ty
 			s.syncBuff.Stop()
 			return true // In the orderer we must limit the time we try to do Synch()
 		},
-		nil, // tlsCertHash: the consensus deliverer does not set a TLS cert hash
+		tlsCertHash,
 	)
 
 	s.Logger.Infof("Created a BFTDeliverer on channel: %s", s.Support.ChannelID())

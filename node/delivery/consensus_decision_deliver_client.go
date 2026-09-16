@@ -60,6 +60,11 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 	}
 
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		tlsCertHash, err := protoutil.HashTLSCertificate(cr.tlsCert)
+		if err != nil {
+			cr.logger.Panicf("Failed hashing the TLS certificate: %s", err)
+		}
+
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			DecisionChannelName(cr.channelID),
@@ -67,7 +72,7 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 			cr.seekInfo,
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
 		if err != nil {
 			cr.logger.Panicf("Failed creating signed envelope: %v", err)

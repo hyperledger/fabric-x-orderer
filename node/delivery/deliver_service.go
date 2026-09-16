@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package delivery
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/proto"
 )
 
 // DeliverService serves the decisions of consensus over the single channel they are written to.
@@ -54,7 +52,7 @@ func (d *DeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) er
 func (d *DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 	handler := &deliver.Handler{
 		ChainManager:     &chainManager{channelName: d.channelName, ledger: d.ledger},
-		BindingInspector: &noopBindingInspector{},
+		BindingInspector: deliver.InspectorFunc(deliver.NewBindingInspector(true, deliver.ExtractChannelHeaderCertHash)),
 		TimeWindow:       time.Hour,
 		Metrics:          deliver.NewMetrics(&disabled.Provider{}),
 		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
@@ -63,7 +61,7 @@ func (d *DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) e
 		ConfigBlockOps: &state.ConsenterConfigBlockOperations{},
 	}
 
-	return handler.Handle(context.Background(), &deliver.Server{
+	return handler.Handle(stream.Context(), &deliver.Server{
 		PolicyChecker:  d.accessControl,
 		ResponseSender: &responseSender{stream: stream},
 		Receiver:       stream,
@@ -116,8 +114,7 @@ func (c *chain) Sequence() uint64 {
 }
 
 func (c *chain) PolicyManager() policies.Manager {
-	// TODO inplement authorization: channel readers
-	panic("implement me")
+	panic("internal deliver authorizes by node signature, not by a channel policy")
 }
 
 func (c *chain) Reader() blockledger.Reader {
@@ -137,13 +134,6 @@ func (d *delayedReader) Iterator(startType *orderer.SeekPosition) (blockledger.I
 		time.Sleep(time.Millisecond)
 	}
 	return d.Reader.Iterator(startType)
-}
-
-type noopBindingInspector struct{}
-
-func (nbi *noopBindingInspector) Inspect(context.Context, proto.Message) error {
-	// TODO check the TLS binding
-	return nil
 }
 
 // DecisionChannelName returns the name of the channel used for consensus decision replication.
