@@ -137,6 +137,11 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 	br.logger.Infof("Assembler replicating from channel %s ", channelName)
 
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		tlsCertHash, err := protoutil.HashTLSCertificate(br.config.TLSCertificateFile)
+		if err != nil {
+			br.logger.Panicf("Failed hashing the TLS certificate: %s", err)
+		}
+
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			channelName,
@@ -144,7 +149,7 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 			delivery.NextSeekInfo(uint64(seq)),
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
 		if err != nil {
 			br.logger.Panicf("Failed creating signed envelope: %v", err)
@@ -258,6 +263,11 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 	br.logger.Infof("Assembler replicating from channel %s ", channelName)
 
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		tlsCertHash, err := protoutil.HashTLSCertificate(br.config.TLSCertificateFile)
+		if err != nil {
+			br.logger.Panicf("Failed hashing the TLS certificate: %s", err)
+		}
+
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			channelName,
@@ -265,7 +275,7 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 			delivery.SingleSpecifiedSeekInfo(uint64(batchID.Seq())),
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
 		if err != nil {
 			br.logger.Panicf("Failed creating signed envelope: %s", err)

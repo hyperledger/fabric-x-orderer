@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package batcher
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-	"google.golang.org/protobuf/proto"
 )
 
 // TODO The deliver service and client (puller) were copied almost as is from Fabric.
@@ -42,7 +40,7 @@ func (d *BatcherDeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastSer
 func (d *BatcherDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 	handler := &deliver.Handler{
 		ChainManager:     &chainManager{ledgerArray: d.LedgerArray, logger: d.Logger},
-		BindingInspector: &noopBindingInspector{},
+		BindingInspector: deliver.InspectorFunc(deliver.NewBindingInspector(true, deliver.ExtractChannelHeaderCertHash)),
 		TimeWindow:       time.Hour,
 		Metrics:          deliver.NewMetrics(&disabled.Provider{}),
 		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
@@ -114,7 +112,7 @@ func (c *chainReader) Sequence() uint64 {
 }
 
 func (c *chainReader) PolicyManager() policies.Manager {
-	panic("implement me")
+	panic("internal deliver authorizes by node signature, not by a channel policy")
 }
 
 func (c *chainReader) Reader() blockledger.Reader {
@@ -134,10 +132,4 @@ func (d *delayedReader) Iterator(startType *orderer.SeekPosition) (blockledger.I
 		time.Sleep(time.Millisecond)
 	}
 	return d.Reader.Iterator(startType)
-}
-
-type noopBindingInspector struct{}
-
-func (nbi noopBindingInspector) Inspect(context.Context, proto.Message) error {
-	return nil
 }

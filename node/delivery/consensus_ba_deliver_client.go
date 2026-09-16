@@ -86,6 +86,11 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 		position := createAssemblerConsensusPosition(lastOrderingInfo)
 		cr.logger.Infof("Last OrderingInfo: %s; Last AssemblerConsensusPosition: %+v", lastOrderingInfo.String(), position)
 
+		tlsCertHash, err := protoutil.HashTLSCertificate(cr.tlsCert)
+		if err != nil {
+			cr.logger.Panicf("Failed hashing the TLS certificate: %s", err)
+		}
+
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			DecisionChannelName(cr.channelID),
@@ -93,7 +98,7 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 			NextSeekInfo(uint64(position.DecisionNum)),
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
 		if err != nil {
 			cr.logger.Panicf("Failed creating signed envelope: %v", err)

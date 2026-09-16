@@ -65,6 +65,11 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 	channelName := node_ledger.ShardPartyChannelIDToChannelName(bp.config.ShardId, primary.PartyID, bp.config.GetChannelID())
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
 		seq := bp.ledger.Height(from)
+		tlsCertHash, err := protoutil.HashTLSCertificate(bp.tlsCert)
+		if err != nil {
+			bp.logger.Panicf("Failed hashing the TLS certificate: %s", err)
+		}
+
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			channelName,
@@ -72,7 +77,7 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 			nextSeekInfo(seq),
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
 		if err != nil {
 			bp.logger.Panicf("Failed creating seek envelope: %v", err)

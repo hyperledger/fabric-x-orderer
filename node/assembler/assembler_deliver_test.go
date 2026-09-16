@@ -8,7 +8,6 @@ package assembler_test
 
 import (
 	"context"
-	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
@@ -258,9 +256,8 @@ func TestAssemblerDeliver_WrongChannelID(t *testing.T) {
 	defer stream.CloseSend()
 
 	// prepare request envelope with wrong channel ID
-	block, _ := pem.Decode(ckp.Cert)
-	require.True(t, block != nil && block.Type == "CERTIFICATE")
-	tlsCertHash := util.ComputeSHA256(block.Bytes)
+	tlsCertHash, err := protoutil.HashTLSCertificate(ckp.Cert)
+	require.NoError(t, err)
 
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
@@ -323,9 +320,8 @@ func createDeliveryClientAndPull(t *testing.T, assemblerEndpoint string, assembl
 
 	var tlsCertHash []byte
 	if tls == "mTLS" {
-		block, _ := pem.Decode(ckp.Cert)
-		require.True(t, block != nil && block.Type == "CERTIFICATE")
-		tlsCertHash = util.ComputeSHA256(block.Bytes)
+		tlsCertHash, err = protoutil.HashTLSCertificate(ckp.Cert)
+		require.NoError(t, err)
 	}
 
 	// prepare request envelope
