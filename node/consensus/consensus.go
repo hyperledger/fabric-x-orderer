@@ -91,7 +91,7 @@ type BFT interface {
 }
 
 type Consensus struct {
-	delivery.DeliverService
+	DeliverService *delivery.DeliverService
 	*comm.ClusterService
 	Egress       *comm.Egress
 	Logger       *flogging.FabricLogger

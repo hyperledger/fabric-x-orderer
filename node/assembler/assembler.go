@@ -245,7 +245,7 @@ func (a *Assembler) initFromConfig(
 	a.prefetcher = prefetcherFactory.Create(shardIds, partyIds, index, br, a.metrics, a.logger)
 
 	channelID := nodeConfig.Bundle.ConfigtxValidator().ChannelID()
-	baReplicator := consensusBringerFactory.Create(channelID, nodeConfig.Consenter.TLSCACerts, nodeConfig.TLSPrivateKeyFile, nodeConfig.TLSCertificateFile, nodeConfig.Consenter.Endpoint, a.ledger, a.logger)
+	baReplicator := consensusBringerFactory.Create(channelID, nodeConfig.Consenter.TLSCACerts, nodeConfig.TLSPrivateKeyFile, nodeConfig.TLSCertificateFile, nodeConfig.Consenter.Endpoint, a.ledger, a.signer, a.logger)
 	a.collator = Collator{
 		Shards:                            shardIds,
 		OrderedBatchAttestationReplicator: baReplicator,
