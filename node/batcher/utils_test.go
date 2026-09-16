@@ -20,6 +20,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
@@ -29,11 +30,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 )
@@ -51,10 +53,12 @@ func allocateMonitoringAddress(t *testing.T) string {
 
 type node struct {
 	*comm.GRPCServer
-	TLSCert []byte
-	TLSKey  []byte
-	sk      *ecdsa.PrivateKey
-	pk      node_config.RawBytes
+	TLSCert  []byte
+	TLSKey   []byte
+	sk       *ecdsa.PrivateKey
+	pk       node_config.RawBytes
+	signer   *signutil.TestSigner
+	signCert []byte
 }
 
 func createNodes(t *testing.T, ca tlsgen.CA, num int) []*node {
@@ -81,7 +85,9 @@ func createNodes(t *testing.T, ca tlsgen.CA, num int) []*node {
 		srv, err := newGRPCServer(net.JoinHostPort(localhost, port), ca, kp)
 		require.NoError(t, err)
 
-		result = append(result, &node{GRPCServer: srv, TLSKey: kp.Key, TLSCert: kp.Cert, pk: pks[i], sk: sks[i]})
+		signer, signCert := signutil.NewSignerOfKey(t, sks[i], "org")
+
+		result = append(result, &node{GRPCServer: srv, TLSKey: kp.Key, TLSCert: kp.Cert, pk: pks[i], sk: sks[i], signer: signer, signCert: signCert})
 	}
 	return result
 }
@@ -142,12 +148,12 @@ func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID
 
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
 		require.NoError(t, err)
-		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
 
 		bundle := &configMocks.FakeConfigResources{}
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
+		bundle.OrdererConfigReturns(configutil.NewOrdererConfigOfSharedConfig(t, sharedConfigOfBatchers(shardID, batcherNodes[:num])), true)
 
 		dir := t.TempDir()
 		configStorePath := path.Join(dir, "configstore")
@@ -189,7 +195,7 @@ func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID
 		configs = append(configs, conf)
 
 		fullConfig := pinning.ConfigurationWithRouters(parties[i], routerKeyPairs)
-		batcher := batcher.CreateBatcher(conf, fullConfig, logger, make(chan struct{}), stubConsenters[i], &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher := batcher.CreateBatcher(conf, fullConfig, logger, make(chan struct{}), stubConsenters[i], &batcher.ConsenterControlEventSenderFactory{}, batcherNodes[i].signer)
 		batcher.Net = batcherNodes[i]
 		batchers = append(batchers, batcher)
 		batcher.Run()
@@ -221,10 +227,12 @@ func createConsenterStubs(t *testing.T, consenterNodes []*node, num int) ([]*stu
 
 func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *flogging.FabricLogger, conf *node_config.BatcherNodeConfig, routerKeyPairs []*tlsgen.CertKeyPair, batcherNode *node, sc *stubConsenter) *batcher.Batcher {
 	newBatcherNode := &node{
-		TLSCert: batcherNode.TLSCert,
-		TLSKey:  batcherNode.TLSKey,
-		sk:      batcherNode.sk,
-		pk:      batcherNode.pk,
+		TLSCert:  batcherNode.TLSCert,
+		TLSKey:   batcherNode.TLSKey,
+		sk:       batcherNode.sk,
+		pk:       batcherNode.pk,
+		signer:   batcherNode.signer,
+		signCert: batcherNode.signCert,
 	}
 	var err error
 	newBatcherNode.GRPCServer, err = newGRPCServer(batcherNode.Address(), ca, &tlsgen.CertKeyPair{
@@ -233,9 +241,7 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *flogging.FabricLogger, c
 	})
 	require.NoError(t, err)
 
-	signer := crypto.ECDSASigner(*newBatcherNode.sk)
-
-	batcher := batcher.CreateBatcher(conf, pinning.ConfigurationWithRouters(conf.PartyId, routerKeyPairs), logger, make(chan struct{}), sc, &batcher.ConsenterControlEventSenderFactory{}, signer)
+	batcher := batcher.CreateBatcher(conf, pinning.ConfigurationWithRouters(conf.PartyId, routerKeyPairs), logger, make(chan struct{}), sc, &batcher.ConsenterControlEventSenderFactory{}, newBatcherNode.signer)
 	batcher.Net = newBatcherNode
 	batcher.Run()
 
@@ -257,6 +263,22 @@ func grpcRegisterAndStart(b *batcher.Batcher, n *node) {
 			panic(err)
 		}
 	}()
+}
+
+// sharedConfigOfBatchers returns the shared configuration holding the batchers of a shard, one per
+// party, each known by its signing certificate.
+func sharedConfigOfBatchers(shardID types.ShardID, batcherNodes []*node) []*ordererpb.PartyConfig {
+	parties := make([]*ordererpb.PartyConfig, 0, len(batcherNodes))
+	for i, batcherNode := range batcherNodes {
+		parties = append(parties, &ordererpb.PartyConfig{
+			PartyID: uint32(i + 1),
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{{
+				ShardID:  uint32(shardID),
+				SignCert: batcherNode.signCert,
+			}},
+		})
+	}
+	return parties
 }
 
 func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {

@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -83,12 +84,18 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 		b.logger.Panicf("Failed creating BatchLedgerArray: %s", err.Error())
 	}
 
-	deliverService := &BatcherDeliverService{
-		LedgerArray: ledgerArray,
-		Logger:      b.logger,
+	accessControl, err := deliver.NewBatcherDeliverVerifier(b.config.Bundle, b.config.ShardId)
+	if err != nil {
+		b.logger.Panicf("Failed creating the access control of the batcher deliver service: %s", err)
 	}
 
-	batchPuller := NewBatchPuller(b.config, ledgerArray, b.logger)
+	deliverService := &BatcherDeliverService{
+		LedgerArray:   ledgerArray,
+		AccessControl: accessControl,
+		Logger:        b.logger,
+	}
+
+	batchPuller := NewBatchPuller(b.config, ledgerArray, b.signer, b.logger)
 
 	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, b.logger, lastKnownDecisionNum)
 

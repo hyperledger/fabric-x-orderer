@@ -9,11 +9,14 @@ package assembler_test
 import (
 	"fmt"
 	"net"
+	"sync"
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -36,12 +39,16 @@ type stubBatcher struct {
 	cert        []byte
 	key         []byte
 	batcherInfo config.BatcherInfo
+	ledgerArray *node_ledger.BatchLedgerArray
 	logger      *flogging.FabricLogger
 
+	// mutex guards deliveryService, which a configuration update replaces.
+	mutex           sync.RWMutex
 	deliveryService *batcher.BatcherDeliverService
 }
 
-func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, ca tlsgen.CA) *stubBatcher {
+// NewStubBatcher starts a batcher deliver service over an empty ledger, serving the nodes of bundle.
+func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, ca tlsgen.CA, bundle channelconfig.Resources) *stubBatcher {
 	certKeyPair, err := ca.NewServerCertKeyPair(localhost)
 	require.NoError(t, err)
 
@@ -74,24 +81,27 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}
 
-	deliveryService := &batcher.BatcherDeliverService{
-		LedgerArray: ledgerArray,
-		Logger:      logger,
-	}
+	accessControl, err := deliver.NewBatcherDeliverVerifier(bundle, shardID)
+	require.NoError(t, err)
 
 	stubBatcher := &stubBatcher{
-		shardID:         shardID,
-		partyID:         partyID,
-		server:          server,
-		endpoint:        server.Address(),
-		cert:            certKeyPair.Cert,
-		key:             certKeyPair.Key,
-		batcherInfo:     batcherInfo,
-		deliveryService: deliveryService,
-		logger:          logger,
+		shardID:     shardID,
+		partyID:     partyID,
+		server:      server,
+		endpoint:    server.Address(),
+		cert:        certKeyPair.Cert,
+		key:         certKeyPair.Key,
+		batcherInfo: batcherInfo,
+		ledgerArray: ledgerArray,
+		logger:      logger,
+		deliveryService: &batcher.BatcherDeliverService{
+			LedgerArray:   ledgerArray,
+			AccessControl: accessControl,
+			Logger:        logger,
+		},
 	}
 
-	orderer.RegisterAtomicBroadcastServer(server.Server(), stubBatcher.deliveryService)
+	orderer.RegisterAtomicBroadcastServer(server.Server(), stubBatcher)
 	go func() {
 		address := server.Address()
 		logger.Infof("StubBatcher network service is starting on %s", address)
@@ -121,7 +131,7 @@ func (sb *stubBatcher) Restart() {
 
 	sb.server = server
 
-	orderer.RegisterAtomicBroadcastServer(server.Server(), sb.deliveryService)
+	orderer.RegisterAtomicBroadcastServer(server.Server(), sb)
 
 	go func() {
 		address := server.Address()
@@ -137,6 +147,32 @@ func (sb *stubBatcher) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer)
 	return fmt.Errorf("not implemented")
 }
 
+func (sb *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
+	sb.mutex.RLock()
+	deliveryService := sb.deliveryService
+	sb.mutex.RUnlock()
+
+	return deliveryService.Deliver(stream)
+}
+
+// UpdateAccessControl rebuilds the access control of the stub from bundle, so that a test which adds
+// a party can let its nodes pull.
+func (sb *stubBatcher) UpdateAccessControl(t *testing.T, bundle channelconfig.Resources) {
+	t.Helper()
+
+	accessControl, err := deliver.NewBatcherDeliverVerifier(bundle, sb.shardID)
+	require.NoError(t, err)
+
+	sb.mutex.Lock()
+	defer sb.mutex.Unlock()
+
+	sb.deliveryService = &batcher.BatcherDeliverService{
+		LedgerArray:   sb.ledgerArray,
+		AccessControl: accessControl,
+		Logger:        sb.logger,
+	}
+}
+
 func (sb *stubBatcher) SetNextBatch(batch types.Batch) {
-	sb.deliveryService.LedgerArray.Append(batch.Primary(), batch.Seq(), 0, batch.Requests(), batch.Digest(), batch.PrimarySignature())
+	sb.ledgerArray.Append(batch.Primary(), batch.Seq(), 0, batch.Requests(), batch.Digest(), batch.PrimarySignature())
 }
