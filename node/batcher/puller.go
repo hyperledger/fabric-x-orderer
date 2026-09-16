@@ -8,6 +8,7 @@ package batcher
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -65,6 +66,11 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 	channelName := node_ledger.ShardPartyChannelIDToChannelName(bp.config.ShardId, primary.PartyID, bp.config.GetChannelID())
 	requestEnvelopeFactoryFunc := func() (*common.Envelope, error) {
 		seq := bp.ledger.Height(from)
+		tlsCertHash, err := protoutil.HashTLSCertificate(bp.tlsCert)
+		if err != nil {
+			return nil, fmt.Errorf("failed hashing the TLS certificate: %w", err)
+		}
+
 		return protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			channelName,
@@ -72,7 +78,7 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 			nextSeekInfo(seq),
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
 	}
 

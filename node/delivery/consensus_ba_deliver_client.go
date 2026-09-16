@@ -8,6 +8,7 @@ package delivery
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -86,6 +87,11 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 		position := createAssemblerConsensusPosition(lastOrderingInfo)
 		cr.logger.Infof("Last OrderingInfo: %s; Last AssemblerConsensusPosition: %+v", lastOrderingInfo.String(), position)
 
+		tlsCertHash, err := protoutil.HashTLSCertificate(cr.tlsCert)
+		if err != nil {
+			return nil, fmt.Errorf("failed hashing the TLS certificate: %w", err)
+		}
+
 		return protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			DecisionChannelName(cr.channelID),
@@ -93,7 +99,7 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 			NextSeekInfo(uint64(position.DecisionNum)),
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
 	}
 

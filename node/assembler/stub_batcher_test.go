@@ -33,19 +33,23 @@ const (
 )
 
 type stubBatcher struct {
-	shardID     types.ShardID
-	partyID     types.PartyID
-	server      *comm.GRPCServer
-	endpoint    string
-	cert        []byte
-	key         []byte
-	batcherInfo config.BatcherInfo
-	logger      *flogging.FabricLogger
+	shardID  types.ShardID
+	partyID  types.PartyID
+	server   *comm.GRPCServer
+	endpoint string
+	cert     []byte
+	key      []byte
+	// clientRootCAs are the CAs that issue the client certificates the stub accepts.
+	clientRootCAs [][]byte
+	batcherInfo   config.BatcherInfo
+	logger        *flogging.FabricLogger
 
 	deliveryService *batcher.BatcherDeliverService
 }
 
-func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, ca tlsgen.CA) *stubBatcher {
+// NewStubBatcher starts a batcher deliver service over an empty ledger. It accepts a client certificate
+// that ca or one of clientCAs issued.
+func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, ca tlsgen.CA, clientCAs ...[]byte) *stubBatcher {
 	certKeyPair, err := ca.NewServerCertKeyPair(localhost)
 	require.NoError(t, err)
 
@@ -54,11 +58,14 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 	listener.Close()
 
 	// create a GRPC Server which will listen for incoming connections on the allocated port
+	clientRootCAs := append([][]byte{ca.CertBytes()}, clientCAs...)
 	server, err := comm.NewGRPCServer(net.JoinHostPort(localhost, port), comm.ServerConfig{
 		SecOpts: comm.SecureOptions{
-			UseTLS:      true,
-			Certificate: certKeyPair.Cert,
-			Key:         certKeyPair.Key,
+			UseTLS:            true,
+			Certificate:       certKeyPair.Cert,
+			Key:               certKeyPair.Key,
+			RequireClientCert: true,
+			ClientRootCAs:     clientRootCAs,
 		},
 	})
 	require.NoError(t, err)
@@ -97,6 +104,7 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 		endpoint:        server.Address(),
 		cert:            certKeyPair.Cert,
 		key:             certKeyPair.Key,
+		clientRootCAs:   clientRootCAs,
 		batcherInfo:     batcherInfo,
 		deliveryService: deliveryService,
 		logger:          logger,
@@ -118,12 +126,23 @@ func (sb *stubBatcher) Stop() {
 	sb.server.Stop()
 }
 
+// TrustClientCAs makes the stub accept a client certificate that one of clientCAs issued, along with
+// the CA the stub was started with, so that a test which adds a party can let its nodes pull.
+func (sb *stubBatcher) TrustClientCAs(t *testing.T, clientCAs ...[]byte) {
+	t.Helper()
+
+	sb.clientRootCAs = append(sb.clientRootCAs[:1:1], clientCAs...)
+	require.NoError(t, sb.server.SetClientRootCAs(sb.clientRootCAs))
+}
+
 func (sb *stubBatcher) Restart() {
 	server, err := comm.NewGRPCServer(sb.endpoint, comm.ServerConfig{
 		SecOpts: comm.SecureOptions{
-			UseTLS:      true,
-			Certificate: sb.cert,
-			Key:         sb.key,
+			UseTLS:            true,
+			Certificate:       sb.cert,
+			Key:               sb.key,
+			RequireClientCert: true,
+			ClientRootCAs:     sb.clientRootCAs,
 		},
 	})
 	if err != nil {

@@ -8,6 +8,7 @@ package delivery
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -60,6 +61,11 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 	}
 
 	requestEnvelopeFactoryFunc := func() (*common.Envelope, error) {
+		tlsCertHash, err := protoutil.HashTLSCertificate(cr.tlsCert)
+		if err != nil {
+			return nil, fmt.Errorf("failed hashing the TLS certificate: %w", err)
+		}
+
 		return protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			DecisionChannelName(cr.channelID),
@@ -67,7 +73,7 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 			cr.seekInfo,
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
 	}
 
