@@ -198,29 +198,31 @@ func (rp *Pool) submitToBatchStore(reqID string, request []byte) error {
 	return nil
 }
 
-// NextRequests returns the next requests to be batched.
-func (rp *Pool) NextRequests(ctx context.Context) [][]byte {
+// NextRequests returns the next requests to be batched and their corresponding ids.
+func (rp *Pool) NextRequests(ctx context.Context) ([][]byte, []string) {
 	rp.lock.RLock()
 	defer rp.lock.RUnlock()
 
 	if rp.isClosed() || rp.isStopped() {
 		rp.logger.Warnf("pool halted or closed, returning nil")
-		return nil
+		return nil, nil
 	}
 
 	if !rp.isBatchingEnabled() {
 		rp.logger.Warnf("NextRequests is called when batching is not enabled")
-		return nil
+		return nil, nil
 	}
 
-	requests := rp.batchStore.Fetch(ctx)
+	requests, ids := rp.batchStore.Fetch(ctx)
 
 	rawRequests := make([][]byte, len(requests))
-	for i := 0; i < len(requests); i++ {
+	reqIDs := make([]string, len(requests))
+	for i := range requests {
 		rawRequests[i] = requests[i].(*requestItem).request
+		reqIDs[i] = ids[i].(string)
 	}
 
-	return rawRequests
+	return rawRequests, reqIDs
 }
 
 func (rp *Pool) RemoveRequests(requestsIDs ...string) {

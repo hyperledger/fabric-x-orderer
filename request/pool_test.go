@@ -97,7 +97,7 @@ func BenchmarkRequestPool(b *testing.B) {
 
 	for committedReqCount < workerPerWorker*workerNum {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		batch := primaryPool.NextRequests(ctx)
+		batch, _ := primaryPool.NextRequests(ctx)
 		cancel()
 		committedReqCount += len(batch)
 
@@ -162,37 +162,46 @@ func TestRestartPool(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	batch1 := pool.NextRequests(ctx)
+	batch1, ids1 := pool.NextRequests(ctx)
 
 	assert.Equal(t, 10, len(batch1))
+	requireMatchingIDs(t, requestInspector.RequestID, batch1, ids1)
 
-	batch2 := pool.NextRequests(ctx)
+	batch2, ids2 := pool.NextRequests(ctx)
 
 	assert.Equal(t, 10, len(batch2))
+	requireMatchingIDs(t, requestInspector.RequestID, batch2, ids2)
 
 	pool.Restart(true)
 
-	batch3 := pool.NextRequests(ctx)
+	batch3, ids3 := pool.NextRequests(ctx)
 
 	assert.Equal(t, 10, len(batch3))
+	requireMatchingIDs(t, requestInspector.RequestID, batch3, ids3)
 
 	pool.Restart(false)
 
-	assert.Nil(t, pool.NextRequests(ctx))
+	batchNil, idsNil := pool.NextRequests(ctx)
+	assert.Nil(t, batchNil)
+	assert.Nil(t, idsNil)
 
 	pool.Restart(false)
 
-	assert.Nil(t, pool.NextRequests(ctx))
+	batchNil, idsNil = pool.NextRequests(ctx)
+	assert.Nil(t, batchNil)
+	assert.Nil(t, idsNil)
 
 	pool.Restart(true)
 
-	batch4 := pool.NextRequests(ctx)
+	batch4, ids4 := pool.NextRequests(ctx)
 
 	assert.Equal(t, 10, len(batch4))
+	requireMatchingIDs(t, requestInspector.RequestID, batch4, ids4)
 
-	batch5 := pool.NextRequests(ctx)
+	batch5, ids5 := pool.NextRequests(ctx)
 
 	assert.Equal(t, 10, len(batch5))
+	requireMatchingIDs(t, requestInspector.RequestID, batch5, ids5)
 }
 
 func TestPoolContains(t *testing.T) {
@@ -266,10 +275,15 @@ func TestBasicBatching(t *testing.T) {
 
 	assert.NoError(t, pool.Submit(byteReq1))
 	assert.Error(t, pool.Submit(byteReq1))
-	assert.Len(t, pool.NextRequests(ctx), 1)
+	res, ids := pool.NextRequests(ctx)
+	assert.Len(t, res, 1)
+	requireMatchingIDs(t, inspector.RequestID, res, ids)
+	assert.Equal(t, "1", ids[0])
 
 	pool.RemoveRequests("1")
-	assert.Len(t, pool.NextRequests(ctx), 0) // after timeout
+	res, ids = pool.NextRequests(ctx)
+	assert.Len(t, res, 0) // after timeout
+	requireMatchingIDs(t, inspector.RequestID, res, ids)
 
 	assert.NoError(t, pool.Submit(byteReq2))
 	assert.NoError(t, pool.Submit(byteReq3))
@@ -277,13 +291,17 @@ func TestBasicBatching(t *testing.T) {
 	ctx, cancel2 := context.WithTimeout(context.Background(), time.Second)
 	defer cancel2()
 
-	res := pool.NextRequests(ctx)
+	res, ids = pool.NextRequests(ctx)
 	assert.Len(t, res, 1)
 	assert.Equal(t, byteReq2, res[0])
+	requireMatchingIDs(t, inspector.RequestID, res, ids)
+	assert.Equal(t, "2", ids[0])
 
-	res = pool.NextRequests(ctx)
+	res, ids = pool.NextRequests(ctx)
 	assert.Len(t, res, 1)
 	assert.Equal(t, byteReq3, res[0])
+	requireMatchingIDs(t, inspector.RequestID, res, ids)
+	assert.Equal(t, "3", ids[0])
 
 	pool.Close()
 
@@ -309,9 +327,10 @@ func TestBasicBatching(t *testing.T) {
 	defer cancel3()
 
 	require.Eventually(t, func() bool {
-		res = pool.NextRequests(ctx3)
+		res, ids = pool.NextRequests(ctx3)
 		return len(res) == 2
 	}, 10*time.Second, 100*time.Millisecond)
+	requireMatchingIDs(t, inspector.RequestID, res, ids)
 
 	pool.Close()
 
@@ -338,9 +357,10 @@ func TestBasicBatching(t *testing.T) {
 	defer cancel4()
 
 	require.Eventually(t, func() bool {
-		res = pool.NextRequests(ctx4)
+		res, ids = pool.NextRequests(ctx4)
 		return len(res) == 2
 	}, 10*time.Second, 100*time.Millisecond)
+	requireMatchingIDs(t, inspector.RequestID, res, ids)
 
 	pool.Close()
 }
@@ -378,7 +398,8 @@ func TestBatchingWhileSubmitting(t *testing.T) {
 	timer := time.NewTimer(30 * time.Second)
 	for requests < submitted {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		res := pool.NextRequests(ctx)
+		res, ids := pool.NextRequests(ctx)
+		requireMatchingIDs(t, inspector.RequestID, res, ids)
 		requests += len(res)
 		cancel()
 		select {
@@ -458,8 +479,9 @@ func TestBasicPrune(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	res := pool.NextRequests(ctx)
+	res, ids := pool.NextRequests(ctx)
 	assert.Len(t, res, 4)
+	requireMatchingIDs(t, insp.RequestID, res, ids)
 
 	pool.Restart(false)
 
@@ -491,9 +513,21 @@ func TestBasicPrune(t *testing.T) {
 	defer cancel2()
 
 	require.Eventually(t, func() bool {
-		res = pool.NextRequests(ctx2)
+		res, ids = pool.NextRequests(ctx2)
 		return len(res) == 4 // ID = 5, 6, 10 ,11
 	}, 10*time.Second, 100*time.Millisecond)
+	requireMatchingIDs(t, insp.RequestID, res, ids)
+	assert.ElementsMatch(t, []string{"5", "6", "10", "11"}, ids)
+}
+
+// requireMatchingIDs asserts that NextRequests returned exactly one id per
+// request, and that each id is the RequestID of the request at the same index.
+func requireMatchingIDs(t *testing.T, requestID func([]byte) string, requests [][]byte, ids []string) {
+	t.Helper()
+	require.Len(t, ids, len(requests), "expected one id per request")
+	for i, req := range requests {
+		require.Equal(t, requestID(req), ids[i], "id at index %d does not match its request", i)
+	}
 }
 
 func makeTestRequest(txID, data string) []byte {
@@ -640,8 +674,10 @@ func TestHaltRestartBatching(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	batch := pool.NextRequests(ctx)
+	batch, batchIDs := pool.NextRequests(ctx)
 	require.Len(t, batch, 3, "Should get 3 requests after Halt and Restart")
+	requireMatchingIDs(t, inspector.RequestID, batch, batchIDs)
+	require.ElementsMatch(t, []string{"1", "2", "3"}, batchIDs)
 
 	// Verify the requests are correct
 	ids := make(map[string]bool)

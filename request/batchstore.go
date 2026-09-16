@@ -132,7 +132,8 @@ func (bs *BatchStore) Remove(key string) {
 	bs.onDelete(key)
 }
 
-func (bs *BatchStore) Fetch(ctx context.Context) []interface{} {
+// Fetch returns a batch of requests and their corresponding ids.
+func (bs *BatchStore) Fetch(ctx context.Context) ([]interface{}, []interface{}) {
 	// Do we have a batch ready for us?
 	bs.lock.Lock()
 	defer bs.lock.Unlock()
@@ -163,18 +164,18 @@ func (bs *BatchStore) Fetch(ctx context.Context) []interface{} {
 
 	// Prefer a ready and full batch over a non-empty one
 	for len(bs.readyBatches) > 0 {
-		dequeued := bs.dequeueBatch()
+		dequeued, ids := bs.dequeueBatch()
 		if len(dequeued) == 0 { // still might be empty if requests were pruned
 			continue
 		}
-		return dequeued
+		return dequeued, ids
 	}
 
 	// But if no full batch can be found, use the non-empty one
 	returnedBatch := bs.currentBatch
 	// If no request is found, return nil
 	if atomic.LoadUint64(&returnedBatch.sizeBytes) == 0 {
-		return nil
+		return nil, nil
 	}
 	// Mark the current batch as empty, since we are returning its content
 	// to the caller.
@@ -182,23 +183,25 @@ func (bs *BatchStore) Fetch(ctx context.Context) []interface{} {
 	return bs.prepareBatch(returnedBatch)
 }
 
-func (bs *BatchStore) dequeueBatch() []interface{} {
-	result := bs.prepareBatch(bs.readyBatches[0])
+func (bs *BatchStore) dequeueBatch() ([]interface{}, []interface{}) {
+	result, ids := bs.prepareBatch(bs.readyBatches[0])
 	batches := bs.readyBatches[1:]
 	bs.readyBatches = make([]*batch, len(bs.readyBatches)-1)
 	copy(bs.readyBatches, batches)
-	return result
+	return result, ids
 }
 
-func (bs *BatchStore) prepareBatch(readyBatch *batch) []interface{} {
+func (bs *BatchStore) prepareBatch(readyBatch *batch) ([]interface{}, []interface{}) {
 	readyBatch.markEnqueued() // make sure it is marked as enqueued before fetch returns it
 
 	batch := make([]interface{}, 0, bs.batchMaxSize*2)
+	ids := make([]interface{}, 0, bs.batchMaxSize*2)
 
 	readyBatch.Range(func(k, v interface{}) bool {
 		batch = append(batch, v)
+		ids = append(ids, k)
 		return true
 	})
 
-	return batch
+	return batch, ids
 }
