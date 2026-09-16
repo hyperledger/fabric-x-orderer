@@ -47,6 +47,34 @@ func TestValidateNewConfig(t *testing.T) {
 	require.NoError(t, or.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1)))
 }
 
+// TestProposeConfigUpdate_SetsTxIDOnConfigEnvelope verifies that the outer CONFIG
+// envelope the consenter signs carries a TxId matching its own creator and nonce, so the
+// Committer can track the config TX's processing.
+func TestProposeConfigUpdate_SetsTxIDOnConfigEnvelope(t *testing.T) {
+	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 1)
+	bccsp := factory.GetDefault()
+
+	updatePb := builder.UpdateBatchTimeouts(t, configutil.NewBatchTimeoutsConfig(
+		configutil.BatchTimeoutsConfigName.BatchCreationTimeout, "1s",
+	))
+	updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1}, 1, updatePb)
+	req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+	cfgReq, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
+	require.NoError(t, err)
+
+	payload, err := protoutil.UnmarshalPayload(cfgReq.Payload)
+	require.NoError(t, err)
+	chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+	require.NoError(t, err)
+	shdr, err := protoutil.UnmarshalSignatureHeader(payload.Header.SignatureHeader)
+	require.NoError(t, err)
+
+	require.Equal(t, int32(common.HeaderType_CONFIG), chdr.Type)
+	require.NotEmpty(t, chdr.TxId, "outer config envelope should carry a TxId")
+	require.Equal(t, protoutil.ComputeTxID(shdr.Nonce, shdr.Creator), chdr.TxId)
+}
+
 func TestValidateNewConfig_InvalidTimeout(t *testing.T) {
 	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 1)
 

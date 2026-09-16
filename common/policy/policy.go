@@ -114,7 +114,7 @@ func (cp *DefaultConfigUpdateProposer) AuthorizeAndVerifyConfigUpdate(envelope *
 
 func BuildVerifiedConfigRequest(request *protos.Request, configEnvelope *cb.ConfigEnvelope, bundle channelconfig.Resources, signer identity.SignerSerializer, verifier *requestfilter.RulesVerifier) (*protos.Request, error) {
 	// Wrap the config envelope and sign, prepare a matching request
-	config, err := protoutil.CreateSignedEnvelope(cb.HeaderType_CONFIG, bundle.ConfigtxValidator().ChannelID(), signer, configEnvelope, int32(0), 0)
+	config, err := createSignedConfigEnvelope(bundle.ConfigtxValidator().ChannelID(), signer, configEnvelope)
 	if err != nil {
 		return nil, fmt.Errorf("error creating a signed envelope, err: %s", err)
 	}
@@ -146,6 +146,37 @@ func BuildVerifiedConfigRequest(request *protos.Request, configEnvelope *cb.Conf
 	}
 
 	return configRequest, nil
+}
+
+// createSignedConfigEnvelope wraps the config envelope in an outer HeaderType_CONFIG
+// envelope signed by the consenter. Unlike protoutil.CreateSignedEnvelope, it sets a
+// TxId on the channel header (matching the creator and nonce, via protoutil.SetTxID),
+// so the Committer can track this config TX's processing.
+func createSignedConfigEnvelope(channelID string, signer identity.SignerSerializer, configEnvelope *cb.ConfigEnvelope) (*cb.Envelope, error) {
+	creator, err := signer.Serialize()
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to serialize signer")
+	}
+	nonce, err := protoutil.CreateNonce()
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to create nonce")
+	}
+
+	channelHeader := protoutil.MakeChannelHeader(cb.HeaderType_CONFIG, int32(0), channelID, 0)
+	signatureHeader := protoutil.MakeSignatureHeader(creator, nonce)
+	protoutil.SetTxID(channelHeader, signatureHeader) // TxId = ComputeTxID(nonce, creator)
+
+	payloadBytes := protoutil.MarshalOrPanic(&cb.Payload{
+		Header: protoutil.MakePayloadHeader(channelHeader, signatureHeader),
+		Data:   protoutil.MarshalOrPanic(configEnvelope),
+	})
+
+	sig, err := signer.Sign(payloadBytes)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to sign config envelope payload")
+	}
+
+	return &cb.Envelope{Payload: payloadBytes, Signature: sig}, nil
 }
 
 // TODO: revisit capabilities
