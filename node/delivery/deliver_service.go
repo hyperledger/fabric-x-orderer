@@ -14,6 +14,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/common/crypto"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
@@ -51,14 +52,12 @@ func (d *DeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) er
 
 func (d *DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 	handler := &deliver.Handler{
-		ChainManager:     &chainManager{channelName: d.channelName, ledger: d.ledger},
-		BindingInspector: deliver.InspectorFunc(deliver.NewBindingInspector(true, deliver.ExtractChannelHeaderCertHash)),
-		TimeWindow:       time.Hour,
-		Metrics:          deliver.NewMetrics(&disabled.Provider{}),
-		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
-			return time.Now().Add(time.Hour * 365 * 24)
-		},
-		ConfigBlockOps: &state.ConsenterConfigBlockOperations{},
+		ChainManager:        &chainManager{channelName: d.channelName, ledger: d.ledger},
+		BindingInspector:    deliver.InspectorFunc(deliver.NewBindingInspector(true, deliver.ExtractChannelHeaderCertHash)),
+		TimeWindow:          time.Hour,
+		Metrics:             deliver.NewMetrics(&disabled.Provider{}),
+		ExpirationCheckFunc: crypto.ExpiresAt,
+		ConfigBlockOps:      &state.ConsenterConfigBlockOperations{},
 	}
 
 	return handler.Handle(stream.Context(), &deliver.Server{
