@@ -13,6 +13,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
@@ -28,13 +29,15 @@ type ConsensusDecisionReplicator struct {
 	tlsKey, tlsCert []byte
 	endpoint        string
 	cc              comm.ClientConfig
-	logger          *flogging.FabricLogger
-	cancelCtx       context.Context
-	ctxCancelFunc   context.CancelFunc
-	seekInfo        *orderer.SeekInfo
+	// signer signs the deliver request, so consensus can tell which node asks to replicate.
+	signer        identity.SignerSerializer
+	logger        *flogging.FabricLogger
+	cancelCtx     context.Context
+	ctxCancelFunc context.CancelFunc
+	seekInfo      *orderer.SeekInfo
 }
 
-func NewConsensusDecisionReplicator(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, logger *flogging.FabricLogger, seekInfo *orderer.SeekInfo) *ConsensusDecisionReplicator {
+func NewConsensusDecisionReplicator(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, signer identity.SignerSerializer, logger *flogging.FabricLogger, seekInfo *orderer.SeekInfo) *ConsensusDecisionReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	decisionReplicator := &ConsensusDecisionReplicator{
 		channelID:     channelID,
@@ -42,6 +45,7 @@ func NewConsensusDecisionReplicator(channelID string, tlsCACerts []config.RawByt
 		tlsCert:       tlsCert,
 		endpoint:      endpoint,
 		cc:            clientConfig(tlsCACerts, tlsKey, tlsCert),
+		signer:        signer,
 		logger:        logger,
 		cancelCtx:     ctx,
 		ctxCancelFunc: cancelFunc,
@@ -56,14 +60,19 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 	}
 
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
+		tlsCertHash, err := protoutil.HashTLSCertificate(cr.tlsCert)
+		if err != nil {
+			cr.logger.Panicf("Failed hashing the TLS certificate: %s", err)
+		}
+
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			DecisionChannelName(cr.channelID),
-			nil,
+			cr.signer,
 			cr.seekInfo,
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
 		if err != nil {
 			cr.logger.Panicf("Failed creating signed envelope: %v", err)

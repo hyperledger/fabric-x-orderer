@@ -8,7 +8,6 @@ package assembler_test
 
 import (
 	"context"
-	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +17,6 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
@@ -45,10 +43,12 @@ func TestAssembler_SoftStopAndPull(t *testing.T) {
 	numParties := 4
 	partyID := types.PartyID(1)
 
-	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
-	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -59,7 +59,7 @@ func TestAssembler_SoftStopAndPull(t *testing.T) {
 	consenterStub := NewStubConsenter(t, partyID, ca)
 	defer consenterStub.Stop()
 
-	assembler, assemblerEndpoint := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, false, nil)
+	assembler, assemblerEndpoint := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -97,10 +97,12 @@ func TestAssemblerDeliver_WithMTLS_success(t *testing.T) {
 	numParties := 4
 	partyID := types.PartyID(1)
 
-	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
-	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -113,7 +115,7 @@ func TestAssemblerDeliver_WithMTLS_success(t *testing.T) {
 
 	clientRootCAs := [][]byte{ca.CertBytes()}
 
-	assembler, assemblerEndpoint := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
+	assembler, assemblerEndpoint := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -148,10 +150,12 @@ func TestAssemblerDeliver_WithMTLS_NoCertHash(t *testing.T) {
 	numParties := 4
 	partyID := types.PartyID(1)
 
-	_, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	_, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
-	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -164,7 +168,7 @@ func TestAssemblerDeliver_WithMTLS_NoCertHash(t *testing.T) {
 
 	clientRootCAs := [][]byte{ca.CertBytes()}
 
-	assembler, assemblerEndpoint := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
+	assembler, assemblerEndpoint := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -214,10 +218,12 @@ func TestAssemblerDeliver_WrongChannelID(t *testing.T) {
 	numParties := 4
 	partyID := types.PartyID(1)
 
-	_, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	_, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
-	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -230,7 +236,7 @@ func TestAssemblerDeliver_WrongChannelID(t *testing.T) {
 
 	clientRootCAs := [][]byte{ca.CertBytes()}
 
-	assembler, assemblerEndpoint := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
+	assembler, assemblerEndpoint := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -250,9 +256,8 @@ func TestAssemblerDeliver_WrongChannelID(t *testing.T) {
 	defer stream.CloseSend()
 
 	// prepare request envelope with wrong channel ID
-	block, _ := pem.Decode(ckp.Cert)
-	require.True(t, block != nil && block.Type == "CERTIFICATE")
-	tlsCertHash := util.ComputeSHA256(block.Bytes)
+	tlsCertHash, err := protoutil.HashTLSCertificate(ckp.Cert)
+	require.NoError(t, err)
 
 	requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 		common.HeaderType_DELIVER_SEEK_INFO,
@@ -315,9 +320,8 @@ func createDeliveryClientAndPull(t *testing.T, assemblerEndpoint string, assembl
 
 	var tlsCertHash []byte
 	if tls == "mTLS" {
-		block, _ := pem.Decode(ckp.Cert)
-		require.True(t, block != nil && block.Type == "CERTIFICATE")
-		tlsCertHash = util.ComputeSHA256(block.Bytes)
+		tlsCertHash, err = protoutil.HashTLSCertificate(ckp.Cert)
+		require.NoError(t, err)
 	}
 
 	// prepare request envelope
@@ -365,7 +369,9 @@ func TestAssemblerDeliver_ChannelReadersPolicy(t *testing.T) {
 
 	dir, bundle := generateChannelConfig(t, numParties)
 
-	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{{ShardId: types.ShardID(0), Batchers: batcherInfos}}
@@ -373,7 +379,7 @@ func TestAssemblerDeliver_ChannelReadersPolicy(t *testing.T) {
 	consenterStub := NewStubConsenter(t, partyID, ca)
 	defer consenterStub.Stop()
 
-	assembler, assemblerEndpoint := newAssemblerTestWithBundle(t, partyID, ca, shards,
+	assembler, assemblerEndpoint := newAssemblerTestWithBundle(t, asm, ca, shards,
 		consenterStub.consenterInfo, time.Second, false, nil, bundle)
 	defer assembler.Stop()
 
