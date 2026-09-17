@@ -19,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -71,12 +70,13 @@ type Metrics struct {
 	prefetchIndexSize                  metrics.Gauge
 	prefetchIndexCacheEvictionsTotal   metrics.Counter
 
-	logger    *flogging.FabricLogger
-	interval  time.Duration
-	stopChan  chan struct{}
-	stopOnce  sync.Once
-	startOnce sync.Once
-	partyID   arma_types.PartyID
+	logger      *flogging.FabricLogger
+	interval    time.Duration
+	stopChan    chan struct{}
+	stopOnce    sync.Once
+	startOnce   sync.Once
+	partyID     arma_types.PartyID
+	promAddress string
 }
 
 func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *node_ledger.AssemblerLedgerMetrics, logger *flogging.FabricLogger) *Metrics {
@@ -104,6 +104,7 @@ func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *
 		logger:                             logger,
 		stopChan:                           make(chan struct{}),
 		partyID:                            assemblerNodeConfig.PartyId,
+		promAddress:                        assemblerNodeConfig.Metrics.PrometheusAddress,
 		batchUnaryFetchLatency:             batchUnaryFetchLatency,
 		attestationToBatchCollationLatency: attestationToBatchCollationLatency,
 		batchLedgerAppendLatency:           batchLedgerAppendLatency,
@@ -125,33 +126,58 @@ func (m *Metrics) StopMetricsTracker() {
 		m.logger.Infof("Reporting routine is stopping")
 		close(m.stopChan)
 
-		txCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionCount.(prometheus.Counter), m.logger))
-		blocksCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksCount.(prometheus.Counter), m.logger))
-		blocksSizeCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksSize.(prometheus.Counter), m.logger))
-		prefetchIndexCacheEvictions := uint64(monitoring.GetMetricValue(m.prefetchIndexCacheEvictionsTotal.(prometheus.Counter), m.logger))
+		partyID := fmt.Sprintf("%d", m.partyID)
+		reader := monitoring.NewReader(m.promAddress, m.interval)
 
-		batchUnaryFetchLatencyAvg := monitoring.GetHistogramAverage(m.batchUnaryFetchLatency.(prometheus.Metric), m.logger)
-		attestationToBatchCollationLatencyAvg := monitoring.GetHistogramAverage(m.attestationToBatchCollationLatency.(prometheus.Metric), m.logger)
-		batchLedgerAppendLatencyAvg := monitoring.GetHistogramAverage(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
+		txCommitted := reader.Total(node_ledger.TransactionCountOpts, partyID)
+		blocksCommitted := reader.Total(node_ledger.BlocksCountOpts, partyID)
+		blocksSizeCommitted := reader.Total(node_ledger.BlocksSizeOpts, partyID)
+		prefetchIndexCacheEvictions := reader.Total(prefetchIndexCacheEvictionsTotalOpts, partyID)
+		batchUnaryFetchLatencyAvg := reader.HistogramAverage(batchUnaryFetchLatencyOpts, partyID)
+		attestationToBatchCollationLatencyAvg := reader.HistogramAverage(attestationToBatchCollationLatencyOpts, partyID)
+		batchLedgerAppendLatencyAvg := reader.HistogramAverage(batchLedgerAppendLatencyOpts, partyID)
+
+		if err := reader.Err(); err != nil {
+			m.logger.Warnf("Failed to read final metrics: %s", err)
+			return
+		}
 
 		m.logger.Infof("ASSEMBLER_METRICS: party_id=%d, total: TXs=%d, blocks=%d, estimated_block_size=%d, batch_unary_fetch_latency_avg_seconds=%.6f, attestation_to_batch_collation_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f, prefetch_index_cache_evictions=%d", m.partyID, txCommitted, blocksCommitted, blocksSizeCommitted, batchUnaryFetchLatencyAvg, attestationToBatchCollationLatencyAvg, batchLedgerAppendLatencyAvg, prefetchIndexCacheEvictions)
 	})
 }
 
 func (m *Metrics) trackMetrics() {
-	lastTxCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionCount.(prometheus.Counter), m.logger))
-	lastBlocksCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksCount.(prometheus.Counter), m.logger))
 	sec := m.interval.Seconds()
+	partyID := fmt.Sprintf("%d", m.partyID)
+
+	reader := monitoring.NewReader(m.promAddress, m.interval)
+	lastTxCommitted := reader.Total(node_ledger.TransactionCountOpts, partyID)
+	lastBlocksCommitted := reader.Total(node_ledger.BlocksCountOpts, partyID)
+	if err := reader.Err(); err != nil {
+		m.logger.Warnf("Failed to read initial metrics: %s", err)
+		lastTxCommitted, lastBlocksCommitted = 0, 0
+	}
+
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
 
 	for {
 		select {
 		case <-t.C:
-			txCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionCount.(prometheus.Counter), m.logger))
-			blocksCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksCount.(prometheus.Counter), m.logger))
-			blocksSizeCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksSize.(prometheus.Counter), m.logger))
-			prefetchIndexCacheEvictions := uint64(monitoring.GetMetricValue(m.prefetchIndexCacheEvictionsTotal.(prometheus.Counter), m.logger))
+			reader := monitoring.NewReader(m.promAddress, m.interval)
+
+			txCommitted := reader.Total(node_ledger.TransactionCountOpts, partyID)
+			blocksCommitted := reader.Total(node_ledger.BlocksCountOpts, partyID)
+			blocksSizeCommitted := reader.Total(node_ledger.BlocksSizeOpts, partyID)
+			prefetchIndexCacheEvictions := reader.Total(prefetchIndexCacheEvictionsTotalOpts, partyID)
+			batchUnaryFetchLatencyAvg := reader.HistogramIntervalAverage(batchUnaryFetchLatencyOpts, partyID)
+			attestationToBatchCollationLatencyAvg := reader.HistogramIntervalAverage(attestationToBatchCollationLatencyOpts, partyID)
+			batchLedgerAppendLatencyAvg := reader.HistogramIntervalAverage(batchLedgerAppendLatencyOpts, partyID)
+
+			if err := reader.Err(); err != nil {
+				m.logger.Warnf("Skipping metrics report: %s", err)
+				continue
+			}
 
 			newBlocks := uint64(0)
 			if blocksCommitted > lastBlocksCommitted {
@@ -162,10 +188,6 @@ func (m *Metrics) trackMetrics() {
 			if txCommitted > lastTxCommitted {
 				newTXs = txCommitted - lastTxCommitted
 			}
-
-			batchUnaryFetchLatencyAvg := monitoring.GetHistogramAverage(m.batchUnaryFetchLatency.(prometheus.Metric), m.logger)
-			attestationToBatchCollationLatencyAvg := monitoring.GetHistogramAverage(m.attestationToBatchCollationLatency.(prometheus.Metric), m.logger)
-			batchLedgerAppendLatencyAvg := monitoring.GetHistogramAverage(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
 
 			m.logger.Infof("ASSEMBLER_METRICS: total: party_id=%d, TXs=%d, blocks=%d, estimated_block_size=%d, batch_unary_fetch_latency_avg_seconds=%.6f, attestation_to_batch_collation_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f, prefetch_index_cache_evictions=%d, in the last %.2f seconds: TXs=%d, blocks=%d", m.partyID, txCommitted, blocksCommitted, blocksSizeCommitted, batchUnaryFetchLatencyAvg, attestationToBatchCollationLatencyAvg, batchLedgerAppendLatencyAvg, prefetchIndexCacheEvictions, sec, newTXs, newBlocks)
 			lastTxCommitted, lastBlocksCommitted = txCommitted, blocksCommitted
