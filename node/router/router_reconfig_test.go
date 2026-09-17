@@ -367,7 +367,7 @@ func (s *reconfigTestSetup) SendConfigUpdate(t *testing.T, parties []types.Party
 	require.NoError(t, err)
 }
 
-func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *reconfigTestSetup {
+func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID, localCfgMutators ...func(*config.NodeLocalConfig)) *reconfigTestSetup {
 	configPath := filepath.Join(dir, "config.yaml")
 	netInfo := testutil.CreateNetwork(t, configPath, 1, 1, "TLS", "none")
 	require.NotNil(t, netInfo)
@@ -386,7 +386,7 @@ func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *r
 	routerFileStore := t.TempDir()
 	routerListener := netInfo[testutil.NodeName{PartyID: partyId, NodeType: testutil.Router}].Listener
 	routerNodeConfigPath := filepath.Join(dir, "config", fmt.Sprintf("party%d", partyId), "local_config_router.yaml")
-	routerNode, genesisBlock, routerBundle := createRealRouterFromConfig(t, partyId, routerFileStore, routerNodeConfigPath)
+	routerNode, genesisBlock, routerBundle := createRealRouterFromConfig(t, partyId, routerFileStore, routerNodeConfigPath, localCfgMutators...)
 
 	userConfig, err := testutil.GetUserConfig(dir, partyId)
 	require.NoError(t, err)
@@ -414,12 +414,15 @@ func createReconfigTestSetup(t *testing.T, dir string, partyId types.PartyID) *r
 	}
 }
 
-func createRealRouterFromConfig(t *testing.T, partyID types.PartyID, fileStoreDir string, nodeConfigPath string) (*router.Router, *common.Block, channelconfig.Resources) {
+func createRealRouterFromConfig(t *testing.T, partyID types.PartyID, fileStoreDir string, nodeConfigPath string, localCfgMutators ...func(*config.NodeLocalConfig)) (*router.Router, *common.Block, channelconfig.Resources) {
 	configLogger := testutil.CreateLoggerForModule(t, fmt.Sprintf("RouterConfig%d", partyID), zap.DebugLevel)
 	if fileStoreDir != "" {
 		localConfig, _, err := config.LoadLocalConfig(nodeConfigPath, configLogger)
 		require.NoError(t, err)
 		localConfig.NodeLocalConfig.FileStore.Path = fileStoreDir
+		for _, mutate := range localCfgMutators {
+			mutate(localConfig.NodeLocalConfig)
+		}
 		err = utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
 		require.NoError(t, err)
 	}
