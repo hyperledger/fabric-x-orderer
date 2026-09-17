@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package request
 
 import (
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -271,35 +270,15 @@ func (ps *PendingStore) rotateBuckets(now time.Time) {
 }
 
 func (ps *PendingStore) RemoveRequests(requestIDs ...string) {
-	workerNum := runtime.NumCPU()
-
-	var wg sync.WaitGroup
-	wg.Add(workerNum)
-
 	now := ps.now()
 
-	for workerID := 0; workerID < workerNum; workerID++ {
-		go func(workerID int) {
-			defer wg.Done()
-			ps.removeRequestsByWorker(workerID, requestIDs, workerNum, now)
-		}(workerID)
-	}
-
-	wg.Wait()
-}
-
-func (ps *PendingStore) removeRequestsByWorker(workerID int, requestIDs []string, workerNum int, now time.Time) {
-	for i, reqID := range requestIDs {
+	parallelForEachKey(requestIDs, func(reqID string) bool {
 		if ps.isClosed() {
-			return
+			return false
 		}
-
-		if i%workerNum != workerID {
-			continue
-		}
-
 		ps.removeRequest(reqID, now)
-	}
+		return true
+	})
 }
 
 func (ps *PendingStore) removeRequest(reqID string, now time.Time) {

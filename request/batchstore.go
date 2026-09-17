@@ -8,7 +8,6 @@ package request
 
 import (
 	"context"
-	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -122,28 +121,14 @@ func (bs *BatchStore) Prune(f func(k, v interface{}) error) {
 	bs.currentBatch.Prune(f)
 }
 
-// RemoveRequests removes multiple keys concurrently, fanning the work out across
-// runtime.NumCPU() workers. Each key is handled by exactly one worker (partitioned
-// by index), so no two goroutines touch the same key. Mirrors PendingStore.RemoveRequests.
+// RemoveRequests removes multiple keys concurrently via parallelForEachKey,
+// which partitions the keys across runtime.NumCPU() workers so each key is
+// handled by exactly one worker (no two goroutines touch the same key).
 func (bs *BatchStore) RemoveRequests(keys ...string) {
-	workerNum := runtime.NumCPU()
-
-	var wg sync.WaitGroup
-	wg.Add(workerNum)
-
-	for workerID := 0; workerID < workerNum; workerID++ {
-		go func(workerID int) {
-			defer wg.Done()
-			for i, key := range keys {
-				if i%workerNum != workerID {
-					continue
-				}
-				bs.Remove(key)
-			}
-		}(workerID)
-	}
-
-	wg.Wait()
+	parallelForEachKey(keys, func(key string) bool {
+		bs.Remove(key)
+		return true
+	})
 }
 
 func (bs *BatchStore) Remove(key string) {

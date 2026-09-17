@@ -225,7 +225,7 @@ func (rp *Pool) NextRequests(ctx context.Context) ([][]byte, []string) {
 	return rawRequests, reqIDs
 }
 
-func (rp *Pool) RemoveRequests(requestsIDs ...string) {
+func (rp *Pool) RemoveRequests(requestIDs ...string) {
 	rp.lock.RLock()
 	defer rp.lock.RUnlock()
 
@@ -234,11 +234,11 @@ func (rp *Pool) RemoveRequests(requestsIDs ...string) {
 	}
 
 	if !rp.isBatchingEnabled() {
-		rp.pending.RemoveRequests(requestsIDs...)
+		rp.pending.RemoveRequests(requestIDs...)
 		return
 	}
 
-	rp.batchStore.RemoveRequests(requestsIDs...)
+	rp.batchStore.RemoveRequests(requestIDs...)
 }
 
 // Contains reports whether a request with the given id is currently in the pool.
