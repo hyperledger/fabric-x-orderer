@@ -1093,3 +1093,98 @@ func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
+
+// Scenario:
+//  1. Create a config YAML file to be an input to armageddon
+//  2. Run armageddon generate command to create config files in a folder structure
+//  3. Run arma with the generated config files to run each of the nodes for all parties
+//  4. Run armageddon load command with --txidsFile — sends 1000 txs and writes the binary TX-ID file
+//  5. In parallel, run armageddon receive command with --txidsFile — reads the TX-ID file and verifies all TXs were received
+//  6. Assert that the TX-ID file exists and has the correct size (1000 × 8 bytes)
+//  7. Assert that missing_txids.txt does NOT exist (all TXs received)
+//
+// This test verifies the end-to-end TX-ID verification flow on a straight happy-path run
+// (no failures injected). It runs against a 4-party 2-shard network without TLS.
+func TestLoadAndReceiveWithTxIDVerification(t *testing.T) {
+	dir, err := os.MkdirTemp("", t.Name())
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 1.
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, 4, 2, "none", "none")
+	defer netInfo.CleanUp()
+
+	// 2.
+	armageddonCLI := armageddon.NewCLI()
+	sampleConfigPath := fabric.GetDevConfigDir()
+	armageddonCLI.Run([]string{"generate", "--config", configPath, "--output", dir, "--sampleConfigPath", sampleConfigPath})
+
+	// 3.
+	armaBinaryPath, err := gexec.BuildWithEnvironment("github.com/hyperledger/fabric-x-orderer/cmd/arma", []string{"GOPRIVATE=" + os.Getenv("GOPRIVATE")})
+	require.NoError(t, err)
+	require.NotNil(t, armaBinaryPath)
+
+	readyChan := make(chan string, 20)
+	armaNetwork := testutil.RunArmaNodes(t, dir, armaBinaryPath, readyChan, netInfo)
+	defer armaNetwork.Stop()
+
+	testutil.WaitReady(t, readyChan, 20, 10)
+
+	// 4. + 5.
+	userConfigPath := path.Join(dir, "config", fmt.Sprintf("party%d", 1), "user_config.yaml")
+	txidsFilePath := filepath.Join(dir, "txids.bin")
+	outputDir := filepath.Join(dir, "receiver_output")
+	require.NoError(t, os.MkdirAll(outputDir, 0o755))
+
+	const numTxs = 1000
+	txs := fmt.Sprintf("%d", numTxs)
+	rate := "500"
+	txSize := "300"
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Use separate CLI instances to avoid a data race on shared flag destinations
+	// when load and receive run concurrently (cli.app.Parse writes to shared fields).
+	loaderCLI := armageddon.NewCLI()
+	receiverCLI := armageddon.NewCLI()
+
+	// load writes txids.bin after all transactions are sent
+	go func() {
+		defer wg.Done()
+		loaderCLI.Run([]string{
+			"load",
+			"--config", userConfigPath,
+			"--transactions", txs,
+			"--rate", rate,
+			"--txSize", txSize,
+			"--txidsFile", txidsFilePath,
+		})
+	}()
+
+	// receive pulls blocks immediately; verifies TX-IDs after pulling is done
+	go func() {
+		defer wg.Done()
+		receiverCLI.Run([]string{
+			"receive",
+			"--config", userConfigPath,
+			"--pullFromPartyId", "1",
+			"--expectedTxs", txs,
+			"--output", outputDir,
+			"--txidsFile", txidsFilePath,
+		})
+	}()
+
+	wg.Wait()
+
+	// 6. TX-ID file must exist and contain exactly numTxs × 8 bytes
+	info, err := os.Stat(txidsFilePath)
+	require.NoError(t, err, "txids.bin should have been written by the loader")
+	require.Equal(t, int64(numTxs*8), info.Size(), "txids.bin should contain exactly %d × 8 bytes", numTxs)
+
+	// 7. missing_txids.txt must NOT exist — all transactions were received
+	missingFile := filepath.Join(outputDir, "missing_txids.txt")
+	_, statErr := os.Stat(missingFile)
+	require.True(t, os.IsNotExist(statErr), "missing_txids.txt should not exist when all TXs are received")
+}
