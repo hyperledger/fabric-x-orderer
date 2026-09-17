@@ -267,7 +267,7 @@ Orderer: &OrdererDefaults
     # fault-tolerance; In BFT this number is at least 3*F+1, where F is the number of potential failures.
     # In BFT it is highly recommended that the addresses for delivery & broadcast (the OrdererEndpoints item in the
     # org definition) map 1:1 to the Orderer/ConsenterMapping (for cluster consensus). That is, every consenter should
-    # be represented by a delivery endpoint. Note that in BFT (V3) global Orderer/Addresses are no longer supported.
+    # be represented by a delivery endpoint. Note that global Orderer/Addresses are not supported.
     ConsenterMapping:
     - ID: 1
       Host: bft0.example.com

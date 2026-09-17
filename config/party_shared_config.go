@@ -26,6 +26,8 @@ type PartyConfig struct {
 }
 
 type RouterNodeConfig struct {
+	// the path to the signing certificate (that contains the public key) of the router used to authenticate signatures it produces
+	SignCert string `yaml:"SignCert,omitempty"`
 	// the path to the certificate used to authenticate with clients
 	TLSCert string `yaml:"TLSCert,omitempty"`
 	// the hostname or IP on which the gRPC server will listen
@@ -37,7 +39,7 @@ type RouterNodeConfig struct {
 type BatcherNodeConfig struct {
 	// the ID of the shard to which the batcher is associated
 	ShardID types.ShardID `yaml:"ShardID,omitempty"`
-	// the path to the signing certificate (that contains the public key) of the batcher used to authenticate signatures on BAS's
+	// the path to the signing certificate (that contains the public key) of the batcher used to authenticate signatures on BAFs
 	SignCert string `yaml:"SignCert,omitempty"`
 	// the path to the certificate used to authenticate with clients
 	TLSCert string `yaml:"TLSCert,omitempty"`
@@ -59,6 +61,8 @@ type ConsenterNodeConfig struct {
 }
 
 type AssemblerNodeConfig struct {
+	// the path to the signing certificate (that contains the public key) of the assembler used to authenticate signatures it produces
+	SignCert string `yaml:"SignCert,omitempty"`
 	// the path to the certificate used to authenticate with clients
 	TLSCert string `yaml:"TLSCert,omitempty"`
 	// the hostname or IP on which the gRPC server will listen

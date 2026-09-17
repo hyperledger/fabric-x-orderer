@@ -74,7 +74,12 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
 		}
 
-		if err := configuration.CheckIfAssemblerNodeExistsInSharedConfig(); err != nil {
+		localSignCert, err := signer.GetCertificatePEM()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get sign certificate from signing identity: %s", err))
+		}
+
+		if err := configuration.CheckIfAssemblerNodeExistsInSharedConfig(localSignCert); err != nil {
 			panic(err)
 		}
 
@@ -191,7 +196,12 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 			panic(fmt.Sprintf("Failed to get local MSP identity: %s", err))
 		}
 
-		if err := conf.CheckIfRouterNodeExistsInSharedConfig(); err != nil {
+		localSignCert, err := signer.GetCertificatePEM()
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get sign certificate from signing identity: %s", err))
+		}
+
+		if err := conf.CheckIfRouterNodeExistsInSharedConfig(localSignCert); err != nil {
 			panic(err)
 		}
 

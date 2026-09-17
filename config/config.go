@@ -775,7 +775,7 @@ func GetLastConfigBlockUsingBlockFromConsensusLedger(block *common.Block, consen
 	return lastConfigBlock, nil
 }
 
-func (config *Configuration) CheckIfRouterNodeExistsInSharedConfig() error {
+func (config *Configuration) CheckIfRouterNodeExistsInSharedConfig(localSignCert []byte) error {
 	localPartyID := uint32(config.LocalConfig.NodeLocalConfig.PartyID)
 	localTLSCert := config.LocalConfig.TLSConfig.Certificate
 
@@ -784,7 +784,23 @@ func (config *Configuration) CheckIfRouterNodeExistsInSharedConfig() error {
 			if sharedPartyConfig.RouterConfig == nil {
 				return fmt.Errorf("router configuration of partyID %d is missing from the shared configuration: %+v", localPartyID, sharedPartyConfig)
 			}
-			equal, err := utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.RouterConfig.TlsCert)
+			equal, err := utils.AreCertificatesEqual(localSignCert, sharedPartyConfig.RouterConfig.SignCert)
+			if err != nil {
+				return fmt.Errorf("error comparing sign cert of router of party%d to the shared configuration: %s", localPartyID, err)
+			}
+			if !equal {
+				localSignCertString, err := utils.CertificateBytesToString(localSignCert)
+				if err != nil {
+					return fmt.Errorf("error converting local sign cert of router of party%d to string: %s", localPartyID, err)
+				}
+				sharedSignCertString, err := utils.CertificateBytesToString(sharedPartyConfig.RouterConfig.SignCert)
+				if err != nil {
+					return fmt.Errorf("error converting shared sign cert of router of party%d to string: %s", localPartyID, err)
+				}
+				return fmt.Errorf("sign certificate mismatch: Router%d is attempting to load with sign certificate: %v that differs from the shared configuration sign certificate: %v", localPartyID, localSignCertString, sharedSignCertString)
+			}
+
+			equal, err = utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.RouterConfig.TlsCert)
 			if err != nil {
 				return fmt.Errorf("error comparing TLS cert of router of party%d to the shared configuration: %s", localPartyID, err)
 			}
@@ -919,7 +935,7 @@ func (config *Configuration) CheckIfConsenterNodeExistsInSharedConfig(localSignC
 	return fmt.Errorf("partyID %d is not present in the shared configuration's party list", localPartyID)
 }
 
-func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
+func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig(localSignCert []byte) error {
 	localPartyID := uint32(config.LocalConfig.NodeLocalConfig.PartyID)
 	localTLSCert := config.LocalConfig.TLSConfig.Certificate
 
@@ -928,7 +944,23 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig() error {
 			if sharedPartyConfig.AssemblerConfig == nil {
 				return fmt.Errorf("assembler configuration of partyID %d is missing from the shared configuration: %+v", localPartyID, sharedPartyConfig)
 			}
-			equal, err := utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.AssemblerConfig.TlsCert)
+			equal, err := utils.AreCertificatesEqual(localSignCert, sharedPartyConfig.AssemblerConfig.SignCert)
+			if err != nil {
+				return fmt.Errorf("error comparing sign cert of assembler of party%d to the shared configuration: %s", localPartyID, err)
+			}
+			if !equal {
+				localSignCertString, err := utils.CertificateBytesToString(localSignCert)
+				if err != nil {
+					return fmt.Errorf("error converting local sign cert of assembler of party%d to string: %s", localPartyID, err)
+				}
+				sharedSignCertString, err := utils.CertificateBytesToString(sharedPartyConfig.AssemblerConfig.SignCert)
+				if err != nil {
+					return fmt.Errorf("error converting shared sign cert of assembler of party%d to string: %s", localPartyID, err)
+				}
+				return fmt.Errorf("sign certificate mismatch: Assembler%d is attempting to load with sign certificate: %v that differs from the shared configuration sign certificate: %v", localPartyID, localSignCertString, sharedSignCertString)
+			}
+
+			equal, err = utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.AssemblerConfig.TlsCert)
 			if err != nil {
 				return fmt.Errorf("error comparing TLS cert of assembler of party%d to the shared configuration: %s", localPartyID, err)
 			}

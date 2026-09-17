@@ -86,22 +86,17 @@ func (b *Bundle) ValidateNew(nb Resources) error {
 			return errors.New("current config has orderer section, but new config does not")
 		}
 
-		// Prevent consensus-type migration when channel capabilities ConsensusTypeMigration is disabled
-		if !b.channelConfig.Capabilities().ConsensusTypeMigration() {
-			if oc.ConsensusType() != noc.ConsensusType() {
-				return errors.Errorf("attempted to change consensus type from %s to %s",
-					oc.ConsensusType(), noc.ConsensusType())
-			}
+		// Prevent consensus-type migration.
+		if oc.ConsensusType() != noc.ConsensusType() {
+			return errors.Errorf("attempted to change consensus type from %s to %s",
+				oc.ConsensusType(), noc.ConsensusType())
 		}
 
-		// When we move to capability V3_0 we insist on per Org endpoints for every org
-		isOldV3 := b.ChannelConfig().Capabilities().ConsensusTypeBFT()
-		isNewV3 := nb.ChannelConfig().Capabilities().ConsensusTypeBFT()
-		if !isOldV3 && isNewV3 {
-			for _, org := range noc.Organizations() {
-				if len(org.Endpoints()) == 0 {
-					return errors.Errorf("illegal orderer config update detected: endpoints of org %s are missing", org.Name())
-				}
+		// In Fabric-X we insist on per Org endpoints for every org
+		for _, org := range noc.Organizations() {
+			if len(org.Endpoints()) == 0 {
+				return errors.Errorf(
+					"illegal orderer config update detected: endpoints of org %s are missing", org.Name())
 			}
 		}
 

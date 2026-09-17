@@ -109,8 +109,3 @@ func (cp *ChannelProvider) ConsensusTypeMigration() bool {
 func (cp *ChannelProvider) OrgSpecificOrdererEndpoints() bool {
 	return cp.v142 || cp.v143 || cp.v20 || cp.v30
 }
-
-// ConsensusTypeBFT return true if the channel supports BFT consensus.
-func (cp *ChannelProvider) ConsensusTypeBFT() bool {
-	return cp.v30
-}

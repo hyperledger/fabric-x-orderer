@@ -10,7 +10,7 @@ require (
 	github.com/hyperledger/fabric-config v0.3.0
 	github.com/hyperledger/fabric-lib-go v1.1.5-0.20260708100132-163bcc919208
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
-	github.com/hyperledger/fabric-x-common v0.2.9-0.20260723080247-bb9c7dc14898
+	github.com/hyperledger/fabric-x-common v0.2.9-0.20260915094628-b0a1726dff6d
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
 	github.com/pkg/errors v0.9.1

@@ -173,6 +173,9 @@ func (cc *ChannelConfig) Capabilities() ChannelCapabilities {
 
 // Validate inspects the generated configuration protos and ensures that the values are correct
 func (cc *ChannelConfig) Validate(channelCapabilities ChannelCapabilities) error {
+	// Keep the input for future introduction of capabilities
+	_ = channelCapabilities
+
 	for _, validator := range []func() error{
 		cc.validateHashingAlgorithm,
 		cc.validateBlockDataHashingStructure,
@@ -182,12 +185,8 @@ func (cc *ChannelConfig) Validate(channelCapabilities ChannelCapabilities) error
 		}
 	}
 
-	// We validate no global endpoints at V3_0 or above
-	if channelCapabilities.ConsensusTypeBFT() {
-		return cc.validateNoOrdererAddresses()
-	}
-
-	return nil
+	// We validate no global endpoints in Fabric-X, as we insist on per Org endpoints for every org.
+	return cc.validateNoOrdererAddresses()
 }
 
 func (cc *ChannelConfig) validateHashingAlgorithm() error {
@@ -210,16 +209,9 @@ func (cc *ChannelConfig) validateBlockDataHashingStructure() error {
 	return nil
 }
 
-func (cc *ChannelConfig) validateOrdererAddresses() error {
-	if len(cc.protos.OrdererAddresses.Addresses) == 0 {
-		return fmt.Errorf("Must set some OrdererAddresses")
-	}
-	return nil
-}
-
 func (cc *ChannelConfig) validateNoOrdererAddresses() error {
 	if len(cc.protos.OrdererAddresses.Addresses) > 0 {
-		return fmt.Errorf("global OrdererAddresses are not allowed with V3_0 capability, use org specific addresses only")
+		return errors.New("global OrdererAddresses are not allowed, use org specific addresses only")
 	}
 	return nil
 }

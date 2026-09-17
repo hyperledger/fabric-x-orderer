@@ -463,6 +463,25 @@ func (c *ConfigUpdateBuilder) UpdateSmartBFTConfig(t *testing.T, smartBFTConfig 
 	return c.createConfigUpdate(t, c.configData)
 }
 
+func (c *ConfigUpdateBuilder) UpdateRouterSignCert(t *testing.T, partyID types.PartyID, cert []byte) []byte {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			routerConfig := partyMap["RouterConfig"].(map[string]any)
+			routerConfig["sign_cert"] = cert
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
+	return c.createConfigUpdate(t, c.configData)
+}
+
 func (c *ConfigUpdateBuilder) UpdateBatcherSignCert(t *testing.T, partyID types.PartyID, shardID types.ShardID, cert []byte) []byte {
 	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
 	partiesConfigList := partiesConfig.([]any)
@@ -519,6 +538,25 @@ func (c *ConfigUpdateBuilder) UpdateConsenterSignCert(t *testing.T, partyID type
 	}
 	require.True(t, found, "PartyID %d not found in ConsenterMapping", partyID)
 	c.syncBlockValidationPolicy(t, mappingList)
+	return c.createConfigUpdate(t, c.configData)
+}
+
+func (c *ConfigUpdateBuilder) UpdateAssemblerSignCert(t *testing.T, partyID types.PartyID, cert []byte) []byte {
+	partiesConfig := getNestedJSONValue(t, c.configData, partiesConfigPath...)
+	partiesConfigList := partiesConfig.([]any)
+
+	found := false
+	for _, party := range partiesConfigList {
+		partyMap := party.(map[string]any)
+		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
+			assemblerConfig := partyMap["AssemblerConfig"].(map[string]any)
+			assemblerConfig["sign_cert"] = cert
+			found = true
+			break
+		}
+	}
+
+	require.True(t, found, "PartyID %d not found in PartiesConfig", partyID)
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -1005,14 +1043,16 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, k
 				"tls_cert":  newParty.ConsenterConfig.TlsCert,
 			},
 			"RouterConfig": map[string]any{
-				"host":     newParty.RouterConfig.Host,
-				"port":     newParty.RouterConfig.Port,
-				"tls_cert": newParty.RouterConfig.TlsCert,
+				"host":      newParty.RouterConfig.Host,
+				"port":      newParty.RouterConfig.Port,
+				"sign_cert": newParty.RouterConfig.SignCert,
+				"tls_cert":  newParty.RouterConfig.TlsCert,
 			},
 			"AssemblerConfig": map[string]any{
-				"host":     newParty.AssemblerConfig.Host,
-				"port":     newParty.AssemblerConfig.Port,
-				"tls_cert": newParty.AssemblerConfig.TlsCert,
+				"host":      newParty.AssemblerConfig.Host,
+				"port":      newParty.AssemblerConfig.Port,
+				"sign_cert": newParty.AssemblerConfig.SignCert,
+				"tls_cert":  newParty.AssemblerConfig.TlsCert,
 			},
 			"BatchersConfig": batchersConfig,
 		})
@@ -1429,6 +1469,10 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 	require.NoError(t, err)
 	consenterSignCert, err := os.ReadFile(filepath.Join(consenterConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "consenter-cert.pem"))
 	require.NoError(t, err)
+	routerSignCert, err := os.ReadFile(filepath.Join(routerLocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "router-cert.pem"))
+	require.NoError(t, err)
+	assemblerSignCert, err := os.ReadFile(filepath.Join(assemblerConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "assembler-cert.pem"))
+	require.NoError(t, err)
 	adminCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "admincerts", fmt.Sprintf("Admin@%s-cert.pem", addedOrg)))
 	require.NoError(t, err)
 	knownCerts := [][]byte{}
@@ -1460,14 +1504,16 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 				TlsCert:  consenterTlsCert,
 			},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				Host:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-				Port:    routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-				TlsCert: routerTlsCert,
+				Host:     routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+				Port:     routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+				SignCert: routerSignCert,
+				TlsCert:  routerTlsCert,
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				Host:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-				Port:    assemblerConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-				TlsCert: assemblerTlsCert,
+				Host:     assemblerConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+				Port:     assemblerConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+				SignCert: assemblerSignCert,
+				TlsCert:  assemblerTlsCert,
 			},
 			BatchersConfig: batchersConfig,
 		},

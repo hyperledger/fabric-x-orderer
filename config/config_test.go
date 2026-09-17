@@ -104,8 +104,12 @@ func TestConfigurationCheckIfRouterNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, genesisBlock)
 
+	localSignCert, err := os.ReadFile(filepath.Join(fullConfig.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "router-cert.pem"))
+	require.NoError(t, err)
+	require.NotNil(t, localSignCert)
+
 	// router party1 exists in shared config, should succeed
-	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig()
+	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig(localSignCert)
 	require.NoError(t, err)
 
 	// change router1 cert
@@ -113,22 +117,31 @@ func TestConfigurationCheckIfRouterNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
 	require.NoError(t, err)
+	origSignCert := fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.SignCert
+	fakeSignCert, err := ChangeExpirationTimeOfCert(t, origSignCert, caCert, caPrivateKey)
+	require.NoError(t, err)
+	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.SignCert = fakeSignCert
+	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig(localSignCert)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "sign certificate mismatch")
+	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.SignCert = origSignCert
+
 	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.TlsCert, caCert, caPrivateKey)
 	require.NoError(t, err)
 	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.TlsCert = fakeTLSCert
-	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig()
+	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "certificate mismatch")
 
 	// remove router config from party1
 	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig = nil
-	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig()
+	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "router configuration of partyID 1 is missing from the shared configuration")
 
 	// remove router1 from shared config, expect for error
 	fullConfig.SharedConfig.PartiesConfig = fullConfig.SharedConfig.PartiesConfig[1:3]
-	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig()
+	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "partyID 1 is not present in the shared configuration's party list")
 }
@@ -278,8 +291,12 @@ func TestConfigurationCheckIfAssemblerNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, genesisBlock)
 
+	localSignCert, err := os.ReadFile(filepath.Join(fullConfig.LocalConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "assembler-cert.pem"))
+	require.NoError(t, err)
+	require.NotNil(t, localSignCert)
+
 	// assembler party1 exists in shared config, should succeed
-	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig()
+	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig(localSignCert)
 	require.NoError(t, err)
 
 	// change assembler1 cert
@@ -287,22 +304,31 @@ func TestConfigurationCheckIfAssemblerNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
 	require.NoError(t, err)
+	origSignCert := fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.SignCert
+	fakeSignCert, err := ChangeExpirationTimeOfCert(t, origSignCert, caCert, caPrivateKey)
+	require.NoError(t, err)
+	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.SignCert = fakeSignCert
+	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig(localSignCert)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "sign certificate mismatch")
+	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.SignCert = origSignCert
+
 	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.TlsCert, caCert, caPrivateKey)
 	require.NoError(t, err)
 	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.TlsCert = fakeTLSCert
-	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig()
+	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "certificate mismatch")
 
 	// remove assembler config from party1
 	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig = nil
-	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig()
+	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "assembler configuration of partyID 1 is missing from the shared configuration")
 
 	// remove assembler1 from shared config, expect for error
 	fullConfig.SharedConfig.PartiesConfig = fullConfig.SharedConfig.PartiesConfig[1:3]
-	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig()
+	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "partyID 1 is not present in the shared configuration's party list")
 }

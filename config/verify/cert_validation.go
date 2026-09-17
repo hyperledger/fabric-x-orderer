@@ -64,6 +64,9 @@ func validatePartyCertificates(party *ordererpb.PartyConfig, ignoreExpiration bo
 		if err := verifyCert(party.RouterConfig.TlsCert, tlsOpts, ignoreExpiration); err != nil {
 			return errors.Wrap(err, "router TLS certificate validation failed")
 		}
+		if err := verifyCert(party.RouterConfig.SignCert, signOpts, ignoreExpiration); err != nil {
+			return errors.Wrap(err, "router signing certificate validation failed")
+		}
 	} else {
 		return errors.New("router config is nil")
 	}
@@ -71,6 +74,9 @@ func validatePartyCertificates(party *ordererpb.PartyConfig, ignoreExpiration bo
 	if party.AssemblerConfig != nil {
 		if err := verifyCert(party.AssemblerConfig.TlsCert, tlsOpts, ignoreExpiration); err != nil {
 			return errors.Wrap(err, "assembler TLS certificate validation failed")
+		}
+		if err := verifyCert(party.AssemblerConfig.SignCert, signOpts, ignoreExpiration); err != nil {
+			return errors.Wrap(err, "assembler signing certificate validation failed")
 		}
 	} else {
 		return errors.New("assembler config is nil")

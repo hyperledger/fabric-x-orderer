@@ -41,15 +41,11 @@ func NewMSPConfigHandler(mspVersion msp.MSPVersion, bccsp bccsp.BCCSP) *MSPConfi
 // ProposeMSP called when an org defines an MSP
 func (bh *MSPConfigHandler) ProposeMSP(mspConfig *mspprotos.MSPConfig) (msp.MSP, error) {
 	var theMsp msp.MSP
-	var err error
 
 	switch mspConfig.Type {
 	case int32(msp.FABRIC):
 		// create the bccsp msp instance
-		mspInst, err := msp.New(
-			&msp.BCCSPNewOpts{NewBaseOpts: msp.NewBaseOpts{Version: bh.version}},
-			bh.bccsp,
-		)
+		mspInst, err := msp.New(&msp.BCCSPNewOpts{Version: bh.version}, bh.bccsp)
 		if err != nil {
 			return nil, errors.WithMessage(err, "creating the MSP manager failed")
 		}
@@ -61,10 +57,8 @@ func (bh *MSPConfigHandler) ProposeMSP(mspConfig *mspprotos.MSPConfig) (msp.MSP,
 		}
 	case int32(msp.IDEMIX):
 		// create the idemix msp instance
-		theMsp, err = msp.New(
-			&msp.IdemixNewOpts{NewBaseOpts: msp.NewBaseOpts{Version: bh.version}},
-			bh.bccsp,
-		)
+		var err error
+		theMsp, err = msp.New(&msp.IdemixNewOpts{Version: bh.version}, bh.bccsp)
 		if err != nil {
 			return nil, errors.WithMessage(err, "creating the MSP manager failed")
 		}
@@ -73,7 +67,7 @@ func (bh *MSPConfigHandler) ProposeMSP(mspConfig *mspprotos.MSPConfig) (msp.MSP,
 	}
 
 	// set it up
-	err = theMsp.Setup(mspConfig)
+	err := theMsp.Setup(mspConfig)
 	if err != nil {
 		return nil, errors.WithMessage(err, "setting up the MSP manager failed")
 	}

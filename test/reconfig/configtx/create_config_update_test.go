@@ -88,8 +88,10 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 		AdminCerts: newAdminCerts,
 	}, [][]byte{[]byte("knownCerts")})
 
+	configUpdateBuilder.UpdateRouterSignCert(t, types.PartyID(1), []byte("newSignCert"))
 	configUpdateBuilder.UpdateBatcherSignCert(t, types.PartyID(1), types.ShardID(1), []byte("newSignCert"))
 	configUpdateBuilder.UpdateConsenterSignCert(t, types.PartyID(1), []byte("newSignCert"))
+	configUpdateBuilder.UpdateAssemblerSignCert(t, types.PartyID(1), []byte("newSignCert"))
 	configUpdateBuilder.UpdatePartyTLSCACerts(t, types.PartyID(1), newTLSCACerts)
 	configUpdateBuilder.UpdatePartyCACerts(t, types.PartyID(1), newCACerts)
 	configUpdateBuilder.UpdateOrdererOrgKnownCerts(t, "org1", newKnownCerts)
@@ -132,8 +134,10 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	require.Equal(t, append(newKnownCerts, []byte("additionalKnownCert")), mspKnownCerts)
 
 	// Further checks can be added here to verify other updates
+	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetRouterConfig().GetSignCert())
 	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetBatchersConfig()[0].GetSignCert())
 	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetConsenterConfig().GetSignCert())
+	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetAssemblerConfig().GetSignCert())
 
 	_, ok := configUpdate.WriteSet.Groups["Application"].Groups["peer1"]
 	require.False(t, ok)

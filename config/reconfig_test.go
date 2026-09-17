@@ -47,6 +47,10 @@ func TestIsNodeConfigChangeRestartRequired_Fail(t *testing.T) {
 	_, err = config.IsNodeConfigChangeRestartRequired(&ordererpb.ConsenterNodeConfig{}, &ordererpb.RouterNodeConfig{}, logger)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "type mismatch")
+
+	_, err = config.IsNodeConfigChangeRestartRequired(&ordererpb.BatcherNodeConfig{}, &ordererpb.ConsenterNodeConfig{}, logger)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "type mismatch")
 }
 
 func TestIsNodeConfigChangeRestartRequired(t *testing.T) {
@@ -54,15 +58,17 @@ func TestIsNodeConfigChangeRestartRequired(t *testing.T) {
 
 	// Test Router
 	currRouterConfig := &ordererpb.RouterNodeConfig{
-		Host:    "127.0.0.1",
-		Port:    5060,
-		TlsCert: []byte("cert"),
+		Host:     "127.0.0.1",
+		Port:     5060,
+		SignCert: []byte("SignCert"),
+		TlsCert:  []byte("cert"),
 	}
 
 	newRouterConfig := &ordererpb.RouterNodeConfig{
-		Host:    "127.0.0.1",
-		Port:    5060,
-		TlsCert: []byte("cert"),
+		Host:     "127.0.0.1",
+		Port:     5060,
+		SignCert: []byte("SignCert"),
+		TlsCert:  []byte("cert"),
 	}
 
 	isRestartRequired, err := config.IsNodeConfigChangeRestartRequired(currRouterConfig, newRouterConfig, logger)
@@ -77,6 +83,13 @@ func TestIsNodeConfigChangeRestartRequired(t *testing.T) {
 
 	newRouterConfig.Port = 5060
 	newRouterConfig.TlsCert = []byte("TLSCert")
+
+	isRestartRequired, err = config.IsNodeConfigChangeRestartRequired(currRouterConfig, newRouterConfig, logger)
+	require.NoError(t, err)
+	require.True(t, isRestartRequired)
+
+	newRouterConfig.TlsCert = []byte("cert")
+	newRouterConfig.SignCert = []byte("NewSignCert")
 
 	isRestartRequired, err = config.IsNodeConfigChangeRestartRequired(currRouterConfig, newRouterConfig, logger)
 	require.NoError(t, err)

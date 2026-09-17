@@ -207,7 +207,10 @@ type RouterNodeConfig struct {
 	// the port on which the gRPC server will listen
 	Port uint32 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
 	// the certificate used to authenticate with clients
-	TlsCert       []byte `protobuf:"bytes,3,opt,name=tls_cert,json=tlsCert,proto3" json:"tls_cert,omitempty"`
+	TlsCert []byte `protobuf:"bytes,3,opt,name=tls_cert,json=tlsCert,proto3" json:"tls_cert,omitempty"`
+	// the signing certificate (that includes the public key) of the node,
+	// used to authenticate signatures it produces
+	SignCert      []byte `protobuf:"bytes,4,opt,name=sign_cert,json=signCert,proto3" json:"sign_cert,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -259,6 +262,13 @@ func (x *RouterNodeConfig) GetPort() uint32 {
 func (x *RouterNodeConfig) GetTlsCert() []byte {
 	if x != nil {
 		return x.TlsCert
+	}
+	return nil
+}
+
+func (x *RouterNodeConfig) GetSignCert() []byte {
+	if x != nil {
+		return x.SignCert
 	}
 	return nil
 }
@@ -423,7 +433,10 @@ type AssemblerNodeConfig struct {
 	// the port on which the gRPC server will listen
 	Port uint32 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
 	// the certificate used to authenticate with clients
-	TlsCert       []byte `protobuf:"bytes,3,opt,name=tls_cert,json=tlsCert,proto3" json:"tls_cert,omitempty"`
+	TlsCert []byte `protobuf:"bytes,3,opt,name=tls_cert,json=tlsCert,proto3" json:"tls_cert,omitempty"`
+	// the signing certificate (that includes the public key) of the node,
+	// used to authenticate signatures it produces
+	SignCert      []byte `protobuf:"bytes,4,opt,name=sign_cert,json=signCert,proto3" json:"sign_cert,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -475,6 +488,13 @@ func (x *AssemblerNodeConfig) GetPort() uint32 {
 func (x *AssemblerNodeConfig) GetTlsCert() []byte {
 	if x != nil {
 		return x.TlsCert
+	}
+	return nil
+}
+
+func (x *AssemblerNodeConfig) GetSignCert() []byte {
+	if x != nil {
+		return x.SignCert
 	}
 	return nil
 }
@@ -991,11 +1011,12 @@ const file_api_ordererpb_configuration_proto_rawDesc = "" +
 	"\fRouterConfig\x18\x04 \x01(\v2\x1b.ordererpb.RouterNodeConfigR\fRouterConfig\x12D\n" +
 	"\x0eBatchersConfig\x18\x05 \x03(\v2\x1c.ordererpb.BatcherNodeConfigR\x0eBatchersConfig\x12H\n" +
 	"\x0fConsenterConfig\x18\x06 \x01(\v2\x1e.ordererpb.ConsenterNodeConfigR\x0fConsenterConfig\x12H\n" +
-	"\x0fAssemblerConfig\x18\a \x01(\v2\x1e.ordererpb.AssemblerNodeConfigR\x0fAssemblerConfig\"U\n" +
+	"\x0fAssemblerConfig\x18\a \x01(\v2\x1e.ordererpb.AssemblerNodeConfigR\x0fAssemblerConfig\"r\n" +
 	"\x10RouterNodeConfig\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\x12\x19\n" +
-	"\btls_cert\x18\x03 \x01(\fR\atlsCert\"\x8d\x01\n" +
+	"\btls_cert\x18\x03 \x01(\fR\atlsCert\x12\x1b\n" +
+	"\tsign_cert\x18\x04 \x01(\fR\bsignCert\"\x8d\x01\n" +
 	"\x11BatcherNodeConfig\x12\x18\n" +
 	"\ashardID\x18\x01 \x01(\rR\ashardID\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
@@ -1006,11 +1027,12 @@ const file_api_ordererpb_configuration_proto_rawDesc = "" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1b\n" +
 	"\tsign_cert\x18\x03 \x01(\fR\bsignCert\x12\x19\n" +
-	"\btls_cert\x18\x04 \x01(\fR\atlsCert\"X\n" +
+	"\btls_cert\x18\x04 \x01(\fR\atlsCert\"u\n" +
 	"\x13AssemblerNodeConfig\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\x12\x19\n" +
-	"\btls_cert\x18\x03 \x01(\fR\atlsCert\"T\n" +
+	"\btls_cert\x18\x03 \x01(\fR\atlsCert\x12\x1b\n" +
+	"\tsign_cert\x18\x04 \x01(\fR\bsignCert\"T\n" +
 	"\x0fConsensusConfig\x12A\n" +
 	"\x0eSmartBFTConfig\x18\x01 \x01(\v2\x19.ordererpb.SmartBFTConfigR\x0eSmartBFTConfig\"\x96\b\n" +
 	"\x0eSmartBFTConfig\x122\n" +

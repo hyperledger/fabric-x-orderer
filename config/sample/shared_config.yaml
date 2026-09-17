@@ -27,26 +27,28 @@ Parties:
     Consenter:
       Host: consenter1.example.org
       Port: 7050
-      PublicKey: path/to/consenter/signingkey1
+      SignCert: path/to/consenter-signcert1
       TLSCert: path/to/consenter-tlscert1
     Router:
       Host: router1.example.org
       Port: 8050
+      SignCert: path/to/router-signcert1
       TLSCert: path/to/router-tlscert1
     Assembler:
       Host: assembler1.example.com
       Port: 9050
+      SignCert: path/to/assembler-signcert1
       TLSCert: path/to/assembler-tlscert1
     Batchers:
       - ShardID: 1
         Host: batcher1s1.example.com
         Port: 6050
-        PublicKey: path/to/signingkey11
+        SignCert: path/to/batcher-signcert11
         TLSCert: path/to/batcher-tlscert11
       - ShardID: 2
         Host: batcher1s2.example.com
         Port: 6050
-        PublicKey: path/to/signingkey12
+        SignCert: path/to/batcher-signcert12
         TLSCert: path/to/batcher-tlscert12
 
   - PartyID: 2
@@ -57,26 +59,28 @@ Parties:
     Consenter:
       Host: consenter2.example.org
       Port: 7050
-      PublicKey: path/to/consenter/signingkey2
+      SignCert: path/to/consenter-signcert2
       TLSCert: path/to/consenter-tlscert2
     Router:
       Host: router2.example.org
       Port: 8050
+      SignCert: path/to/router-signcert2
       TLSCert: path/to/router-tlscert2
     Assembler:
       Host: assembler2.example.com
       Port: 9050
+      SignCert: path/to/assembler-signcert2
       TLSCert: path/to/assembler-tlscert2
     Batchers:
       - ShardID: 1
         Host: batcher2s1.example.com
         Port: 6050
-        PublicKey: path/to/signingkey21
+        SignCert: path/to/batcher-signcert21
         TLSCert: path/to/batcher-tlscert21
       - ShardID: 2
         Host: batcher2s2.example.com
         Port: 6050
-        PublicKey: path/to/signingkey22
+        SignCert: path/to/batcher-signcert22
         TLSCert: path/to/batcher-tlscert22
 
   - PartyID: 3
@@ -87,26 +91,28 @@ Parties:
     Consenter:
       Host: consenter3.example.org
       Port: 7050
-      PublicKey: path/to/consenter/signingkey3
+      SignCert: path/to/consenter-signcert3
       TLSCert: path/to/consenter-tlscert3
     Router:
       Host: router3.example.org
       Port: 8050
+      SignCert: path/to/router-signcert3
       TLSCert: path/to/router-tlscert3
     Assembler:
       Host: assembler3.example.com
       Port: 9050
+      SignCert: path/to/assembler-signcert3
       TLSCert: path/to/assembler-tlscert3
     Batchers:
       - ShardID: 1
         Host: batcher3s1.example.com
         Port: 6050
-        PublicKey: path/to/signingkey31
+        SignCert: path/to/batcher-signcert31
         TLSCert: path/to/batcher-tlscert31
       - ShardID: 2
         Host: batcher3s2.example.com
         Port: 6050
-        PublicKey: path/to/signingkey32
+        SignCert: path/to/batcher-signcert32
         TLSCert: path/to/batcher-tlscert32
 
   - PartyID: 4
@@ -117,26 +123,28 @@ Parties:
     Consenter:
       Host: consenter4.example.org
       Port: 7050
-      PublicKey: path/to/consenter/signingkey4
+      SignCert: path/to/consenter-signcert4
       TLSCert: path/to/consenter-tlscert4
     Router:
       Host: router4.example.org
       Port: 8050
+      SignCert: path/to/router-signcert4
       TLSCert: path/to/router-tlscert4
     Assembler:
       Host: assembler4.example.com
       Port: 9050
+      SignCert: path/to/assembler-signcert4
       TLSCert: path/to/assembler-tlscert4
     Batchers:
       - ShardID: 1
         Host: batcher4s1.example.com
         Port: 6050
-        PublicKey: path/to/signingkey41
+        SignCert: path/to/batcher-signcert41
         TLSCert: path/to/batcher-tlscert41
       - ShardID: 2
         Host: batcher4s2.example.com
         Port: 6050
-        PublicKey: path/to/signingkey42
+        SignCert: path/to/batcher-signcert42
         TLSCert: path/to/batcher-tlscert42
 
 # Consensus carries config parameters that need to be uniform across the consenters' cluster.

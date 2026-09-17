@@ -49,6 +49,9 @@ message RouterNodeConfig {
     uint32 port = 2;
     // the certificate used to authenticate with clients
     bytes tls_cert = 3;
+    // the signing certificate (that includes the public key) of the node,
+    // used to authenticate signatures it produces
+    bytes sign_cert = 4;
 }
 
 message BatcherNodeConfig {
@@ -82,6 +85,9 @@ message AssemblerNodeConfig {
     uint32 port = 2;
     // the certificate used to authenticate with clients
     bytes tls_cert = 3;
+    // the signing certificate (that includes the public key) of the node,
+    // used to authenticate signatures it produces
+    bytes sign_cert = 4;
 }
 
 // BFT configuration
