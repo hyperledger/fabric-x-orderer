@@ -50,16 +50,14 @@ func (d *DeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) er
 }
 
 func (d *DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
-	handler := &deliver.Handler{
-		ChainManager:     &chainManager{channelName: d.channelName, ledger: d.ledger},
-		BindingInspector: deliver.InspectorFunc(deliver.NewBindingInspector(true, deliver.ExtractChannelHeaderCertHash)),
-		TimeWindow:       time.Hour,
-		Metrics:          deliver.NewMetrics(&disabled.Provider{}),
-		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
-			return time.Now().Add(time.Hour * 365 * 24)
-		},
-		ConfigBlockOps: &state.ConsenterConfigBlockOperations{},
-	}
+	handler := deliver.NewHandler(
+		&chainManager{channelName: d.channelName, ledger: d.ledger},
+		time.Hour,
+		true, // mutualTLS
+		deliver.NewMetrics(&disabled.Provider{}),
+		false, // expirationCheckDisabled
+		&state.ConsenterConfigBlockOperations{},
+	)
 
 	return handler.Handle(stream.Context(), &deliver.Server{
 		PolicyChecker:  d.accessControl,

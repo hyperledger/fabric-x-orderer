@@ -126,6 +126,32 @@ func TestConsensusDeliverServiceBindsRequestToClientCertificate(t *testing.T) {
 	})
 }
 
+// Scenario:
+//  1. Generate the signing identity of the consenter of one party with a certificate that has
+//     expired, and let the policy of the configuration admit it.
+//  2. Serve the consensus deliver service over a decision ledger holding one decision, with the
+//     access control a consenter builds from that configuration.
+//  3. Pull with a request the consenter signed, and expect it to be refused as forbidden, with no
+//     decision delivered.
+func TestConsensusDeliverServiceRefusesAnExpiredCertificate(t *testing.T) {
+	channelID := "arma"
+
+	expiredSigner, expiredCert := signutil.NewExpiredSigner(t, "org")
+
+	bundle := &mocks.FakeConfigResources{}
+	configutil.AdmitSigners(bundle, expiredCert)
+
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	endpoint := serveConsensusDeliverService(t, channelID, bundle, ca)
+
+	response, err := pullDecision(t, endpoint, delivery.DecisionChannelName(channelID), expiredSigner, tlsutil.NewClient(t, ca))
+	require.NoError(t, err)
+	require.Equal(t, common.Status_FORBIDDEN, response.GetStatus())
+	require.Nil(t, response.GetBlock())
+}
+
 // serveConsensusDeliverService serves a consensus deliver service over a ledger holding a single
 // decision, and returns the endpoint it listens on.
 func serveConsensusDeliverService(t *testing.T, channelID string, bundle channelconfig.Resources, ca tlsgen.CA) string {

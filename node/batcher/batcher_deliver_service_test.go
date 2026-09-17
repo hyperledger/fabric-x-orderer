@@ -140,6 +140,38 @@ func TestBatcherDeliverServiceBindsRequestToClientCertificate(t *testing.T) {
 	})
 }
 
+// Scenario:
+//  1. Generate the signing identity of the assembler of one party with a certificate that has
+//     expired, and let the policy of the configuration admit it.
+//  2. Serve the batcher deliver service of shard 1 over a batch ledger holding one batch, with the
+//     access control a batcher builds from that configuration.
+//  3. Pull with a request the assembler signed, and expect it to be refused as forbidden, with no
+//     batch delivered.
+func TestBatcherDeliverServiceRefusesAnExpiredCertificate(t *testing.T) {
+	shardID := types.ShardID(1)
+	partyID := types.PartyID(1)
+	channelID := "arma"
+
+	expiredSigner, expiredCert := signutil.NewExpiredSigner(t, "org")
+
+	bundle := &mocks.FakeConfigResources{}
+	configutil.AdmitSigners(bundle, expiredCert)
+
+	accessControl, err := deliver.NewAccessControl(bundle, policies.ChannelOrdererReaders)
+	require.NoError(t, err)
+
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	endpoint := serveBatcherDeliverService(t, shardID, partyID, channelID, accessControl, ca)
+	channelName := node_ledger.ShardPartyChannelIDToChannelName(shardID, partyID, channelID)
+
+	response, err := pullBatch(t, endpoint, channelName, expiredSigner, tlsutil.NewClient(t, ca))
+	require.NoError(t, err)
+	require.Equal(t, common.Status_FORBIDDEN, response.GetStatus())
+	require.Nil(t, response.GetBlock())
+}
+
 // serveBatcherDeliverService serves a batcher deliver service over a ledger holding a single batch,
 // and returns the endpoint it listens on.
 func serveBatcherDeliverService(t *testing.T, shardID types.ShardID, partyID types.PartyID, channelID string, accessControl *deliver.AccessControl, ca tlsgen.CA) string {
