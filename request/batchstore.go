@@ -121,6 +121,16 @@ func (bs *BatchStore) Prune(f func(k, v interface{}) error) {
 	bs.currentBatch.Prune(f)
 }
 
+// RemoveRequests removes multiple keys concurrently via parallelForEachKey,
+// which partitions the keys across runtime.NumCPU() workers so each key is
+// handled by exactly one worker (no two goroutines touch the same key).
+func (bs *BatchStore) RemoveRequests(keys ...string) {
+	parallelForEachKey(keys, func(key string) bool {
+		bs.Remove(key)
+		return true
+	})
+}
+
 func (bs *BatchStore) Remove(key string) {
 	val, exists := bs.keys2Batches.LoadAndDelete(key)
 	if !exists {

@@ -30,7 +30,7 @@ type RequestInspector interface {
 //go:generate counterfeiter -o mocks/mem_pool.go . MemPool
 type MemPool interface {
 	NextRequests(ctx context.Context) ([][]byte, []string)
-	RemoveRequests(requests ...string)
+	RemoveRequests(requestIDs ...string)
 	Submit(request []byte) error
 	Halt()
 	Restart(bool)
