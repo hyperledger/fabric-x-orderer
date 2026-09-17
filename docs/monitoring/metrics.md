@@ -28,6 +28,19 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Name**: "requests_rejected"  
   **Help**: "The number of incoming requests that have been rejected."
 
+- **Namespace**: "router"  
+  **Name**: "requests_throttled"  
+  **Help**: "The number of incoming requests rejected by the rate limiter."
+
+- **Namespace**: "router"  
+  **Name**: "active_streams"  
+  **Help**: "The number of currently active client gRPC streams."  
+  **Labels**: "stream_type" is either "broadcast" or "submit_stream".
+
+- **Namespace**: "router"  
+  **Name**: "submit_invocations"  
+  **Help**: "The number of times the Submit RPC was invoked."
+
 ---
 
 ### Assembler
