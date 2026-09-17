@@ -29,10 +29,10 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
-	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/deliverclient"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
@@ -56,7 +56,9 @@ import (
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -74,6 +76,9 @@ type node struct {
 	TLSKey  []byte
 	sk      *ecdsa.PrivateKey
 	pk      node_config.RawBytes
+	// signer signs the requests this node sends, and signCert is how the receiver resolves it.
+	signer   *signutil.TestSigner
+	signCert []byte
 }
 
 func (n *node) ToString() string {
@@ -102,7 +107,7 @@ func keygen(t *testing.T) (*ecdsa.PrivateKey, []byte) {
 	return sk, rawPK
 }
 
-func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, routerKeyPairs []*tlsgen.CertKeyPair, shardId types.ShardID, consenterEndpoint []string, genesisBlock *common.Block) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*flogging.FabricLogger) {
+func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo, ca tlsgen.CA, routerKeyPairs []*tlsgen.CertKeyPair, shardId types.ShardID, consenterEndpoint []string, genesisBlock *common.Block, routerIdentities []*SigningIdentity) ([]*router.Router, []node_config.RawBytes, []*node_config.RouterNodeConfig, []*flogging.FabricLogger) {
 	var routers []*router.Router
 	var certs []node_config.RawBytes
 	var configs []*node_config.RouterNodeConfig
@@ -121,8 +126,6 @@ func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		policyManager := &policyMocks.FakePolicyManager{}
 		policyManager.GetPolicyReturns(policy, true)
 		bundle.PolicyManagerReturns(policyManager)
-
-		fakeSigner := &mocks.SignerSerializer{}
 
 		fileStorePath := t.TempDir()
 		cs, err := configstore.NewStore(fileStorePath)
@@ -164,14 +167,33 @@ func CreateRouters(t *testing.T, num int, batcherInfos []node_config.BatcherInfo
 		configRulesVerifier.ValidateNewConfigReturns(nil)
 		configRulesVerifier.ValidateTransitionReturns(nil)
 
-		router := router.NewRouter(config, nil, l, fakeSigner, make(chan struct{}), configUpdateProposer, configRulesVerifier)
+		router := router.NewRouter(config, nil, l, routerIdentities[i].Signer, make(chan struct{}), configUpdateProposer, configRulesVerifier)
 		routers = append(routers, router)
 	}
 
 	return routers, certs, configs, loggers
 }
 
-func CreateAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, genesisBlock *common.Block) ([]*assembler.Assembler, []string, []*node_config.AssemblerNodeConfig, []*flogging.FabricLogger, func()) {
+// SigningIdentity is the signer a node signs its requests with, and the certificate by which the node
+// it reaches resolves that signer.
+type SigningIdentity struct {
+	Signer   *signutil.TestSigner
+	SignCert []byte
+}
+
+// CreateSigningIdentities returns a signing identity for one node of each of num parties. A service
+// serves only the nodes its shared configuration names, so these come before the nodes that serve.
+func CreateSigningIdentities(t *testing.T, num int) []*SigningIdentity {
+	identities := make([]*SigningIdentity, 0, num)
+	for i := 0; i < num; i++ {
+		signer, signCert := signutil.NewSelfSignedSigner(t, "org")
+		identities = append(identities, &SigningIdentity{Signer: signer, SignCert: signCert})
+	}
+
+	return identities
+}
+
+func CreateAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, genesisBlock *common.Block, assemblerIdentities []*SigningIdentity) ([]*assembler.Assembler, []string, []*node_config.AssemblerNodeConfig, []*flogging.FabricLogger, func()) {
 	var assemblerDirs []string
 	var assemblers []*assembler.Assembler
 	var loggers []*flogging.FabricLogger
@@ -213,7 +235,7 @@ func CreateAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 
 		configuration := testutil.ConfigurationWithDefaultCluster()
 		configuration.LocalConfig.ClusterConfig.ReplicationPolicy = config.ReplicationPolicyAssembler
-		assembler := assembler.NewAssembler(assemblerConf, configuration, genesisBlock, make(chan struct{}), logger, &mocks.SignerSerializer{})
+		assembler := assembler.NewAssembler(assemblerConf, configuration, genesisBlock, make(chan struct{}), logger, assemblerIdentities[i].Signer)
 		assembler.StartAssemblerService()
 		assemblers = append(assemblers, assembler)
 
@@ -226,7 +248,12 @@ func CreateAssemblers(t *testing.T, num int, ca tlsgen.CA, shards []node_config.
 	}
 }
 
-func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, genesisBlock *common.Block) ([]*consensus.Consensus, []*node_config.ConsenterNodeConfig, []*flogging.FabricLogger, func()) {
+// CreateConsenters starts the consenter of each party. Every node replicates the decisions, so the
+// shared configuration the consenters run on names them all; batcherNodesOfShards holds the batchers
+// of each shard, in the order of shardInfo.
+func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, genesisBlock *common.Block, routerIdentities []*SigningIdentity, assemblerIdentities []*SigningIdentity, batcherNodesOfShards ...[]*node) ([]*consensus.Consensus, []*node_config.ConsenterNodeConfig, []*flogging.FabricLogger, func()) {
+	sharedConfig := sharedConfigOfNetwork(shardInfo, consenterNodes, batcherNodesOfShards, routerIdentities, assemblerIdentities)
+
 	var consensuses []*consensus.Consensus
 	var loggers []*flogging.FabricLogger
 	var configs []*node_config.ConsenterNodeConfig
@@ -252,6 +279,7 @@ func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
+		bundle.OrdererConfigReturns(configutil.NewOrdererConfigOfSharedConfig(t, sharedConfig), true)
 
 		policy := &policyMocks.FakePolicyEvaluator{}
 		policy.EvaluateSignedDataReturns(nil)
@@ -284,12 +312,11 @@ func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		configs = append(configs, conf)
 
 		net := consenterNodes[i].GRPCServer
-		signer := crypto.ECDSASigner(*consenterNodes[i].sk)
 
 		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-		c := consensus.CreateConsensus(conf, testutil.ConfigurationWithDefaultCluster(), genesisBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
+		c := consensus.CreateConsensus(conf, testutil.ConfigurationWithDefaultCluster(), genesisBlock, logger, make(chan struct{}), consenterNodes[i].signer, mockConfigUpdateProposer)
 		c.Net = net
 		mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 		mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
@@ -315,7 +342,39 @@ func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 	}
 }
 
-func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, routerKeyPairs []*tlsgen.CertKeyPair, shardID types.ShardID, genesisBlock *common.Block) ([]*batcher.Batcher, []*node_config.BatcherNodeConfig, []*flogging.FabricLogger, func()) {
+// sharedConfigOfNetwork returns the shared configuration the consenters run on: every node of every
+// party that replicates the decisions, each known by its signing certificate.
+func sharedConfigOfNetwork(shardInfo []node_config.ShardInfo, consenterNodes []*node, batcherNodesOfShards [][]*node, routerIdentities []*SigningIdentity, assemblerIdentities []*SigningIdentity) []*ordererpb.PartyConfig {
+	parties := make([]*ordererpb.PartyConfig, 0, len(consenterNodes))
+	for i, consenterNode := range consenterNodes {
+		party := &ordererpb.PartyConfig{
+			PartyID:         uint32(i + 1),
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{SignCert: consenterNode.signCert},
+		}
+		if i < len(routerIdentities) {
+			party.RouterConfig = &ordererpb.RouterNodeConfig{SignCert: routerIdentities[i].SignCert}
+		}
+		if i < len(assemblerIdentities) {
+			party.AssemblerConfig = &ordererpb.AssemblerNodeConfig{SignCert: assemblerIdentities[i].SignCert}
+		}
+		for shard, batcherNodes := range batcherNodesOfShards {
+			if shard >= len(shardInfo) || i >= len(batcherNodes) {
+				continue
+			}
+			party.BatchersConfig = append(party.BatchersConfig, &ordererpb.BatcherNodeConfig{
+				ShardID:  uint32(shardInfo[shard].ShardId),
+				SignCert: batcherNodes[i].signCert,
+			})
+		}
+		parties = append(parties, party)
+	}
+
+	return parties
+}
+
+func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards []node_config.ShardInfo, consenterInfos []node_config.ConsenterInfo, routerKeyPairs []*tlsgen.CertKeyPair, shardID types.ShardID, genesisBlock *common.Block, assemblerIdentities []*SigningIdentity) ([]*batcher.Batcher, []*node_config.BatcherNodeConfig, []*flogging.FabricLogger, func()) {
+	sharedConfig := sharedConfigOfShard(shardID, batcherNodes, assemblerIdentities)
+
 	var batchers []*batcher.Batcher
 	var loggers []*flogging.FabricLogger
 	var configs []*node_config.BatcherNodeConfig
@@ -331,6 +390,7 @@ func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
+		bundle.OrdererConfigReturns(configutil.NewOrdererConfigOfSharedConfig(t, sharedConfig), true)
 
 		configStorePath := t.TempDir()
 		cs, err := configstore.NewStore(configStorePath)
@@ -373,11 +433,10 @@ func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 
 		logger := testutil.CreateLogger(t, i+int(shardID)*10)
 		loggers = append(loggers, logger)
-		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
 
 		fullConfig := pinning.ConfigurationWithRouters(types.PartyID(i+1), routerKeyPairs)
 
-		batcher := batcher.CreateBatcher(batcherConf, fullConfig, logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+		batcher := batcher.CreateBatcher(batcherConf, fullConfig, logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, batcherNodes[i].signer)
 		batcher.Net = batcherNodes[i]
 		batchers = append(batchers, batcher)
 		batcher.Run()
@@ -401,6 +460,27 @@ func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 			b.Stop()
 		}
 	}
+}
+
+// sharedConfigOfShard returns the shared configuration the batchers of a shard run on: the batchers of
+// that shard and the assemblers, each known by its signing certificate.
+func sharedConfigOfShard(shardID types.ShardID, batcherNodes []*node, assemblerIdentities []*SigningIdentity) []*ordererpb.PartyConfig {
+	parties := make([]*ordererpb.PartyConfig, 0, len(batcherNodes))
+	for i, batcherNode := range batcherNodes {
+		party := &ordererpb.PartyConfig{
+			PartyID: uint32(i + 1),
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{{
+				ShardID:  uint32(shardID),
+				SignCert: batcherNode.signCert,
+			}},
+		}
+		if i < len(assemblerIdentities) {
+			party.AssemblerConfig = &ordererpb.AssemblerNodeConfig{SignCert: assemblerIdentities[i].SignCert}
+		}
+		parties = append(parties, party)
+	}
+
+	return parties
 }
 
 func CreateBatcherNodesAndInfo(t *testing.T, ca tlsgen.CA, num int) ([]*node, []node_config.BatcherInfo) {
@@ -453,7 +533,9 @@ func createNodes(t *testing.T, num int, ca tlsgen.CA) []*node {
 		srv, err := newGRPCServer(testutil.AllocateLocalhostAddress(t), ca, kp)
 		require.NoError(t, err)
 
-		result = append(result, &node{GRPCServer: srv, TLSKey: kp.Key, TLSCert: kp.Cert, pk: pks[i], sk: sks[i]})
+		signer, signCert := signutil.NewSignerOfKey(t, sks[i], "org")
+
+		result = append(result, &node{GRPCServer: srv, TLSKey: kp.Key, TLSCert: kp.Cert, pk: pks[i], sk: sks[i], signer: signer, signCert: signCert})
 	}
 
 	return result
@@ -461,10 +543,12 @@ func createNodes(t *testing.T, num int, ca tlsgen.CA) []*node {
 
 func RecoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeConfig, routerKeyPairs []*tlsgen.CertKeyPair, batcherNode *node, logger *flogging.FabricLogger) *batcher.Batcher {
 	newBatcherNode := &node{
-		TLSCert: batcherNode.TLSCert,
-		TLSKey:  batcherNode.TLSKey,
-		sk:      batcherNode.sk,
-		pk:      batcherNode.pk,
+		TLSCert:  batcherNode.TLSCert,
+		TLSKey:   batcherNode.TLSKey,
+		sk:       batcherNode.sk,
+		pk:       batcherNode.pk,
+		signer:   batcherNode.signer,
+		signCert: batcherNode.signCert,
 	}
 	var err error
 
@@ -475,9 +559,8 @@ func RecoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeCon
 
 	newBatcherNode.GRPCServer, err = newGRPCServer(batcherNode.Address(), ca, kp)
 	require.NoError(t, err)
-	signer := crypto.ECDSASigner(*newBatcherNode.sk)
 
-	batcher := batcher.CreateBatcher(conf, pinning.ConfigurationWithRouters(conf.PartyId, routerKeyPairs), logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
+	batcher := batcher.CreateBatcher(conf, pinning.ConfigurationWithRouters(conf.PartyId, routerKeyPairs), logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, newBatcherNode.signer)
 	batcher.Net = newBatcherNode
 	batcher.Run()
 
@@ -496,10 +579,12 @@ func RecoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeCon
 
 func RecoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNodeConfig, consenterNode *node, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *consensus.Consensus {
 	newConsenterNode := &node{
-		TLSCert: consenterNode.TLSCert,
-		TLSKey:  consenterNode.TLSKey,
-		sk:      consenterNode.sk,
-		pk:      consenterNode.pk,
+		TLSCert:  consenterNode.TLSCert,
+		TLSKey:   consenterNode.TLSKey,
+		sk:       consenterNode.sk,
+		pk:       consenterNode.pk,
+		signer:   consenterNode.signer,
+		signCert: consenterNode.signCert,
 	}
 	var err error
 
@@ -510,12 +595,11 @@ func RecoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 
 	newConsenterNode.GRPCServer, err = newGRPCServer(consenterNode.Address(), ca, kp)
 	require.NoError(t, err)
-	signer := crypto.ECDSASigner(*newConsenterNode.sk)
 
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-	consenter := consensus.CreateConsensus(conf, testutil.ConfigurationWithDefaultCluster(), lastConfigBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
+	consenter := consensus.CreateConsensus(conf, testutil.ConfigurationWithDefaultCluster(), lastConfigBlock, logger, make(chan struct{}), newConsenterNode.signer, mockConfigUpdateProposer)
 	consenter.Net = newConsenterNode.GRPCServer
 	mockConfigApplier := &consensusMocks.FakeConfigApplier{}
 	mockConfigApplier.ApplyConfigToStateCalls(func(s *state.State, request *state.ConfigRequest) (*state.State, error) {
@@ -539,20 +623,19 @@ func RecoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 	return consenter
 }
 
-func RecoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block) *assembler.Assembler {
+func RecoverAssembler(t *testing.T, conf *node_config.AssemblerNodeConfig, logger *flogging.FabricLogger, lastConfigBlock *common.Block, assemblerIdentity *SigningIdentity) *assembler.Assembler {
 	configuration := testutil.ConfigurationWithDefaultCluster()
 	configuration.LocalConfig.ClusterConfig.ReplicationPolicy = config.ReplicationPolicyAssembler
-	assembler := assembler.NewAssembler(conf, configuration, lastConfigBlock, make(chan struct{}), logger, &mocks.SignerSerializer{})
+	assembler := assembler.NewAssembler(conf, configuration, lastConfigBlock, make(chan struct{}), logger, assemblerIdentity.Signer)
 	assembler.StartAssemblerService()
 	return assembler
 }
 
-func RecoverRouter(conf *node_config.RouterNodeConfig, logger *flogging.FabricLogger) *router.Router {
+func RecoverRouter(conf *node_config.RouterNodeConfig, logger *flogging.FabricLogger, routerIdentity *SigningIdentity) *router.Router {
 	bundle := &configMocks.FakeConfigResources{}
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
 	bundle.ConfigtxValidatorReturns(configtxValidator)
-	fakeSigner := &mocks.SignerSerializer{}
 
 	configUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	req := &protos.Request{}
@@ -562,7 +645,7 @@ func RecoverRouter(conf *node_config.RouterNodeConfig, logger *flogging.FabricLo
 	configRulesVerifier.ValidateNewConfigReturns(nil)
 	configRulesVerifier.ValidateTransitionReturns(nil)
 
-	router := router.NewRouter(conf, nil, logger, fakeSigner, make(chan struct{}), configUpdateProposer, configRulesVerifier)
+	router := router.NewRouter(conf, nil, logger, routerIdentity.Signer, make(chan struct{}), configUpdateProposer, configRulesVerifier)
 	router.StartRouterService()
 
 	return router
