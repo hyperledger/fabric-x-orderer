@@ -43,9 +43,11 @@ type DecisionReplicator interface {
 	Stop()
 }
 
-// Signer signs messages
+// Signer signs messages and serializes the identity of the signer, so a receiver can tell which node
+// signed.
 type Signer interface {
 	Sign([]byte) ([]byte, error)
+	Serialize() ([]byte, error)
 }
 
 // SigVerifier verifies signatures from batchers

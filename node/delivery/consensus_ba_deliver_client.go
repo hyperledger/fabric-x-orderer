@@ -18,6 +18,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 )
 
 const (
@@ -32,13 +33,13 @@ type ConsensusBringer interface {
 
 //go:generate counterfeiter -o ./mocks/consensus_bringer_factory.go . ConsensusBringerFactory
 type ConsensusBringerFactory interface {
-	Create(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) ConsensusBringer
+	Create(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, signer identity.SignerSerializer, logger *flogging.FabricLogger) ConsensusBringer
 }
 
 type DefaultConsensusBringerFactory struct{}
 
-func (f *DefaultConsensusBringerFactory) Create(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) ConsensusBringer {
-	return NewConsensusBAReplicator(channelID, tlsCACerts, tlsKey, tlsCert, endpoint, assemblerLedger, logger)
+func (f *DefaultConsensusBringerFactory) Create(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, signer identity.SignerSerializer, logger *flogging.FabricLogger) ConsensusBringer {
+	return NewConsensusBAReplicator(channelID, tlsCACerts, tlsKey, tlsCert, endpoint, assemblerLedger, signer, logger)
 }
 
 // ConsensusBAReplicator replicates decisions from consensus and allows the consumption of `core.BatchAttestation` objects.
@@ -48,18 +49,21 @@ type ConsensusBAReplicator struct {
 	tlsKey, tlsCert []byte
 	endpoint        string
 	cc              comm.ClientConfig
-	logger          *flogging.FabricLogger
-	cancelCtx       context.Context
-	ctxCancelFunc   context.CancelFunc
+	// signer signs the deliver request, so consensus can tell which node asks to replicate.
+	signer        identity.SignerSerializer
+	logger        *flogging.FabricLogger
+	cancelCtx     context.Context
+	ctxCancelFunc context.CancelFunc
 }
 
-func NewConsensusBAReplicator(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, logger *flogging.FabricLogger) *ConsensusBAReplicator {
+func NewConsensusBAReplicator(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, signer identity.SignerSerializer, logger *flogging.FabricLogger) *ConsensusBAReplicator {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	baReplicator := &ConsensusBAReplicator{
 		channelID:       channelID,
 		assemblerLedger: assemblerLedger,
 		cc:              clientConfig(tlsCACerts, tlsKey, tlsCert),
 		endpoint:        endpoint,
+		signer:          signer,
 		logger:          logger,
 		tlsKey:          tlsKey,
 		tlsCert:         tlsCert,
@@ -82,14 +86,19 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 		position := createAssemblerConsensusPosition(lastOrderingInfo)
 		cr.logger.Infof("Last OrderingInfo: %s; Last AssemblerConsensusPosition: %+v", lastOrderingInfo.String(), position)
 
+		tlsCertHash, err := protoutil.HashTLSCertificate(cr.tlsCert)
+		if err != nil {
+			cr.logger.Panicf("Failed hashing the TLS certificate: %s", err)
+		}
+
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			DecisionChannelName(cr.channelID),
-			nil, // sign deliver requests to consensus?
+			cr.signer,
 			NextSeekInfo(uint64(position.DecisionNum)),
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
 		if err != nil {
 			cr.logger.Panicf("Failed creating signed envelope: %v", err)

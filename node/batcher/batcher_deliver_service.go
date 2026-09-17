@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package batcher
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -15,13 +14,13 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/crypto"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-	"google.golang.org/protobuf/proto"
 )
 
 // TODO The deliver service and client (puller) were copied almost as is from Fabric.
@@ -29,7 +28,10 @@ import (
 
 type BatcherDeliverService struct {
 	LedgerArray *ledger.BatchLedgerArray
-	Logger      *flogging.FabricLogger
+	// AccessControl authorizes a request by the node that signed it. Only a batcher of this shard,
+	// and the assemblers, are served.
+	AccessControl *deliver.NodeVerifier
+	Logger        *flogging.FabricLogger
 }
 
 func (d *BatcherDeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
@@ -38,18 +40,16 @@ func (d *BatcherDeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastSer
 
 func (d *BatcherDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 	handler := &deliver.Handler{
-		ChainManager:     &chainManager{ledgerArray: d.LedgerArray, logger: d.Logger},
-		BindingInspector: &noopBindingInspector{},
-		TimeWindow:       time.Hour,
-		Metrics:          deliver.NewMetrics(&disabled.Provider{}),
-		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
-			return time.Now().Add(time.Hour * 365 * 24)
-		},
-		ConfigBlockOps: &utils.CommonConfigBlockOperations{},
+		ChainManager:        &chainManager{ledgerArray: d.LedgerArray, logger: d.Logger},
+		BindingInspector:    deliver.InspectorFunc(deliver.NewBindingInspector(true, deliver.ExtractChannelHeaderCertHash)),
+		TimeWindow:          time.Hour,
+		Metrics:             deliver.NewMetrics(&disabled.Provider{}),
+		ExpirationCheckFunc: crypto.ExpiresAt,
+		ConfigBlockOps:      &utils.CommonConfigBlockOperations{},
 	}
 
 	return handler.Handle(stream.Context(), &deliver.Server{
-		PolicyChecker:  &policyChecker{},
+		PolicyChecker:  d.AccessControl,
 		ResponseSender: &responseSender{stream: stream},
 		Receiver:       stream,
 	})
@@ -73,12 +73,6 @@ func (r *responseSender) SendBlockResponse(block *common.Block, channelID string
 
 func (r *responseSender) DataType() string {
 	return "block"
-}
-
-type policyChecker struct{}
-
-func (p *policyChecker) CheckPolicy(envelope *common.Envelope, channelID string) error {
-	return nil
 }
 
 type chainManager struct {
@@ -117,7 +111,7 @@ func (c *chainReader) Sequence() uint64 {
 }
 
 func (c *chainReader) PolicyManager() policies.Manager {
-	panic("implement me")
+	panic("internal deliver authorizes by node signature, not by a channel policy")
 }
 
 func (c *chainReader) Reader() blockledger.Reader {
@@ -137,10 +131,4 @@ func (d *delayedReader) Iterator(startType *orderer.SeekPosition) (blockledger.I
 		time.Sleep(time.Millisecond)
 	}
 	return d.Reader.Iterator(startType)
-}
-
-type noopBindingInspector struct{}
-
-func (nbi noopBindingInspector) Inspect(context.Context, proto.Message) error {
-	return nil
 }

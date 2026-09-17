@@ -40,15 +40,15 @@ func TestBatcherFailuresAndRecoveryWithTwoShards(t *testing.T) {
 
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
-	_, _, _, clean := test_utils.CreateConsenters(t, numParties, consenterNodes, consentersInfo, shards, genesisBlock)
+	_, _, _, clean := test_utils.CreateConsenters(t, numParties, consenterNodes, consentersInfo, shards, genesisBlock, nil, nil, batcherNodesShard0, batcherNodesShard1)
 	defer clean()
 
 	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
 
-	batchers0, configs, loggers, clean := test_utils.CreateBatchersForShard(t, numParties, batcherNodesShard0, shards, consentersInfo, routerKeyPairs, shards[0].ShardId, genesisBlock)
+	batchers0, configs, loggers, clean := test_utils.CreateBatchersForShard(t, numParties, batcherNodesShard0, shards, consentersInfo, routerKeyPairs, shards[0].ShardId, genesisBlock, nil)
 	defer clean()
 
-	batchers1, _, _, clean := test_utils.CreateBatchersForShard(t, numParties, batcherNodesShard1, shards, consentersInfo, routerKeyPairs, shards[1].ShardId, genesisBlock)
+	batchers1, _, _, clean := test_utils.CreateBatchersForShard(t, numParties, batcherNodesShard1, shards, consentersInfo, routerKeyPairs, shards[1].ShardId, genesisBlock, nil)
 	defer clean()
 
 	// requests only arrive at the batcher from the router of its own party, so a submit context must
