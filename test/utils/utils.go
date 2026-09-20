@@ -56,7 +56,9 @@ import (
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/client"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -331,6 +333,7 @@ func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
+		configutil.AdmitSigners(bundle)
 
 		configStorePath := t.TempDir()
 		cs, err := configstore.NewStore(configStorePath)
@@ -373,7 +376,7 @@ func CreateBatchersForShard(t *testing.T, num int, batcherNodes []*node, shards 
 
 		logger := testutil.CreateLogger(t, i+int(shardID)*10)
 		loggers = append(loggers, logger)
-		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
+		signer, _ := signutil.NewSignerOfKey(t, batcherNodes[i].sk, "org")
 
 		fullConfig := pinning.ConfigurationWithRouters(types.PartyID(i+1), routerKeyPairs)
 
@@ -475,7 +478,7 @@ func RecoverBatcher(t *testing.T, ca tlsgen.CA, conf *node_config.BatcherNodeCon
 
 	newBatcherNode.GRPCServer, err = newGRPCServer(batcherNode.Address(), ca, kp)
 	require.NoError(t, err)
-	signer := crypto.ECDSASigner(*newBatcherNode.sk)
+	signer, _ := signutil.NewSignerOfKey(t, newBatcherNode.sk, "org")
 
 	batcher := batcher.CreateBatcher(conf, pinning.ConfigurationWithRouters(conf.PartyId, routerKeyPairs), logger, make(chan struct{}), &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
 	batcher.Net = newBatcherNode

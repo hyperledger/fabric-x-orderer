@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
@@ -43,11 +44,6 @@ type DecisionReplicator interface {
 	Stop()
 }
 
-// Signer signs messages
-type Signer interface {
-	Sign([]byte) ([]byte, error)
-}
-
 // SigVerifier verifies signatures from batchers
 //
 //go:generate counterfeiter -o mocks/sig_verifier.go . SigVerifier
@@ -62,7 +58,7 @@ type Net interface {
 
 type Batcher struct {
 	logger      *flogging.FabricLogger
-	signer      Signer
+	signer      identity.SignerSerializer
 	ConfigStore *configstore.Store
 	wal         *smartbft_wal.WriteAheadLogFile
 
@@ -791,7 +787,7 @@ func (b *Batcher) SendBAF(baf types.BatchAttestationFragment, ctx context.Contex
 	}
 }
 
-func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term uint64, configSeq types.ConfigSequence, reason string) (*state.Complaint, error) {
+func CreateComplaint(signer identity.SignerSerializer, id types.PartyID, shard types.ShardID, term uint64, configSeq types.ConfigSequence, reason string) (*state.Complaint, error) {
 	c := &state.Complaint{
 		ShardTerm: state.ShardTerm{Shard: shard, Term: term},
 		Signer:    id,
@@ -808,7 +804,7 @@ func CreateComplaint(signer Signer, id types.PartyID, shard types.ShardID, term 
 	return c, nil
 }
 
-func CreateBAF(signer Signer, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence, configSeq types.ConfigSequence, txCount uint64, primarySignature []byte) (types.BatchAttestationFragment, error) {
+func CreateBAF(signer identity.SignerSerializer, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, seq types.BatchSequence, configSeq types.ConfigSequence, txCount uint64, primarySignature []byte) (types.BatchAttestationFragment, error) {
 	baf := types.NewSimpleBatchAttestationFragment(shard, primary, seq, digest, id, configSeq, txCount, primarySignature)
 	sig, err := signer.Sign(baf.ToBeSigned())
 	if err != nil {
