@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
-	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -22,6 +22,8 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +35,9 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 	partyID := types.PartyID(1)
 	shardID := types.ShardID(1)
 
-	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, shardID, ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, shardID, ca, asm.bundle)
 	defer cleanup()
 
 	consenterStub := NewStubConsenter(t, partyID, ca)
@@ -41,7 +45,7 @@ func TestAssemblerHandlesConsenterReconnect(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second, false, nil)
+	assembler, _ := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, 20*time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -94,7 +98,9 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 	partyID := types.PartyID(1)
 	shardID := types.ShardID(1)
 
-	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, shardID, ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, shardID, ca, asm.bundle)
 	defer cleanup()
 
 	consenterStub := NewStubConsenter(t, partyID, ca)
@@ -102,7 +108,7 @@ func TestAssemblerHandlesBatcherReconnect(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 20*time.Second, false, nil)
+	assembler, _ := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, 20*time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -154,10 +160,12 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	numParties := 4
 	partyID := types.PartyID(1)
 
-	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
-	batchersStubShard1, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	batchersStubShard1, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -168,7 +176,7 @@ func TestAssemblerBatchProcessingAcrossParties(t *testing.T) {
 	consenterStub := NewStubConsenter(t, partyID, ca)
 	defer consenterStub.Stop()
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, false, nil)
+	assembler, _ := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -226,7 +234,9 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	partyID := types.PartyID(1)
 	shardID := types.ShardID(1)
 
-	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, shardID, ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, shardID, ca, asm.bundle)
 	defer cleanup()
 
 	consenterStub := NewStubConsenter(t, partyID, ca)
@@ -234,7 +244,7 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
-	assembler, _ := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, 500*time.Millisecond, false, nil)
+	assembler, _ := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, 500*time.Millisecond, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -299,14 +309,40 @@ func TestAssembler_DifferentDigestSameSeq(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond, fmt.Sprintf("TXs: %d", assembler.GetTxCount()))
 }
 
-func newAssemblerTest(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration, ClientAuthRequired bool, clientRootCAs [][]byte) (*assembler.Assembler, string) {
-	return newAssemblerTestWithBundle(t, partyID, ca, shards, consenterInfo, popWaitMonitorTimeout, ClientAuthRequired, clientRootCAs, testutil.CreateAssemblerBundleForTest(0))
+// assemblerIdentity is the signing identity of the assembler of a party: the signer it signs its
+// requests to batchers with, and the shared configuration by which a batcher resolves that signer.
+type assemblerIdentity struct {
+	partyID types.PartyID
+	signer  *signutil.TestSigner
+	bundle  channelconfig.Resources
+}
+
+// newAssemblerIdentity generates the signing identity of the assembler of a party, so that the
+// batchers it pulls from can be started with a shared configuration that names it.
+func newAssemblerIdentity(t *testing.T, partyID types.PartyID) *assemblerIdentity {
+	t.Helper()
+
+	signer, signCert := signutil.NewSelfSignedSigner(t, "org")
+
+	return &assemblerIdentity{
+		partyID: partyID,
+		signer:  signer,
+		bundle: configutil.NewBundleOfSharedConfig(t, []*ordererpb.PartyConfig{{
+			PartyID:         uint32(partyID),
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{SignCert: signCert},
+		}}),
+	}
+}
+
+func newAssemblerTest(t *testing.T, asm *assemblerIdentity, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration, ClientAuthRequired bool, clientRootCAs [][]byte) (*assembler.Assembler, string) {
+	return newAssemblerTestWithBundle(t, asm, ca, shards, consenterInfo, popWaitMonitorTimeout, ClientAuthRequired, clientRootCAs, testutil.CreateAssemblerBundleForTest(0))
 }
 
 // newAssemblerTestWithBundle starts an assembler that authorizes deliver requests against the
 // policies of the given config bundle. Pass a bundle built from a real config block to exercise
 // authorization; newAssemblerTest passes one that accepts every identity.
-func newAssemblerTestWithBundle(t *testing.T, partyID types.PartyID, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration, ClientAuthRequired bool, clientRootCAs [][]byte, bundle channelconfig.Resources) (*assembler.Assembler, string) {
+func newAssemblerTestWithBundle(t *testing.T, asm *assemblerIdentity, ca tlsgen.CA, shards []config.ShardInfo, consenterInfo config.ConsenterInfo, popWaitMonitorTimeout time.Duration, ClientAuthRequired bool, clientRootCAs [][]byte, bundle channelconfig.Resources) (*assembler.Assembler, string) {
+	partyID := asm.partyID
 	genesisBlock := utils.EmptyGenesisBlock("arma")
 
 	ckp, err := ca.NewServerCertKeyPair("127.0.0.1")
@@ -341,12 +377,12 @@ func newAssemblerTestWithBundle(t *testing.T, partyID types.PartyID, ca tlsgen.C
 
 	configuration := testutil.ConfigurationWithDefaultCluster()
 	configuration.LocalConfig.ClusterConfig.ReplicationPolicy = orderer_config.ReplicationPolicyAssembler
-	a := assembler.NewAssembler(nodeConfig, configuration, genesisBlock, make(chan struct{}), testutil.CreateLogger(t, int(partyID)), &mocks.SignerSerializer{})
+	a := assembler.NewAssembler(nodeConfig, configuration, genesisBlock, make(chan struct{}), testutil.CreateLogger(t, int(partyID)), asm.signer)
 	a.StartAssemblerService()
 	return a, a.Address()
 }
 
-func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.ShardID, ca tlsgen.CA) ([]*stubBatcher, []config.BatcherInfo, func()) {
+func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.ShardID, ca tlsgen.CA, bundle channelconfig.Resources) ([]*stubBatcher, []config.BatcherInfo, func()) {
 	var batchers []*stubBatcher
 	var batcherInfos []config.BatcherInfo
 
@@ -356,7 +392,7 @@ func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.Shar
 	}
 
 	for i := 1; i <= numParties; i++ {
-		b := NewStubBatcher(t, shardID, types.PartyID(i), parties, ca)
+		b := NewStubBatcher(t, shardID, types.PartyID(i), parties, ca, bundle)
 		batchers = append(batchers, b)
 		batcherInfos = append(batcherInfos, b.batcherInfo)
 	}

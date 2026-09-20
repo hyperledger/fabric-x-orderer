@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -36,6 +37,8 @@ import (
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -45,10 +48,12 @@ import (
 
 type node struct {
 	*comm.GRPCServer
-	TLSCert []byte
-	TLSKey  []byte
-	sk      *ecdsa.PrivateKey
-	pk      nodeconfig.RawBytes
+	TLSCert  []byte
+	TLSKey   []byte
+	sk       *ecdsa.PrivateKey
+	pk       nodeconfig.RawBytes
+	signer   *signutil.TestSigner
+	signCert []byte
 }
 
 type storageListener struct {
@@ -116,7 +121,9 @@ func createNodes(t *testing.T, ca tlsgen.CA, num int) []*node {
 		srv, err := newGRPCServer(addr, ca, kp)
 		require.NoError(t, err)
 
-		result = append(result, &node{GRPCServer: srv, TLSKey: kp.Key, TLSCert: kp.Cert, pk: pks[i], sk: sks[i]})
+		signer, signCert := signutil.NewSignerOfKey(t, sks[i], "org")
+
+		result = append(result, &node{GRPCServer: srv, TLSKey: kp.Key, TLSCert: kp.Cert, pk: pks[i], sk: sks[i], signer: signer, signCert: signCert})
 	}
 	return result
 }
@@ -157,6 +164,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
 	batcherNodes := createNodes(t, ca, numParties)
 	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	sharedConfig := sharedConfigOfNodes(consenterNodes, batcherNodes)
 
 	var consensusNodes []*consensus.Consensus
 	var loggers []*flogging.FabricLogger
@@ -170,15 +178,13 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 
 		dir := t.TempDir()
 
-		conf := makeConf(t, dir, consenterNodes[i], partyID, consentersInfo, batchersInfo)
+		conf := makeConf(t, dir, consenterNodes[i], partyID, consentersInfo, batchersInfo, sharedConfig)
 		configs = append(configs, conf)
-
-		signer := buildSigner(conf, logger)
 
 		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-		c := consensus.CreateConsensus(conf, testutil.ConfigurationWithDefaultCluster(), genesisBlock, logger, make(chan struct{}), signer, mockConfigUpdateProposer)
+		c := consensus.CreateConsensus(conf, testutil.ConfigurationWithDefaultCluster(), genesisBlock, logger, make(chan struct{}), consenterNodes[i].signer, mockConfigUpdateProposer)
 		c.Net = consenterNodes[i].GRPCServer
 		grpcRegisterAndStart(c, consenterNodes[i])
 
@@ -219,7 +225,7 @@ func grpcRegisterAndStart(c *consensus.Consensus, n *node) {
 	}()
 }
 
-func makeConf(t *testing.T, dir string, n *node, partyID types.PartyID, consentersInfo []nodeconfig.ConsenterInfo, batchersInfo []nodeconfig.BatcherInfo) *nodeconfig.ConsenterNodeConfig {
+func makeConf(t *testing.T, dir string, n *node, partyID types.PartyID, consentersInfo []nodeconfig.ConsenterInfo, batchersInfo []nodeconfig.BatcherInfo, sharedConfig []*ordererpb.PartyConfig) *nodeconfig.ConsenterNodeConfig {
 	sk, err := x509.MarshalPKCS8PrivateKey(n.sk)
 	if err != nil {
 		panic(err)
@@ -232,6 +238,7 @@ func makeConf(t *testing.T, dir string, n *node, partyID types.PartyID, consente
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
 	configtxValidator.ChannelIDReturns("arma")
 	bundle.ConfigtxValidatorReturns(configtxValidator)
+	bundle.OrdererConfigReturns(configutil.NewOrdererConfigOfSharedConfig(t, sharedConfig), true)
 	policy := &policyMocks.FakePolicyEvaluator{}
 	policy.EvaluateSignedDataReturns(nil)
 	policyManager := &policyMocks.FakePolicyManager{}
@@ -260,12 +267,28 @@ func makeConf(t *testing.T, dir string, n *node, partyID types.PartyID, consente
 	}
 }
 
+// sharedConfigOfNodes returns the shared configuration holding the nodes of the harness, one consenter
+// and one batcher of a single shard per party, each known by its signing certificate.
+func sharedConfigOfNodes(consenterNodes []*node, batcherNodes []*node) []*ordererpb.PartyConfig {
+	parties := make([]*ordererpb.PartyConfig, 0, len(consenterNodes))
+	for i, consenterNode := range consenterNodes {
+		parties = append(parties, &ordererpb.PartyConfig{
+			PartyID:         uint32(i + 1),
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{SignCert: consenterNode.signCert},
+			BatchersConfig:  []*ordererpb.BatcherNodeConfig{{ShardID: 1, SignCert: batcherNodes[i].signCert}},
+		})
+	}
+	return parties
+}
+
 func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsgen.CA, lastConfigBlock *common.Block) error {
 	newConsenterNode := &node{
-		TLSCert: setup.consenterNodes[nodeIndex].TLSCert,
-		TLSKey:  setup.consenterNodes[nodeIndex].TLSKey,
-		sk:      setup.consenterNodes[nodeIndex].sk,
-		pk:      setup.consenterNodes[nodeIndex].pk,
+		TLSCert:  setup.consenterNodes[nodeIndex].TLSCert,
+		TLSKey:   setup.consenterNodes[nodeIndex].TLSKey,
+		sk:       setup.consenterNodes[nodeIndex].sk,
+		pk:       setup.consenterNodes[nodeIndex].pk,
+		signer:   setup.consenterNodes[nodeIndex].signer,
+		signCert: setup.consenterNodes[nodeIndex].signCert,
 	}
 
 	var err error
@@ -275,12 +298,10 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 	})
 	require.NoError(t, err)
 
-	signer := crypto.ECDSASigner(*newConsenterNode.sk)
-
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
 
-	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], testutil.ConfigurationWithDefaultCluster(), lastConfigBlock, setup.loggers[nodeIndex], make(chan struct{}), signer, mockConfigUpdateProposer)
+	setup.consensusNodes[nodeIndex] = consensus.CreateConsensus(setup.configs[nodeIndex], testutil.ConfigurationWithDefaultCluster(), lastConfigBlock, setup.loggers[nodeIndex], make(chan struct{}), newConsenterNode.signer, mockConfigUpdateProposer)
 	setup.consensusNodes[nodeIndex].Net = newConsenterNode.GRPCServer
 	grpcRegisterAndStart(setup.consensusNodes[nodeIndex], newConsenterNode)
 
@@ -342,18 +363,4 @@ func createContextForSubmitConfig(cert *x509.Certificate) (context.Context, erro
 	p := &peer.Peer{AuthInfo: tlsInfo}
 	ctx := peer.NewContext(context.Background(), p)
 	return ctx, nil
-}
-
-func buildSigner(conf *nodeconfig.ConsenterNodeConfig, logger *flogging.FabricLogger) consensus.Signer {
-	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
-	if privateKey == nil || privateKey.Bytes == nil {
-		logger.Panicf("Failed decoding private key PEM")
-	}
-
-	priv, err := x509.ParsePKCS8PrivateKey(privateKey.Bytes)
-	if err != nil {
-		logger.Panicf("Failed parsing private key DER: %v", err)
-	}
-
-	return crypto.ECDSASigner(*priv.(*ecdsa.PrivateKey))
 }
