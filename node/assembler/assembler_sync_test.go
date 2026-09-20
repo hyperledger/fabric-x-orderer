@@ -8,6 +8,7 @@ package assembler_test
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -165,7 +166,7 @@ func TestAssemblerSync_TooManySourcesUnavailable(t *testing.T) {
 
 	require.Equal(t, s.sourceAssemblers[3].GetStatus().State, node_utils.StateRunning, "the remaining source assembler should still be running")
 
-	joiningShards, joiningConsenterInfo := s.prepareJoining(addedPartyID)
+	joiningShards, joiningConsenterInfo := s.prepareJoining(addedPartyID, configBlock)
 	require.Panics(t, func() {
 		createJoiningAssembler(t, addedPartyID, s.dir, joiningShards, joiningConsenterInfo, configBlock, "")
 	}, "sync should fail when fewer than f+1 sources are available to agree on the genesis block")
@@ -233,7 +234,7 @@ func newSyncTestSetup(t *testing.T, numParties int) *syncTestSetup {
 	require.NoError(t, err)
 
 	shardID := types.ShardID(1)
-	batchersStub, batcherInfos, batcherCleanup := createStubBatchersAndInfos(t, numParties, shardID, ca)
+	batchersStub, batcherInfos, batcherCleanup := createStubBatchersAndInfos(t, numParties, shardID, ca, bundleFromBootstrapBlock(t, dir))
 	t.Cleanup(batcherCleanup)
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
@@ -373,7 +374,11 @@ func (s *syncTestSetup) addParty() (types.PartyID, *cb.Block) {
 // prepareJoining creates the joining party's own stub batcher and consenter (registering their
 // stops via t.Cleanup) and records them on the setup. It returns the shard info (existing batchers
 // plus the joining batcher) and consenter info used to build the joining assembler.
-func (s *syncTestSetup) prepareJoining(partyID types.PartyID) ([]config.ShardInfo, config.ConsenterInfo) {
+//
+// joinConfigBlock is the config block that added the joining party. Every stub batcher is moved onto
+// its shared configuration, because the joining assembler pulls batches from the existing batchers as
+// well as from its own, and a batcher serves only the nodes its configuration names.
+func (s *syncTestSetup) prepareJoining(partyID types.PartyID, joinConfigBlock *cb.Block) ([]config.ShardInfo, config.ConsenterInfo) {
 	t := s.t
 	t.Helper()
 
@@ -383,7 +388,12 @@ func (s *syncTestSetup) prepareJoining(partyID types.PartyID) ([]config.ShardInf
 		allParties[i] = types.PartyID(i + 1)
 	}
 
-	joiningBatcher := NewStubBatcher(t, s.shardID, partyID, allParties, s.ca)
+	joinBundle := bundleFromBlock(t, joinConfigBlock)
+	for _, existingBatcher := range s.batchersStub {
+		existingBatcher.UpdateAccessControl(t, joinBundle)
+	}
+
+	joiningBatcher := NewStubBatcher(t, s.shardID, partyID, allParties, s.ca, joinBundle)
 	t.Cleanup(joiningBatcher.Stop)
 
 	joiningShards := []config.ShardInfo{{ShardId: s.shardID, Batchers: append(s.batcherInfos, joiningBatcher.batcherInfo)}}
@@ -411,7 +421,7 @@ func (s *syncTestSetup) startJoiningWithLedger(partyID types.PartyID, syncConfig
 	t := s.t
 	t.Helper()
 
-	joiningShards, joiningConsenterInfo := s.prepareJoining(partyID)
+	joiningShards, joiningConsenterInfo := s.prepareJoining(partyID, syncConfigBlock)
 
 	joiningAsm := createJoiningAssembler(t, partyID, s.dir, joiningShards, joiningConsenterInfo, syncConfigBlock, ledgerDir)
 	joiningAsm.StartAssemblerService()
@@ -670,6 +680,20 @@ func createJoiningAssembler(
 		&synchronizer.SynchronizerCreator{},
 		verifierFactory,
 	)
+}
+
+// bundleFromBootstrapBlock creates a bundle from the bootstrap block of a generated network, so a
+// stub can be started with the same shared configuration the nodes of that network run on.
+func bundleFromBootstrapBlock(t *testing.T, dir string) channelconfig.Resources {
+	t.Helper()
+
+	data, err := os.ReadFile(filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	require.NoError(t, err)
+
+	block, err := protoutil.UnmarshalBlock(data)
+	require.NoError(t, err)
+
+	return bundleFromBlock(t, block)
 }
 
 // bundleFromBlock creates a channelconfig.Resources bundle directly from a config block,
