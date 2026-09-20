@@ -74,7 +74,7 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 		return cr.endpoint
 	}
 
-	requestEnvelopeFactoryFunc := func() *common.Envelope {
+	requestEnvelopeFactoryFunc := func() (*common.Envelope, error) {
 		lastOrderingInfo, err := cr.assemblerLedger.LastOrderingInfo()
 		if err != nil {
 			cr.logger.Panicf("Failed fetching last ordering info: %v", err)
@@ -82,7 +82,7 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 		position := createAssemblerConsensusPosition(lastOrderingInfo)
 		cr.logger.Infof("Last OrderingInfo: %s; Last AssemblerConsensusPosition: %+v", lastOrderingInfo.String(), position)
 
-		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+		return protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			DecisionChannelName(cr.channelID),
 			nil, // sign deliver requests to consensus?
@@ -91,11 +91,6 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 			uint64(0),
 			nil,
 		)
-		if err != nil {
-			cr.logger.Panicf("Failed creating signed envelope: %v", err)
-		}
-
-		return requestEnvelope
 	}
 
 	incomingBAsChan := make(chan *state.AvailableBatchOrdered, replicateBAChanSize)

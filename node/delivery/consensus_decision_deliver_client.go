@@ -55,8 +55,8 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 		return cr.endpoint
 	}
 
-	requestEnvelopeFactoryFunc := func() *common.Envelope {
-		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+	requestEnvelopeFactoryFunc := func() (*common.Envelope, error) {
+		return protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			DecisionChannelName(cr.channelID),
 			nil,
@@ -65,11 +65,6 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 			uint64(0),
 			nil,
 		)
-		if err != nil {
-			cr.logger.Panicf("Failed creating signed envelope: %v", err)
-		}
-
-		return requestEnvelope
 	}
 
 	res := make(chan *state.Header, replicateDecisionChanSize)
