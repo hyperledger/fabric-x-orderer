@@ -148,5 +148,6 @@ benchmarks rather than guessing.
 
 Run `make basic-checks` (license, DCO, imports, protos, linter) plus the unit-test target(s)
 covering your change. **Don't run the full test suite locally — it's slow by design** (that's why
-the targets are split); rely on CI (`.github/workflows/verify-build.yml`) for the complete run and
-monitor it. Commits must be signed off (`git commit -s`).
+the targets are split); rely on CI (`.github/workflows/verify-build.yml` and
+`.github/workflows/integration-tests.yml`) for the complete run and monitor it. Commits must be
+signed off (`git commit -s`).
