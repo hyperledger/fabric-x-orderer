@@ -42,14 +42,14 @@ func TestRegisterReply(t *testing.T) {
 	responseChan := make(chan Response, 1)
 
 	s := &stream{
-		requestTraceIdToResponseChannel: make(map[string]chan Response),
+		requestsByTraceID: make(map[string]*TrackedRequest),
 	}
 
-	s.registerReply(traceID, responseChan)
-	respChan, exists := s.isRequestRegistered(traceID)
-	require.NotNil(t, respChan)
+	s.registerReply(CreateTrackedRequest(nil, responseChan, nil, traceID))
+	tr, exists := s.isRequestRegistered(traceID)
+	require.NotNil(t, tr)
 	require.True(t, exists)
-	require.Equal(t, responseChan, respChan)
+	require.Equal(t, responseChan, tr.feedback.responses)
 }
 
 func TestSendRequests(t *testing.T) {
@@ -67,7 +67,7 @@ func TestSendRequests(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
@@ -108,7 +108,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
@@ -156,12 +156,12 @@ func TestReadResponses(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
 
-	s.registerReply(traceID, responseChan)
+	s.registerReply(CreateTrackedRequest(nil, responseChan, nil, traceID))
 	respChan, exists := s.isRequestRegistered(traceID)
 	require.NotNil(t, respChan)
 	require.True(t, exists)
@@ -201,7 +201,7 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
@@ -230,7 +230,7 @@ func TestErrorRequestChannel(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
@@ -262,15 +262,15 @@ func TestRenewStreamSuccess(t *testing.T) {
 
 	// prepare requests and map
 	requests := make(chan *TrackedRequest, 10)
-	requestTraceIdToResponseChannel := make(map[string]chan Response)
+	requestsByTraceID := make(map[string]*TrackedRequest)
 
 	req1 := createTestTrackedRequestFromTrace([]byte{1})
 	requests <- req1
-	requestTraceIdToResponseChannel[string(req1.trace)] = make(chan Response, 100)
+	requestsByTraceID[string(req1.trace)] = req1
 
 	req2 := createTestTrackedRequestFromTrace([]byte{2})
 	requests <- req2
-	requestTraceIdToResponseChannel[string(req2.trace)] = make(chan Response, 100)
+	requestsByTraceID[string(req2.trace)] = req2
 	_, verifier := createTestBundleAndVerifier()
 
 	faultyStream := &stream{
@@ -281,7 +281,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   requests,
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   requestTraceIdToResponseChannel,
+		requestsByTraceID:                 requestsByTraceID,
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
@@ -355,7 +355,7 @@ func TestReconnectRequest(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		connNum:                           connectionNumber,
 		streamNum:                         streamNumber,
@@ -396,7 +396,7 @@ func TestBatcherIsStoppedReconnectWithBackoff(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 		connNum:                           connectionNumber,
@@ -524,4 +524,128 @@ func createTestTrackedRequestFromTrace(trace []byte) *TrackedRequest {
 	req := tx.CreateStructuredRequest([]byte("123"))
 	req.TraceId = trace
 	return CreateTrackedRequest(req, make(chan Response, 10), nil, trace)
+}
+
+// fakeConfigSubmitter records the requests handed to it.
+type fakeConfigSubmitter struct {
+	lock     sync.Mutex
+	received []*TrackedRequest
+}
+
+func (f *fakeConfigSubmitter) Start() {}
+func (f *fakeConfigSubmitter) Stop()  {}
+
+func (f *fakeConfigSubmitter) Forward(tr *TrackedRequest) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	f.received = append(f.received, tr)
+}
+
+func (f *fakeConfigSubmitter) count() int {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	return len(f.received)
+}
+
+// Scenario:
+//  1. Register a traced request on a stream and also queue it on the requests
+//     channel, which is what Forward does.
+//  2. Answer all the clients waiting on the stream after an error.
+//  3. Expect the request to be answered exactly once.
+func TestSendResponseToAllClientsOnErrorAnswersATracedRequestOnce(t *testing.T) {
+	responseChan := make(chan Response, 10)
+	trace := []byte("request1")
+	tr := CreateTrackedRequest(&protos.Request{TraceId: trace}, responseChan, []byte("reqID1"), trace)
+
+	s := &stream{
+		endpoint:          "127.0.0.1:5017",
+		logger:            testutil.CreateLogger(t, 0),
+		requestsByTraceID: make(map[string]*TrackedRequest),
+		requestsChannel:   make(chan *TrackedRequest, 10),
+	}
+	s.registerReply(tr)
+	s.requestsChannel <- tr
+
+	s.sendResponseToAllClientsOnError(fmt.Errorf("batcher is gone"))
+
+	require.Len(t, responseChan, 1)
+	resp := <-responseChan
+	require.ErrorContains(t, resp.GetResponseError(), "batcher is gone")
+	require.Equal(t, []byte("reqID1"), resp.reqID)
+}
+
+// Scenario:
+//  1. Queue a traced config update on a stream, registered as Forward does.
+//  2. Let sendRequests classify it and hand it to the config submitter.
+//  3. Expect the registration to be gone, so that a later error on this stream
+//     cannot answer a request the consenter is going to answer.
+func TestSendRequestsUnregistersAConfigUpdateOnHandoff(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	fakeSubmitStreamClient := &commMocks.FakeRequestTransmit_SubmitStreamClient{}
+	fakeSubmitStreamClient.SendReturns(nil)
+	fakeSubmitStreamClient.ContextReturns(ctx)
+	verifier := createTestVerifierAcceptingConfigUpdates()
+	submitter := &fakeConfigSubmitter{}
+
+	s := &stream{
+		endpoint:                          "127.0.0.1:5017",
+		logger:                            testutil.CreateLogger(t, 0),
+		requestTransmitSubmitStreamClient: fakeSubmitStreamClient,
+		ctx:                               ctx,
+		cancelFunc:                        cancel,
+		requestsChannel:                   make(chan *TrackedRequest, 10),
+		doneChannel:                       make(chan bool),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
+		srReconnectChan:                   make(chan reconnectReq, 20),
+		verifier:                          verifier,
+		configSubmitter:                   submitter,
+	}
+
+	responseChan := make(chan Response, 10)
+	trace := []byte("request1")
+	tr := CreateTrackedRequest(tx.CreateStructuredConfigUpdateRequest([]byte("data")), responseChan, []byte("reqID1"), trace)
+	s.registerReply(tr)
+
+	go s.sendRequests()
+	defer s.close()
+
+	s.requestsChannel <- tr
+
+	require.Eventually(t, func() bool {
+		return submitter.count() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	_, exists := s.isRequestRegistered(trace)
+	require.False(t, exists)
+	require.Empty(t, responseChan)
+}
+
+// createTestVerifierAcceptingConfigUpdates builds a verifier whose policy manager accepts config updates.
+func createTestVerifierAcceptingConfigUpdates() *requestfilter.RulesVerifier {
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	configtxValidator.ProposeConfigUpdateReturns(&common.ConfigEnvelope{}, nil)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	policy := &policyMocks.FakePolicyEvaluator{}
+	policy.EvaluateSignedDataReturns(nil)
+	policyManager := &policyMocks.FakePolicyManager{}
+	policyManager.GetPolicyReturns(policy, true)
+	bundle.PolicyManagerReturns(policyManager)
+
+	conf := &config.RouterNodeConfig{
+		RequestMaxBytes:                     1 << 10,
+		ClientSignatureVerificationRequired: false,
+		Bundle:                              bundle,
+	}
+
+	rv := requestfilter.NewRulesVerifier(nil)
+	rv.AddRule(requestfilter.PayloadNotEmptyRule{})
+	rv.AddRule(requestfilter.NewMaxSizeFilter(conf))
+	rv.AddStructureRule(requestfilter.NewSigFilter(conf, policies.ChannelWriters))
+
+	return rv
 }
