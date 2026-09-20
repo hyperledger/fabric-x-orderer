@@ -14,13 +14,17 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
+	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,9 +78,16 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}
 
+	// A stub batcher serves every request.
+	bundle := &configMocks.FakeConfigResources{}
+	configutil.AdmitSigners(bundle)
+	accessControl, err := deliver.NewAccessControl(bundle, policies.ChannelOrdererReaders)
+	require.NoError(t, err)
+
 	deliveryService := &batcher.BatcherDeliverService{
-		LedgerArray: ledgerArray,
-		Logger:      logger,
+		LedgerArray:   ledgerArray,
+		AccessControl: accessControl,
+		Logger:        logger,
 	}
 
 	stubBatcher := &stubBatcher{

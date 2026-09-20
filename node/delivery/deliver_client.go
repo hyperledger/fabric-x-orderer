@@ -61,7 +61,7 @@ func SingleSpecifiedSeekInfo(seq uint64) *orderer.SeekInfo {
 	return seekInfo
 }
 
-func Pull(context context.Context, channel string, logger *flogging.FabricLogger, endpoint func() string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, handleBlock func(block *common.Block), onClose func()) {
+func Pull(context context.Context, channel string, logger *flogging.FabricLogger, endpoint func() string, requestEnvelopeFactory func() (*common.Envelope, error), cc comm.ClientConfig, handleBlock func(block *common.Block), onClose func()) {
 	// TODO channel is not really used correctly, it is more of a context for logging, we should consider refactoring
 
 	logger.Infof("Started pulling from: %s", channel)
@@ -113,6 +113,12 @@ func Pull(context context.Context, channel string, logger *flogging.FabricLogger
 		}
 		count++
 
+		requestEnvelope, err := requestEnvelopeFactory()
+		if err != nil {
+			logger.Errorf("Failed creating the request envelope for %s: %v", endpointToPullFrom, err)
+			continue
+		}
+
 		conn, err := cc.Dial(endpointToPullFrom)
 		if err != nil {
 			logger.Errorf("Failed connecting to %s: %v", endpointToPullFrom, err)
@@ -128,7 +134,7 @@ func Pull(context context.Context, channel string, logger *flogging.FabricLogger
 			continue
 		}
 
-		err = stream.Send(requestEnvelopeFactory())
+		err = stream.Send(requestEnvelope)
 		if err != nil {
 			logger.Errorf("Failed sending request envelope to %s: %v", endpointToPullFrom, err)
 			stream.CloseSend()
@@ -193,7 +199,7 @@ func pullBlocks(
 }
 
 // PullOne will pull a single block, as specified in the request.
-func PullOne(ctx context.Context, channel string, logger *flogging.FabricLogger, endpointToPullFrom string, requestEnvelopeFactory func() *common.Envelope, cc comm.ClientConfig, successErr error) (*common.Block, error) {
+func PullOne(ctx context.Context, channel string, logger *flogging.FabricLogger, endpointToPullFrom string, requestEnvelopeFactory func() (*common.Envelope, error), cc comm.ClientConfig, successErr error) (*common.Block, error) {
 	logger.Infof("Started pulling one batch, channel: %s, endpoint: %s", channel, endpointToPullFrom)
 
 	count := 0
@@ -219,6 +225,12 @@ func PullOne(ctx context.Context, channel string, logger *flogging.FabricLogger,
 		}
 		count++
 
+		requestEnvelope, err := requestEnvelopeFactory()
+		if err != nil {
+			logger.Errorf("Failed creating the request envelope for %s: %v", endpointToPullFrom, err)
+			continue
+		}
+
 		conn, err := cc.Dial(endpointToPullFrom)
 		if err != nil {
 			logger.Errorf("Failed connecting to %s: %v", endpointToPullFrom, err)
@@ -234,7 +246,6 @@ func PullOne(ctx context.Context, channel string, logger *flogging.FabricLogger,
 			continue
 		}
 
-		requestEnvelope := requestEnvelopeFactory()
 		err = stream.Send(requestEnvelope)
 		if err != nil {
 			logger.Errorf("Failed sending request envelope to %s: %v", endpointToPullFrom, err)
