@@ -182,3 +182,26 @@ func TestConfigSubmitterReconnectionAbort(t *testing.T) {
 	err := <-errChan
 	require.EqualError(t, err, fmt.Sprintf("reconnection to consensus %s aborted, because context is done and configSubmitter stopped", configSubmitter.consensusEndpoint))
 }
+
+// Scenario:
+//  1. Create a config submitter with a queue of one and do not start it, so that
+//     nothing drains the queue.
+//  2. Forward a request, filling the queue, and expect no response.
+//  3. Forward a second request and expect it to be rejected rather than block.
+func TestConfigSubmitterForwardRejectsWhenQueueIsFull(t *testing.T) {
+	cs := &configSubmitter{
+		logger:                testutil.CreateLogger(t, 0),
+		configRequestsChannel: make(chan *TrackedRequest, 1),
+	}
+
+	feedbackChan := make(chan Response, 2)
+	req := tx.CreateStructuredRequest([]byte("config"))
+
+	cs.Forward(CreateTrackedRequest(req, feedbackChan, []byte("req1"), nil))
+	require.Empty(t, feedbackChan)
+
+	cs.Forward(CreateTrackedRequest(req, feedbackChan, []byte("req2"), nil))
+	resp := <-feedbackChan
+	require.ErrorContains(t, resp.GetResponseError(), "config request queue is full")
+	require.Equal(t, []byte("req2"), resp.reqID)
+}

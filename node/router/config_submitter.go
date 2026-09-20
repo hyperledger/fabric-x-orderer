@@ -107,9 +107,19 @@ func (cs *configSubmitter) readConfigRequests() {
 	}
 }
 
-// Forward forwards the config request from the shard router to the config submitter requests channel
+// Forward forwards the config request from the shard router to the config submitter
+// requests channel. A full queue means the path to the consenter is stuck; the
+// request is rejected rather than blocking the submitting client indefinitely.
 func (cs *configSubmitter) Forward(tr *TrackedRequest) {
-	cs.configRequestsChannel <- tr
+	select {
+	case cs.configRequestsChannel <- tr:
+	default:
+		cs.logger.Warnf("config requests channel is full, rejecting config request %x", tr.reqID)
+		tr.client.reply(Response{
+			err:   errors.New("server error: config request queue is full, try again later"),
+			reqID: tr.reqID,
+		})
+	}
 }
 
 // forwardRequest forwards the config request from the config submitter to the consensus
