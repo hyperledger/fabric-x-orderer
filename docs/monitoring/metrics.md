@@ -41,6 +41,11 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Name**: "submit_invocations"  
   **Help**: "The number of times the Submit RPC was invoked."
 
+- **Namespace**: "router"  
+  **Name**: "responses_dropped"  
+  **Help**: "The number of responses that could not be delivered to the submitting client, by the reason nothing was reading them."  
+  **Labels**: "reason" is "client_gone", "client_behind" or "router_draining".
+
 ---
 
 ### Assembler

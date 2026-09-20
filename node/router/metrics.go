@@ -57,6 +57,13 @@ var (
 		Help:       "The number of times the Submit RPC was invoked.",
 		LabelNames: []string{"party_id"},
 	}
+
+	droppedResponses = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "responses_dropped",
+		Help:       "The number of responses that could not be delivered to the submitting client, by the reason nothing was reading them.",
+		LabelNames: []string{"reason", "party_id"},
+	}
 )
 
 type RouterMetrics struct {
@@ -67,13 +74,17 @@ type RouterMetrics struct {
 	activeBroadcastStreams metrics.Gauge
 	activeSubmitStreams    metrics.Gauge
 	submitInvocations      metrics.Counter
-	incomingTxsLastValue   uint64
-	logger                 *flogging.FabricLogger
-	interval               time.Duration
-	stopChan               chan struct{}
-	stopOnce               sync.Once
-	startOnce              sync.Once
-	partyID                arma_types.PartyID
+	// Bound per reason here so that counting a drop costs no allocation.
+	droppedRespClientGone     metrics.Counter
+	droppedRespClientBehind   metrics.Counter
+	droppedRespRouterDraining metrics.Counter
+	incomingTxsLastValue      uint64
+	logger                    *flogging.FabricLogger
+	interval                  time.Duration
+	stopChan                  chan struct{}
+	stopOnce                  sync.Once
+	startOnce                 sync.Once
+	partyID                   arma_types.PartyID
 }
 
 // NewRouterMetrics creates the Metrics
@@ -83,6 +94,7 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 
 	rejectedTxs := provider.NewCounter(rejectedTxs)
 	activeStreams := provider.NewGauge(activeStreamsOpts)
+	droppedResponses := provider.NewCounter(droppedResponses)
 	versionGauge := monitoring.VersionGauge(provider)
 	versionGauge.With(metadata.Version).Set(1)
 
@@ -97,7 +109,12 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		activeBroadcastStreams: activeStreams.With([]string{partyID, "broadcast"}...),
 		activeSubmitStreams:    activeStreams.With([]string{partyID, "submit_stream"}...),
 		submitInvocations:      provider.NewCounter(submitInvocationsOpts).With([]string{partyID}...),
-		partyID:                routerNodeConfig.PartyID,
+
+		droppedRespClientGone:     droppedResponses.With([]string{"client_gone", partyID}...),
+		droppedRespClientBehind:   droppedResponses.With([]string{"client_behind", partyID}...),
+		droppedRespRouterDraining: droppedResponses.With([]string{"router_draining", partyID}...),
+
+		partyID: routerNodeConfig.PartyID,
 	}
 }
 
