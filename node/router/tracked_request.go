@@ -9,8 +9,11 @@ package router
 import (
 	"errors"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
@@ -31,7 +34,13 @@ type TrackedRequest struct {
 // the given channel. It is only used for testing, to submit a request without a
 // live client stream.
 func CreateTrackedRequest(request *protos.Request, responses chan Response, reqID []byte, trace []byte) *TrackedRequest {
-	return &TrackedRequest{request: request, client: &clientChannel{responses: responses}, reqID: reqID, trace: trace}
+	logger := flogging.MustGetLogger("router")
+	metrics := NewRouterMetrics(&config.RouterNodeConfig{Metrics: &operations.Metrics{Provider: "disabled"}}, logger)
+
+	client := newClientChannel(0, nil, nil, metrics)
+	client.responses = responses // the test reads the channel it passed in
+
+	return &TrackedRequest{request: request, client: client, reqID: reqID, trace: trace}
 }
 
 type Response struct {

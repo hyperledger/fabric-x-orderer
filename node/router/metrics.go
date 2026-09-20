@@ -43,6 +43,13 @@ var (
 		Help:       "The number of incoming requests rejected by the rate limiter.",
 		LabelNames: []string{"party_id"},
 	}
+
+	droppedResponses = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "responses_dropped",
+		Help:       "The number of responses that could not be delivered to the submitting client, by the reason nothing was reading them.",
+		LabelNames: []string{"reason", "party_id"},
+	}
 )
 
 type RouterMetrics struct {
@@ -50,13 +57,17 @@ type RouterMetrics struct {
 	rejectedTxsWithCode400 metrics.Counter
 	rejectedTxsWithCode500 metrics.Counter
 	throttledTxs           metrics.Counter
-	incomingTxsLastValue   uint64
-	logger                 *flogging.FabricLogger
-	interval               time.Duration
-	stopChan               chan struct{}
-	stopOnce               sync.Once
-	startOnce              sync.Once
-	partyID                arma_types.PartyID
+	// Bound per reason here so that counting a drop costs no allocation.
+	droppedRespClientGone       metrics.Counter
+	droppedRespClientNotReading metrics.Counter
+	droppedRespRouterDraining   metrics.Counter
+	incomingTxsLastValue        uint64
+	logger                      *flogging.FabricLogger
+	interval                    time.Duration
+	stopChan                    chan struct{}
+	stopOnce                    sync.Once
+	startOnce                   sync.Once
+	partyID                     arma_types.PartyID
 }
 
 // NewRouterMetrics creates the Metrics
@@ -65,6 +76,7 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 	provider := monitoring.NewProvider(routerNodeConfig.Metrics.Provider, logger)
 
 	rejectedTxs := provider.NewCounter(rejectedTxs)
+	droppedResponses := provider.NewCounter(droppedResponses)
 	versionGauge := monitoring.VersionGauge(provider)
 	versionGauge.With(metadata.Version).Set(1)
 
@@ -76,7 +88,12 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		rejectedTxsWithCode400: rejectedTxs.With([]string{"400", partyID}...),
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
 		throttledTxs:           provider.NewCounter(throttledTxs).With([]string{partyID}...),
-		partyID:                routerNodeConfig.PartyID,
+
+		droppedRespClientGone:       droppedResponses.With([]string{"client_gone", partyID}...),
+		droppedRespClientNotReading: droppedResponses.With([]string{"client_not_reading", partyID}...),
+		droppedRespRouterDraining:   droppedResponses.With([]string{"router_draining", partyID}...),
+
+		partyID: routerNodeConfig.PartyID,
 	}
 }
 

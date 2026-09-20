@@ -28,6 +28,14 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Name**: "requests_rejected"  
   **Help**: "The number of incoming requests that have been rejected."
 
+- **Namespace**: "router"  
+  **Name**: "requests_throttled"  
+  **Help**: "The number of incoming requests rejected by the rate limiter."
+
+- **Namespace**: "router"  
+  **Name**: "responses_dropped"  
+  **Help**: "The number of responses that could not be delivered to the submitting client, by the reason nothing was reading them."
+
 ---
 
 ### Assembler

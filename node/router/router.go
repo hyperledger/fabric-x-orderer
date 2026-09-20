@@ -395,7 +395,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		close(exit)
 	}()
 
-	client := newClientChannel(clientFeedbackBuffer)
+	client := newClientChannel(clientFeedbackBuffer, stream.Context().Done(), r.drainChan, r.metrics)
 	go r.sendFeedbackOnBroadcastStream(stream, exit, client)
 
 	for {
@@ -453,7 +453,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		close(exit)
 	}()
 
-	client := newClientChannel(clientFeedbackBuffer)
+	client := newClientChannel(clientFeedbackBuffer, stream.Context().Done(), r.drainChan, r.metrics)
 	go r.sendFeedbackOnSubmitStream(stream, exit, client)
 
 	for {
@@ -526,7 +526,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 
 	trace := createTraceID(nil)
 
-	client := newClientChannel(1)
+	client := newClientChannel(1, ctx.Done(), r.drainChan, r.metrics)
 
 	tr := &TrackedRequest{request: request, client: client, reqID: reqID, trace: trace}
 	tr.request.ConfigSeq = r.configSeq
