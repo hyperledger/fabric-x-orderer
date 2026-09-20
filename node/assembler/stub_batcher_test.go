@@ -9,11 +9,15 @@ package assembler_test
 import (
 	"fmt"
 	"net"
+	"sync"
 	"testing"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
+	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
@@ -22,6 +26,7 @@ import (
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -29,21 +34,30 @@ const (
 )
 
 type stubBatcher struct {
-	shardID     types.ShardID
-	partyID     types.PartyID
-	server      *comm.GRPCServer
-	endpoint    string
-	cert        []byte
-	key         []byte
-	batcherInfo config.BatcherInfo
-	logger      *flogging.FabricLogger
+	shardID  types.ShardID
+	partyID  types.PartyID
+	server   *comm.GRPCServer
+	endpoint string
+	cert     []byte
+	key      []byte
+	caCert   []byte
+	// clientRootCAs are the CAs that issue the client certificates the stub accepts.
+	clientRootCAs [][]byte
+	batcherInfo   config.BatcherInfo
+	ledgerArray   *node_ledger.BatchLedgerArray
+	logger        *flogging.FabricLogger
 
+	// mutex guards deliveryService, which a configuration update replaces.
+	mutex           sync.RWMutex
 	deliveryService *batcher.BatcherDeliverService
 }
 
-func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, ca tlsgen.CA) *stubBatcher {
+// NewStubBatcher starts a batcher deliver service over an empty ledger, serving the nodes of bundle.
+func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, parties []types.PartyID, ca tlsgen.CA, bundle channelconfig.Resources) *stubBatcher {
 	certKeyPair, err := ca.NewServerCertKeyPair(localhost)
 	require.NoError(t, err)
+
+	clientRootCAs := clientRootCAs(t, ca.CertBytes(), bundle)
 
 	// allocate a port using the shared port allocator
 	port, listener := testutil.SharedTestPortAllocator().Allocate(t)
@@ -52,9 +66,11 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 	// create a GRPC Server which will listen for incoming connections on the allocated port
 	server, err := comm.NewGRPCServer(net.JoinHostPort(localhost, port), comm.ServerConfig{
 		SecOpts: comm.SecureOptions{
-			UseTLS:      true,
-			Certificate: certKeyPair.Cert,
-			Key:         certKeyPair.Key,
+			UseTLS:            true,
+			Certificate:       certKeyPair.Cert,
+			Key:               certKeyPair.Key,
+			RequireClientCert: true,
+			ClientRootCAs:     clientRootCAs,
 		},
 	})
 	require.NoError(t, err)
@@ -74,24 +90,29 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 		logger.Panicf("Failed creating BatchLedgerArray: %s", err)
 	}
 
-	deliveryService := &batcher.BatcherDeliverService{
-		LedgerArray: ledgerArray,
-		Logger:      logger,
-	}
+	accessControl, err := deliver.NewBatcherDeliverVerifier(bundle, shardID)
+	require.NoError(t, err)
 
 	stubBatcher := &stubBatcher{
-		shardID:         shardID,
-		partyID:         partyID,
-		server:          server,
-		endpoint:        server.Address(),
-		cert:            certKeyPair.Cert,
-		key:             certKeyPair.Key,
-		batcherInfo:     batcherInfo,
-		deliveryService: deliveryService,
-		logger:          logger,
+		shardID:       shardID,
+		partyID:       partyID,
+		server:        server,
+		endpoint:      server.Address(),
+		cert:          certKeyPair.Cert,
+		key:           certKeyPair.Key,
+		caCert:        ca.CertBytes(),
+		clientRootCAs: clientRootCAs,
+		batcherInfo:   batcherInfo,
+		ledgerArray:   ledgerArray,
+		logger:        logger,
+		deliveryService: &batcher.BatcherDeliverService{
+			LedgerArray:   ledgerArray,
+			AccessControl: accessControl,
+			Logger:        logger,
+		},
 	}
 
-	orderer.RegisterAtomicBroadcastServer(server.Server(), stubBatcher.deliveryService)
+	orderer.RegisterAtomicBroadcastServer(server.Server(), stubBatcher)
 	go func() {
 		address := server.Address()
 		logger.Infof("StubBatcher network service is starting on %s", address)
@@ -103,6 +124,24 @@ func NewStubBatcher(t *testing.T, shardID types.ShardID, partyID types.PartyID, 
 	return stubBatcher
 }
 
+// clientRootCAs returns caCert with the TLS CA certificates of the parties of the shared configuration.
+func clientRootCAs(t *testing.T, caCert []byte, bundle channelconfig.Resources) [][]byte {
+	t.Helper()
+
+	ordererConfig, exists := bundle.OrdererConfig()
+	require.True(t, exists)
+
+	sharedConfig := &ordererpb.SharedConfig{}
+	require.NoError(t, proto.Unmarshal(ordererConfig.ConsensusMetadata(), sharedConfig))
+
+	roots := [][]byte{caCert}
+	for _, party := range sharedConfig.GetPartiesConfig() {
+		roots = append(roots, party.GetTLSCACerts()...)
+	}
+
+	return roots
+}
+
 func (sb *stubBatcher) Stop() {
 	sb.server.Stop()
 }
@@ -110,9 +149,11 @@ func (sb *stubBatcher) Stop() {
 func (sb *stubBatcher) Restart() {
 	server, err := comm.NewGRPCServer(sb.endpoint, comm.ServerConfig{
 		SecOpts: comm.SecureOptions{
-			UseTLS:      true,
-			Certificate: sb.cert,
-			Key:         sb.key,
+			UseTLS:            true,
+			Certificate:       sb.cert,
+			Key:               sb.key,
+			RequireClientCert: true,
+			ClientRootCAs:     sb.clientRootCAs,
 		},
 	})
 	if err != nil {
@@ -121,7 +162,7 @@ func (sb *stubBatcher) Restart() {
 
 	sb.server = server
 
-	orderer.RegisterAtomicBroadcastServer(server.Server(), sb.deliveryService)
+	orderer.RegisterAtomicBroadcastServer(server.Server(), sb)
 
 	go func() {
 		address := server.Address()
@@ -137,6 +178,35 @@ func (sb *stubBatcher) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer)
 	return fmt.Errorf("not implemented")
 }
 
+func (sb *stubBatcher) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
+	sb.mutex.RLock()
+	deliveryService := sb.deliveryService
+	sb.mutex.RUnlock()
+
+	return deliveryService.Deliver(stream)
+}
+
+// UpdateAccessControl rebuilds the access control of the stub from bundle, so that a test which adds
+// a party can let its nodes pull.
+func (sb *stubBatcher) UpdateAccessControl(t *testing.T, bundle channelconfig.Resources) {
+	t.Helper()
+
+	accessControl, err := deliver.NewBatcherDeliverVerifier(bundle, sb.shardID)
+	require.NoError(t, err)
+
+	sb.clientRootCAs = clientRootCAs(t, sb.caCert, bundle)
+	require.NoError(t, sb.server.SetClientRootCAs(sb.clientRootCAs))
+
+	sb.mutex.Lock()
+	defer sb.mutex.Unlock()
+
+	sb.deliveryService = &batcher.BatcherDeliverService{
+		LedgerArray:   sb.ledgerArray,
+		AccessControl: accessControl,
+		Logger:        sb.logger,
+	}
+}
+
 func (sb *stubBatcher) SetNextBatch(batch types.Batch) {
-	sb.deliveryService.LedgerArray.Append(batch.Primary(), batch.Seq(), 0, batch.Requests(), batch.Digest(), batch.PrimarySignature())
+	sb.ledgerArray.Append(batch.Primary(), batch.Seq(), 0, batch.Requests(), batch.Digest(), batch.PrimarySignature())
 }
