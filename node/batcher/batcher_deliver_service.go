@@ -29,7 +29,10 @@ import (
 
 type BatcherDeliverService struct {
 	LedgerArray *ledger.BatchLedgerArray
-	Logger      *flogging.FabricLogger
+	// AccessControl authorizes a request by the node that signed it. Only a batcher of this shard,
+	// and the assemblers, are served.
+	AccessControl *deliver.NodeVerifier
+	Logger        *flogging.FabricLogger
 }
 
 func (d *BatcherDeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
@@ -49,7 +52,7 @@ func (d *BatcherDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverSe
 	}
 
 	return handler.Handle(stream.Context(), &deliver.Server{
-		PolicyChecker:  &policyChecker{},
+		PolicyChecker:  d.AccessControl,
 		ResponseSender: &responseSender{stream: stream},
 		Receiver:       stream,
 	})
@@ -73,12 +76,6 @@ func (r *responseSender) SendBlockResponse(block *common.Block, channelID string
 
 func (r *responseSender) DataType() string {
 	return "block"
-}
-
-type policyChecker struct{}
-
-func (p *policyChecker) CheckPolicy(envelope *common.Envelope, channelID string) error {
-	return nil
 }
 
 type chainManager struct {

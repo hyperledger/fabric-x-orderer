@@ -45,10 +45,12 @@ func TestAssembler_SoftStopAndPull(t *testing.T) {
 	numParties := 4
 	partyID := types.PartyID(1)
 
-	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
-	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -59,7 +61,7 @@ func TestAssembler_SoftStopAndPull(t *testing.T) {
 	consenterStub := NewStubConsenter(t, partyID, ca)
 	defer consenterStub.Stop()
 
-	assembler, assemblerEndpoint := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, false, nil)
+	assembler, assemblerEndpoint := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, time.Second, false, nil)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -97,10 +99,12 @@ func TestAssemblerDeliver_WithMTLS_success(t *testing.T) {
 	numParties := 4
 	partyID := types.PartyID(1)
 
-	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	batchersStubShard0, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
-	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -113,7 +117,7 @@ func TestAssemblerDeliver_WithMTLS_success(t *testing.T) {
 
 	clientRootCAs := [][]byte{ca.CertBytes()}
 
-	assembler, assemblerEndpoint := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
+	assembler, assemblerEndpoint := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -148,10 +152,12 @@ func TestAssemblerDeliver_WithMTLS_NoCertHash(t *testing.T) {
 	numParties := 4
 	partyID := types.PartyID(1)
 
-	_, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	_, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
-	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -164,7 +170,7 @@ func TestAssemblerDeliver_WithMTLS_NoCertHash(t *testing.T) {
 
 	clientRootCAs := [][]byte{ca.CertBytes()}
 
-	assembler, assemblerEndpoint := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
+	assembler, assemblerEndpoint := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -214,10 +220,12 @@ func TestAssemblerDeliver_WrongChannelID(t *testing.T) {
 	numParties := 4
 	partyID := types.PartyID(1)
 
-	_, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	_, batcherInfosShard0, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
-	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca)
+	_, batcherInfosShard1, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(1), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{
@@ -230,7 +238,7 @@ func TestAssemblerDeliver_WrongChannelID(t *testing.T) {
 
 	clientRootCAs := [][]byte{ca.CertBytes()}
 
-	assembler, assemblerEndpoint := newAssemblerTest(t, partyID, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
+	assembler, assemblerEndpoint := newAssemblerTest(t, asm, ca, shards, consenterStub.consenterInfo, time.Second, true, clientRootCAs)
 	defer assembler.Stop()
 
 	// wait for genesis block
@@ -365,7 +373,9 @@ func TestAssemblerDeliver_ChannelReadersPolicy(t *testing.T) {
 
 	dir, bundle := generateChannelConfig(t, numParties)
 
-	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	asm := newAssemblerIdentity(t, partyID)
+
+	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca, asm.bundle)
 	defer cleanup()
 
 	shards := []config.ShardInfo{{ShardId: types.ShardID(0), Batchers: batcherInfos}}
@@ -373,7 +383,7 @@ func TestAssemblerDeliver_ChannelReadersPolicy(t *testing.T) {
 	consenterStub := NewStubConsenter(t, partyID, ca)
 	defer consenterStub.Stop()
 
-	assembler, assemblerEndpoint := newAssemblerTestWithBundle(t, partyID, ca, shards,
+	assembler, assemblerEndpoint := newAssemblerTestWithBundle(t, asm, ca, shards,
 		consenterStub.consenterInfo, time.Second, false, nil, bundle)
 	defer assembler.Stop()
 
