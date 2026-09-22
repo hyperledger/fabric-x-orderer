@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package router
 
 import (
+	"crypto/tls"
 	"fmt"
 	"strings"
 	"sync"
@@ -57,6 +58,7 @@ type RouterMetrics struct {
 	startOnce              sync.Once
 	partyID                arma_types.PartyID
 	promAddress            string
+	promTLS                *tls.Config
 }
 
 // NewRouterMetrics creates the Metrics
@@ -78,6 +80,7 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		throttledTxs:           provider.NewCounter(throttledTxs).With([]string{partyID}...),
 		partyID:                routerNodeConfig.PartyID,
 		promAddress:            routerNodeConfig.Metrics.PrometheusAddress,
+		promTLS:                routerNodeConfig.Metrics.PrometheusTLS,
 	}
 }
 
@@ -85,7 +88,7 @@ func (m *RouterMetrics) StopMetricsTracker() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
 		m.logger.Infof("Reporting routine is stopping")
-		m.reportMetrics()
+		m.reportMetrics(monitoring.NewReader(m.promAddress, m.interval, m.promTLS))
 	})
 }
 
@@ -102,31 +105,43 @@ func (m *RouterMetrics) trackMetrics() {
 	defer ticker.Stop()
 	m.logger.Infof("Reporting routine is starting")
 
+	reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
+
 	for {
 		select {
 		case <-m.stopChan:
 			return
 		case <-ticker.C:
-			m.reportMetrics()
+			m.reportMetrics(reader)
 		}
 	}
 }
 
-func (m *RouterMetrics) reportMetrics() {
+func (m *RouterMetrics) reportMetrics(reader *monitoring.Reader) {
 	partyID := fmt.Sprintf("%d", m.partyID)
-	reader := monitoring.NewReader(m.promAddress, m.interval)
-
-	txCount := reader.Total(incomingTxs, partyID)
-	txRejected400 := reader.Total(rejectedTxs, "400", partyID)
-	txRejected500 := reader.Total(rejectedTxs, "500", partyID)
-	txThrottled := reader.Total(throttledTxs, partyID)
-
-	if err := reader.Err(); err != nil {
-		m.logger.Warnf("Skipping metrics report: %s", err)
-		return
-	}
 
 	incomingTxsLastValue := atomic.LoadUint64(&m.incomingTxsLastValue)
+
+	txCount, err := reader.Total(incomingTxs, partyID)
+	if err != nil {
+		m.logger.Warnf("Failed to read incoming transactions: %s", err)
+		txCount = incomingTxsLastValue
+	}
+
+	txRejected400, err := reader.Total(rejectedTxs, "400", partyID)
+	if err != nil {
+		m.logger.Warnf("Failed to read rejected transactions with code 400: %s", err)
+	}
+
+	txRejected500, err := reader.Total(rejectedTxs, "500", partyID)
+	if err != nil {
+		m.logger.Warnf("Failed to read rejected transactions with code 500: %s", err)
+	}
+
+	txThrottled, err := reader.Total(throttledTxs, partyID)
+	if err != nil {
+		m.logger.Warnf("Failed to read throttled transactions: %s", err)
+	}
 
 	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d",
 		m.partyID,

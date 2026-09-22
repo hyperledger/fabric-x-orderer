@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package monitoring
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -17,43 +18,48 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
-	"github.com/pkg/errors"
 )
 
-var queryClient = &http.Client{Timeout: 5 * time.Second}
+const queryTimeout = 5 * time.Second
 
 type Reader struct {
 	address string
 	window  time.Duration
-	err     error
+	client  *http.Client
 }
 
-func NewReader(address string, window time.Duration) *Reader {
-	return &Reader{address: address, window: window}
+// NewReader returns a Reader that queries the Prometheus server at address.
+// tlsConfig configures TLS for HTTPS connections.
+func NewReader(address string, window time.Duration, tlsConfig *tls.Config) *Reader {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsConfig
+
+	return &Reader{
+		address: address,
+		window:  window,
+		client:  &http.Client{Timeout: queryTimeout, Transport: transport},
+	}
 }
 
-func (r *Reader) Err() error {
-	return r.err
-}
-
-// Total returns the current counter value.
-func (r *Reader) Total(opts metrics.CounterOpts, labelValues ...string) uint64 {
-	return uint64(r.query(r.selector(opts.Namespace, opts.Name, opts.LabelNames, labelValues)))
+// Total returns the latest counter value from Prometheus.
+func (r *Reader) Total(opts metrics.CounterOpts, labelValues ...string) (uint64, error) {
+	value, err := r.query(r.selector(opts.Namespace, opts.Name, opts.LabelNames, labelValues))
+	return uint64(value), err
 }
 
 // Gauge returns the current gauge value.
-func (r *Reader) Gauge(opts metrics.GaugeOpts, labelValues ...string) float64 {
+func (r *Reader) Gauge(opts metrics.GaugeOpts, labelValues ...string) (float64, error) {
 	return r.query(r.selector(opts.Namespace, opts.Name, opts.LabelNames, labelValues))
 }
 
 // HistogramAverage returns the cumulative histogram average.
-func (r *Reader) HistogramAverage(opts metrics.HistogramOpts, labelValues ...string) float64 {
+func (r *Reader) HistogramAverage(opts metrics.HistogramOpts, labelValues ...string) (float64, error) {
 	sum, count := r.histogramSelectors(opts, labelValues)
 	return r.query(fmt.Sprintf("%s / clamp_min(%s, 1)", sum, count))
 }
 
 // HistogramIntervalAverage returns the histogram average over the last interval.
-func (r *Reader) HistogramIntervalAverage(opts metrics.HistogramOpts, labelValues ...string) float64 {
+func (r *Reader) HistogramIntervalAverage(opts metrics.HistogramOpts, labelValues ...string) (float64, error) {
 	sum, count := r.histogramSelectors(opts, labelValues)
 
 	window := fmt.Sprintf("%dms", r.window.Milliseconds())
@@ -61,35 +67,32 @@ func (r *Reader) HistogramIntervalAverage(opts metrics.HistogramOpts, labelValue
 		window = fmt.Sprintf("%ds", r.window/time.Second)
 	}
 
-	avg := r.query(fmt.Sprintf("rate(%s[%s]) / rate(%s[%s])", sum, window, count, window))
+	avg, err := r.query(fmt.Sprintf("rate(%s[%s]) / rate(%s[%s])", sum, window, count, window))
+	if err != nil {
+		return 0, err
+	}
 	if math.IsNaN(avg) {
-		return 0
+		return 0, nil
 	}
 
-	return avg
+	return avg, nil
 }
 
 func (r *Reader) histogramSelectors(opts metrics.HistogramOpts, labelValues []string) (string, string) {
 	return r.selector(opts.Namespace, opts.Name+"_sum", opts.LabelNames, labelValues), r.selector(opts.Namespace, opts.Name+"_count", opts.LabelNames, labelValues)
 }
 
-func (r *Reader) query(query string) float64 {
-	if r.err != nil {
-		return 0
-	}
-
+func (r *Reader) query(query string) (float64, error) {
 	queryURL := fmt.Sprintf("%s/api/v1/query?query=%s", strings.TrimRight(r.address, "/"), url.QueryEscape(query))
 
-	resp, err := queryClient.Get(queryURL) //nolint:gosec
+	resp, err := r.client.Get(queryURL) //nolint:gosec
 	if err != nil {
-		r.err = errors.Wrapf(err, "failed to reach Prometheus for %s", query)
-		return 0
+		return 0, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		r.err = errors.Errorf("Prometheus returned status %s for %s", resp.Status, query)
-		return 0
+		return 0, fmt.Errorf("prometheus returned status %s", resp.Status)
 	}
 
 	var response struct {
@@ -102,38 +105,24 @@ func (r *Reader) query(query string) float64 {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		r.err = errors.Wrapf(err, "failed to decode Prometheus response for %s", query)
-		return 0
+		return 0, err
 	}
 
 	if response.Status != "success" || len(response.Data.Result) != 1 {
-		r.err = errors.Errorf("invalid Prometheus response for %s", query)
-		return 0
+		return 0, fmt.Errorf("invalid Prometheus response")
 	}
 
 	var value string
 	if err := json.Unmarshal(response.Data.Result[0].Value[1], &value); err != nil {
-		r.err = err
-		return 0
+		return 0, err
 	}
 
-	result, err := strconv.ParseFloat(value, 64)
-	if err != nil {
-		r.err = err
-		return 0
-	}
-
-	return result
+	return strconv.ParseFloat(value, 64)
 }
 
 func (r *Reader) selector(namespace, name string, labelNames, labelValues []string) string {
 	if namespace != "" {
 		name = namespace + "_" + name
-	}
-
-	if len(labelNames) != len(labelValues) {
-		r.err = errors.Errorf("metric %s declares %d labels, but %d values were given", name, len(labelNames), len(labelValues))
-		return ""
 	}
 
 	if len(labelNames) == 0 {

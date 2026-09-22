@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package assembler
 
 import (
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"time"
@@ -77,6 +78,7 @@ type Metrics struct {
 	startOnce   sync.Once
 	partyID     arma_types.PartyID
 	promAddress string
+	promTLS     *tls.Config
 }
 
 func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *node_ledger.AssemblerLedgerMetrics, logger *flogging.FabricLogger) *Metrics {
@@ -105,6 +107,7 @@ func NewMetrics(assemblerNodeConfig *config.AssemblerNodeConfig, ledgerMetrics *
 		stopChan:                           make(chan struct{}),
 		partyID:                            assemblerNodeConfig.PartyId,
 		promAddress:                        assemblerNodeConfig.Metrics.PrometheusAddress,
+		promTLS:                            assemblerNodeConfig.Metrics.PrometheusTLS,
 		batchUnaryFetchLatency:             batchUnaryFetchLatency,
 		attestationToBatchCollationLatency: attestationToBatchCollationLatency,
 		batchLedgerAppendLatency:           batchLedgerAppendLatency,
@@ -127,19 +130,41 @@ func (m *Metrics) StopMetricsTracker() {
 		close(m.stopChan)
 
 		partyID := fmt.Sprintf("%d", m.partyID)
-		reader := monitoring.NewReader(m.promAddress, m.interval)
+		reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
 
-		txCommitted := reader.Total(node_ledger.TransactionCountOpts, partyID)
-		blocksCommitted := reader.Total(node_ledger.BlocksCountOpts, partyID)
-		blocksSizeCommitted := reader.Total(node_ledger.BlocksSizeOpts, partyID)
-		prefetchIndexCacheEvictions := reader.Total(prefetchIndexCacheEvictionsTotalOpts, partyID)
-		batchUnaryFetchLatencyAvg := reader.HistogramAverage(batchUnaryFetchLatencyOpts, partyID)
-		attestationToBatchCollationLatencyAvg := reader.HistogramAverage(attestationToBatchCollationLatencyOpts, partyID)
-		batchLedgerAppendLatencyAvg := reader.HistogramAverage(batchLedgerAppendLatencyOpts, partyID)
+		txCommitted, err := reader.Total(node_ledger.TransactionCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read committed transactions count: %s", err)
+		}
 
-		if err := reader.Err(); err != nil {
-			m.logger.Warnf("Failed to read final metrics: %s", err)
-			return
+		blocksCommitted, err := reader.Total(node_ledger.BlocksCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read committed blocks count: %s", err)
+		}
+
+		blocksSizeCommitted, err := reader.Total(node_ledger.BlocksSizeOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read committed blocks size: %s", err)
+		}
+
+		prefetchIndexCacheEvictions, err := reader.Total(prefetchIndexCacheEvictionsTotalOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read prefetch index cache evictions: %s", err)
+		}
+
+		batchUnaryFetchLatencyAvg, err := reader.HistogramAverage(batchUnaryFetchLatencyOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read batch unary fetch latency: %s", err)
+		}
+
+		attestationToBatchCollationLatencyAvg, err := reader.HistogramAverage(attestationToBatchCollationLatencyOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read attestation to batch collation latency: %s", err)
+		}
+
+		batchLedgerAppendLatencyAvg, err := reader.HistogramAverage(batchLedgerAppendLatencyOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read batch ledger append latency: %s", err)
 		}
 
 		m.logger.Infof("ASSEMBLER_METRICS: party_id=%d, total: TXs=%d, blocks=%d, estimated_block_size=%d, batch_unary_fetch_latency_avg_seconds=%.6f, attestation_to_batch_collation_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f, prefetch_index_cache_evictions=%d", m.partyID, txCommitted, blocksCommitted, blocksSizeCommitted, batchUnaryFetchLatencyAvg, attestationToBatchCollationLatencyAvg, batchLedgerAppendLatencyAvg, prefetchIndexCacheEvictions)
@@ -150,12 +175,15 @@ func (m *Metrics) trackMetrics() {
 	sec := m.interval.Seconds()
 	partyID := fmt.Sprintf("%d", m.partyID)
 
-	reader := monitoring.NewReader(m.promAddress, m.interval)
-	lastTxCommitted := reader.Total(node_ledger.TransactionCountOpts, partyID)
-	lastBlocksCommitted := reader.Total(node_ledger.BlocksCountOpts, partyID)
-	if err := reader.Err(); err != nil {
-		m.logger.Warnf("Failed to read initial metrics: %s", err)
-		lastTxCommitted, lastBlocksCommitted = 0, 0
+	reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
+	lastTxCommitted, err := reader.Total(node_ledger.TransactionCountOpts, partyID)
+	if err != nil {
+		m.logger.Warnf("Failed to read initial committed transactions count: %s", err)
+	}
+
+	lastBlocksCommitted, err := reader.Total(node_ledger.BlocksCountOpts, partyID)
+	if err != nil {
+		m.logger.Warnf("Failed to read initial committed blocks count: %s", err)
 	}
 
 	t := time.NewTicker(m.interval)
@@ -164,19 +192,41 @@ func (m *Metrics) trackMetrics() {
 	for {
 		select {
 		case <-t.C:
-			reader := monitoring.NewReader(m.promAddress, m.interval)
+			txCommitted, err := reader.Total(node_ledger.TransactionCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read committed transactions count: %s", err)
+				txCommitted = lastTxCommitted
+			}
 
-			txCommitted := reader.Total(node_ledger.TransactionCountOpts, partyID)
-			blocksCommitted := reader.Total(node_ledger.BlocksCountOpts, partyID)
-			blocksSizeCommitted := reader.Total(node_ledger.BlocksSizeOpts, partyID)
-			prefetchIndexCacheEvictions := reader.Total(prefetchIndexCacheEvictionsTotalOpts, partyID)
-			batchUnaryFetchLatencyAvg := reader.HistogramIntervalAverage(batchUnaryFetchLatencyOpts, partyID)
-			attestationToBatchCollationLatencyAvg := reader.HistogramIntervalAverage(attestationToBatchCollationLatencyOpts, partyID)
-			batchLedgerAppendLatencyAvg := reader.HistogramIntervalAverage(batchLedgerAppendLatencyOpts, partyID)
+			blocksCommitted, err := reader.Total(node_ledger.BlocksCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read committed blocks count: %s", err)
+				blocksCommitted = lastBlocksCommitted
+			}
 
-			if err := reader.Err(); err != nil {
-				m.logger.Warnf("Skipping metrics report: %s", err)
-				continue
+			blocksSizeCommitted, err := reader.Total(node_ledger.BlocksSizeOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read committed blocks size: %s", err)
+			}
+
+			prefetchIndexCacheEvictions, err := reader.Total(prefetchIndexCacheEvictionsTotalOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read prefetch index cache evictions: %s", err)
+			}
+
+			batchUnaryFetchLatencyAvg, err := reader.HistogramIntervalAverage(batchUnaryFetchLatencyOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read batch unary fetch latency: %s", err)
+			}
+
+			attestationToBatchCollationLatencyAvg, err := reader.HistogramIntervalAverage(attestationToBatchCollationLatencyOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read attestation to batch collation latency: %s", err)
+			}
+
+			batchLedgerAppendLatencyAvg, err := reader.HistogramIntervalAverage(batchLedgerAppendLatencyOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read batch ledger append latency: %s", err)
 			}
 
 			newBlocks := uint64(0)

@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package batcher
 
 import (
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"time"
@@ -118,6 +119,7 @@ type BatcherMetrics struct {
 	stopOnce    sync.Once
 	startOnce   sync.Once
 	promAddress string
+	promTLS     *tls.Config
 
 	ledgerMetrics *ledger.BatchLedgerMetrics
 
@@ -166,6 +168,7 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo
 	return &BatcherMetrics{
 		interval:      batcherNodeConfig.Metrics.MetricsLogInterval,
 		promAddress:   batcherNodeConfig.Metrics.PrometheusAddress,
+		promTLS:       batcherNodeConfig.Metrics.PrometheusTLS,
 		partyID:       batcherNodeConfig.PartyId,
 		shardID:       batcherNodeConfig.ShardId,
 		logger:        logger,
@@ -201,26 +204,76 @@ func (m *BatcherMetrics) StopMetricsTracker() {
 		m.logger.Infof("Reporting routine is stopping")
 
 		labels := m.labels()
-		reader := monitoring.NewReader(m.promAddress, m.interval)
+		reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
 
-		role := reader.Gauge(currentRoleOpts, labels...)
-		created := reader.Total(batchesCreatedTotalOpts, labels...)
-		pulled := reader.Total(batchesPulledTotalOpts, labels...)
-		resends := reader.Total(firstResendsTotalOpts, labels...)
-		batchedTxs := reader.Total(batchedTxsTotalOpts, labels...)
-		memPool := reader.Gauge(memPoolSizeOpts, labels...)
-		routerTxs := reader.Total(routerTxsTotalOpts, labels...)
-		roleChanges := reader.Total(roleChangesTotalOpts, labels...)
-		complaints := reader.Total(complaintsTotalOpts, labels...)
-		mempoolNextLatency := reader.HistogramAverage(batchMempoolNextRequestsLatencyOpts, labels...)
-		verifyLatency := reader.HistogramAverage(batchVerifyLatencyOpts, labels...)
-		hashingLatency := reader.HistogramAverage(batchHashingLatencyOpts, labels...)
-		ledgerHashingLatency := reader.HistogramAverage(ledger.HeaderHashingLatencyOpts, labels...)
-		ledgerAppendLatency := reader.HistogramAverage(ledger.AppendLatencyOpts, labels...)
+		role, err := reader.Gauge(currentRoleOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read current role: %s", err)
+		}
 
-		if err := reader.Err(); err != nil {
-			m.logger.Warnf("Failed to read final metrics: %s", err)
-			return
+		created, err := reader.Total(batchesCreatedTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read created batches count: %s", err)
+		}
+
+		pulled, err := reader.Total(batchesPulledTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read pulled batches count: %s", err)
+		}
+
+		resends, err := reader.Total(firstResendsTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read first resends count: %s", err)
+		}
+
+		batchedTxs, err := reader.Total(batchedTxsTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read batched transactions count: %s", err)
+		}
+
+		memPool, err := reader.Gauge(memPoolSizeOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read mempool size: %s", err)
+		}
+
+		routerTxs, err := reader.Total(routerTxsTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read router transactions count: %s", err)
+		}
+
+		roleChanges, err := reader.Total(roleChangesTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read role changes count: %s", err)
+		}
+
+		complaints, err := reader.Total(complaintsTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read complaints count: %s", err)
+		}
+
+		mempoolNextLatency, err := reader.HistogramAverage(batchMempoolNextRequestsLatencyOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read mempool next requests latency: %s", err)
+		}
+
+		verifyLatency, err := reader.HistogramAverage(batchVerifyLatencyOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read batch verify latency: %s", err)
+		}
+
+		hashingLatency, err := reader.HistogramAverage(batchHashingLatencyOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read batch hashing latency: %s", err)
+		}
+
+		ledgerHashingLatency, err := reader.HistogramAverage(ledger.HeaderHashingLatencyOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read ledger header hashing latency: %s", err)
+		}
+
+		ledgerAppendLatency, err := reader.HistogramAverage(ledger.AppendLatencyOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read ledger append latency: %s", err)
 		}
 
 		m.logger.Infof(
@@ -249,14 +302,18 @@ func (m *BatcherMetrics) trackMetrics() {
 	sec := m.interval.Seconds()
 	labels := m.labels()
 
-	reader := monitoring.NewReader(m.promAddress, m.interval)
-	prevC := reader.Total(batchesCreatedTotalOpts, labels...)
-	prevP := reader.Total(batchesPulledTotalOpts, labels...)
-	prevR := uint64(0)
-	if err := reader.Err(); err != nil {
-		m.logger.Warnf("Failed to read initial metrics: %s", err)
-		prevC, prevP, prevR = 0, 0, 0
+	reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
+	prevC, err := reader.Total(batchesCreatedTotalOpts, labels...)
+	if err != nil {
+		m.logger.Warnf("Failed to read initial created batches count: %s", err)
 	}
+
+	prevP, err := reader.Total(batchesPulledTotalOpts, labels...)
+	if err != nil {
+		m.logger.Warnf("Failed to read initial pulled batches count: %s", err)
+	}
+
+	prevR := uint64(0)
 
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
@@ -264,26 +321,77 @@ func (m *BatcherMetrics) trackMetrics() {
 	for {
 		select {
 		case <-t.C:
-			reader := monitoring.NewReader(m.promAddress, m.interval)
+			role, err := reader.Gauge(currentRoleOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read current role: %s", err)
+			}
 
-			role := reader.Gauge(currentRoleOpts, labels...)
-			created := reader.Total(batchesCreatedTotalOpts, labels...)
-			pulled := reader.Total(batchesPulledTotalOpts, labels...)
-			resends := reader.Total(firstResendsTotalOpts, labels...)
-			batchedTxs := reader.Total(batchedTxsTotalOpts, labels...)
-			memPool := reader.Gauge(memPoolSizeOpts, labels...)
-			routerTxs := reader.Total(routerTxsTotalOpts, labels...)
-			roleChanges := reader.Total(roleChangesTotalOpts, labels...)
-			complaints := reader.Total(complaintsTotalOpts, labels...)
-			mempoolNextLatency := reader.HistogramIntervalAverage(batchMempoolNextRequestsLatencyOpts, labels...)
-			verifyLatency := reader.HistogramIntervalAverage(batchVerifyLatencyOpts, labels...)
-			hashingLatency := reader.HistogramIntervalAverage(batchHashingLatencyOpts, labels...)
-			ledgerHashingLatency := reader.HistogramIntervalAverage(ledger.HeaderHashingLatencyOpts, labels...)
-			ledgerAppendLatency := reader.HistogramIntervalAverage(ledger.AppendLatencyOpts, labels...)
+			created, err := reader.Total(batchesCreatedTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read created batches count: %s", err)
+				created = prevC
+			}
 
-			if err := reader.Err(); err != nil {
-				m.logger.Warnf("Skipping metrics report: %s", err)
-				continue
+			pulled, err := reader.Total(batchesPulledTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read pulled batches count: %s", err)
+				pulled = prevP
+			}
+
+			resends, err := reader.Total(firstResendsTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read first resends count: %s", err)
+				resends = prevR
+			}
+
+			batchedTxs, err := reader.Total(batchedTxsTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read batched transactions count: %s", err)
+			}
+
+			memPool, err := reader.Gauge(memPoolSizeOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read mempool size: %s", err)
+			}
+
+			routerTxs, err := reader.Total(routerTxsTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read router transactions count: %s", err)
+			}
+
+			roleChanges, err := reader.Total(roleChangesTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read role changes count: %s", err)
+			}
+
+			complaints, err := reader.Total(complaintsTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read complaints count: %s", err)
+			}
+
+			mempoolNextLatency, err := reader.HistogramIntervalAverage(batchMempoolNextRequestsLatencyOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read mempool next requests latency: %s", err)
+			}
+
+			verifyLatency, err := reader.HistogramIntervalAverage(batchVerifyLatencyOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read batch verify latency: %s", err)
+			}
+
+			hashingLatency, err := reader.HistogramIntervalAverage(batchHashingLatencyOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read batch hashing latency: %s", err)
+			}
+
+			ledgerHashingLatency, err := reader.HistogramIntervalAverage(ledger.HeaderHashingLatencyOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read ledger header hashing latency: %s", err)
+			}
+
+			ledgerAppendLatency, err := reader.HistogramIntervalAverage(ledger.AppendLatencyOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read ledger append latency: %s", err)
 			}
 
 			m.logger.Infof(

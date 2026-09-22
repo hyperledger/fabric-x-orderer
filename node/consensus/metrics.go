@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package consensus
 
 import (
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"time"
@@ -64,6 +65,7 @@ type ConsensusMetrics struct {
 	stopOnce    sync.Once
 	startOnce   sync.Once
 	promAddress string
+	promTLS     *tls.Config
 
 	// metrics
 	decisionsCount  metrics.Counter
@@ -93,6 +95,7 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisi
 		logger:      logger,
 		stopChan:    make(chan struct{}),
 		promAddress: consenterNodeConfig.Metrics.PrometheusAddress,
+		promTLS:     consenterNodeConfig.Metrics.PrometheusTLS,
 
 		decisionsCount:  decisionsCount,
 		blocksCount:     provider.NewCounter(metrics.CounterOpts(blocksCountOpts)).With([]string{partyID}...),
@@ -116,17 +119,31 @@ func (m *ConsensusMetrics) StopMetricsTracker() {
 		m.logger.Infof("Reporting routine is stopping")
 
 		partyID := fmt.Sprintf("%d", m.partyID)
-		reader := monitoring.NewReader(m.promAddress, m.interval)
+		reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
 
-		decisions := reader.Total(decisionsCountOpts, partyID)
-		blocks := reader.Total(blocksCountOpts, partyID)
-		bafs := reader.Total(bafsCountOpts, partyID)
-		complaints := reader.Total(complaintsCountOpts, partyID)
-		txs := reader.Total(txsCountOpts, partyID)
+		decisions, err := reader.Total(decisionsCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read decisions count: %s", err)
+		}
 
-		if err := reader.Err(); err != nil {
-			m.logger.Warnf("Failed to read final metrics: %s", err)
-			return
+		blocks, err := reader.Total(blocksCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read blocks count: %s", err)
+		}
+
+		bafs, err := reader.Total(bafsCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read BAFs count: %s", err)
+		}
+
+		complaints, err := reader.Total(complaintsCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read complaints count: %s", err)
+		}
+
+		txs, err := reader.Total(txsCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read transactions count: %s", err)
 		}
 
 		m.logger.Infof(
@@ -147,21 +164,36 @@ func (m *ConsensusMetrics) trackMetrics() {
 	defer t.Stop()
 
 	partyID := fmt.Sprintf("%d", m.partyID)
+	reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
 
 	for {
 		select {
 		case <-t.C:
-			reader := monitoring.NewReader(m.promAddress, m.interval)
+			dec, err := reader.Total(decisionsCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read decisions count: %s", err)
+				dec = prevDec
+			}
 
-			dec := reader.Total(decisionsCountOpts, partyID)
-			blk := reader.Total(blocksCountOpts, partyID)
-			bafs := reader.Total(bafsCountOpts, partyID)
-			complaints := reader.Total(complaintsCountOpts, partyID)
-			txs := reader.Total(txsCountOpts, partyID)
+			blk, err := reader.Total(blocksCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read blocks count: %s", err)
+				blk = prevBlk
+			}
 
-			if err := reader.Err(); err != nil {
-				m.logger.Warnf("Skipping metrics report: %s", err)
-				continue
+			bafs, err := reader.Total(bafsCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read BAFs count: %s", err)
+			}
+
+			complaints, err := reader.Total(complaintsCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read complaints count: %s", err)
+			}
+
+			txs, err := reader.Total(txsCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read transactions count: %s", err)
 			}
 
 			m.logger.Infof(
