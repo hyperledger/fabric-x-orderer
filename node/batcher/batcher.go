@@ -30,6 +30,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/config"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
@@ -52,7 +53,7 @@ type Signer interface {
 //
 //go:generate counterfeiter -o mocks/sig_verifier.go . SigVerifier
 type SigVerifier interface {
-	VerifySignature(id types.PartyID, shardID types.ShardID, msg, sig []byte) error
+	VerifySignature(entity crypto.EntityType, id types.PartyID, shardID types.ShardID, msg, sig []byte) error
 }
 
 type Net interface {
