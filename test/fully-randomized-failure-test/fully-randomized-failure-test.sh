@@ -500,7 +500,7 @@ monitor_completion() {
     echo "Current Status at $(date '+%Y-%m-%d %H:%M:%S')"
     echo "=========================================="
 
-    if grep -q "txs were sent to the routers" submit.log 2>/dev/null; then
+    if grep -q "txs were sent to the routers$" submit.log 2>/dev/null; then
       echo "Submit: all ${TOTAL_TXS} txs sent, waiting for the last blocks"
     else
       echo "Submit: sending (target ${TOTAL_TXS} txs)"
@@ -606,9 +606,9 @@ monitor_completion() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Created stop signal: ${STOP_SIGNAL}"
   fi
 
-  # submit exits by itself once every tx is confirmed and the assembler heights agree,
-  # and waits indefinitely for a tx that never arrives, so this window bounds the run.
-  # It also has to cover submit's height check, which polls for up to 3 minutes.
+  # submit exits by itself once every tx is confirmed and every assembler has the last
+  # block, and waits indefinitely for a tx that never arrives, so this window bounds the
+  # run.  It also has to cover submit's block check, which waits for up to 3 minutes.
   echo "Waiting up to ${SUBMIT_DRAIN_SECONDS}s for submit to confirm the last txs..."
   ( sleep "${SUBMIT_DRAIN_SECONDS}"
     kill -TERM "$SUBMIT_PID" 2>/dev/null || true
@@ -702,14 +702,15 @@ collect_results() {
   # -------------------------------------------------------------------------
   echo "Extracting the verification result from submit.log..."
 
-  # Did submit finish sending before it stopped?
+  # Did submit finish sending before it stopped?  The anchor matters: submit's final
+  # result line also contains this text, followed by "and received by assembler N".
   local ALL_SENT=false
-  if grep -q "txs were sent to the routers" submit.log 2>/dev/null; then
+  if grep -q "txs were sent to the routers$" submit.log 2>/dev/null; then
     ALL_SENT=true
   fi
 
   local VERDICT="none"
-  if grep -q "Verification passed" submit.log 2>/dev/null; then
+  if grep -q "received by assembler" submit.log 2>/dev/null; then
     VERDICT="passed"
   fi
 
@@ -721,19 +722,25 @@ collect_results() {
 
   echo "  Verdict: ${VERDICT}, router outages recovered: ${ROUTER_OUTAGES:-0}, assembler reconnects: ${ASSEMBLER_RECONNECTS:-0}"
 
-  # submit compares every assembler's height before exiting; neither line means it was
-  # stopped before that check finished.
-  local HEIGHT_STATE="unknown"
-  local HEIGHT_NOTE=""
-  if grep -q "assemblers reached block" submit.log 2>/dev/null; then
-    HEIGHT_STATE="ok"
-    HEIGHT_NOTE=$(grep -o "all .* assemblers reached block .*" submit.log | tail -1) || true
-  elif grep -q "are not at the same block height" submit.log 2>/dev/null; then
-    HEIGHT_STATE="mismatch"
-    HEIGHT_NOTE=$(grep -o "assemblers are not at the same block height.*" submit.log | tail -1) || true
+  # before exiting, submit asks every assembler for the last block it verified and logs
+  # one line per assembler.  No line at all means it was stopped before that check ran.
+  local BLOCKS_STATE="unknown"
+  local BLOCKS_NOTE=""
+  local BLOCKS_OK BLOCKS_MISSING LAST_BLOCK
+  BLOCKS_OK=$(grep -c "has block" submit.log 2>/dev/null) || BLOCKS_OK=0
+  BLOCKS_MISSING=$(grep -c "does not have block" submit.log 2>/dev/null) || BLOCKS_MISSING=0
+
+  if [ "${BLOCKS_MISSING}" -gt 0 ]; then
+    BLOCKS_STATE="missing"
+    BLOCKS_NOTE=$(grep -oE "assembler [0-9]+ does not have block [0-9]+" submit.log | tr '\n' ' ') || true
+    BLOCKS_NOTE="${BLOCKS_NOTE% }"
+  elif [ "${BLOCKS_OK}" = "${NUM_PARTIES}" ]; then
+    BLOCKS_STATE="ok"
+    LAST_BLOCK=$(grep -oE "has block [0-9]+" submit.log | tail -1 | grep -oE "[0-9]+") || true
+    BLOCKS_NOTE="all ${NUM_PARTIES} assemblers have block ${LAST_BLOCK}"
   fi
 
-  echo "  Heights: ${HEIGHT_STATE} - ${HEIGHT_NOTE}"
+  echo "  Blocks: ${BLOCKS_STATE} - ${BLOCKS_NOTE}"
 
   # -------------------------------------------------------------------------
   # Collect and compress logs
@@ -759,23 +766,23 @@ collect_results() {
     VERDICT_LINE="FAILED: submit logged no verification result, so a tx it sent was never confirmed, or it exited early"
   fi
 
-  local HEIGHT_LINE=""
-  case "$HEIGHT_STATE" in
+  local BLOCKS_LINE=""
+  case "$BLOCKS_STATE" in
     ok) ;;
     unknown)
-      HEIGHT_LINE="submit logged no assembler height result, it was stopped before that check finished"
+      BLOCKS_LINE="submit logged no assembler block result, it was stopped before that check finished"
       ;;
     *)
-      HEIGHT_LINE="the assemblers are not at the same block height, see the Heights line"
+      BLOCKS_LINE="not every assembler has the last block submit verified, see the Blocks line"
       ;;
   esac
 
-  if [ -n "${HEIGHT_LINE}" ]; then
+  if [ -n "${BLOCKS_LINE}" ]; then
     if [ "$VERDICT" = "passed" ]; then
-      VERDICT_LINE="FAILED: ${HEIGHT_LINE}"
+      VERDICT_LINE="FAILED: ${BLOCKS_LINE}"
     else
       # a lost tx is the failure this test hunts, so it stays first
-      VERDICT_LINE="${VERDICT_LINE}; also ${HEIGHT_LINE}"
+      VERDICT_LINE="${VERDICT_LINE}; also ${BLOCKS_LINE}"
     fi
   fi
 
@@ -799,10 +806,10 @@ collect_results() {
     echo "Network   : ${NUM_PARTIES} parties, ${NUM_SHARDS} shards, ${RUNNER_NOTE}"
     echo "Kills     : ${TOTAL_KILLS} total, see summary-kills.txt for the full report"
     echo "Outages   : ${ROUTER_OUTAGES:-0} router, ${ASSEMBLER_RECONNECTS:-0} assembler, recovered by submit"
-    case "$HEIGHT_STATE" in
-      ok)         echo "Heights   : ${HEIGHT_NOTE}" ;;
-      unknown)    echo "Heights   : UNKNOWN - submit did not report a height result" ;;
-      *)          echo "Heights   : MISMATCH - ${HEIGHT_NOTE}" ;;
+    case "$BLOCKS_STATE" in
+      ok)         echo "Blocks    : ${BLOCKS_NOTE}" ;;
+      unknown)    echo "Blocks    : UNKNOWN - submit did not report a block result" ;;
+      *)          echo "Blocks    : MISSING - ${BLOCKS_NOTE}" ;;
     esac
     echo ""
     echo "Per-component kill counts:"
@@ -836,13 +843,13 @@ collect_results() {
   } > test-results/summary-kills.txt
 
   # Machine-readable reason for the Slack notification step.
-  if [ "$VERDICT" != "passed" ] || [ "$HEIGHT_STATE" != "ok" ]; then
+  if [ "$VERDICT" != "passed" ] || [ "$BLOCKS_STATE" != "ok" ]; then
     echo "${VERDICT_LINE}" > test-results/failure_reason.txt
   fi
 
   # submit always exits 0, so the checks recorded here are what decide whether the
   # test passed.  Record the outcome for main() to exit with.
-  if [ "$VERDICT" = "passed" ] && [ "$HEIGHT_STATE" = "ok" ]; then
+  if [ "$VERDICT" = "passed" ] && [ "$BLOCKS_STATE" = "ok" ]; then
     echo 0 > "${TEST_DIR}/test_rc"
   else
     echo 1 > "${TEST_DIR}/test_rc"
