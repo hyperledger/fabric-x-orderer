@@ -9,8 +9,6 @@ package router
 import (
 	"encoding/binary"
 	"hash/crc64"
-
-	"github.com/hyperledger/fabric-lib-go/common/flogging"
 )
 
 type ShardMapper interface {
@@ -18,20 +16,17 @@ type ShardMapper interface {
 }
 
 type MapperCRC64 struct {
-	Logger     *flogging.FabricLogger
 	ShardCount uint16
 }
 
-func CreateMapperCRC64(logger *flogging.FabricLogger, shardCount uint16) MapperCRC64 {
+func CreateMapperCRC64(shardCount uint16) MapperCRC64 {
 	return MapperCRC64{
-		Logger:     logger,
 		ShardCount: shardCount,
 	}
 }
 
 func (m MapperCRC64) Map(request []byte) (shard uint16, reqID []byte) {
 	reqID, shardID := CRC64RequestToShard(m.ShardCount)(request)
-	m.Logger.Debugf("Forwarding request %d to shard %d", reqID, shardID)
 	return shardID, reqID
 }
 

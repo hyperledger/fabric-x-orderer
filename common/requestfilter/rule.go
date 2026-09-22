@@ -9,6 +9,7 @@ package requestfilter
 import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
@@ -32,6 +33,7 @@ type FilterConfig interface {
 	GetClientSignatureVerificationRequired() bool
 	GetChannelID() string
 	GetPolicyManager() policies.Manager
+	GetMSPManager() msp.IdentityDeserializer
 }
 
 // AcceptRule - always returns nil as a result for Verify

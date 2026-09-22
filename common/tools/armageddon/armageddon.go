@@ -616,10 +616,17 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 			broadcastClient.SendTxToAllRouters(env)
 		}
 	case "short":
+		// Everything an envelope carries besides the transaction and its signature is a function of
+		// the signing identity, so it is derived once for the whole run rather than per transaction.
+		builder, builderErr := tx.NewShortModeEnvelopeBuilder(signer, certBytes, org)
+		if builderErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to prepare the signing material for signed mode %s: %v", signedMode, builderErr)
+			os.Exit(3)
+		}
 		for i := 0; i < numOfTxs; i++ {
-			env = tx.PrepareSignedEnvelopeWithCertificateID(i, txSize, sessionNumber, signer, certBytes, org)
-			if env == nil {
-				fmt.Fprintf(os.Stderr, "failed to prepare envelope %d in signed mode %s", i+1, signedMode)
+			env, err = builder.Envelope(i, txSize, sessionNumber)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "failed to prepare envelope %d in signed mode %s: %v", i+1, signedMode, err)
 				os.Exit(3)
 			}
 			status := rl.GetToken()

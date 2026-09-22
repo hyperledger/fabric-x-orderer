@@ -69,7 +69,7 @@ func NewRequestsInspectorVerifier(logger *flogging.FabricLogger, config *config.
 	} else {
 		riv.requestVerifier = createBatcherRulesVerifier(config)
 	}
-	riv.mapper = router.MapperCRC64{Logger: riv.logger, ShardCount: uint16(len(riv.shards))}
+	riv.mapper = router.MapperCRC64{ShardCount: uint16(len(riv.shards))}
 	return riv
 }
 
