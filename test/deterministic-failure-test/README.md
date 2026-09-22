@@ -25,7 +25,7 @@ It defines the following internal functions, then calls `main`:
 - **`start_arma_network`** — Starts all ARMA network components in the correct order: consenters first, then batchers, assemblers, and routers. Stores each process PID under the test directory.
 - **`run_failure_runner`** — Stops and restarts ARMA components one party at a time in a continuous loop until the stop signal is received. Its verbose output (PIDs, waits, force-kills) goes to `failure_runner.log`; only short one-line events (`assembler party 1 down for 30s`) are printed to the console, so status snapshots are never interleaved. For each party it kills and restarts: assembler, consenter, router, then all batchers in shard order. After each full party cycle it writes a signal file so `monitor_completion` knows to print a status snapshot.
 - **`monitor_completion`** — Monitors test execution, reading all progress numbers from `submit.log`. In failure runner mode: prints a status snapshot after each party's full failure cycle completes. Without failure runner: prints a status snapshot every 5 minutes. Always stops when the configured duration is reached, or as soon as `submit` logs `Submit Finished`. It then signals the failure runner to stop and **waits** for `submit` to finish draining and print its verdict, recording its exit code for `main` to propagate.
-- **`collect_results`** — Cleans the `test-results/` directory from any previous run, extracts the per-party results and the verdict from `submit.log`, reads the assembler height result from `submit.log`, copies all component logs plus `submit.log` into `test-results/logs/` and gzips them, writes a single-block `summary.txt` (and `failure_reason.txt` when the verdict is not a pass), then deletes the working-directory logs now that the compressed copies exist.
+- **`collect_results`** — Cleans the `test-results/` directory from any previous run, extracts the per-party results and the verdict from `submit.log`, reads the assembler block result from `submit.log`, copies all component logs plus `submit.log` into `test-results/logs/` and gzips them, writes a single-block `summary.txt` (and `failure_reason.txt` when the verdict is not a pass), then deletes the working-directory logs now that the compressed copies exist.
 - **`main`** — Reads configuration from environment variables, removes stale log files from previous runs, generates the network config YAML, runs `armageddon generate` to produce all crypto and config files, patches the generated FileStore `Location` and consenter `WALDir` paths to writable temp directories, then calls the functions above in order.
 
 ## Prerequisites
@@ -123,7 +123,7 @@ When `deterministic-failure-test.sh` runs, it performs the following steps:
 6. Patches all generated `Location` (FileStore) and `WALDir` (consenter) paths to writable per-component subdirectories under the temp dir.
 7. Removes stale log files from any previous run.
 8. Starts the ARMA network via `start_arma_network`, which polls `/healthz` on each component immediately after it starts. If any component fails to become healthy within 60 s the test aborts immediately, naming the failing component in the error output and in `test-results/startup_failure.txt`.
-9. Starts `armageddon submit` (background) — it sends transactions, verifies them against assembler 1, then compares the block height of every assembler.
+9. Starts `armageddon submit` (background) — it sends transactions, verifies them against assembler 1, then checks that every assembler has the last block.
 10. (nothing — `submit` replaced the separate loader and receivers.)
 11. Starts `run_failure_runner` if `FAILURE_RUNNER_ENABLED=true` (background).
 12. Calls `monitor_completion` (blocks until duration expires or all components finish).
@@ -141,19 +141,20 @@ Every transaction is committed to every party's assembler ledger, so assembler 1
 to confirm the full `TOTAL_TXS` count. `submit` has no deadline of its own, so this script supplies
 one: when the drain window closes `submit` is stopped, and a run stopped that way logs no result.
 
-### Assembler block heights
+### Assembler blocks
 
-Before exiting, `submit` also asks every assembler for its newest block number and waits until they
-all agree — that is what shows the blocks reached the other parties' ledgers. It is
-`verifyAssemblerHeights` in `common/tools/armageddon/armageddon.go`, not part of this script: it
-queries the Deliver API rather than parsing logs, and polls for up to 3 minutes
-(`assemblerHeightTimeout`) because assemblers commit asynchronously.
+Before exiting, `submit` asks **every** assembler to deliver the last block it verified — that is
+what shows the blocks reached the other parties' ledgers, since a ledger is a chain and an assembler
+that can serve block N holds every block before it. It is `verifyAssemblersHaveBlock` in
+`common/tools/armageddon/armageddon.go`, not part of this script. The request uses
+`BLOCK_UNTIL_READY`, so an assembler that is still catching up delivers the block as soon as it
+commits it; one shared 3-minute deadline (`assemblerBlockTimeout`) covers all parties.
 
-`collect_results` only reads the outcome from `submit.log`:
+`collect_results` only counts the outcome lines in `submit.log`, one per assembler:
 
 ```
-all 4 assemblers reached block 6542
-assemblers are not at the same block height after 3m0s, per party: [6542 6542 6100 6542]
+assembler 1 has block 6542
+assembler 3 does not have block 6542: context deadline exceeded
 ```
 
 ### The drain window (`SUBMIT_DRAIN_SECONDS`, default 420)
@@ -166,8 +167,8 @@ verifying after sending stops.
 It is a **deadline, not a delay**: `submit` exits as soon as every transaction is confirmed, so a
 generous value costs nothing on a healthy run. It must exceed
 `FAILURE_RUNNER_STOP_DURATION + FAILURE_RUNNER_RESTART_WAIT`, because the failure runner finishes
-the component it is working on after being told to stop, and it must also cover `submit`'s height
-check, which polls for up to 3 minutes after the transactions are confirmed.
+the component it is working on after being told to stop, and it must also cover `submit`'s block
+check, which waits up to 3 minutes after the transactions are confirmed.
 
 The script waits for `submit` rather than killing it, because `submit` logs both results on the way
 out. It is only stopped if the drain window closes first.
@@ -180,11 +181,11 @@ a transaction that never arrives, so the *absence* of the passed line is what fa
 
 | Code | Meaning | evidence in submit.log |
 | ---- | ------- | ---------------------- |
-| `0`  | every transaction confirmed, and all assemblers agree on the height | `Verification passed, all N txs were received` **and** `all N assemblers reached block M` |
-| `1`  | a transaction was sent but never confirmed — the bug this test hunts | no `Verification passed` line |
-| `1`  | `submit` crashed or could not start | no `Verification passed` line |
-| `1`  | the assemblers are not at the same block height | `assemblers are not at the same block height after ...` |
-| `1`  | `submit` was stopped before its height check finished | neither height line |
+| `0`  | every transaction confirmed, and every assembler has the last block | `... received by assembler N` **and** one `assembler N has block M` per party |
+| `1`  | a transaction was sent but never confirmed — the bug this test hunts | no `received by assembler` line |
+| `1`  | `submit` crashed or could not start | no `received by assembler` line |
+| `1`  | an assembler is missing the last block | at least one `does not have block` line |
+| `1`  | `submit` was stopped before its block check finished | no `has block` / `does not have block` line |
 
 ## Failure Runner Behaviour
 
@@ -221,7 +222,7 @@ Result artifacts are written to (cleaned at the start of each run):
 ```text
 test-results/
 ├── logs/                  # component logs, submit.log, failure_runner.log (gzipped)
-├── summary.txt            # per-party confirmed/missing counts, assembler heights, verdict
+├── summary.txt            # per-party confirmed/missing counts, assembler blocks, verdict
 └── failure_reason.txt     # (only on failure) one-line reason, used by the Slack step
 ```
 
