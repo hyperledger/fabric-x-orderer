@@ -4,7 +4,7 @@
 #
 
 # Prometheus, Grafana and the test client, added to the Arma network of
-# ../compose.yaml. Both files are used together by scripts/run_sample.sh, which
+# ../compose.yaml. Both files are used together by scripts/run_dashboard.sh, which
 # generates everything mounted below.
 
 name: arma-grafana
@@ -29,7 +29,7 @@ services:
       - /tmp/arma-sample/grafana/provisioning:/etc/grafana/provisioning:ro
       - /tmp/arma-sample/grafana/dashboards:/etc/grafana/dashboards:ro
 
-  # Started by run_sample.sh once the network is up, hence the profile.
+  # Started by run_dashboard.sh once the network is up, hence the profile.
   submitter:
     image: arma
     profiles:

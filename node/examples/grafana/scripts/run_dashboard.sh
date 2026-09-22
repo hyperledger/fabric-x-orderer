@@ -28,9 +28,7 @@ make binary
 rm -rf "${SAMPLE_DIR}"
 ./bin/armageddon generate --config="${DEPLOYMENT}" --output="${SAMPLE_DIR}"
 
-# The generator leaves the operations port unset, which means a random one, and binds it
-# to localhost. Prometheus scrapes it from another container and needs to know it in
-# advance. Every node has its own container, so one port serves them all.
+# Expose a fixed operations port so Prometheus can scrape the nodes.
 for config in "${SAMPLE_DIR}"/config/party*/local_config_*.yaml; do
     awk -v port="${OPERATIONS_PORT}" '
         /^Operations:/ { operations = 1 }
@@ -44,8 +42,6 @@ for config in "${SAMPLE_DIR}"/config/party*/local_config_*.yaml; do
     mv "${config}.new" "${config}"
 done
 
-# Scrape every node of the network. The hosts come from the deployment, so to change the
-# number of parties or shards edit ../config/example-deployment.yaml and ../compose.yaml.
 hosts=$(grep -oE '"[a-z0-9.]+:[0-9]+"' "${DEPLOYMENT}" | tr -d '"' | cut -d: -f1 | sort -u)
 
 {
@@ -61,6 +57,9 @@ hosts=$(grep -oE '"[a-z0-9.]+:[0-9]+"' "${DEPLOYMENT}" | tr -d '"' | cut -d: -f1
     done
 } > "${SAMPLE_DIR}/prometheus.yml"
 
+# Stage the Grafana provisioning files in the runtime directory rather than bind-mounting
+# the repository files directly: their permissions follow whoever checked the repository
+# out, and a umask of 027 leaves them unreadable to the Grafana container user.
 mkdir -p "${SAMPLE_DIR}/grafana/provisioning/datasources" \
     "${SAMPLE_DIR}/grafana/provisioning/dashboards" \
     "${SAMPLE_DIR}/grafana/dashboards"
@@ -68,7 +67,7 @@ cp "${EXAMPLE_DIR}/grafana/datasource.yaml" "${SAMPLE_DIR}/grafana/provisioning/
 cp "${EXAMPLE_DIR}/grafana/dashboards.yaml" "${SAMPLE_DIR}/grafana/provisioning/dashboards/"
 cp "${EXAMPLE_DIR}/grafana/arma-dashboard.json" "${SAMPLE_DIR}/grafana/dashboards/"
 
-# Prometheus and Grafana run as their images' own users, so let them read what they mount.
+# Both containers run as their image's own user, so make the staged files readable.
 chmod a+x "${SAMPLE_DIR}"
 chmod -R a+rX "${SAMPLE_DIR}/grafana" "${SAMPLE_DIR}/prometheus.yml"
 
@@ -111,5 +110,5 @@ Submitting ${TRANSACTIONS} transactions of ${TX_SIZE}B at ${RATE} tx/s.
   Dashboard  : ${DASHBOARD_URL}
   Prometheus : ${PROMETHEUS_URL}
   Follow it  : $DOCKER_CMD logs -f arma-grafana-submitter-1
-  Clean up   : bash ${EXAMPLE_DIR}/scripts/clean_sample.sh
+  Clean up   : bash ${EXAMPLE_DIR}/scripts/clean_dashboard.sh
 INFO

@@ -13,19 +13,19 @@ towards the host.
 - Go, for `make binary`
 
 ### Quick Start
- 
+
+Both commands are run from the root directory.
+
 ```
 1.
-cd node/examples/grafana/scripts
-./build_docker.sh
+(cd node/examples; bash ./scripts/build_docker.sh)
 ```
-It builds the `arma` image from [node/examples/Dockerfile](../Dockerfile), the same image the
+This builds the `arma` image from [node/examples/Dockerfile](../Dockerfile), the same image the
 other examples use.
-
 
 ```
 2.
-./run_sample.sh
+./node/examples/grafana/scripts/run_dashboard.sh
 ```
 
 This script performs the following tasks:
@@ -59,7 +59,7 @@ docker logs -f arma-grafana-submitter-1
 
 To clean up the environment after running the example, run:
 ```
-./clean_sample.sh
+./node/examples/grafana/scripts/clean_dashboard.sh
 ```
 
 This script stops and removes the Docker containers and volumes, and deletes `/tmp/arma-sample`.
@@ -78,7 +78,7 @@ The following variables can be used to run the default arma network differently:
 ```
 EXAMPLE:
 
-RATE=500 DURATION_SECONDS=60 ./node/examples/grafana/scripts/run_sample.sh
+RATE=500 DURATION_SECONDS=60 ./node/examples/grafana/scripts/run_dashboard.sh
 ```
 
 The number of parties and shards comes from the network itself, so changing it means
@@ -96,18 +96,4 @@ Consenters, Routers, Assemblers.
 [docs/monitoring/metrics.md](../../../docs/monitoring/metrics.md).
 
 Panels can be edited during a run. 
-Edits live in Grafana's volume, which `clean_sample.sh` removes, so export the JSON over [grafana/arma-dashboard.json](grafana/arma-dashboard.json) to keep one.
-
-### Working on a New Metric Methodology
-
-1. Add the metric in `node/<role>/metrics.go`, keeping `party_id` and `shard_id` among its
-   `LabelNames` as the existing metrics do. 
-   Its Prometheus name is `<namespace>_<name>`, and the namespace is not always the role:
-   the batch ledger metrics in `node/ledger` are `batch_ledger_*`, not `batcher_*`.
-2. Rebuild the image and start again: [build_docker.sh](scripts/build_docker.sh),
-   [clean_sample.sh](scripts/clean_sample.sh), [run_sample.sh](scripts/run_sample.sh).
-3. Confirm it is exported, in the Prometheus UI or straight from a node:
-   `docker exec arma-grafana-prometheus-1 wget -qO- http://router.p1:8080/metrics | grep <name>`
-4. Add a panel in Grafana, selecting `${DS_PROMETHEUS}` as its data source rather than the
-   Prometheus data source itself, so the dashboard stays independent of this setup.
-5. Export it over [grafana/arma-dashboard.json](grafana/arma-dashboard.json) and document the metric in [docs/monitoring/metrics.md](../../../docs/monitoring/metrics.md).
+Edits live in Grafana's volume, which `clean_dashboard.sh` removes, so export the JSON over [grafana/arma-dashboard.json](grafana/arma-dashboard.json) to keep one.
