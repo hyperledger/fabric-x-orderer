@@ -16,6 +16,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -70,6 +71,7 @@ func TestSendRequests(t *testing.T) {
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
+		metrics:                           createTestMetrics(t),
 	}
 
 	go s.sendRequests()
@@ -111,6 +113,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 		requestTraceIdToResponseChannel:   make(map[string]chan Response),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
+		metrics:                           createTestMetrics(t),
 	}
 
 	go s.sendRequests()
@@ -284,6 +287,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 		requestTraceIdToResponseChannel:   requestTraceIdToResponseChannel,
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
+		metrics:                           createTestMetrics(t),
 	}
 
 	faultyStream.cancel()
@@ -325,6 +329,8 @@ func TestRenewStreamSuccess(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, newStream)
 	require.False(t, newStream.faulty())
+	// the renewed stream keeps counting forwarded requests
+	require.Equal(t, faultyStream.metrics, newStream.metrics)
 
 	assert.Eventually(t, func() bool {
 		reqCond := reqPool.length() == 2 && bytes.Equal(reqPool.getElement(0).TraceId, req1.trace) && bytes.Equal(reqPool.getElement(1).TraceId, req2.trace)
@@ -360,6 +366,7 @@ func TestReconnectRequest(t *testing.T) {
 		connNum:                           connectionNumber,
 		streamNum:                         streamNumber,
 		verifier:                          verifier,
+		metrics:                           createTestMetrics(t),
 	}
 
 	go s.sendRequests()
@@ -495,6 +502,12 @@ func (srp *safeReqPool) getElement(i int) *protos.Request {
 	srp.mu.Lock()
 	defer srp.mu.Unlock()
 	return srp.reqPool[i]
+}
+
+func createTestMetrics(t *testing.T) *RouterMetrics {
+	return NewRouterMetrics(&config.RouterNodeConfig{
+		Metrics: &operations.Metrics{Provider: "disabled"},
+	}, testutil.CreateLogger(t, 0))
 }
 
 func createTestBundleAndVerifier() (*configMocks.FakeConfigResources, *requestfilter.RulesVerifier) {

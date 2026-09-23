@@ -173,12 +173,62 @@ func TestSubmitToStubBatchersGetMetrics(t *testing.T) {
 	res = submitBroadcastRequests(testSetup.clientConn, 1000)
 	require.NoError(t, res.err)
 
-	pattern := fmt.Sprintf(`router_requests_completed\{party_id="%d"\} \d+`, types.PartyID(1))
+	pattern := fmt.Sprintf(`router_requests_arrived\{party_id="%d"\} \d+`, types.PartyID(1))
 	re := regexp.MustCompile(pattern)
 
 	require.Eventually(t, func() bool {
 		return testutil.FetchPrometheusMetricValue(t, re, URL) == 2000
 	}, 30*time.Second, 100*time.Millisecond)
+
+	// with a healthy batcher every request that arrived was also forwarded to it
+	forwardedRE := regexp.MustCompile(fmt.Sprintf(`router_requests_forwarded\{party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, forwardedRE, URL) == 2000
+	}, 10*time.Second, 500*time.Millisecond)
+	require.Equal(t, uint32(2000), testSetup.batchers[0].ReceivedMessageCount())
+}
+
+// Scenario:
+// 1. start a client, router and 1 stub batcher (1 shard)
+// 2. check both counters are zero before any traffic
+// 3. stop the batcher and wait until the router reports its connections are down
+// 4. submit 20 requests with SubmitStream, all of which fail
+// 5. check the arrived counter counted all 20 while the forwarded counter stayed at zero
+func TestRouterForwardedMetricWhenBatcherIsDown(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	defer testSetup.Close()
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
+	URL := testSetup.router.MonitoringServiceAddress()
+	require.NotEmpty(t, URL, "monitoring service address should not be empty")
+
+	arrivedRE := regexp.MustCompile(fmt.Sprintf(`router_requests_arrived\{party_id="%d"\} \d+`, types.PartyID(1)))
+	forwardedRE := regexp.MustCompile(fmt.Sprintf(`router_requests_forwarded\{party_id="%d"\} \d+`, types.PartyID(1)))
+
+	// both series exist at zero before any traffic
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, arrivedRE, URL) == 0
+	}, 10*time.Second, 500*time.Millisecond)
+	require.Equal(t, 0, testutil.FetchPrometheusMetricValue(t, forwardedRE, URL))
+
+	testSetup.batchers[0].Stop()
+
+	require.Eventually(t, func() bool {
+		return testSetup.isDisconnectedFromBatcher()
+	}, 10*time.Second, 200*time.Millisecond)
+
+	const numOfRequests = 20
+	res := submitStreamRequests(testSetup.clientConn, numOfRequests)
+	require.Equal(t, 0, res.successRequests)
+
+	// the requests arrived at the router but never reached a batcher
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, arrivedRE, URL) == numOfRequests
+	}, 10*time.Second, 500*time.Millisecond)
+	require.Equal(t, 0, testutil.FetchPrometheusMetricValue(t, forwardedRE, URL))
+	require.Equal(t, uint32(0), testSetup.batchers[0].ReceivedMessageCount())
 }
 
 // Scenario:
@@ -507,6 +557,15 @@ func TestConfigSubmitter(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return testSetup.consenter.ReceivedMessageCount() == uint32(1)
 	}, 10*time.Second, 10*time.Millisecond)
+
+	// a config request goes to the consenter, and is counted as forwarded like any other request
+	URL := testSetup.router.MonitoringServiceAddress()
+	require.NotEmpty(t, URL, "monitoring service address should not be empty")
+	forwardedRE := regexp.MustCompile(fmt.Sprintf(`router_requests_forwarded\{party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, forwardedRE, URL) == 1
+	}, 10*time.Second, 500*time.Millisecond)
+	require.Equal(t, uint32(0), testSetup.batchers[0].ReceivedMessageCount())
 }
 
 func TestConfigSubmitterConsenterDown(t *testing.T) {
