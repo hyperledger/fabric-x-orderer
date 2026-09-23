@@ -13,6 +13,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
@@ -71,9 +72,10 @@ func createConfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
 		Bundle:             bundle,
 		PartyID:            types.PartyID(1),
 		BCCSP:              factory.GetDefault(),
+		Metrics:            &operations.Metrics{Provider: "disabled"},
 	}
 
-	configSubmitter := NewConfigSubmitter(conf, logger, verifier, fakeSigner, mockConfigUpdateProposer, mockConfigRulesVerifier)
+	configSubmitter := NewConfigSubmitter(conf, logger, verifier, fakeSigner, mockConfigUpdateProposer, mockConfigRulesVerifier, NewRouterMetrics(conf, logger))
 
 	return configSubmitTestSetup{configSubmitter: configSubmitter, stubConsenter: &stubConsenter}
 }
