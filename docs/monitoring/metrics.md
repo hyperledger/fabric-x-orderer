@@ -157,6 +157,10 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Name:** "complaints_count"  
   **Help:** "The total number of complaints received by the consenter."
 
+- **Namespace:** "consensus"  
+  **Name:** "txs_count"  
+  **Help:** "The total number of transactions ordered by the consenter."
+
 ---
 
 ## Enabling Metrics
