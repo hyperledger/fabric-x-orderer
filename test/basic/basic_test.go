@@ -666,7 +666,7 @@ func TestSecuredTLSOperationsService(t *testing.T) {
 		},
 	}
 
-	re := regexp.MustCompile(fmt.Sprintf(`router_requests_completed\{party_id="%d"\} \d+`, types.PartyID(1)))
+	re := regexp.MustCompile(fmt.Sprintf(`router_requests_arrived\{party_id="%d"\} \d+`, types.PartyID(1)))
 	require.Eventually(t, func() bool {
 		return testutil.FetchPrometheusMetricValue(t, re, routerPrometheusURL, tlsOpts...) == 0
 	}, 30*time.Second, 100*time.Millisecond)
