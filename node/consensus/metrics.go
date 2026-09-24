@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package consensus
 
 import (
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"time"
@@ -17,7 +18,6 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -58,12 +58,14 @@ var (
 )
 
 type ConsensusMetrics struct {
-	partyID   arma_types.PartyID
-	logger    *flogging.FabricLogger
-	interval  time.Duration
-	stopChan  chan struct{}
-	stopOnce  sync.Once
-	startOnce sync.Once
+	partyID     arma_types.PartyID
+	logger      *flogging.FabricLogger
+	interval    time.Duration
+	stopChan    chan struct{}
+	stopOnce    sync.Once
+	startOnce   sync.Once
+	promAddress string
+	promTLS     *tls.Config
 
 	// metrics
 	decisionsCount  metrics.Counter
@@ -88,10 +90,12 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisi
 	txsCount.Add(float64(txCount))
 
 	return &ConsensusMetrics{
-		interval: consenterNodeConfig.Metrics.MetricsLogInterval,
-		partyID:  consenterNodeConfig.PartyId,
-		logger:   logger,
-		stopChan: make(chan struct{}),
+		interval:    consenterNodeConfig.Metrics.MetricsLogInterval,
+		partyID:     consenterNodeConfig.PartyId,
+		logger:      logger,
+		stopChan:    make(chan struct{}),
+		promAddress: consenterNodeConfig.Metrics.PrometheusAddress,
+		promTLS:     consenterNodeConfig.Metrics.PrometheusTLS,
 
 		decisionsCount:  decisionsCount,
 		blocksCount:     provider.NewCounter(metrics.CounterOpts(blocksCountOpts)).With([]string{partyID}...),
@@ -113,12 +117,43 @@ func (m *ConsensusMetrics) StopMetricsTracker() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
 		m.logger.Infof("Reporting routine is stopping")
-		m.logger.Infof("CONSENSUS_METRICS party_id=%d: decisions: total=%d, blocks: total=%d, bafs: total=%d, complaints: total=%d, txs: total=%d", m.partyID,
-			uint64(monitoring.GetMetricValue(m.decisionsCount.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.blocksCount.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.bafsCount.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.complaintsCount.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.txsCount.(prometheus.Metric), m.logger)))
+
+		partyID := fmt.Sprintf("%d", m.partyID)
+		reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
+
+		decisions, err := reader.Total(decisionsCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read decisions count: %s", err)
+		}
+
+		blocks, err := reader.Total(blocksCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read blocks count: %s", err)
+		}
+
+		bafs, err := reader.Total(bafsCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read BAFs count: %s", err)
+		}
+
+		complaints, err := reader.Total(complaintsCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read complaints count: %s", err)
+		}
+
+		txs, err := reader.Total(txsCountOpts, partyID)
+		if err != nil {
+			m.logger.Warnf("Failed to read transactions count: %s", err)
+		}
+
+		m.logger.Infof(
+			"CONSENSUS_METRICS party_id=%d: decisions: total=%d, blocks: total=%d, bafs: total=%d, complaints: total=%d, txs: total=%d", m.partyID,
+			decisions,
+			blocks,
+			bafs,
+			complaints,
+			txs,
+		)
 	})
 }
 
@@ -128,22 +163,52 @@ func (m *ConsensusMetrics) trackMetrics() {
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
 
+	partyID := fmt.Sprintf("%d", m.partyID)
+	reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
+
 	for {
 		select {
 		case <-t.C:
-			dec := uint64(monitoring.GetMetricValue(m.decisionsCount.(prometheus.Metric), m.logger))
-			blk := uint64(monitoring.GetMetricValue(m.blocksCount.(prometheus.Metric), m.logger))
+			dec, err := reader.Total(decisionsCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read decisions count: %s", err)
+				dec = prevDec
+			}
+
+			blk, err := reader.Total(blocksCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read blocks count: %s", err)
+				blk = prevBlk
+			}
+
+			bafs, err := reader.Total(bafsCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read BAFs count: %s", err)
+			}
+
+			complaints, err := reader.Total(complaintsCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read complaints count: %s", err)
+			}
+
+			txs, err := reader.Total(txsCountOpts, partyID)
+			if err != nil {
+				m.logger.Warnf("Failed to read transactions count: %s", err)
+			}
 
 			m.logger.Infof(
-				"CONSENSUS_METRICS party_id=%d: interval=%.2f sec, decisions: interval=%d, rate=%.4f, total=%d, blocks: interval=%d, rate=%.4f, total=%d, bafs: total=%d, complaints: total=%d",
+				"CONSENSUS_METRICS party_id=%d: interval=%.2f sec, decisions: interval=%d, rate=%.4f, total=%d, blocks: interval=%d, rate=%.4f, total=%d, bafs: total=%d, complaints: total=%d, txs: total=%d",
 				m.partyID,
 				sec,
-				dec-prevDec, float64(dec-prevDec)/sec,
+				dec-prevDec,
+				float64(dec-prevDec)/sec,
 				dec,
-				blk-prevBlk, float64(blk-prevBlk)/sec,
+				blk-prevBlk,
+				float64(blk-prevBlk)/sec,
 				blk,
-				uint64(monitoring.GetMetricValue(m.bafsCount.(prometheus.Metric), m.logger)),
-				uint64(monitoring.GetMetricValue(m.complaintsCount.(prometheus.Metric), m.logger)),
+				bafs,
+				complaints,
+				txs,
 			)
 
 			prevDec, prevBlk = dec, blk

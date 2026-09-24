@@ -300,6 +300,8 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+			PrometheusAddress:  config.LocalConfig.NodeLocalConfig.MetricsConfig.PrometheusAddress,
+			PrometheusTLS:      config.LocalConfig.MetricsTLSConfig,
 		},
 	}
 	return routerConfig
@@ -381,6 +383,8 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+			PrometheusAddress:  config.LocalConfig.NodeLocalConfig.MetricsConfig.PrometheusAddress,
+			PrometheusTLS:      config.LocalConfig.MetricsTLSConfig,
 		},
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
@@ -460,6 +464,8 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+			PrometheusAddress:  config.LocalConfig.NodeLocalConfig.MetricsConfig.PrometheusAddress,
+			PrometheusTLS:      config.LocalConfig.MetricsTLSConfig,
 		},
 		ClientSignatureVerificationRequired: config.LocalConfig.NodeLocalConfig.GeneralConfig.ClientSignatureVerificationRequired,
 		Bundle:                              bundle,
@@ -525,6 +531,8 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
 			MetricsLogInterval: config.LocalConfig.NodeLocalConfig.MetricsConfig.MetricsLogInterval,
+			PrometheusAddress:  config.LocalConfig.NodeLocalConfig.MetricsConfig.PrometheusAddress,
+			PrometheusTLS:      config.LocalConfig.MetricsTLSConfig,
 		},
 		Bundle: bundle,
 		BCCSP:  bccsp,

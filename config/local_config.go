@@ -7,7 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
@@ -67,13 +69,18 @@ type Metrics struct {
 	Provider string `yaml:"Provider,omitempty"`
 	// MetricsLogInterval defines metrics log period; 0 disables.
 	MetricsLogInterval time.Duration `yaml:"MetricsLogInterval,omitempty"`
+	// PrometheusAddress is the URL of the Prometheus server.
+	PrometheusAddress string `yaml:"PrometheusAddress,omitempty"`
+	// TLS is the client TLS configuration used to query the Prometheus server.
+	TLS *TLSConfigYaml `yaml:"TLS,omitempty"`
 }
 
 // LocalConfig saves the node local config and the TLS and cluster settings with embedded crypto (not paths).
 type LocalConfig struct {
-	NodeLocalConfig *NodeLocalConfig
-	TLSConfig       *TLSConfig
-	ClusterConfig   *Cluster
+	NodeLocalConfig  *NodeLocalConfig
+	TLSConfig        *TLSConfig
+	ClusterConfig    *Cluster
+	MetricsTLSConfig *tls.Config
 }
 
 type GeneralConfig struct {
@@ -301,10 +308,16 @@ func LoadLocalConfig(filePath string, logger *flogging.FabricLogger) (*LocalConf
 		return nil, "", fmt.Errorf("cannot load local cluster config for consenter, err: %s", err)
 	}
 
+	metricsTLSConfig, err := loadMetricsTLSConfig(nodeLocalConfig.MetricsConfig.TLS)
+	if err != nil {
+		return nil, "", fmt.Errorf("cannot load metrics tls config, err: %s", err)
+	}
+
 	return &LocalConfig{
-		NodeLocalConfig: nodeLocalConfig,
-		TLSConfig:       tlsConfig,
-		ClusterConfig:   clusterConfig,
+		NodeLocalConfig:  nodeLocalConfig,
+		TLSConfig:        tlsConfig,
+		ClusterConfig:    clusterConfig,
+		MetricsTLSConfig: metricsTLSConfig,
 	}, role, nil
 }
 
@@ -485,6 +498,39 @@ func loadClusterCryptoConfig(cluster *ClusterYaml) (*Cluster, error) {
 	}, nil
 }
 
+// loadMetricsTLSConfig builds the client TLS configuration used to query Prometheus.
+func loadMetricsTLSConfig(tlsConfig *TLSConfigYaml) (*tls.Config, error) {
+	if tlsConfig == nil || !tlsConfig.Enabled {
+		return nil, nil
+	}
+
+	secOpts := comm.SecureOptions{UseTLS: true}
+
+	for _, rootCAPath := range tlsConfig.RootCAs {
+		rootCACert, err := utils.ReadPem(rootCAPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed load root ca certificate: %s", err)
+		}
+		secOpts.ServerRootCAs = append(secOpts.ServerRootCAs, rootCACert)
+	}
+
+	if tlsConfig.Certificate != "" || tlsConfig.PrivateKey != "" {
+		cert, err := utils.ReadPem(tlsConfig.Certificate)
+		if err != nil {
+			return nil, fmt.Errorf("failed load client certificate: %s", err)
+		}
+		key, err := utils.ReadPem(tlsConfig.PrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed load client private key: %s", err)
+		}
+		secOpts.Certificate = cert
+		secOpts.Key = key
+		secOpts.RequireClientCert = true
+	}
+
+	return secOpts.TLSConfig()
+}
+
 func applyLocalConfigDefaults(nodeLocalConfig *NodeLocalConfig, role string, logger *flogging.FabricLogger) {
 	applyGeneralDefaults(nodeLocalConfig, logger)
 	applyNodeDefaults(nodeLocalConfig, role, logger)
@@ -593,6 +639,11 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig, logger *flogging.Fab
 		defaultMetrics := *DefaultNodeLocalConfig.MetricsConfig
 		nodeLocalConfig.MetricsConfig = &defaultMetrics
 		logger.Info("Metrics configuration is not set, using default configuration")
+	}
+
+	if nodeLocalConfig.MetricsConfig.PrometheusAddress == "" {
+		nodeLocalConfig.MetricsConfig.PrometheusAddress = DefaultNodeLocalConfig.MetricsConfig.PrometheusAddress
+		logger.Infof("Metrics.PrometheusAddress is not set, using default value: %s", nodeLocalConfig.MetricsConfig.PrometheusAddress)
 	}
 }
 
@@ -714,6 +765,13 @@ func validateLocalConfigValues(nodeLocalConfig *NodeLocalConfig, role string) er
 
 	if nodeLocalConfig.MetricsConfig.MetricsLogInterval < 0 {
 		return fmt.Errorf("node local config is not valid, Metrics.MetricsLogInterval must not be negative")
+	}
+
+	if tlsConfig := nodeLocalConfig.MetricsConfig.TLS; tlsConfig != nil && tlsConfig.Enabled {
+		prometheusURL, err := url.Parse(nodeLocalConfig.MetricsConfig.PrometheusAddress)
+		if err != nil || prometheusURL.Scheme != "https" || prometheusURL.Host == "" {
+			return fmt.Errorf("node local config is not valid, Metrics.PrometheusAddress must be a valid https URL when Metrics.TLS is enabled")
+		}
 	}
 
 	switch role {

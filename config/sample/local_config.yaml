@@ -251,6 +251,9 @@ Metrics:
    # MetricsLogInterval defines metrics log period; 0 disables.
   MetricsLogInterval: 10s
 
+  # PrometheusAddress is the URL of the Prometheus server.
+  PrometheusAddress: "http://127.0.0.1:9090"
+
 ################################################################################
 #
 #   SECTION: Role specific configuration

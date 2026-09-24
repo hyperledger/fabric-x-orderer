@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package router
 
 import (
+	"crypto/tls"
 	"fmt"
 	"strings"
 	"sync"
@@ -19,7 +20,6 @@ import (
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -57,6 +57,8 @@ type RouterMetrics struct {
 	stopOnce               sync.Once
 	startOnce              sync.Once
 	partyID                arma_types.PartyID
+	promAddress            string
+	promTLS                *tls.Config
 }
 
 // NewRouterMetrics creates the Metrics
@@ -77,6 +79,8 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
 		throttledTxs:           provider.NewCounter(throttledTxs).With([]string{partyID}...),
 		partyID:                routerNodeConfig.PartyID,
+		promAddress:            routerNodeConfig.Metrics.PrometheusAddress,
+		promTLS:                routerNodeConfig.Metrics.PrometheusTLS,
 	}
 }
 
@@ -84,7 +88,7 @@ func (m *RouterMetrics) StopMetricsTracker() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
 		m.logger.Infof("Reporting routine is stopping")
-		m.reportMetrics()
+		m.reportMetrics(monitoring.NewReader(m.promAddress, m.interval, m.promTLS))
 	})
 }
 
@@ -101,26 +105,53 @@ func (m *RouterMetrics) trackMetrics() {
 	defer ticker.Stop()
 	m.logger.Infof("Reporting routine is starting")
 
+	reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
+
 	for {
 		select {
 		case <-m.stopChan:
 			return
 		case <-ticker.C:
-			m.reportMetrics()
+			m.reportMetrics(reader)
 		}
 	}
 }
 
-func (m *RouterMetrics) reportMetrics() {
-	txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
-	txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
-	txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
-	txThrottled := monitoring.GetMetricValue(m.throttledTxs.(prometheus.Metric), m.logger)
-	incomingTxsLastValue := atomic.LoadUint64(&m.incomingTxsLastValue)
-	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d",
-		m.partyID, int(txCount), float64(txCount-float64(incomingTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled))
+func (m *RouterMetrics) reportMetrics(reader *monitoring.Reader) {
+	partyID := fmt.Sprintf("%d", m.partyID)
 
-	atomic.StoreUint64(&m.incomingTxsLastValue, uint64(txCount))
+	incomingTxsLastValue := atomic.LoadUint64(&m.incomingTxsLastValue)
+
+	txCount, err := reader.Total(incomingTxs, partyID)
+	if err != nil {
+		m.logger.Warnf("Failed to read incoming transactions: %s", err)
+		txCount = incomingTxsLastValue
+	}
+
+	txRejected400, err := reader.Total(rejectedTxs, "400", partyID)
+	if err != nil {
+		m.logger.Warnf("Failed to read rejected transactions with code 400: %s", err)
+	}
+
+	txRejected500, err := reader.Total(rejectedTxs, "500", partyID)
+	if err != nil {
+		m.logger.Warnf("Failed to read rejected transactions with code 500: %s", err)
+	}
+
+	txThrottled, err := reader.Total(throttledTxs, partyID)
+	if err != nil {
+		m.logger.Warnf("Failed to read throttled transactions: %s", err)
+	}
+
+	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d",
+		m.partyID,
+		txCount,
+		(float64(txCount)-float64(incomingTxsLastValue))/m.interval.Seconds(),
+		txRejected400,
+		txRejected500,
+		int(txThrottled))
+
+	atomic.StoreUint64(&m.incomingTxsLastValue, txCount)
 }
 
 func (m *RouterMetrics) increaseErrorCount(err error) {

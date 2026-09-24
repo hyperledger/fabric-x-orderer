@@ -10,21 +10,21 @@ import (
 )
 
 var (
-	transactionCountOpts = metrics.CounterOpts{
+	TransactionCountOpts = metrics.CounterOpts{
 		Namespace:  "assembler_ledger",
 		Name:       "transaction_count_total",
 		Help:       "The total number of transactions committed to the ledger.",
 		LabelNames: []string{"party_id"},
 	}
 
-	blocksSizeOpts = metrics.CounterOpts{
+	BlocksSizeOpts = metrics.CounterOpts{
 		Namespace:  "assembler_ledger",
 		Name:       "blocks_size_bytes_total",
 		Help:       "The estimated total size in bytes of blocks committed to the ledger.",
 		LabelNames: []string{"party_id"},
 	}
 
-	blocksCountOpts = metrics.CounterOpts{
+	BlocksCountOpts = metrics.CounterOpts{
 		Namespace:  "assembler_ledger",
 		Name:       "blocks_count_total",
 		Help:       "The total number of blocks committed to the ledger.",
@@ -39,7 +39,7 @@ type AssemblerLedgerMetrics struct {
 }
 
 func (al *AssemblerLedgerMetrics) NewAssemblerLedgerMetrics(p metrics.Provider, partyID string) {
-	al.TransactionCount = p.NewCounter(transactionCountOpts).With([]string{partyID}...)
-	al.BlocksSize = p.NewCounter(blocksSizeOpts).With([]string{partyID}...)
-	al.BlocksCount = p.NewCounter(blocksCountOpts).With([]string{partyID}...)
+	al.TransactionCount = p.NewCounter(TransactionCountOpts).With([]string{partyID}...)
+	al.BlocksSize = p.NewCounter(BlocksSizeOpts).With([]string{partyID}...)
+	al.BlocksCount = p.NewCounter(BlocksCountOpts).With([]string{partyID}...)
 }

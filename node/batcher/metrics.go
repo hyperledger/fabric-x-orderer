@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package batcher
 
 import (
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -111,13 +111,15 @@ var (
 )
 
 type BatcherMetrics struct {
-	partyID   arma_types.PartyID
-	shardID   arma_types.ShardID
-	logger    *flogging.FabricLogger
-	interval  time.Duration
-	stopChan  chan struct{}
-	stopOnce  sync.Once
-	startOnce sync.Once
+	partyID     arma_types.PartyID
+	shardID     arma_types.ShardID
+	logger      *flogging.FabricLogger
+	interval    time.Duration
+	stopChan    chan struct{}
+	stopOnce    sync.Once
+	startOnce   sync.Once
+	promAddress string
+	promTLS     *tls.Config
 
 	ledgerMetrics *ledger.BatchLedgerMetrics
 
@@ -165,6 +167,8 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo
 
 	return &BatcherMetrics{
 		interval:      batcherNodeConfig.Metrics.MetricsLogInterval,
+		promAddress:   batcherNodeConfig.Metrics.PrometheusAddress,
+		promTLS:       batcherNodeConfig.Metrics.PrometheusTLS,
 		partyID:       batcherNodeConfig.PartyId,
 		shardID:       batcherNodeConfig.ShardId,
 		logger:        logger,
@@ -198,62 +202,217 @@ func (m *BatcherMetrics) StopMetricsTracker() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
 		m.logger.Infof("Reporting routine is stopping")
+
+		labels := m.labels()
+		reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
+
+		role, err := reader.Gauge(currentRoleOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read current role: %s", err)
+		}
+
+		created, err := reader.Total(batchesCreatedTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read created batches count: %s", err)
+		}
+
+		pulled, err := reader.Total(batchesPulledTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read pulled batches count: %s", err)
+		}
+
+		resends, err := reader.Total(firstResendsTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read first resends count: %s", err)
+		}
+
+		batchedTxs, err := reader.Total(batchedTxsTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read batched transactions count: %s", err)
+		}
+
+		memPool, err := reader.Gauge(memPoolSizeOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read mempool size: %s", err)
+		}
+
+		routerTxs, err := reader.Total(routerTxsTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read router transactions count: %s", err)
+		}
+
+		roleChanges, err := reader.Total(roleChangesTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read role changes count: %s", err)
+		}
+
+		complaints, err := reader.Total(complaintsTotalOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read complaints count: %s", err)
+		}
+
+		mempoolNextLatency, err := reader.HistogramAverage(batchMempoolNextRequestsLatencyOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read mempool next requests latency: %s", err)
+		}
+
+		verifyLatency, err := reader.HistogramAverage(batchVerifyLatencyOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read batch verify latency: %s", err)
+		}
+
+		hashingLatency, err := reader.HistogramAverage(batchHashingLatencyOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read batch hashing latency: %s", err)
+		}
+
+		ledgerHashingLatency, err := reader.HistogramAverage(ledger.HeaderHashingLatencyOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read ledger header hashing latency: %s", err)
+		}
+
+		ledgerAppendLatency, err := reader.HistogramAverage(ledger.AppendLatencyOpts, labels...)
+		if err != nil {
+			m.logger.Warnf("Failed to read ledger append latency: %s", err)
+		}
+
 		m.logger.Infof(
 			"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_avg_seconds=%.6f, batch_verify_latency_avg_seconds=%.6f, batch_hashing_latency_avg_seconds=%.6f, batch_ledger_header_hashing_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f",
 			m.partyID,
 			m.shardID,
-			m.role(),
-			uint64(monitoring.GetMetricValue(m.batchesCreatedTotal.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.firstResendsTotal.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.batchedTxsTotal.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.memPoolSize.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.routerTxsTotal.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.roleChangesTotal.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.complaintsTotal.(prometheus.Metric), m.logger)),
-			monitoring.GetHistogramAverage(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger),
-			monitoring.GetHistogramAverage(m.batchVerifyLatency.(prometheus.Metric), m.logger),
-			monitoring.GetHistogramAverage(m.batchHashingLatency.(prometheus.Metric), m.logger),
-			monitoring.GetHistogramAverage(m.ledgerMetrics.HeaderHashingLatency.(prometheus.Metric), m.logger),
-			monitoring.GetHistogramAverage(m.ledgerMetrics.AppendLatency.(prometheus.Metric), m.logger),
+			roleName(role),
+			created,
+			pulled,
+			resends,
+			batchedTxs,
+			uint64(memPool),
+			routerTxs,
+			roleChanges,
+			complaints,
+			mempoolNextLatency,
+			verifyLatency,
+			hashingLatency,
+			ledgerHashingLatency,
+			ledgerAppendLatency,
 		)
 	})
 }
 
 func (m *BatcherMetrics) trackMetrics() {
-	prevC := monitoring.GetMetricValue(m.batchesCreatedTotal.(prometheus.Metric), m.logger)
-	prevP := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
-	prevR := float64(0)
 	sec := m.interval.Seconds()
+	labels := m.labels()
+
+	reader := monitoring.NewReader(m.promAddress, m.interval, m.promTLS)
+	prevC, err := reader.Total(batchesCreatedTotalOpts, labels...)
+	if err != nil {
+		m.logger.Warnf("Failed to read initial created batches count: %s", err)
+	}
+
+	prevP, err := reader.Total(batchesPulledTotalOpts, labels...)
+	if err != nil {
+		m.logger.Warnf("Failed to read initial pulled batches count: %s", err)
+	}
+
+	prevR := uint64(0)
+
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
 
 	for {
 		select {
 		case <-t.C:
-			created := monitoring.GetMetricValue(m.batchesCreatedTotal.(prometheus.Metric), m.logger)
-			pulled := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
-			resends := monitoring.GetMetricValue(m.firstResendsTotal.(prometheus.Metric), m.logger)
+			role, err := reader.Gauge(currentRoleOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read current role: %s", err)
+			}
+
+			created, err := reader.Total(batchesCreatedTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read created batches count: %s", err)
+				created = prevC
+			}
+
+			pulled, err := reader.Total(batchesPulledTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read pulled batches count: %s", err)
+				pulled = prevP
+			}
+
+			resends, err := reader.Total(firstResendsTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read first resends count: %s", err)
+				resends = prevR
+			}
+
+			batchedTxs, err := reader.Total(batchedTxsTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read batched transactions count: %s", err)
+			}
+
+			memPool, err := reader.Gauge(memPoolSizeOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read mempool size: %s", err)
+			}
+
+			routerTxs, err := reader.Total(routerTxsTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read router transactions count: %s", err)
+			}
+
+			roleChanges, err := reader.Total(roleChangesTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read role changes count: %s", err)
+			}
+
+			complaints, err := reader.Total(complaintsTotalOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read complaints count: %s", err)
+			}
+
+			mempoolNextLatency, err := reader.HistogramIntervalAverage(batchMempoolNextRequestsLatencyOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read mempool next requests latency: %s", err)
+			}
+
+			verifyLatency, err := reader.HistogramIntervalAverage(batchVerifyLatencyOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read batch verify latency: %s", err)
+			}
+
+			hashingLatency, err := reader.HistogramIntervalAverage(batchHashingLatencyOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read batch hashing latency: %s", err)
+			}
+
+			ledgerHashingLatency, err := reader.HistogramIntervalAverage(ledger.HeaderHashingLatencyOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read ledger header hashing latency: %s", err)
+			}
+
+			ledgerAppendLatency, err := reader.HistogramIntervalAverage(ledger.AppendLatencyOpts, labels...)
+			if err != nil {
+				m.logger.Warnf("Failed to read ledger append latency: %s", err)
+			}
 
 			m.logger.Infof(
 				"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resends_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_avg_seconds=%.6f, batch_verify_latency_avg_seconds=%.6f, batch_hashing_latency_avg_seconds=%.6f, batch_ledger_header_hashing_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f",
 				m.partyID,
 				m.shardID,
-				m.role(),
+				roleName(role),
 				sec,
-				uint64(created-prevC), (created-prevC)/sec, uint64(created),
-				uint64(pulled-prevP), (pulled-prevP)/sec, uint64(pulled),
-				uint64(resends-prevR), (resends-prevR)/sec, uint64(resends),
-				uint64(monitoring.GetMetricValue(m.batchedTxsTotal.(prometheus.Metric), m.logger)),
-				uint64(monitoring.GetMetricValue(m.memPoolSize.(prometheus.Metric), m.logger)),
-				uint64(monitoring.GetMetricValue(m.routerTxsTotal.(prometheus.Metric), m.logger)),
-				uint64(monitoring.GetMetricValue(m.roleChangesTotal.(prometheus.Metric), m.logger)),
-				uint64(monitoring.GetMetricValue(m.complaintsTotal.(prometheus.Metric), m.logger)),
-				monitoring.GetHistogramAverage(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger),
-				monitoring.GetHistogramAverage(m.batchVerifyLatency.(prometheus.Metric), m.logger),
-				monitoring.GetHistogramAverage(m.batchHashingLatency.(prometheus.Metric), m.logger),
-				monitoring.GetHistogramAverage(m.ledgerMetrics.HeaderHashingLatency.(prometheus.Metric), m.logger),
-				monitoring.GetHistogramAverage(m.ledgerMetrics.AppendLatency.(prometheus.Metric), m.logger),
+				created-prevC, float64(created-prevC)/sec, created,
+				pulled-prevP, float64(pulled-prevP)/sec, pulled,
+				resends-prevR, float64(resends-prevR)/sec, resends,
+				batchedTxs,
+				uint64(memPool),
+				routerTxs,
+				roleChanges,
+				complaints,
+				mempoolNextLatency,
+				verifyLatency,
+				hashingLatency,
+				ledgerHashingLatency,
+				ledgerAppendLatency,
 			)
 			prevC, prevP, prevR = created, pulled, resends
 
@@ -263,9 +422,12 @@ func (m *BatcherMetrics) trackMetrics() {
 	}
 }
 
-func (m *BatcherMetrics) role() string {
-	currentRole := int(monitoring.GetMetricValue(m.currentRole.(prometheus.Metric), m.logger))
-	if currentRole == 1 {
+func (m *BatcherMetrics) labels() []string {
+	return []string{fmt.Sprintf("%d", m.partyID), fmt.Sprintf("%d", m.shardID)}
+}
+
+func roleName(currentRole float64) string {
+	if int(currentRole) == 1 {
 		return "primary"
 	}
 	return "secondary"

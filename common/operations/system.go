@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package operations
 
 import (
+	"crypto/tls"
 	"net/url"
 	"time"
 
@@ -58,6 +59,8 @@ type Operations struct {
 type Metrics struct {
 	Provider           string
 	MetricsLogInterval time.Duration
+	PrometheusAddress  string
+	PrometheusTLS      *tls.Config
 }
 
 // MetricsOptions contains configuration for the metrics provider.
