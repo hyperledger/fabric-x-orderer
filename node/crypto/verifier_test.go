@@ -267,6 +267,11 @@ func TestVerifySignatureEntity(t *testing.T) {
 	// A lookup under a different entity at the same shard and party does not find the key.
 	require.Error(t, verifier.VerifySignature(crypto.EntityConsenter, partyID, shardID, msg, sig))
 
+	// A zero-valued (unset) entity is EntityUnknown, so it fails loudly rather than silently
+	// resolving against a real entity's key.
+	require.Zero(t, crypto.EntityUnknown, "EntityUnknown must be the zero value of EntityType")
+	require.Error(t, verifier.VerifySignature(crypto.EntityUnknown, partyID, shardID, msg, sig))
+
 	// A different entity's key does not collide with the assembler's key.
 	consenterPEM, _, _ := generateTestECDSAKeyPair(t)
 	verifier.AddPublicKeyToVerifier(consenterPEM, crypto.EntityConsenter, shardID, partyID, logger)
