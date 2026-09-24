@@ -557,7 +557,7 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	}
 }
 
-// TODO: combine this with sendTxToRouters, the submit equivalent, in a separate PR.
+// TODO: combine this with sendTxToRouters, the submit equivalent.
 func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap, signedMode string) {
 	broadcastClient := NewBroadcastTxClient(userConfig)
 	err := broadcastClient.InitStreams()
@@ -739,6 +739,8 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 
 	logger.Infof("all %d txs were sent to the routers", numOfTxs)
 
+	// TODO: before stopping the broadcast client, make sure all the acks have been received.
+	// Add a WaitForAcks method on the broadcast client that does this.
 	err = broadcastClient.Stop()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to stop broadcast client, err: %v", err)
@@ -841,8 +843,8 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 		for {
 			block, err := pullBlock(stream, endpointToPullFrom)
 			if err != nil {
-				if !errors.Is(err, errStreamBroken) {
-					logger.Warnf("skipping an unusable response from assembler %d: %v", pullFromPartyId, err)
+				if !errors.Is(err, errConnectionLost) {
+					logger.Warnf("skipping a response from assembler %d: %v", pullFromPartyId, err)
 					continue
 				}
 
@@ -963,14 +965,14 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 	logger.Debugf("exit pulling blocks from the assembler")
 }
 
-// errStreamBroken marks a pullBlock error that means the stream is unusable, not just the block.
-var errStreamBroken = errors.New("deliver stream broken")
+// errConnectionLost marks the pullBlock error that means the connection is gone, so the caller
+// reconnects instead of skipping a single response.
+var errConnectionLost = errors.New("connection lost")
 
 func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string) (*common.Block, error) {
 	resp, err := stream.Recv()
 	if err != nil {
-		err = fmt.Errorf("failed to receive a deliver response from %s: %w", endpointToPullFrom, err)
-		return nil, errors.Mark(err, errStreamBroken)
+		return nil, fmt.Errorf("failed to receive a deliver response from %s: %w (%w)", endpointToPullFrom, err, errConnectionLost)
 	}
 
 	block := resp.GetBlock()
@@ -992,6 +994,7 @@ func calculateDelayOfTx(data []byte, acceptedTime time.Time) time.Duration {
 	return delayTime
 }
 
+// TODO: swap the send and the map append.
 func sendTx(txsMap *protectedMap, broadcastClient *BroadcastTxClient, i int, txSize int, sessionNumber []byte) {
 	env := tx.PrepareUnsignedEnvelope(i, txSize, sessionNumber)
 	data, _ := tx.GetDataFromEnvelope(env)
@@ -1187,8 +1190,8 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 	for {
 		block, err := pullBlock(stream, endpointToPullFrom)
 		if err != nil {
-			if !errors.Is(err, errStreamBroken) {
-				logger.Warnf("skipping an unusable response from assembler %d: %v", pullFromPartyId, err)
+			if !errors.Is(err, errConnectionLost) {
+				logger.Warnf("skipping a response from assembler %d: %v", pullFromPartyId, err)
 				continue
 			}
 
@@ -1199,7 +1202,7 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 			_ = gRPCAssemblerClientConn.Close()
 
 			// TODO: this reconnect loop duplicates pullBlocksFromAssemblerAndCollectStatistics,
-			// extract a shared block-pulling helper in a separate PR.
+			// extract a shared block-pulling helper.
 			for {
 				time.Sleep(1 * time.Second)
 
