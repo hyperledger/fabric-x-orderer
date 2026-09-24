@@ -42,14 +42,14 @@ func TestRegisterReply(t *testing.T) {
 	responseChan := make(chan Response, 1)
 
 	s := &stream{
-		requestTraceIdToResponseChannel: make(map[string]chan Response),
+		requestsByTraceID: make(map[string]*TrackedRequest),
 	}
 
-	s.registerReply(traceID, responseChan)
-	respChan, exists := s.isRequestRegistered(traceID)
-	require.NotNil(t, respChan)
+	s.registerReply(CreateTrackedRequest(nil, responseChan, nil, traceID))
+	tr, exists := s.isRequestRegistered(traceID)
+	require.NotNil(t, tr)
 	require.True(t, exists)
-	require.Equal(t, responseChan, respChan)
+	require.Equal(t, responseChan, tr.client.responses)
 }
 
 func TestSendRequests(t *testing.T) {
@@ -67,7 +67,7 @@ func TestSendRequests(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
@@ -108,7 +108,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
@@ -156,12 +156,12 @@ func TestReadResponses(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
 
-	s.registerReply(traceID, responseChan)
+	s.registerReply(CreateTrackedRequest(nil, responseChan, nil, traceID))
 	respChan, exists := s.isRequestRegistered(traceID)
 	require.NotNil(t, respChan)
 	require.True(t, exists)
@@ -201,7 +201,7 @@ func TestReadResponsesReturnsWithError(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
@@ -230,7 +230,7 @@ func TestErrorRequestChannel(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
@@ -262,15 +262,15 @@ func TestRenewStreamSuccess(t *testing.T) {
 
 	// prepare requests and map
 	requests := make(chan *TrackedRequest, 10)
-	requestTraceIdToResponseChannel := make(map[string]chan Response)
+	requestsByTraceID := make(map[string]*TrackedRequest)
 
 	req1 := createTestTrackedRequestFromTrace([]byte{1})
 	requests <- req1
-	requestTraceIdToResponseChannel[string(req1.trace)] = make(chan Response, 100)
+	requestsByTraceID[string(req1.trace)] = req1
 
 	req2 := createTestTrackedRequestFromTrace([]byte{2})
 	requests <- req2
-	requestTraceIdToResponseChannel[string(req2.trace)] = make(chan Response, 100)
+	requestsByTraceID[string(req2.trace)] = req2
 	_, verifier := createTestBundleAndVerifier()
 
 	faultyStream := &stream{
@@ -281,7 +281,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   requests,
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   requestTraceIdToResponseChannel,
+		requestsByTraceID:                 requestsByTraceID,
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 	}
@@ -355,7 +355,7 @@ func TestReconnectRequest(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		connNum:                           connectionNumber,
 		streamNum:                         streamNumber,
@@ -396,7 +396,7 @@ func TestBatcherIsStoppedReconnectWithBackoff(t *testing.T) {
 		cancelFunc:                        cancel,
 		requestsChannel:                   make(chan *TrackedRequest, 10),
 		doneChannel:                       make(chan bool),
-		requestTraceIdToResponseChannel:   make(map[string]chan Response),
+		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
 		connNum:                           connectionNumber,

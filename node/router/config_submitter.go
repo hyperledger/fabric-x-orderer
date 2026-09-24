@@ -124,20 +124,20 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 	configRequest, err := cs.configUpdateProposer.ProposeConfigUpdate(tr.request, cs.bundle, cs.signer, cs.verifier, cs.bccsp)
 	if err != nil {
 		feedback.err = fmt.Errorf("error in verification and proposing update: %s", err)
-		tr.responses <- feedback
+		tr.client.reply(feedback)
 		return err
 	}
 
 	env := &common.Envelope{Payload: configRequest.Payload, Signature: configRequest.Signature}
 	if err = cs.configRulesVerifier.ValidateNewConfig(env, cs.bccsp, cs.partyID); err != nil {
 		feedback.err = fmt.Errorf("error in validating config rules: %w", err)
-		tr.responses <- feedback
+		tr.client.reply(feedback)
 		return err
 	}
 
 	if err = cs.configRulesVerifier.ValidateTransition(cs.bundle, env, cs.bccsp); err != nil {
 		feedback.err = fmt.Errorf("error in validating config transition rules: %w", err)
-		tr.responses <- feedback
+		tr.client.reply(feedback)
 		return err
 	}
 
@@ -153,7 +153,7 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 		}
 	}
 
-	tr.responses <- feedback
+	tr.client.reply(feedback)
 	return err
 }
 

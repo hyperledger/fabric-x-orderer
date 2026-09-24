@@ -9,8 +9,11 @@ package router
 import (
 	"errors"
 
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 )
 
@@ -21,14 +24,23 @@ import (
 var ErrThrottled = errors.New("service unavailable: request throttled by router rate limiter")
 
 type TrackedRequest struct {
-	request   *protos.Request // the request to be forward to the batcher
-	responses chan Response   // the feedback channel where the response will be sent to
-	reqID     []byte          // identifier used to disseminate requests across shards in the router
-	trace     []byte          // used to trace the request in the router. If nil, the request is untraced, and a response is sent no later than after forwarding to the batcher.
+	request *protos.Request // the request to be forward to the batcher
+	client  *clientChannel  // the response path of the submitting client
+	reqID   []byte          // identifier used to disseminate requests across shards in the router
+	trace   []byte          // used to trace the request in the router. If nil, the request is untraced, and a response is sent no later than after forwarding to the batcher.
 }
 
+// CreateTrackedRequest creates a tracked request whose responses are queued on
+// the given channel. It is only used for testing, to submit a request without a
+// live client stream.
 func CreateTrackedRequest(request *protos.Request, responses chan Response, reqID []byte, trace []byte) *TrackedRequest {
-	return &TrackedRequest{request: request, responses: responses, reqID: reqID, trace: trace}
+	logger := flogging.MustGetLogger("router")
+	metrics := NewRouterMetrics(&config.RouterNodeConfig{Metrics: &operations.Metrics{Provider: "disabled"}}, logger)
+
+	client := newClientChannel(0, nil, nil, metrics)
+	client.responses = responses // the test reads the channel it passed in
+
+	return &TrackedRequest{request: request, client: client, reqID: reqID, trace: trace}
 }
 
 type Response struct {
