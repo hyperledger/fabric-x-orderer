@@ -36,8 +36,6 @@ import (
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
-	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -316,21 +314,6 @@ func createAndSubmitRequestWithConfigSeq(node *consensus.Consensus, sk *ecdsa.Pr
 // helper function to create and submit a request for testing
 func createAndSubmitRequest(node *consensus.Consensus, sk *ecdsa.PrivateKey, id types.PartyID, shard types.ShardID, digest []byte, primary types.PartyID, primarySK *ecdsa.PrivateKey, sequence types.BatchSequence) error {
 	return createAndSubmitRequestWithConfigSeq(node, sk, id, shard, digest, primary, primarySK, sequence, 0)
-}
-
-// createAndSubmitConfigRequest creates and submits a config request control event for testing
-func createAndSubmitConfigRequest(node *consensus.Consensus, routerCert *x509.Certificate, payloadDataBytes []byte) (*protos.SubmitResponse, error) {
-	envelope := tx.CreateStructuredConfigUpdateEnvelope(payloadDataBytes)
-	request := &protos.Request{
-		Payload:   envelope.Payload,
-		Signature: envelope.Signature,
-		ConfigSeq: 1,
-	}
-	ctx, err := createContextForSubmitConfig(routerCert)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create a context for submit config")
-	}
-	return node.SubmitConfig(ctx, request)
 }
 
 func createContextForSubmitConfig(cert *x509.Certificate) (context.Context, error) {
