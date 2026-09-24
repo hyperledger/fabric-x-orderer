@@ -395,8 +395,8 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		close(exit)
 	}()
 
-	feedbackChan := make(chan Response, 1000)
-	go r.sendFeedbackOnBroadcastStream(stream, exit, feedbackChan)
+	client := newClientChannel(clientFeedbackBuffer)
+	go r.sendFeedbackOnBroadcastStream(stream, exit, client)
 
 	for {
 		reqEnv, err := stream.Recv()
@@ -413,8 +413,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		if !r.throttler.Load().Allow() {
 			r.metrics.throttledTxs.Add(1)
-			feedbackChan <- Response{err: ErrThrottled}
-			// TODO deal with drain signal leaving this channel with no reader
+			client.reply(Response{err: ErrThrottled})
 			continue
 		}
 
@@ -423,18 +422,14 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 
 		select {
 		case <-r.stopChan:
-			// The router is stopping, so it is ok to send feedback best effort rather than block
-			select {
-			case feedbackChan <- Response{
+			client.reply(Response{
 				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 				reqID: reqID,
-			}:
-			default:
-			}
+			})
 
 		default:
 			// create a routing request with nil trace. the request is not traced in router.
-			tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID}
+			tr := &TrackedRequest{request: request, client: client, reqID: reqID}
 			shardRouter.Forward(tr)
 		}
 	}
@@ -458,8 +453,8 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		close(exit)
 	}()
 
-	feedbackChan := make(chan Response, 1000)
-	go r.sendFeedbackOnSubmitStream(stream, exit, feedbackChan)
+	client := newClientChannel(clientFeedbackBuffer)
+	go r.sendFeedbackOnSubmitStream(stream, exit, client)
 
 	for {
 		req, err := stream.Recv()
@@ -478,24 +473,19 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 
 		if !r.throttler.Load().Allow() {
 			r.metrics.throttledTxs.Add(1)
-			feedbackChan <- Response{err: ErrThrottled, reqID: reqID}
-			// TODO deal with drain signal leaving this channel with no reader
+			client.reply(Response{err: ErrThrottled, reqID: reqID})
 			continue
 		}
 
 		select {
 		case <-r.stopChan:
-			// The router is stopping, so it is ok to send feedback best effort rather than block
-			select {
-			case feedbackChan <- Response{
+			client.reply(Response{
 				err:   fmt.Errorf("router is stopping, cannot process request %x", reqID),
 				reqID: reqID,
-			}:
-			default:
-			}
+			})
 		default:
 			trace := createTraceID(rand)
-			tr := &TrackedRequest{request: req, responses: feedbackChan, reqID: reqID, trace: trace}
+			tr := &TrackedRequest{request: req, client: client, reqID: reqID, trace: trace}
 			tr.request.ConfigSeq = r.configSeq
 			shardRouter.Forward(tr)
 		}
@@ -536,9 +526,9 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 
 	trace := createTraceID(nil)
 
-	feedbackChan := make(chan Response, 1)
+	client := newClientChannel(1)
 
-	tr := &TrackedRequest{request: request, responses: feedbackChan, reqID: reqID, trace: trace}
+	tr := &TrackedRequest{request: request, client: client, reqID: reqID, trace: trace}
 	tr.request.ConfigSeq = r.configSeq
 	shardRouter.Forward(tr)
 
@@ -546,7 +536,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 
 	var response Response
 	select {
-	case res := <-feedbackChan:
+	case res := <-client.responses:
 		response = res
 	case <-r.stopChan:
 		response = Response{
@@ -564,14 +554,14 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 	return responseToSubmitResponse(&response), nil
 }
 
-func (r *Router) sendFeedbackOnSubmitStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, feedbackChan chan Response) {
+func (r *Router) sendFeedbackOnSubmitStream(stream protos.RequestTransmit_SubmitStreamServer, exit chan struct{}, client *clientChannel) {
 	r.feedbackWG.Add(1)
 	defer r.feedbackWG.Done()
 	for {
 		select {
 		case <-exit:
 			return
-		case response := <-feedbackChan:
+		case response := <-client.responses:
 			r.metrics.increaseErrorCount(response.err)
 			resp := responseToSubmitResponse(&response)
 			err := stream.Send(resp)
@@ -579,28 +569,28 @@ func (r *Router) sendFeedbackOnSubmitStream(stream protos.RequestTransmit_Submit
 				r.logger.Errorf("error sending response to client: %v", err)
 			}
 		case <-r.drainChan:
-			if len(feedbackChan) == 0 {
+			if len(client.responses) == 0 {
 				return
 			}
 		}
 	}
 }
 
-func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, feedbackChan chan Response) {
+func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_BroadcastServer, exit chan struct{}, client *clientChannel) {
 	r.feedbackWG.Add(1)
 	defer r.feedbackWG.Done()
 	for {
 		select {
 		case <-exit:
 			return
-		case response := <-feedbackChan:
+		case response := <-client.responses:
 			err := stream.Send(responseToBroadcastResponse(&response))
 			if err != nil {
 				r.logger.Errorf("error sending response to client: %v", err)
 			}
 			r.metrics.increaseErrorCount(response.err)
 		case <-r.drainChan:
-			if len(feedbackChan) == 0 {
+			if len(client.responses) == 0 {
 				return
 			}
 		}

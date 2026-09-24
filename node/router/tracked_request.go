@@ -21,14 +21,17 @@ import (
 var ErrThrottled = errors.New("service unavailable: request throttled by router rate limiter")
 
 type TrackedRequest struct {
-	request   *protos.Request // the request to be forward to the batcher
-	responses chan Response   // the feedback channel where the response will be sent to
-	reqID     []byte          // identifier used to disseminate requests across shards in the router
-	trace     []byte          // used to trace the request in the router. If nil, the request is untraced, and a response is sent no later than after forwarding to the batcher.
+	request *protos.Request // the request to be forward to the batcher
+	client  *clientChannel  // the response path of the submitting client
+	reqID   []byte          // identifier used to disseminate requests across shards in the router
+	trace   []byte          // used to trace the request in the router. If nil, the request is untraced, and a response is sent no later than after forwarding to the batcher.
 }
 
+// CreateTrackedRequest creates a tracked request whose responses are queued on
+// the given channel. It is only used for testing, to submit a request without a
+// live client stream.
 func CreateTrackedRequest(request *protos.Request, responses chan Response, reqID []byte, trace []byte) *TrackedRequest {
-	return &TrackedRequest{request: request, responses: responses, reqID: reqID, trace: trace}
+	return &TrackedRequest{request: request, client: &clientChannel{responses: responses}, reqID: reqID, trace: trace}
 }
 
 type Response struct {

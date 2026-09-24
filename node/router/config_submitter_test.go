@@ -87,7 +87,7 @@ func TestConfigSubmitterForward(t *testing.T) {
 
 	req := tx.CreateStructuredRequest([]byte("data"))
 	feedbackChan := make(chan Response, 1)
-	configSubmitter.Forward(&TrackedRequest{request: req, responses: feedbackChan})
+	configSubmitter.Forward(CreateTrackedRequest(req, feedbackChan, nil, nil))
 
 	resp := <-feedbackChan
 	require.Equal(t, resp.SubmitResponse.Error, "dummy submit config")
@@ -108,7 +108,7 @@ func TestConfigSubmitterMultipleForward(t *testing.T) {
 	for i := 0; i < numOfRequests; i++ {
 		req := tx.CreateStructuredRequest([]byte("data"))
 		feedbackChan := make(chan Response, 1)
-		configSubmitter.Forward(&TrackedRequest{request: req, responses: feedbackChan})
+		configSubmitter.Forward(CreateTrackedRequest(req, feedbackChan, nil, nil))
 
 		resp := <-feedbackChan
 		require.Equal(t, resp.SubmitResponse.Error, "dummy submit config")
@@ -131,7 +131,7 @@ func TestForwardWithConsensusRestart(t *testing.T) {
 	feedbackChan := make(chan Response, 1)
 
 	// submit one request, and wait for the response
-	configSubmitter.Forward(&TrackedRequest{request: req, responses: feedbackChan})
+	configSubmitter.Forward(CreateTrackedRequest(req, feedbackChan, nil, nil))
 	resp := <-feedbackChan
 	require.Equal(t, resp.SubmitResponse.Error, "dummy submit config")
 
@@ -140,7 +140,7 @@ func TestForwardWithConsensusRestart(t *testing.T) {
 	time.Sleep(250 * time.Millisecond)
 
 	// forward another request
-	configSubmitter.Forward(&TrackedRequest{request: req, responses: feedbackChan})
+	configSubmitter.Forward(CreateTrackedRequest(req, feedbackChan, nil, nil))
 
 	// wait and restart the consenter
 	time.Sleep(250 * time.Millisecond)
@@ -164,7 +164,7 @@ func TestConfigSubmitterReconnectionAbort(t *testing.T) {
 	feedbackChan := make(chan Response, 1)
 
 	// submit one request, and wait for the response
-	configSubmitter.Forward(&TrackedRequest{request: req, responses: feedbackChan})
+	configSubmitter.Forward(CreateTrackedRequest(req, feedbackChan, nil, nil))
 	resp := <-feedbackChan
 	require.Equal(t, resp.SubmitResponse.Error, "dummy submit config")
 
@@ -175,10 +175,33 @@ func TestConfigSubmitterReconnectionAbort(t *testing.T) {
 	// forward a request and stop the config submitter
 	errChan := make(chan error)
 	go func() {
-		errChan <- configSubmitter.forwardRequest(&TrackedRequest{request: req, responses: feedbackChan})
+		errChan <- configSubmitter.forwardRequest(CreateTrackedRequest(req, feedbackChan, nil, nil))
 	}()
 	configSubmitter.Stop()
 
 	err := <-errChan
 	require.EqualError(t, err, fmt.Sprintf("reconnection to consensus %s aborted, because context is done and configSubmitter stopped", configSubmitter.consensusEndpoint))
+}
+
+// Scenario:
+//  1. Create a config submitter with a queue of one and do not start it, so that
+//     nothing drains the queue.
+//  2. Forward a request, filling the queue, and expect no response.
+//  3. Forward a second request and expect it to be rejected rather than block.
+func TestConfigSubmitterForwardRejectsWhenQueueIsFull(t *testing.T) {
+	cs := &configSubmitter{
+		logger:                testutil.CreateLogger(t, 0),
+		configRequestsChannel: make(chan *TrackedRequest, 1),
+	}
+
+	feedbackChan := make(chan Response, 2)
+	req := tx.CreateStructuredRequest([]byte("config"))
+
+	cs.Forward(CreateTrackedRequest(req, feedbackChan, []byte("req1"), nil))
+	require.Empty(t, feedbackChan)
+
+	cs.Forward(CreateTrackedRequest(req, feedbackChan, []byte("req2"), nil))
+	resp := <-feedbackChan
+	require.ErrorContains(t, resp.GetResponseError(), "config request queue is full")
+	require.Equal(t, []byte("req2"), resp.reqID)
 }
