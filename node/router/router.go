@@ -135,6 +135,7 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.configSeq = uint32(configSeq)
 
 	r.verifier = createVerifier(rconfig)
+	r.metrics = NewRouterMetrics(rconfig, r.logger)
 
 	t, err := newThrottler(rconfig.Throttling)
 	if err != nil {
@@ -143,7 +144,7 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	r.throttler.Store(t)
 	r.logger.Infof("Router throttling policy: %q (rate=%d, burst=%d)", rconfig.Throttling.Policy, rconfig.Throttling.Rate, rconfig.Throttling.Burst)
 
-	r.configSubmitter = NewConfigSubmitter(rconfig, r.logger, r.verifier, r.signer, configUpdateProposer, configRulesVerifier)
+	r.configSubmitter = NewConfigSubmitter(rconfig, r.logger, r.verifier, r.signer, configUpdateProposer, configRulesVerifier, r.metrics)
 
 	var tlsCAsOfConsenter [][]byte
 	for _, rawTLSCA := range r.routerNodeConfig.Consenter.TLSCACerts {
@@ -179,13 +180,12 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	}
 	r.shardRouters = make(map[types.ShardID]*ShardRouter)
 	for _, shardId := range r.shardIDs {
-		r.shardRouters[shardId] = NewShardRouter(r.logger, batcherEndpoints[shardId], tlsCAsOfBatchers[shardId], r.routerNodeConfig.TLSCertificateFile, r.routerNodeConfig.TLSPrivateKeyFile, r.routerNodeConfig.NumOfConnectionsForBatcher, r.routerNodeConfig.NumOfgRPCStreamsPerConnection, r.verifier, r.configSubmitter)
+		r.shardRouters[shardId] = NewShardRouter(r.logger, batcherEndpoints[shardId], tlsCAsOfBatchers[shardId], r.routerNodeConfig.TLSCertificateFile, r.routerNodeConfig.TLSPrivateKeyFile, r.routerNodeConfig.NumOfConnectionsForBatcher, r.routerNodeConfig.NumOfgRPCStreamsPerConnection, r.verifier, r.configSubmitter, r.metrics)
 	}
 
 	// TODO - pull decisions from all consenter nodes, not only the one in party
 	r.decisionPuller = CreateConsensusDecisionReplicator(rconfig, seekInfo, r.logger)
 
-	r.metrics = NewRouterMetrics(rconfig, r.logger)
 	r.opsSystem = operations.NewOperationsSystem(*rconfig.Operations, *rconfig.Metrics)
 
 	RegisterHealthCheckers(r)
@@ -409,7 +409,7 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 			return err
 		}
 
-		r.metrics.incomingTxs.Add(1)
+		r.metrics.arrivedTxs.Add(1)
 
 		if !r.throttler.Load().Allow() {
 			r.metrics.throttledTxs.Add(1)
@@ -470,7 +470,7 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 			return err
 		}
 
-		r.metrics.incomingTxs.Add(1)
+		r.metrics.arrivedTxs.Add(1)
 		// Map before the throttle check so a throttled reject can carry reqID:
 		// SubmitResponse has a ReqID field and clients correlate stream responses
 		// by it, unlike Broadcast (whose response carries no reqID).
@@ -525,7 +525,7 @@ func (r *Router) getShardRouterAndReqID(req *protos.Request) ([]byte, *ShardRout
 }
 
 func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.SubmitResponse, error) {
-	r.metrics.incomingTxs.Add(1)
+	r.metrics.arrivedTxs.Add(1)
 
 	// Map before the throttle check so the reject can carry reqID (see SubmitStream).
 	reqID, shardRouter := r.getShardRouterAndReqID(request)

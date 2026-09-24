@@ -50,9 +50,10 @@ type configSubmitter struct {
 	configRulesVerifier   verify.OrdererRules
 	partyID               types.PartyID
 	bccsp                 bccsp.BCCSP
+	metrics               *RouterMetrics
 }
 
-func NewConfigSubmitter(conf *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *configSubmitter {
+func NewConfigSubmitter(conf *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules, metrics *RouterMetrics) *configSubmitter {
 	var tlsCAsOfConsenter [][]byte
 	for _, rawTLSCA := range conf.Consenter.TLSCACerts {
 		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
@@ -72,6 +73,7 @@ func NewConfigSubmitter(conf *nodeconfig.RouterNodeConfig, logger *flogging.Fabr
 		configRulesVerifier:   configRulesVerifier,
 		partyID:               conf.PartyID,
 		bccsp:                 conf.BCCSP,
+		metrics:               metrics,
 	}
 	return cs
 }
@@ -147,6 +149,7 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 	if err != nil {
 		feedback.err = fmt.Errorf("error forwarding config request to consenter: %v", err)
 	} else {
+		cs.metrics.forwardedTxs.Add(1)
 		feedback.SubmitResponse = resp
 		if resp.Error != "" {
 			feedback.err = errors.New(resp.Error)

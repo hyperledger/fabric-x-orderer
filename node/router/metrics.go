@@ -23,10 +23,10 @@ import (
 )
 
 var (
-	incomingTxs = metrics.CounterOpts{
+	arrivedTxs = metrics.CounterOpts{
 		Namespace:  "router",
-		Name:       "requests_completed",
-		Help:       "The number of incomming requests that have been completed.",
+		Name:       "requests_arrived",
+		Help:       "The number of requests that arrived at the router.",
 		LabelNames: []string{"party_id"},
 	}
 
@@ -43,14 +43,22 @@ var (
 		Help:       "The number of incoming requests rejected by the rate limiter.",
 		LabelNames: []string{"party_id"},
 	}
+
+	forwardedTxs = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "requests_forwarded",
+		Help:       "The number of requests that the router forwarded to a batcher or to the consenter.",
+		LabelNames: []string{"party_id"},
+	}
 )
 
 type RouterMetrics struct {
-	incomingTxs            metrics.Counter
+	arrivedTxs             metrics.Counter
 	rejectedTxsWithCode400 metrics.Counter
 	rejectedTxsWithCode500 metrics.Counter
 	throttledTxs           metrics.Counter
-	incomingTxsLastValue   uint64
+	forwardedTxs           metrics.Counter
+	arrivedTxsLastValue    uint64
 	logger                 *flogging.FabricLogger
 	interval               time.Duration
 	stopChan               chan struct{}
@@ -72,10 +80,11 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		interval:               routerNodeConfig.Metrics.MetricsLogInterval,
 		logger:                 logger,
 		stopChan:               make(chan struct{}),
-		incomingTxs:            provider.NewCounter(incomingTxs).With([]string{partyID}...),
+		arrivedTxs:             provider.NewCounter(arrivedTxs).With([]string{partyID}...),
 		rejectedTxsWithCode400: rejectedTxs.With([]string{"400", partyID}...),
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
 		throttledTxs:           provider.NewCounter(throttledTxs).With([]string{partyID}...),
+		forwardedTxs:           provider.NewCounter(forwardedTxs).With([]string{partyID}...),
 		partyID:                routerNodeConfig.PartyID,
 	}
 }
@@ -112,15 +121,16 @@ func (m *RouterMetrics) trackMetrics() {
 }
 
 func (m *RouterMetrics) reportMetrics() {
-	txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
+	txCount := monitoring.GetMetricValue(m.arrivedTxs.(prometheus.Metric), m.logger)
 	txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
 	txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
 	txThrottled := monitoring.GetMetricValue(m.throttledTxs.(prometheus.Metric), m.logger)
-	incomingTxsLastValue := atomic.LoadUint64(&m.incomingTxsLastValue)
-	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d",
-		m.partyID, int(txCount), float64(txCount-float64(incomingTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled))
+	txForwarded := monitoring.GetMetricValue(m.forwardedTxs.(prometheus.Metric), m.logger)
+	arrivedTxsLastValue := atomic.LoadUint64(&m.arrivedTxsLastValue)
+	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_arrived=%d, transactions_arrived_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d, transactions_forwarded=%d",
+		m.partyID, int(txCount), float64(txCount-float64(arrivedTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled), int(txForwarded))
 
-	atomic.StoreUint64(&m.incomingTxsLastValue, uint64(txCount))
+	atomic.StoreUint64(&m.arrivedTxsLastValue, uint64(txCount))
 }
 
 func (m *RouterMetrics) increaseErrorCount(err error) {

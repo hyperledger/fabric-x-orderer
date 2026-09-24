@@ -39,6 +39,7 @@ type stream struct {
 	verifier                          *requestfilter.RulesVerifier
 	configSubmitter                   ConfigurationSubmitter
 	reconnectBackoffInterval          time.Duration
+	metrics                           *RouterMetrics
 }
 
 // readResponses listens for responses from the batcher.
@@ -105,6 +106,8 @@ func (s *stream) sendRequests() {
 					s.cancelOnServerError(false)
 					return
 				}
+
+				s.metrics.forwardedTxs.Add(1)
 
 				// send fast response to client for untraced requests.
 				// traced requests get their response from readResponses goroutine.
@@ -317,6 +320,7 @@ CopyChannelLoop:
 		verifier:                          s.verifier,
 		configSubmitter:                   s.configSubmitter,
 		reconnectBackoffInterval:          s.reconnectBackoffInterval,
+		metrics:                           s.metrics,
 	}
 	s.lock.Unlock()
 
