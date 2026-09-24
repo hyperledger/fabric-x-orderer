@@ -1537,7 +1537,7 @@ func TestReJoinSingleParty(t *testing.T) {
 	testutil.WaitReady(t, readyChan, nodesPerParty, 10)
 
 	consenterToRejoin := armaNetwork.GetConsenter(t, partyToRejoin)
-	detectCh := consenterToRejoin.RunInfo.Session.Err.Detect("Failed submitting request: mismatch config sequence")
+	detectCh := consenterToRejoin.RunInfo.Session.Err.Detect("Failed submitting request: config sequence ahead")
 	defer consenterToRejoin.RunInfo.Session.Err.CancelDetects()
 
 	// Send transactions to all parties

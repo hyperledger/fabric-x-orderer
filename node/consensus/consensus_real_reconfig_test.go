@@ -82,7 +82,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 	require.NoError(t, err, "failed to create private key")
 	lastBlockNumber := uint64(1)
 	configSeq := types.ConfigSequence(0)
-	sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq+1, lastBlockNumber, "mismatch config sequence")
+	sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq+1, lastBlockNumber, "config sequence ahead")
 	sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq, lastBlockNumber, "")
 
 	var routerCtx context.Context
@@ -150,8 +150,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		// send another simple request
 		lastBlockNumber++
 		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq, lastBlockNumber, "")
-		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq+1, lastBlockNumber, "mismatch config sequence")
-		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq-1, lastBlockNumber, "mismatch config sequence")
+		sendSimpleRequest(t, consensusNodes, privateKey, privateKey2, 1, 2, configSeq+1, lastBlockNumber, "config sequence ahead")
 	})
 
 	t.Run("config update with consenter's certificate change", func(t *testing.T) {
