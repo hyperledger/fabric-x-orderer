@@ -162,6 +162,10 @@ NUM_SHARDS                ?= 2
 FAILURE_RUNNER_ENABLED    ?= true
 FAILURE_RUNNER_STOP_DURATION  ?= 30
 FAILURE_RUNNER_RESTART_WAIT   ?= 30
+# How long submit keeps verifying after it finished sending (deadline, not delay)
+SUBMIT_DRAIN_SECONDS          ?= 420
+# Grace period before the failure runner's first kill
+FAILURE_RUNNER_START_DELAY    ?= 60
 
 .PHONY: deterministic-failure-test
 deterministic-failure-test: binary
@@ -174,6 +178,8 @@ deterministic-failure-test: binary
 	FAILURE_RUNNER_ENABLED=$(FAILURE_RUNNER_ENABLED) \
 	FAILURE_RUNNER_STOP_DURATION=$(FAILURE_RUNNER_STOP_DURATION) \
 	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
+	SUBMIT_DRAIN_SECONDS=$(SUBMIT_DRAIN_SECONDS) \
+	FAILURE_RUNNER_START_DELAY=$(FAILURE_RUNNER_START_DELAY) \
 	test/deterministic-failure-test/deterministic-failure-test.sh
 
 .PHONY: fully-randomized-failure-test
@@ -187,6 +193,8 @@ fully-randomized-failure-test: binary
 	FAILURE_RUNNER_ENABLED=$(FAILURE_RUNNER_ENABLED) \
 	FAILURE_RUNNER_STOP_DURATION=$(FAILURE_RUNNER_STOP_DURATION) \
 	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
+	SUBMIT_DRAIN_SECONDS=$(SUBMIT_DRAIN_SECONDS) \
+	FAILURE_RUNNER_START_DELAY=$(FAILURE_RUNNER_START_DELAY) \
 	test/fully-randomized-failure-test/fully-randomized-failure-test.sh
 
 .PHONY: sample-tests
