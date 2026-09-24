@@ -435,7 +435,7 @@ type State struct {
 	Pending         []*BatchAttestationFragment `protobuf:"bytes,3,rep,name=pending,proto3" json:"pending,omitempty"`                                          // Pending batch attestation fragments received by consenters from batchers
 	Complaints      []*Complaint                `protobuf:"bytes,4,rep,name=complaints,proto3" json:"complaints,omitempty"`                                    // Complaints received by consenters from batchers
 	AppContext      []byte                      `protobuf:"bytes,5,opt,name=app_context,json=appContext,proto3" json:"app_context,omitempty"`                  // Auxiliary data that may be served as context to the application
-	StaleConfigBafs []*BatchAttestationFragment `protobuf:"bytes,6,rep,name=stale_config_bafs,json=staleConfigBafs,proto3" json:"stale_config_bafs,omitempty"` // BAFs one config behind, surfaced for one decision so batchers can revive their requests
+	StaleConfigBafs []*BatchAttestationFragment `protobuf:"bytes,6,rep,name=stale_config_bafs,json=staleConfigBafs,proto3" json:"stale_config_bafs,omitempty"` // BAFs with stale config, surfaced for one decision so batchers can revive their requests
 }
 
 func (x *State) Reset() {

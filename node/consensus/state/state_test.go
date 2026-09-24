@@ -505,11 +505,11 @@ func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 	assert.Equal(t, types.ConfigSequence(2), state.Complaints[0].ConfigSeq)
 }
 
-// TestProcessSurfacesStaleConfigBAFsOneBehind verifies that Process diverts an incoming BAF that is
-// exactly one config behind into StaleConfigBAFs (rather than dropping it or placing it in Pending),
-// leaves it out of BA extraction, drops BAFs staler than one config behind, and clears the array the
-// next round.
-func TestProcessSurfacesStaleConfigBAFsOneBehind(t *testing.T) {
+// TestProcessSurfacesStaleConfigBAFsBehind verifies that Process diverts an incoming BAF that is behind
+// the current config sequence into StaleConfigBAFs (rather than dropping it
+// or placing it in Pending), leaves it out of BA extraction, drops BAFs ahead of the current config
+// sequence, and clears the array the next round.
+func TestProcessSurfacesStaleConfigBAFsBehind(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 	st := consensus_state.State{
 		N:         4,
@@ -520,25 +520,29 @@ func TestProcessSurfacesStaleConfigBAFsOneBehind(t *testing.T) {
 
 	currentBAF := bafCE(1, 1, 10, []byte{1}, 2, cur, 0, nil)  // exact match -> Pending
 	staleOne := bafCE(1, 1, 11, []byte{2}, 2, cur-1, 0, nil)  // one behind -> StaleConfigBAFs
-	twoBehind := bafCE(1, 1, 12, []byte{3}, 2, cur-2, 0, nil) // two behind -> dropped
+	twoBehind := bafCE(1, 1, 12, []byte{3}, 2, cur-2, 0, nil) // two behind -> StaleConfigBAFs
+	ahead := bafCE(1, 1, 13, []byte{4}, 2, cur+1, 0, nil)     // ahead -> dropped
 
-	next, extracted, _ := st.Process(logger, cur, currentBAF, staleOne, twoBehind)
+	next, extracted, _ := st.Process(logger, cur, currentBAF, staleOne, twoBehind, ahead)
 
 	// exact-match BAF collected into Pending
 	require.Len(t, next.Pending, 1)
 	assert.Equal(t, cur, next.Pending[0].ConfigSequence())
 
-	// stale-by-one surfaced separately, and never extracted as a BA
-	require.Len(t, next.StaleConfigBAFs, 1)
-	assert.Equal(t, cur-1, next.StaleConfigBAFs[0].ConfigSequence())
+	// every behind BAF surfaced separately, and never extracted as a BA
+	require.Len(t, next.StaleConfigBAFs, 2)
+	surfaced := map[types.ConfigSequence]struct{}{}
+	for _, baf := range next.StaleConfigBAFs {
+		surfaced[baf.ConfigSequence()] = struct{}{}
+	}
+	assert.Contains(t, surfaced, cur-1)
+	assert.Contains(t, surfaced, cur-2)
 	assert.Empty(t, extracted)
 
-	// two-behind dropped entirely (not surfaced, not pending)
-	for _, baf := range next.StaleConfigBAFs {
-		assert.NotEqual(t, cur-2, baf.ConfigSequence())
-	}
+	// the ahead BAF is dropped entirely (not surfaced, not pending)
+	assert.NotContains(t, surfaced, cur+1)
 
-	// one decision only: a subsequent Process without the stale CE clears StaleConfigBAFs,
+	// one decision only: a subsequent Process without the stale CEs clears StaleConfigBAFs,
 	// while Pending is unaffected.
 	next2, _, _ := next.Process(logger, cur)
 	assert.Empty(t, next2.StaleConfigBAFs)

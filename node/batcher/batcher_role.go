@@ -278,7 +278,7 @@ func (b *BatcherRole) ResubmitPendingBAFs(state *state.State, prevPrimary types.
 }
 
 // ResubmitStaleConfigBAFs revives the requests of this batcher's own BAFs that consensus surfaced as
-// exactly one config behind (state.StaleConfigBAFs). Unlike ResubmitPendingBAFs, it is checked on
+// behind the current config sequence (state.StaleConfigBAFs). Unlike ResubmitPendingBAFs, it is checked on
 // every delivered decision (the array lives for a single decision) and has no prevPrimary filter.
 // Because decisions are applied in order, the batcher has already applied the config block by the time
 // such a BAF is surfaced, so the revived requests re-batch under the new config sequence.

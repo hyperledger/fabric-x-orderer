@@ -837,10 +837,10 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	}
 }
 
-// TestVerifyRequestAcceptsStaleByOneConfigSeq verifies the config-sequence gate in verifyCE (reached
-// via the exported VerifyRequest): a BAF at the current sequence or exactly one behind is accepted (so
-// consensus can surface a one-behind BAF for revival), while a BAF two or more behind is rejected.
-func TestVerifyRequestAcceptsStaleByOneConfigSeq(t *testing.T) {
+// TestVerifyRequestAcceptsStaleConfigSeq verifies the config-sequence gate in verifyCE (reached via the
+// exported VerifyRequest): a BAF at the current sequence or any number of configs behind is accepted (so
+// consensus can surface a stale BAF for revival), while a BAF ahead of the current sequence is rejected.
+func TestVerifyRequestAcceptsStaleConfigSeq(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
 
 	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -873,11 +873,14 @@ func TestVerifyRequestAcceptsStaleByOneConfigSeq(t *testing.T) {
 	_, err = c.VerifyRequest(bafReqAtConfigSeq(2)) // current sequence -> accepted
 	require.NoError(t, err)
 
-	_, err = c.VerifyRequest(bafReqAtConfigSeq(1)) // exactly one behind -> accepted (surfaced for revival)
+	_, err = c.VerifyRequest(bafReqAtConfigSeq(1)) // one behind -> accepted (surfaced for revival)
 	require.NoError(t, err)
 
-	_, err = c.VerifyRequest(bafReqAtConfigSeq(0)) // two behind -> rejected
-	require.ErrorContains(t, err, "mismatch config sequence")
+	_, err = c.VerifyRequest(bafReqAtConfigSeq(0)) // two behind -> accepted (surfaced for revival)
+	require.NoError(t, err)
+
+	_, err = c.VerifyRequest(bafReqAtConfigSeq(3)) // ahead of current -> rejected
+	require.ErrorContains(t, err, "config sequence ahead")
 }
 
 // TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs covers the VerifyProposal reqInfos loop

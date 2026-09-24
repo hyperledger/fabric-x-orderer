@@ -80,10 +80,10 @@ type State struct {
 	Pending    []types.BatchAttestationFragment
 	Complaints []Complaint
 	AppContext []byte
-	// StaleConfigBAFs holds BAFs whose config sequence is exactly one behind the current one. They are
-	// surfaced for a single decision (recomputed each round in Process) so that a batcher which fell
-	// behind a config change can detect its own BAF here and revive the batch's requests, rather than
-	// having them silently dropped. It is never used to extract a Batch Attestation.
+	// StaleConfigBAFs holds BAFs whose config sequence is behind the current one.
+	// They are surfaced for a single decision (recomputed each round in Process) so that a
+	// batcher which fell behind a config change can detect its own BAF here and revive the batch's
+	// requests, rather than having them silently dropped. It is never used to extract a Batch Attestation.
 	StaleConfigBAFs []types.BatchAttestationFragment
 }
 
@@ -449,8 +449,8 @@ func (s *State) CollectAndDeduplicateEvents(l *flogging.FabricLogger, ces ...Con
 }
 
 // filterCEsWithDiffConfigSeq keeps only control events whose config sequence matches the current one.
-// BAFs that are exactly one config behind are not simply dropped: they are returned separately as
-// staleConfigBAFs so they can be surfaced for one decision. Complaints and config
+// BAFs behind the current config sequence are not simply dropped: they are
+// returned separately as staleConfigBAFs so they can be surfaced for one decision. Complaints and config
 // requests with a mismatched config sequence are still dropped.
 func filterCEsWithDiffConfigSeq(
 	configSeq types.ConfigSequence, l *flogging.FabricLogger, ces ...ControlEvent,
@@ -462,11 +462,11 @@ func filterCEsWithDiffConfigSeq(
 			switch {
 			case ce.BAF.ConfigSequence() == configSeq:
 				filteredEvents = append(filteredEvents, ce)
-			case configSeq > 0 && ce.BAF.ConfigSequence() == configSeq-1:
-				l.Infof("baf is one config behind (currently %d); surfacing as stale for revival; %s", configSeq, ce.BAF.String())
+			case ce.BAF.ConfigSequence() < configSeq:
+				l.Infof("baf is behind current config seq %d; surfacing as stale for revival; %s", configSeq, ce.BAF.String())
 				staleConfigBAFs = append(staleConfigBAFs, ce.BAF)
 			default:
-				l.Debugf("filtering ce baf with mismatch config seq (currently %d); %s", configSeq, ce.BAF.String())
+				l.Debugf("filtering ce baf ahead of current config seq (currently %d); %s", configSeq, ce.BAF.String())
 			}
 		}
 		if ce.Complaint != nil {

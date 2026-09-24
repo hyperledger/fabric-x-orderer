@@ -968,8 +968,8 @@ func TestResubmitPendingBAFsReverifiesOnConfigChange(t *testing.T) {
 	require.Equal(t, validReq, pool.SubmitArgsForCall(0))
 }
 
-// TestResubmitStaleConfigBAFs covers the stale-config revive path: a BAF that consensus surfaced as one
-// config behind (in State.StaleConfigBAFs) has its batch's requests re-read from the ledger,
+// TestResubmitStaleConfigBAFs covers the stale-config revive path: a BAF that consensus surfaced as
+// behind the current config (in State.StaleConfigBAFs) has its batch's requests re-read from the ledger,
 // re-verified under the current config, and resubmitted to the pool. BAFs signed by other batchers
 // are ignored.
 func TestResubmitStaleConfigBAFs(t *testing.T) {
