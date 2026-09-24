@@ -32,6 +32,8 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 
 ### Assembler
 
+What each of these metrics tells you about the assembler is described in [Assembler](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/assembler.md#5-metrics-and-monitoring).
+
 - **Namespace:** "assembler"  
   **Name:** "batch_unary_fetch_latency_seconds"
   **Help:** "The latency to unary fetch a requested batch from the batchers in the shard."
