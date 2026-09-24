@@ -857,7 +857,7 @@ func TestVerifyRequestAcceptsStaleConfigSeq(t *testing.T) {
 	signer := crypto.ECDSASigner(*sk)
 	verifier := make(crypto.ECDSAVerifier)
 	for _, shard := range []arma_types.ShardID{1, arma_types.ShardIDConsensus} {
-		verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(1), Shard: shard}] = signer.PublicKey
+		verifier[crypto.VerifierKey{Entity: entityForShard(shard), Party: arma_types.PartyID(1), Shard: shard}] = signer.PublicKey
 	}
 
 	bundle := &configMocks.FakeConfigResources{}
@@ -927,7 +927,7 @@ func TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs(t *testing.T) {
 		sks[i] = sk
 		signer := crypto.ECDSASigner(*sk)
 		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
-			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+			verifier[crypto.VerifierKey{Entity: entityForShard(shard), Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
 		}
 	}
 
