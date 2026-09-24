@@ -182,6 +182,61 @@ func TestSubmitToStubBatchersGetMetrics(t *testing.T) {
 }
 
 // Scenario:
+// 1. start a client, router and 2 stub batchers (2 shards)
+// 2. check both shards report no reconnects and a connected batcher
+// 3. stop the batcher of shard 1 and check only its gauge drops to zero
+// 4. restart it and wait until the router reconnects
+// 5. check shard 1 counted a reconnect and is connected again, and shard 2 was never affected
+func TestRouterBatcherConnectivityMetrics(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 2, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+
+	URL := testSetup.router.MonitoringServiceAddress()
+	require.NotEmpty(t, URL, "monitoring service address should not be empty")
+
+	reconnects := func(shardID types.ShardID) int {
+		re := regexp.MustCompile(fmt.Sprintf(`router_batcher_reconnects\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), shardID))
+		return testutil.FetchPrometheusMetricValue(t, re, URL)
+	}
+
+	connected := func(shardID types.ShardID) int {
+		re := regexp.MustCompile(fmt.Sprintf(`router_batcher_connected\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), shardID))
+		return testutil.FetchPrometheusMetricValue(t, re, URL)
+	}
+
+	requireConnected := func(shardID types.ShardID, expected int) {
+		require.Eventually(t, func() bool {
+			return connected(shardID) == expected
+		}, 10*time.Second, 500*time.Millisecond, "shard %d connected should reach %d", shardID, expected)
+	}
+
+	// both series exist at zero before any reconnect happened, and both shards start connected
+	require.Equal(t, 0, reconnects(types.ShardID(1)))
+	require.Equal(t, 0, reconnects(types.ShardID(2)))
+	requireConnected(types.ShardID(1), 1)
+	requireConnected(types.ShardID(2), 1)
+
+	// stop the batcher of shard 1, only shard 1 should be affected
+	testSetup.batchers[0].Stop()
+	requireConnected(types.ShardID(1), 0)
+	require.Equal(t, 1, connected(types.ShardID(2)))
+
+	testSetup.batchers[0].Restart()
+
+	require.Eventually(t, func() bool {
+		return testSetup.isReconnectComplete()
+	}, 10*time.Second, 10*time.Millisecond)
+
+	requireConnected(types.ShardID(1), 1)
+	require.Positive(t, reconnects(types.ShardID(1)))
+	require.Equal(t, 0, reconnects(types.ShardID(2)))
+	require.Equal(t, 1, connected(types.ShardID(2)))
+}
+
+// Scenario:
 // 1. start a client, router and stub batcher
 // 2. submit a request by client to router
 // 3. broadcast a request by client to router
