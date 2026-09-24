@@ -24,7 +24,8 @@ import (
 type EntityType uint8
 
 const (
-	EntityBatcher EntityType = iota
+	EntityUnknown EntityType = iota
+	EntityBatcher
 	EntityConsenter
 	EntityAssembler
 )
