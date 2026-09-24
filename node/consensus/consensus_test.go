@@ -288,11 +288,20 @@ type scheduleEvent struct {
 	waitForCommit *struct{}
 }
 
+// entityForShard maps a shard used in these tests to the verifier entity type: the reserved
+// ShardIDConsensus belongs to consenters, every real shard to batchers.
+func entityForShard(shard arma_types.ShardID) crypto.EntityType {
+	if shard == arma_types.ShardIDConsensus {
+		return crypto.EntityConsenter
+	}
+	return crypto.EntityBatcher
+}
+
 func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.PartyID, network network, initialState *state.State, nodes []uint64, verifier crypto.ECDSAVerifier, dir string) (*node_consensus.Consensus, func()) {
 	signer := crypto.ECDSASigner(*sk)
 
 	for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
-		verifier[crypto.ShardPartyKey{Party: partyID, Shard: shard}] = signer.PublicKey
+		verifier[crypto.VerifierKey{Entity: entityForShard(shard), Party: partyID, Shard: shard}] = signer.PublicKey
 	}
 
 	l := testutil.CreateLogger(t, int(partyID))
@@ -481,7 +490,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 		signer := crypto.ECDSASigner(*sk)
 		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
-			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+			verifier[crypto.VerifierKey{Entity: entityForShard(shard), Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
 		}
 	}
 
@@ -848,7 +857,7 @@ func TestVerifyRequestAcceptsStaleConfigSeq(t *testing.T) {
 	signer := crypto.ECDSASigner(*sk)
 	verifier := make(crypto.ECDSAVerifier)
 	for _, shard := range []arma_types.ShardID{1, arma_types.ShardIDConsensus} {
-		verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(1), Shard: shard}] = signer.PublicKey
+		verifier[crypto.VerifierKey{Entity: entityForShard(shard), Party: arma_types.PartyID(1), Shard: shard}] = signer.PublicKey
 	}
 
 	bundle := &configMocks.FakeConfigResources{}
@@ -918,7 +927,7 @@ func TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs(t *testing.T) {
 		sks[i] = sk
 		signer := crypto.ECDSASigner(*sk)
 		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
-			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+			verifier[crypto.VerifierKey{Entity: entityForShard(shard), Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
 		}
 	}
 
@@ -1118,7 +1127,7 @@ func TestVerifyProposal(t *testing.T) {
 
 		signer := crypto.ECDSASigner(*sk)
 		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
-			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+			verifier[crypto.VerifierKey{Entity: entityForShard(shard), Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
 		}
 	}
 
@@ -1336,7 +1345,7 @@ func TestSignProposal(t *testing.T) {
 
 		signer := crypto.ECDSASigner(*sk)
 		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
-			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+			verifier[crypto.VerifierKey{Entity: entityForShard(shard), Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
 		}
 	}
 
@@ -1457,7 +1466,7 @@ func TestVerifyConsenterSigWithInvalidSignatures(t *testing.T) {
 
 		signer := crypto.ECDSASigner(*sk)
 		for _, shard := range []arma_types.ShardID{1, 2, arma_types.ShardIDConsensus} {
-			verifier[crypto.ShardPartyKey{Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
+			verifier[crypto.VerifierKey{Entity: entityForShard(shard), Party: arma_types.PartyID(i + 1), Shard: shard}] = signer.PublicKey
 		}
 	}
 

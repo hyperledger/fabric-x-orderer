@@ -122,7 +122,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	c.decisionNumOfLastConfigBlock = decisionNumOfLastConfigBlock
 	c.CurrentNodes = currentNodes
 	c.Storage = consLedger
-	c.SigVerifier = buildVerifier(nodeConfig.Consenters, nodeConfig.Shards, c.Logger)
+	c.SigVerifier = buildVerifier(nodeConfig.Consenters, nodeConfig.Shards, nodeConfig.Assemblers, c.Logger)
 	c.synchronizerFactory = &bft_synch.SynchronizerCreator{}
 	c.Metrics = NewConsensusMetrics(nodeConfig, consLedger.Height(), txCount, c.Logger)
 	c.InitOperationSystem()
@@ -224,19 +224,25 @@ func createBFT(c *Consensus, m *smartbftprotos.ViewMetadata, lastProposal *smart
 	return bft
 }
 
-func buildVerifier(consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, logger *flogging.FabricLogger) crypto.ECDSAVerifier {
+func buildVerifier(consenterInfos []node_config.ConsenterInfo, shardInfo []node_config.ShardInfo, assemblerInfos []node_config.AssemblerInfo, logger *flogging.FabricLogger) crypto.ECDSAVerifier {
 	verifier := make(crypto.ECDSAVerifier)
 
 	// Add consenter public keys
 	for _, ci := range consenterInfos {
-		verifier.AddPublicKeyToVerifier(ci.PublicKey, "consenter", arma_types.ShardIDConsensus, arma_types.PartyID(ci.PartyID), logger)
+		verifier.AddPublicKeyToVerifier(ci.PublicKey, crypto.EntityConsenter, arma_types.ShardIDConsensus, arma_types.PartyID(ci.PartyID), logger)
 	}
 
 	// Add batcher public keys for each shard
 	for _, shard := range shardInfo {
 		for _, bi := range shard.Batchers {
-			verifier.AddPublicKeyToVerifier(bi.PublicKey, "batcher", arma_types.ShardID(shard.ShardId), arma_types.PartyID(bi.PartyID), logger)
+			verifier.AddPublicKeyToVerifier(bi.PublicKey, crypto.EntityBatcher, arma_types.ShardID(shard.ShardId), arma_types.PartyID(bi.PartyID), logger)
 		}
+	}
+
+	// Add assembler public keys. Assemblers are not part of a shard, so like consenters they are
+	// keyed under the reserved ShardIDConsensus and disambiguated by their entity type.
+	for _, ai := range assemblerInfos {
+		verifier.AddPublicKeyToVerifier(ai.PublicKey, crypto.EntityAssembler, arma_types.ShardIDConsensus, arma_types.PartyID(ai.PartyID), logger)
 	}
 
 	return verifier

@@ -288,7 +288,7 @@ func DefaultRequestID(req []byte) string {
 func buildVerifier(batchers []node_config.BatcherInfo, shardID types.ShardID, logger *flogging.FabricLogger) crypto.ECDSAVerifier {
 	verifier := make(crypto.ECDSAVerifier)
 	for _, bi := range batchers {
-		verifier.AddPublicKeyToVerifier(bi.PublicKey, "batcher", shardID, types.PartyID(bi.PartyID), logger)
+		verifier.AddPublicKeyToVerifier(bi.PublicKey, crypto.EntityBatcher, shardID, types.PartyID(bi.PartyID), logger)
 	}
 
 	return verifier
