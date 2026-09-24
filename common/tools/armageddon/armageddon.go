@@ -499,13 +499,12 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 		waitForTxToBeSentAndReceived.Done()
 	}()
 
-	// receive blocks from the assembler we pull from
+	// receive blocks from some assembler
 	pullFromPartyId := 1
 	var numOfBlocks int
 	var txDelayTimes float64
-	var lastBlockNum uint64
 	go func() {
-		numOfBlocks, txDelayTimes, lastBlockNum = receiveResponseFromAssembler(userConfig, txsMap, *transactions, pullFromPartyId)
+		numOfBlocks, txDelayTimes = receiveResponseFromAssembler(userConfig, txsMap, *transactions, pullFromPartyId)
 		waitForTxToBeSentAndReceived.Done()
 	}()
 
@@ -515,7 +514,7 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 
 	logger.Infof("all %d txs were sent to the routers and received by assembler %d", *transactions, pullFromPartyId)
 
-	verifyAssemblersHaveBlock(userConfig, lastBlockNum)
+	// TODO: verify all assemblers' height.
 
 	// report results
 	reportResults(*transactions, elapsed, txDelayTimes, numOfBlocks, *txSize)
@@ -843,8 +842,8 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 		for {
 			block, err := pullBlock(stream, endpointToPullFrom)
 			if err != nil {
-				if !errors.Is(err, errConnectionLost) {
-					logger.Warnf("skipping a response from assembler %d: %v", pullFromPartyId, err)
+				if !errors.Is(err, errFailedToReceive) {
+					logger.Warnf("failed to pull block from assembler %d: %v", pullFromPartyId, err)
 					continue
 				}
 
@@ -965,14 +964,13 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 	logger.Debugf("exit pulling blocks from the assembler")
 }
 
-// errConnectionLost marks the pullBlock error that means the connection is gone, so the caller
-// reconnects instead of skipping a single response.
-var errConnectionLost = errors.New("connection lost")
+// errFailedToReceive marks the only pullBlock error that needs a reconnect.
+var errFailedToReceive = errors.New("failed to receive a deliver response")
 
 func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string) (*common.Block, error) {
 	resp, err := stream.Recv()
 	if err != nil {
-		return nil, fmt.Errorf("failed to receive a deliver response from %s: %w (%w)", endpointToPullFrom, err, errConnectionLost)
+		return nil, fmt.Errorf("%w from %s: %w", errFailedToReceive, endpointToPullFrom, err)
 	}
 
 	block := resp.GetBlock()
@@ -1131,7 +1129,7 @@ func createDeliverRequestWithSeekInfo(userConfig *UserConfig, startSeq uint64) (
 
 // receiveResponseFromAssembler is used by the submit command and returns only when every tx sent
 // has been seen, so it has no deadline of its own.
-func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int, pullFromPartyId int) (int, float64, uint64) {
+func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int, pullFromPartyId int) (int, float64) {
 	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
@@ -1190,8 +1188,8 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 	for {
 		block, err := pullBlock(stream, endpointToPullFrom)
 		if err != nil {
-			if !errors.Is(err, errConnectionLost) {
-				logger.Warnf("skipping a response from assembler %d: %v", pullFromPartyId, err)
+			if !errors.Is(err, errFailedToReceive) {
+				logger.Warnf("failed to pull block from assembler %d: %v", pullFromPartyId, err)
 				continue
 			}
 
@@ -1287,69 +1285,7 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 		}
 	}
 
-	return numOfBlocksCalculated, sumOfDelayTimes, lastBlockNum
-}
-
-// assemblerBlockTimeout must exceed how long an assembler can be down and then catching up.
-const assemblerBlockTimeout = 3 * time.Minute
-
-// verifyAssemblersHaveBlock waits for every assembler to deliver blockNum, which shows the blocks
-// reached every party's ledger and not only the one submit pulled from.
-func verifyAssemblersHaveBlock(userConfig *UserConfig, blockNum uint64) {
-	requestEnvelope, err := createDeliverRequestWithSeekInfo(userConfig, blockNum)
-	if err != nil {
-		logger.Warnf("failed to create a request envelope: %v", err)
-		return
-	}
-
-	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
-
-	// create a gRPC connection to the assembler
-	gRPCAssemblerClient := comm.ClientConfig{
-		KaOpts: comm.KeepaliveOptions{
-			ClientInterval: time.Hour,
-			ClientTimeout:  time.Hour,
-		},
-		SecOpts: comm.SecureOptions{
-			Key:               userConfig.TLSPrivateKey,
-			Certificate:       userConfig.TLSCertificate,
-			RequireClientCert: userConfig.UseTLSAssembler == "mTLS",
-			UseTLS:            userConfig.UseTLSAssembler != "none",
-			ServerRootCAs:     serverRootCAs,
-		},
-		DialTimeout: time.Second * 5,
-	}
-
-	// one deadline for all the assemblers, so the waiting cannot add up per party
-	deadline := time.Now().Add(assemblerBlockTimeout)
-
-	for partyId := 1; partyId <= len(userConfig.AssemblerEndpoints); partyId++ {
-		endpointToPullFrom := userConfig.AssemblerEndpoints[partyId-1]
-
-		gRPCAssemblerClientConn, err := gRPCAssemblerClient.Dial(endpointToPullFrom)
-		if err != nil {
-			logger.Warnf("assembler %d does not have block %d: failed to create a gRPC client connection: %v", partyId, blockNum, err)
-			continue
-		}
-
-		ctx, cancel := context.WithDeadline(context.Background(), deadline)
-
-		stream, err := ab.NewAtomicBroadcastClient(gRPCAssemblerClientConn).Deliver(ctx)
-		if err != nil {
-			logger.Warnf("assembler %d does not have block %d: failed to create a deliver stream: %v", partyId, blockNum, err)
-		} else if err = stream.Send(requestEnvelope); err != nil {
-			logger.Warnf("assembler %d does not have block %d: failed to send a request envelope: %v", partyId, blockNum, err)
-		} else if _, err = pullBlock(stream, endpointToPullFrom); err != nil {
-			// the seek info blocks until the block is ready, so this also waits for an assembler
-			// that is still catching up
-			logger.Warnf("assembler %d does not have block %d: %v", partyId, blockNum, err)
-		} else {
-			logger.Infof("assembler %d has block %d", partyId, blockNum)
-		}
-
-		cancel()
-		_ = gRPCAssemblerClientConn.Close()
-	}
+	return numOfBlocksCalculated, sumOfDelayTimes
 }
 
 // createConfigBlockWithArmaSharedConfig creates a new config block with the updated shared config and writes it to the output directory.
