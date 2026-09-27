@@ -312,21 +312,22 @@ func TestChangePartyCertificates(t *testing.T) {
 
 // TestChangePartyCACertificates tests a party's CA change.
 // Scenario:
-// 1. Run an arma network of 4 parties, single shard.
-// 2. Send txs and pull blocks to ensure network is operational.
-// 3. Create a new TLS and signing CA for party 1.
-// 4. Send a config tx that appends each CA to the current CA list (TLS and signing) of party 1.
-// 5. Wait for dynamic restart of all nodes.
-// 6. Send more txs and pull blocks to verify the network is operational again.
-// 7. Update party 1 crypto material (TLS and signing certificates) on disk with new certificates.
-// 8. Send a config tx that updates all node-level TLS and signing certificates, issued by the new CA's, for party 1.
-// 9. Wait for the nodes of party 1 to enter a pending admin state and stop party 1.
-// 10. Restart party 1 and wait for dynamic restart of the non-updated parties
-// 11. Extend client trust with the new TLS CA and send more txs and pull blocks to verify the network is operational again.
-// 12. Update party 1 crypto material on disk with new CAs.
-// 13. Send a config tx that updates the CA's list to include only the new CAs (i.e., remove old CAs).
-// 14. Wait for dynamic restart of all nodes.
-// 15. Send more txs and pull blocks to verify the network is operational again.
+//  1. Run an arma network of 4 parties, single shard.
+//  2. Send txs and pull blocks to ensure network is operational.
+//  3. Create a new TLS and signing CA for party 1.
+//  4. Send a config tx that appends each CA to the current CA list (TLS and signing) of party 1.
+//  5. Wait for dynamic restart of all nodes.
+//  6. Send more txs and pull blocks to verify the network is operational again.
+//  7. Update party 1 crypto material (TLS and signing certificates) on disk with new certificates.
+//  8. Send a config tx that updates all node-level TLS and signing certificates, issued by the new CA's, for party 1,
+//     and points party 1's MSP node OUs at the new signing CA.
+//  9. Wait for the nodes of party 1 to enter a pending admin state and stop party 1.
+//  10. Restart party 1 and wait for dynamic restart of the non-updated parties
+//  11. Extend client trust with the new TLS CA and send more txs and pull blocks to verify the network is operational again.
+//  12. Update party 1 crypto material on disk with new CAs.
+//  13. Send a config tx that updates the CA's list to include only the new CAs (i.e., remove old CAs).
+//  14. Wait for dynamic restart of all nodes.
+//  15. Send more txs and pull blocks to verify the network is operational again.
 func TestChangePartyCACertificates(t *testing.T) {
 	// 1.
 	dir, err := os.MkdirTemp("", t.Name())
@@ -598,10 +599,9 @@ func TestChangePartyCACertificates(t *testing.T) {
 	require.NoError(t, err)
 	configUpdateBuilder.UpdateConsenterSignCert(t, partyToUpdate, newConsenterSignCertBytes)
 
-	// Update the admin cert in the config
-	newAdminCertBytes, err := os.ReadFile(filepath.Join(configUpdateDir, "crypto", "ordererOrganizations", updateOrg, "msp", "admincerts", fmt.Sprintf("Admin@org%d-cert.pem", partyToUpdate)))
-	require.NoError(t, err)
-	configUpdateBuilder.UpdateMSPAdminCerts(t, partyToUpdate, [][]byte{newAdminCertBytes})
+	// Move the MSP node OUs to the new signing CA together with the certs it issued. A node OU pins a
+	// single CA, so from this update on only identities of the new CA are valid in the party's org;
+	configUpdateBuilder.UpdateMSPNodeOUsCertificate(t, partyToUpdate, newSignCACertBytes)
 
 	// Submit config update
 	env = configutil.CreateConfigTX(t, dir, parties, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))

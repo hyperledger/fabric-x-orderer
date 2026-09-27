@@ -153,6 +153,7 @@ func GenerateCryptoConfigWithProfile(networkConfig *generate.Network, outputDir 
 		BaseProfile:   configtxgen.SampleFabricX,
 		ChannelID:     "arma",
 		Organizations: orgs,
+		EnableNodeOUs: !networkConfig.DisableNodeOUs,
 	})
 }
 

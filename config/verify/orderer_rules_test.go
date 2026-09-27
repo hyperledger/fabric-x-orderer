@@ -554,13 +554,21 @@ func TestValidateTransition_ChannelID(t *testing.T) {
 	require.Contains(t, err.Error(), "channel ID cannot change")
 }
 
-func setupOrdererRulesTest(t *testing.T, parties int) (string, *common.Envelope, channelconfig.Resources, *configutil.ConfigUpdateBuilder, *policy.DefaultConfigUpdateProposer, identity.SignerSerializer, *requestfilter.RulesVerifier) {
+func setupOrdererRulesTest(t *testing.T, parties int, genArgs ...string) (
+	string,
+	*common.Envelope,
+	channelconfig.Resources,
+	*configutil.ConfigUpdateBuilder,
+	*policy.DefaultConfigUpdateProposer,
+	identity.SignerSerializer,
+	*requestfilter.RulesVerifier,
+) {
 	t.Helper()
 	dir := t.TempDir()
 
 	configPath := filepath.Join(dir, "config.yaml")
 	testutil.CreateNetwork(t, configPath, parties, 1, "TLS", "none")
-	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+	armageddon.NewCLI().Run(append([]string{"generate", "--config", configPath, "--output", dir}, genArgs...))
 
 	genesisBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
 	blockBytes, err := os.ReadFile(genesisBlockPath)

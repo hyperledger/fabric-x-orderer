@@ -1733,8 +1733,6 @@ func TestAddRemoveApplicationClient(t *testing.T) {
 	require.NoError(t, err)
 	tlsCaCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "tlscacerts", "tlspeer2-CA-cert.pem"))
 	require.NoError(t, err)
-	adminCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "admincerts", "Admin@peer2-cert.pem"))
-	require.NoError(t, err)
 
 	knownCertPaths, err := utils.PemFilesFromDir(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "knowncerts"))
 	require.NoError(t, err)
@@ -1753,7 +1751,6 @@ func TestAddRemoveApplicationClient(t *testing.T) {
 		Name:       "peer2",
 		CACerts:    [][]byte{caCerts},
 		TLSCACerts: [][]byte{tlsCaCerts},
-		AdminCerts: [][]byte{adminCerts},
 		KnownCerts: knownCerts,
 	})
 

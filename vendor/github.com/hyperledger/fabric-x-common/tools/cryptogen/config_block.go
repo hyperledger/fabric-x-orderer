@@ -32,6 +32,10 @@ type ConfigBlockParameters struct {
 	BaseProfile   string
 	ChannelID     string
 	Organizations []OrganizationParameters
+	// EnableNodeOUs turns on node-OU based identity classification for every generated
+	// organization: each MSP gets a NodeOUs-enabled config.yaml and admin authority is
+	// conveyed by the admin OU instead of by admincerts. Defaults to false.
+	EnableNodeOUs bool
 	ArmaMetaBytes []byte
 }
 
@@ -156,6 +160,7 @@ func CreateOrExtendProfileWithCrypto(conf *ConfigBlockParameters) (*configtxgen.
 		profile.Orderer.ConsenterMapping = append(profile.Orderer.ConsenterMapping, allConsenters...)
 
 		spec := createOrgSpec(&o)
+		spec.EnableNodeOUs = conf.EnableNodeOUs
 		switch orgOU(&o) {
 		case PeerOU:
 			profile.Application.Organizations = append(profile.Application.Organizations, org)
