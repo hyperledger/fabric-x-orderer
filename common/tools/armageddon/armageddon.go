@@ -500,16 +500,22 @@ func submit(userConfigFile **os.File, transactions *int, rate *int, txSize *int)
 	}()
 
 	// receive blocks from some assembler
+	pullFromPartyId := 1
 	var numOfBlocks int
 	var txDelayTimes float64
 	go func() {
-		numOfBlocks, txDelayTimes = receiveResponseFromAssembler(userConfig, txsMap, *transactions)
+		numOfBlocks, txDelayTimes = receiveResponseFromAssembler(userConfig, txsMap, *transactions, pullFromPartyId)
 		waitForTxToBeSentAndReceived.Done()
 	}()
 
 	waitForTxToBeSentAndReceived.Wait()
 	elapsed := time.Since(start)
 	logger.Infof("Submit Finished.....")
+
+	logger.Infof("all %d txs were sent to the routers and received by assembler %d", *transactions, pullFromPartyId)
+
+	// TODO: verify all assemblers' height.
+
 	// report results
 	reportResults(*transactions, elapsed, txDelayTimes, numOfBlocks, *txSize)
 }
@@ -550,6 +556,7 @@ func load(userConfigFile **os.File, transactions *int, rate *string, txSize *int
 	}
 }
 
+// TODO: combine this with sendTxToRouters, the submit equivalent.
 func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap, signedMode string) {
 	broadcastClient := NewBroadcastTxClient(userConfig)
 	err := broadcastClient.InitStreams()
@@ -673,50 +680,38 @@ func nextSeekInfo(startSeq uint64) *ab.SeekInfo {
 }
 
 func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int, txsMap *protectedMap) {
-	var gRPCRouterClientsConn []*grpc.ClientConn
-	var streams []ab.AtomicBroadcast_BroadcastClient
-
-	// create gRPC clients and streams to the routers
-	for i := 0; i < len(userConfig.RouterEndpoints); i++ {
-		// create a gRPC connection to the router
-		gRPCRouterClientConn, stream, err := createConnAndStream(userConfig, userConfig.RouterEndpoints[i])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to create a gRPC client connection and stream to router %d, err: %v", i+1, err)
-			os.Exit(3)
-		}
-
-		gRPCRouterClientsConn = append(gRPCRouterClientsConn, gRPCRouterClientConn)
-		streams = append(streams, stream)
+	// the broadcast client keeps sending to the routers that are up, and reconnects to the rest
+	broadcastClient := NewBroadcastTxClient(userConfig)
+	err := broadcastClient.InitStreams()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to init streams between client and router %v", err)
+		os.Exit(3)
 	}
 
 	// open a go routine to check for acknowledgment
-	var wgRecv sync.WaitGroup
-	for n, s := range streams {
-		wgRecv.Add(1)
-		go func(n int, stream ab.AtomicBroadcast_BroadcastClient) {
-			defer wgRecv.Done()
-			numOfAcks := 0
+	// TODO: move this ack check to a method on the broadcast client, since TryReconnect
+	// restarts ReceiveResponseFromRouter, which drops the response.
+	for _, streamInfo := range broadcastClient.streamsToRouters {
+		go func(streamInfo *StreamInfo) {
 			for {
-				ack, err := stream.Recv()
+				ack, err := streamInfo.stream.Recv()
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "failed to receive acknowledgment from router %d: %v", n+1, err)
-					os.Exit(3)
+					streamInfo.logger.Infof("Failed to receive response from router, close receive go routine, mark router %s as broken and start reconnection, err: %v", streamInfo.endpoint, err)
+					streamInfo.SetIsBroken(true)
+					streamInfo.TryReconnect(userConfig)
+					return
 				}
-				if ack.Status.String() != "SUCCESS" {
-					fmt.Fprintf(os.Stderr, "failed to receive ack with success status from router %d: %v", n+1, err)
-					os.Exit(3)
-				}
-				numOfAcks = numOfAcks + 1
-				if numOfAcks == numOfTxs {
-					break
+
+				if ack.GetStatus() != common.Status_SUCCESS {
+					streamInfo.logger.Warnf("Router %s rejected a tx with status %v", streamInfo.endpoint, ack.GetStatus())
 				}
 			}
-		}(n, s)
+		}(streamInfo)
 	}
 
 	// create a session number (16 bytes)
 	sessionNumber := make([]byte, 16)
-	_, err := rand.Read(sessionNumber)
+	_, err = rand.Read(sessionNumber)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create a session number, %v", err)
 		os.Exit(3)
@@ -737,18 +732,18 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 			fmt.Fprintf(os.Stderr, "failed to send tx %d", i+1)
 			os.Exit(3)
 		}
-		sendTx(txsMap, streams, i, txSize, sessionNumber)
+		sendTx(txsMap, broadcastClient, i, txSize, sessionNumber)
 	}
 	rl.Stop()
 
-	wgRecv.Wait()
+	logger.Infof("all %d txs were sent to the routers", numOfTxs)
 
-	// close gRPC connections
-	for i, conn := range gRPCRouterClientsConn {
-		if err := conn.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to close gRPC connection to router %d: %v", i+1, err)
-			os.Exit(3)
-		}
+	// TODO: before stopping the broadcast client, make sure all the acks have been received.
+	// Add a WaitForAcks method on the broadcast client that does this.
+	err = broadcastClient.Stop()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to stop broadcast client, err: %v", err)
+		os.Exit(3)
 	}
 }
 
@@ -847,6 +842,11 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 		for {
 			block, err := pullBlock(stream, endpointToPullFrom)
 			if err != nil {
+				if !errors.Is(err, errFailedToReceive) {
+					logger.Warnf("failed to pull block from assembler %d: %v", pullFromPartyId, err)
+					continue
+				}
+
 				// Assembler is down — log and retry, do NOT exit
 				logger.Warnf("lost connection to assembler %d: %v — will retry in 1s", pullFromPartyId, err)
 
@@ -893,11 +893,11 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 				continue
 			}
 
-			if block.Header.Number == 0 {
+			if block.GetHeader().GetNumber() == 0 {
 				continue
 			}
 
-			lastBlockNum = block.Header.Number
+			lastBlockNum = block.GetHeader().GetNumber()
 
 			blockWithTime := BlockWithTime{
 				block:        block,
@@ -964,10 +964,13 @@ func pullBlocksFromAssemblerAndCollectStatistics(userConfig *UserConfig, pullFro
 	logger.Debugf("exit pulling blocks from the assembler")
 }
 
+// errFailedToReceive marks the only pullBlock error that needs a reconnect.
+var errFailedToReceive = errors.New("failed to receive a deliver response")
+
 func pullBlock(stream ab.AtomicBroadcast_DeliverClient, endpointToPullFrom string) (*common.Block, error) {
 	resp, err := stream.Recv()
 	if err != nil {
-		return nil, fmt.Errorf("failed to receive a deliver response from %s: %w", endpointToPullFrom, err)
+		return nil, fmt.Errorf("%w from %s: %w", errFailedToReceive, endpointToPullFrom, err)
 	}
 
 	block := resp.GetBlock()
@@ -989,20 +992,15 @@ func calculateDelayOfTx(data []byte, acceptedTime time.Time) time.Duration {
 	return delayTime
 }
 
-func sendTx(txsMap *protectedMap, streams []ab.AtomicBroadcast_BroadcastClient, i int, txSize int, sessionNumber []byte) {
+// TODO: swap the send and the map append.
+func sendTx(txsMap *protectedMap, broadcastClient *BroadcastTxClient, i int, txSize int, sessionNumber []byte) {
 	env := tx.PrepareUnsignedEnvelope(i, txSize, sessionNumber)
 	data, _ := tx.GetDataFromEnvelope(env)
 	if txsMap != nil {
 		logger.Debugf("Add tx %x to the map", data)
 		txsMap.Add(string(data))
 	}
-	for j := 0; j < len(streams); j++ {
-		err := streams[j].Send(env)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to send tx to router %d: %v", j+1, err)
-			os.Exit(3)
-		}
-	}
+	broadcastClient.SendTxToAllRouters(env)
 }
 
 func reportResults(transactions int, elapsed time.Duration, txDelayTimesResult float64, numOfBlocksResult int, txSize int) {
@@ -1129,12 +1127,9 @@ func createDeliverRequestWithSeekInfo(userConfig *UserConfig, startSeq uint64) (
 	return requestEnvelope, err
 }
 
-// receiveResponseFromAssembler is used by the submit command, which is a short-lived operation.
-// Unlike pullBlocksFromAssemblerAndCollectStatistics, no reconnect logic is supported.
-func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int) (int, float64) {
-	// arbitrarily choose the first assembler to pull blocks from
-	pullFromPartyId := 1
-
+// receiveResponseFromAssembler is used by the submit command and returns only when every tx sent
+// has been seen, so it has no deadline of its own.
+func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, expectedNumOfTxs int, pullFromPartyId int) (int, float64) {
 	serverRootCAs := append([][]byte{}, userConfig.TLSCACerts...)
 
 	// create a gRPC connection to the assembler
@@ -1188,20 +1183,68 @@ func receiveResponseFromAssembler(userConfig *UserConfig, txsMap *protectedMap, 
 	// pull blocks from assembler
 	numOfBlocksCalculated := 0
 	numOfTxsCalculated := 0
+	var lastBlockNum uint64 = 0
 	var sumOfDelayTimes float64
 	for {
 		block, err := pullBlock(stream, endpointToPullFrom)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to pull block from assembler %d: %v", pullFromPartyId, err)
+			if !errors.Is(err, errFailedToReceive) {
+				logger.Warnf("failed to pull block from assembler %d: %v", pullFromPartyId, err)
+				continue
+			}
+
+			// Assembler is down — log and retry, do NOT exit
+			logger.Warnf("lost connection to assembler %d: %v — will retry in 1s", pullFromPartyId, err)
+
 			_ = stream.CloseSend()
 			_ = gRPCAssemblerClientConn.Close()
-			os.Exit(3)
-		}
 
-		if block.Header.Number == 0 {
+			// TODO: this reconnect loop duplicates pullBlocksFromAssemblerAndCollectStatistics,
+			// extract a shared block-pulling helper.
+			for {
+				time.Sleep(1 * time.Second)
+
+				gRPCAssemblerClientConn, err = gRPCAssemblerClient.Dial(endpointToPullFrom)
+				if err != nil {
+					logger.Warnf("reconnect to assembler %d failed: %v — retrying", pullFromPartyId, err)
+					continue
+				}
+
+				abc := ab.NewAtomicBroadcastClient(gRPCAssemblerClientConn)
+				stream, err = abc.Deliver(context.TODO())
+				if err != nil {
+					logger.Warnf("failed to create deliver stream to assembler %d: %v — retrying", pullFromPartyId, err)
+					_ = gRPCAssemblerClientConn.Close()
+					continue
+				}
+
+				requestEnvelope, err = createDeliverRequestWithSeekInfo(userConfig, lastBlockNum+1)
+				if err != nil {
+					logger.Warnf("failed to recreate request envelope: %v — retrying", err)
+					_ = stream.CloseSend()
+					_ = gRPCAssemblerClientConn.Close()
+					continue
+				}
+
+				err = stream.Send(requestEnvelope)
+				if err != nil {
+					logger.Warnf("failed to send request envelope to assembler %d: %v — retrying", pullFromPartyId, err)
+					_ = stream.CloseSend()
+					_ = gRPCAssemblerClientConn.Close()
+					continue
+				}
+
+				logger.Infof("reconnected to assembler %d successfully, resuming from block %d", pullFromPartyId, lastBlockNum+1)
+				break
+			}
 			continue
 		}
 
+		if block.GetHeader().GetNumber() == 0 {
+			continue
+		}
+
+		lastBlockNum = block.GetHeader().GetNumber()
 		currentTime := time.Now()
 		numOfBlocksCalculated += 1
 
