@@ -107,9 +107,19 @@ func (cs *configSubmitter) readConfigRequests() {
 	}
 }
 
-// Forward forwards the config request from the shard router to the config submitter requests channel
+// Forward forwards the config request from the shard router to the config submitter
+// requests channel. A full queue means the path to the consenter is stuck; the
+// request is rejected rather than blocking the submitting client indefinitely.
 func (cs *configSubmitter) Forward(tr *TrackedRequest) {
-	cs.configRequestsChannel <- tr
+	select {
+	case cs.configRequestsChannel <- tr:
+	default:
+		cs.logger.Warnf("config requests channel is full, rejecting config request %x", tr.reqID)
+		tr.client.reply(Response{
+			err:   errors.New("server error: config request queue is full, try again later"),
+			reqID: tr.reqID,
+		})
+	}
 }
 
 // forwardRequest forwards the config request from the config submitter to the consensus
@@ -124,20 +134,20 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 	configRequest, err := cs.configUpdateProposer.ProposeConfigUpdate(tr.request, cs.bundle, cs.signer, cs.verifier, cs.bccsp)
 	if err != nil {
 		feedback.err = fmt.Errorf("error in verification and proposing update: %s", err)
-		tr.responses <- feedback
+		tr.client.reply(feedback)
 		return err
 	}
 
 	env := &common.Envelope{Payload: configRequest.Payload, Signature: configRequest.Signature}
 	if err = cs.configRulesVerifier.ValidateNewConfig(env, cs.bccsp, cs.partyID); err != nil {
 		feedback.err = fmt.Errorf("error in validating config rules: %w", err)
-		tr.responses <- feedback
+		tr.client.reply(feedback)
 		return err
 	}
 
 	if err = cs.configRulesVerifier.ValidateTransition(cs.bundle, env, cs.bccsp); err != nil {
 		feedback.err = fmt.Errorf("error in validating config transition rules: %w", err)
-		tr.responses <- feedback
+		tr.client.reply(feedback)
 		return err
 	}
 
@@ -153,7 +163,7 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 		}
 	}
 
-	tr.responses <- feedback
+	tr.client.reply(feedback)
 	return err
 }
 
