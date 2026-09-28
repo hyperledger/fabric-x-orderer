@@ -52,6 +52,14 @@ func TestControlEventSerialization(t *testing.T) {
 	assert.NotNil(t, ce3.ConfigRequest)
 	assert.Equal(t, cr.Envelope.Payload, ce3.ConfigRequest.Envelope.Payload)
 	assert.Equal(t, cr.Envelope.Signature, ce3.ConfigRequest.Envelope.Signature)
+
+	// Serialization and deserialization of ControlEvent with AssemblerDecisionReport
+	ce = consensus_state.ControlEvent{AssemblerReport: &consensus_state.AssemblerDecisionReport{Party: 2, DecisionNum: 100}}
+
+	var ce4 consensus_state.ControlEvent
+	err = ce4.FromBytes(ce.Bytes())
+	assert.NoError(t, err)
+	assert.Equal(t, ce, ce4)
 }
 
 // bafCE builds a BAF control event with the given identity fields. txCount and primarySignature
@@ -119,6 +127,29 @@ func TestControlEventID(t *testing.T) {
 		diffSigner.Signer = 4
 		ceC := consensus_state.ControlEvent{Complaint: &diffSigner}
 		assert.NotEqual(t, ceA.ID(), ceC.ID())
+	})
+
+	t.Run("assembler report ID excludes the signature", func(t *testing.T) {
+		// ID() hashes <Party, DecisionNum> only; two reports that differ solely in their
+		// signature are the same logical event and must share an ID.
+		base := consensus_state.AssemblerDecisionReport{Party: 2, DecisionNum: 100, Signature: []byte{1}}
+		diffSig := base
+		diffSig.Signature = []byte{2, 3, 4}
+		ceA := consensus_state.ControlEvent{AssemblerReport: &base}
+		ceB := consensus_state.ControlEvent{AssemblerReport: &diffSig}
+		assert.NotEmpty(t, ceA.ID())
+		assert.Equal(t, ceA.ID(), ceB.ID())
+
+		// Different party and different decision number are distinct events.
+		diffParty := base
+		diffParty.Party = 3
+		ceParty := consensus_state.ControlEvent{AssemblerReport: &diffParty}
+		assert.NotEqual(t, ceA.ID(), ceParty.ID())
+
+		diffNum := base
+		diffNum.DecisionNum = 101
+		ceNum := consensus_state.ControlEvent{AssemblerReport: &diffNum}
+		assert.NotEqual(t, ceA.ID(), ceNum.ID())
 	})
 }
 
