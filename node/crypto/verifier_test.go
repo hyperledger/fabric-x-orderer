@@ -267,10 +267,10 @@ func TestVerifySignatureRole(t *testing.T) {
 	// A lookup under a different role at the same shard and party does not find the key.
 	require.Error(t, verifier.VerifySignature(types.RoleConsenter, partyID, shardID, msg, sig))
 
-	// A zero-valued (unset) role is the empty string, so it fails loudly rather than silently
+	// A zero-valued (unset) role is RoleUnknown, so it fails loudly rather than silently
 	// resolving against a real node's key.
-	require.Zero(t, types.NodeRole(""), "the zero value of NodeRole must be the empty string")
-	require.Error(t, verifier.VerifySignature(types.NodeRole(""), partyID, shardID, msg, sig))
+	require.Zero(t, types.RoleUnknown, "RoleUnknown must be the zero value of NodeRole")
+	require.Error(t, verifier.VerifySignature(types.RoleUnknown, partyID, shardID, msg, sig))
 
 	// A different role's key does not collide with the assembler's key.
 	consenterPEM, _, _ := generateTestECDSAKeyPair(t)

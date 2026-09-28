@@ -81,14 +81,30 @@ type AssemblerConsensusPosition struct {
 }
 
 // NodeRole is the service a node runs.
-type NodeRole string
+type NodeRole uint8
 
 const (
-	RoleRouter    NodeRole = "router"
-	RoleBatcher   NodeRole = "batcher"
-	RoleConsenter NodeRole = "consenter"
-	RoleAssembler NodeRole = "assembler"
+	RoleUnknown NodeRole = iota
+	RoleRouter
+	RoleBatcher
+	RoleConsenter
+	RoleAssembler
 )
+
+func (r NodeRole) String() string {
+	switch r {
+	case RoleRouter:
+		return "router"
+	case RoleBatcher:
+		return "batcher"
+	case RoleConsenter:
+		return "consenter"
+	case RoleAssembler:
+		return "assembler"
+	default:
+		return fmt.Sprintf("unknown role (%d)", uint8(r))
+	}
+}
 
 // NodeIdentity consists of the role, the party ID, and the shard ID (for batchers).
 type NodeIdentity struct {
@@ -100,7 +116,7 @@ type NodeIdentity struct {
 
 func (n NodeIdentity) String() string {
 	if n.Role == RoleBatcher {
-		return fmt.Sprintf("batcher of party %d in shard %d", n.PartyID, n.ShardID)
+		return fmt.Sprintf("%s of party %d in shard %d", n.Role, n.PartyID, n.ShardID)
 	}
 	return fmt.Sprintf("%s of party %d", n.Role, n.PartyID)
 }
