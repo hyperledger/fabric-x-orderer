@@ -6,14 +6,13 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
-	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 )
 
 type FakeSigVerifier struct {
-	VerifySignatureStub        func(crypto.EntityType, types.PartyID, types.ShardID, []byte, []byte) error
+	VerifySignatureStub        func(types.NodeRole, types.PartyID, types.ShardID, []byte, []byte) error
 	verifySignatureMutex       sync.RWMutex
 	verifySignatureArgsForCall []struct {
-		arg1 crypto.EntityType
+		arg1 types.NodeRole
 		arg2 types.PartyID
 		arg3 types.ShardID
 		arg4 []byte
@@ -29,7 +28,7 @@ type FakeSigVerifier struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeSigVerifier) VerifySignature(arg1 crypto.EntityType, arg2 types.PartyID, arg3 types.ShardID, arg4 []byte, arg5 []byte) error {
+func (fake *FakeSigVerifier) VerifySignature(arg1 types.NodeRole, arg2 types.PartyID, arg3 types.ShardID, arg4 []byte, arg5 []byte) error {
 	var arg4Copy []byte
 	if arg4 != nil {
 		arg4Copy = make([]byte, len(arg4))
@@ -43,7 +42,7 @@ func (fake *FakeSigVerifier) VerifySignature(arg1 crypto.EntityType, arg2 types.
 	fake.verifySignatureMutex.Lock()
 	ret, specificReturn := fake.verifySignatureReturnsOnCall[len(fake.verifySignatureArgsForCall)]
 	fake.verifySignatureArgsForCall = append(fake.verifySignatureArgsForCall, struct {
-		arg1 crypto.EntityType
+		arg1 types.NodeRole
 		arg2 types.PartyID
 		arg3 types.ShardID
 		arg4 []byte
@@ -68,13 +67,13 @@ func (fake *FakeSigVerifier) VerifySignatureCallCount() int {
 	return len(fake.verifySignatureArgsForCall)
 }
 
-func (fake *FakeSigVerifier) VerifySignatureCalls(stub func(crypto.EntityType, types.PartyID, types.ShardID, []byte, []byte) error) {
+func (fake *FakeSigVerifier) VerifySignatureCalls(stub func(types.NodeRole, types.PartyID, types.ShardID, []byte, []byte) error) {
 	fake.verifySignatureMutex.Lock()
 	defer fake.verifySignatureMutex.Unlock()
 	fake.VerifySignatureStub = stub
 }
 
-func (fake *FakeSigVerifier) VerifySignatureArgsForCall(i int) (crypto.EntityType, types.PartyID, types.ShardID, []byte, []byte) {
+func (fake *FakeSigVerifier) VerifySignatureArgsForCall(i int) (types.NodeRole, types.PartyID, types.ShardID, []byte, []byte) {
 	fake.verifySignatureMutex.RLock()
 	defer fake.verifySignatureMutex.RUnlock()
 	argsForCall := fake.verifySignatureArgsForCall[i]

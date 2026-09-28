@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package types
 
 import (
+	"fmt"
 	"math"
 )
 
@@ -77,4 +78,29 @@ type Batch interface {
 type AssemblerConsensusPosition struct {
 	DecisionNum DecisionNum
 	BatchIndex  int
+}
+
+// NodeRole is the service a node runs.
+type NodeRole string
+
+const (
+	RoleRouter    NodeRole = "router"
+	RoleBatcher   NodeRole = "batcher"
+	RoleConsenter NodeRole = "consenter"
+	RoleAssembler NodeRole = "assembler"
+)
+
+// NodeIdentity consists of the role, the party ID, and the shard ID (for batchers).
+type NodeIdentity struct {
+	PartyID PartyID
+	Role    NodeRole
+	// ShardID is meaningful only when Role is RoleBatcher.
+	ShardID ShardID
+}
+
+func (n NodeIdentity) String() string {
+	if n.Role == RoleBatcher {
+		return fmt.Sprintf("batcher of party %d in shard %d", n.PartyID, n.ShardID)
+	}
+	return fmt.Sprintf("%s of party %d", n.Role, n.PartyID)
 }

@@ -37,7 +37,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/configrequest"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	bft_synch "github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
-	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -75,7 +74,7 @@ type Signer interface {
 }
 
 type SigVerifier interface {
-	VerifySignature(entity crypto.EntityType, id arma_types.PartyID, shardID arma_types.ShardID, msg, sig []byte) error
+	VerifySignature(role arma_types.NodeRole, id arma_types.PartyID, shardID arma_types.ShardID, msg, sig []byte) error
 }
 
 type Arma interface {
@@ -730,7 +729,7 @@ func verifyBlockMessageToSign(msg *protoutil.MessageToSign, msgBytes []byte, sig
 func (c *Consensus) VerifySignature(signature smartbft_types.Signature) error {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.SigVerifier.VerifySignature(crypto.EntityConsenter, arma_types.PartyID(signature.ID), arma_types.ShardIDConsensus, signature.Msg, signature.Value)
+	return c.SigVerifier.VerifySignature(arma_types.RoleConsenter, arma_types.PartyID(signature.ID), arma_types.ShardIDConsensus, signature.Msg, signature.Value)
 }
 
 // VerificationSequence returns the current verification sequence
@@ -1273,7 +1272,7 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if ce.Complaint.ConfigSeq != configSeq {
 			return reqID, ce, errors.Errorf("mismatch config sequence; the complaint's config seq is %d while the config seq should be %d", ce.Complaint.ConfigSeq, configSeq)
 		}
-		return reqID, ce, c.SigVerifier.VerifySignature(crypto.EntityBatcher, ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
+		return reqID, ce, c.SigVerifier.VerifySignature(arma_types.RoleBatcher, ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
 	} else if ce.BAF != nil {
 		// Accept a BAF whose config sequence is behind, in addition to the current one, so
 		// that the BAFs from a batcher which fell behind a config change are not silently dropped: consensus surfaces it
@@ -1287,11 +1286,11 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 				return reqID, ce, errors.New("missing primary signature")
 			}
 			dupBAF := duplicateBAFSetSigner(ce.BAF, ce.BAF.Primary())
-			if err := c.SigVerifier.VerifySignature(crypto.EntityBatcher, ce.BAF.Primary(), ce.BAF.Shard(), toBeSignedBAF(dupBAF), ce.BAF.PrimarySignature()); err != nil {
+			if err := c.SigVerifier.VerifySignature(arma_types.RoleBatcher, ce.BAF.Primary(), ce.BAF.Shard(), toBeSignedBAF(dupBAF), ce.BAF.PrimarySignature()); err != nil {
 				return reqID, ce, errors.Wrap(err, "failed to verify primary signature")
 			}
 		}
-		return reqID, ce, c.SigVerifier.VerifySignature(crypto.EntityBatcher, ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
+		return reqID, ce, c.SigVerifier.VerifySignature(arma_types.RoleBatcher, ce.BAF.Signer(), ce.BAF.Shard(), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
 		reqConfigSeq, err := ce.ConfigRequest.ConfigSequence()
 		if err != nil {

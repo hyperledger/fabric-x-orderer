@@ -229,20 +229,20 @@ func buildVerifier(consenterInfos []node_config.ConsenterInfo, shardInfo []node_
 
 	// Add consenter public keys
 	for _, ci := range consenterInfos {
-		verifier.AddPublicKeyToVerifier(ci.PublicKey, crypto.EntityConsenter, arma_types.ShardIDConsensus, arma_types.PartyID(ci.PartyID), logger)
+		verifier.AddPublicKeyToVerifier(ci.PublicKey, arma_types.RoleConsenter, arma_types.ShardIDConsensus, arma_types.PartyID(ci.PartyID), logger)
 	}
 
 	// Add batcher public keys for each shard
 	for _, shard := range shardInfo {
 		for _, bi := range shard.Batchers {
-			verifier.AddPublicKeyToVerifier(bi.PublicKey, crypto.EntityBatcher, arma_types.ShardID(shard.ShardId), arma_types.PartyID(bi.PartyID), logger)
+			verifier.AddPublicKeyToVerifier(bi.PublicKey, arma_types.RoleBatcher, arma_types.ShardID(shard.ShardId), arma_types.PartyID(bi.PartyID), logger)
 		}
 	}
 
 	// Add assembler public keys. Assemblers are not part of a shard, so like consenters they are
 	// keyed under the reserved ShardIDConsensus and disambiguated by their entity type.
 	for _, ai := range assemblerInfos {
-		verifier.AddPublicKeyToVerifier(ai.PublicKey, crypto.EntityAssembler, arma_types.ShardIDConsensus, arma_types.PartyID(ai.PartyID), logger)
+		verifier.AddPublicKeyToVerifier(ai.PublicKey, arma_types.RoleAssembler, arma_types.ShardIDConsensus, arma_types.PartyID(ai.PartyID), logger)
 	}
 
 	return verifier
