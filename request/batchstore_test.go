@@ -40,7 +40,20 @@ func requireMatchingBatchIDs(t *testing.T, requestID func([]byte) string, batch,
 func TestFetchWithCanceledContext(t *testing.T) {
 	sugaredLogger := testutil.CreateLogger(t, 0)
 
-	for i := 0; i < 2000; i++ {
+	// The bug is a lost-wakeup race between Fetch reaching signal.Wait() and the
+	// ctx.Done goroutine firing its signal. Each iteration is cheap and the race
+	// window is tiny, so we repeat enough times to hit it reliably: against the
+	// old code this deadlocks within ~1-2k iterations, so a few thousand gives a
+	// comfortable margin without making the passing run slow.
+	const iterations = 2000
+	// Generous watchdog: a correct Fetch on an already-canceled ctx returns in
+	// microseconds. On the buggy code Fetch never returns, so the first stuck
+	// iteration waits the full timeout, then t.Fatalf ends the test (the blocked
+	// Fetch and its inner goroutine are then torn down with the process). The
+	// bound only affects how long a genuine regression takes to report.
+	const watchdog = 10 * time.Second
+
+	for i := 0; i < iterations; i++ {
 		bs := NewBatchStore(100, 100*8, func(string) {}, sugaredLogger)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -54,7 +67,7 @@ func TestFetchWithCanceledContext(t *testing.T) {
 
 		select {
 		case <-done:
-		case <-time.After(10 * time.Second):
+		case <-time.After(watchdog):
 			t.Fatalf("Fetch deadlocked on a canceled context (iteration %d)", i)
 		}
 	}

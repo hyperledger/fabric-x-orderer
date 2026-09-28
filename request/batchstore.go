@@ -148,34 +148,43 @@ func (bs *BatchStore) Fetch(ctx context.Context) ([]interface{}, []interface{}) 
 	bs.lock.Lock()
 	defer bs.lock.Unlock()
 
-	finished := make(chan struct{})
+	// Only block (and pay for the ctx-watch goroutine) when there is nothing
+	// ready and the context is still live. On the hot path readyBatches is
+	// usually non-empty on entry, so we skip the goroutine create/teardown
+	// entirely and fall straight through to dequeuing.
+	if len(bs.readyBatches) == 0 && ctx.Err() == nil {
+		finished := make(chan struct{})
+		defer close(finished)
 
-	defer func() {
-		close(finished)
-	}()
+		go func() {
+			select {
+			case <-ctx.Done():
+				// Acquire the lock before signaling. This guarantees the signal is
+				// delivered only after Fetch is actually waiting on it (Wait releases
+				// the lock atomically); otherwise a signal fired before Wait would be
+				// lost, leaving Fetch blocked forever while holding bs.lock and thus
+				// deadlocking Pool.Close.
+				//
+				// Broadcast (not Signal) so the wakeup is robust if more than one
+				// Fetch ever waits on this store concurrently: Signal wakes one
+				// arbitrary waiter, so a canceled Fetch's wakeup could land on a
+				// different, still-live waiter that just re-parks, leaving the
+				// canceled Fetch blocked forever. Today NextRequests is called
+				// sequentially by a single batcher loop, but it only holds the
+				// pool's RLock, so nothing structurally enforces one waiter.
+				bs.lock.Lock()
+				bs.signal.Broadcast()
+				bs.lock.Unlock()
+			case <-finished:
+			}
+		}()
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			// Acquire the lock before signaling. This guarantees the signal is
-			// delivered only after Fetch is actually waiting on it (Wait releases
-			// the lock atomically); otherwise a signal fired before Wait would be
-			// lost, leaving Fetch blocked forever while holding bs.lock and thus
-			// deadlocking Pool.Close.
-			bs.lock.Lock()
-			bs.signal.Signal()
-			bs.lock.Unlock()
-			return
-		case <-finished:
-			return
+		// Wait for a batch to become ready or for the context to be done. The loop
+		// re-checks the condition to tolerate a lost or spurious wakeup, including
+		// the case where ctx is already done when Fetch is entered.
+		for len(bs.readyBatches) == 0 && ctx.Err() == nil {
+			bs.signal.Wait()
 		}
-	}()
-
-	// Wait for a batch to become ready or for the context to be done. The loop
-	// re-checks the condition to tolerate a lost or spurious wakeup, including
-	// the case where ctx is already done when Fetch is entered.
-	for len(bs.readyBatches) == 0 && ctx.Err() == nil {
-		bs.signal.Wait()
 	}
 
 	// Prefer a ready and full batch over a non-empty one
