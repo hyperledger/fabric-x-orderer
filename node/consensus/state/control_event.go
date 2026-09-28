@@ -18,12 +18,11 @@ import (
 )
 
 // ControlEvent is a single item consensus orders: exactly one of a batch attestation fragment
-// (BAF), a Complaint, a ConfigRequest, or an AssemblerDecisionReport.
+// (BAF), a Complaint, or a ConfigRequest.
 type ControlEvent struct {
-	BAF             types.BatchAttestationFragment
-	Complaint       *Complaint
-	ConfigRequest   *ConfigRequest
-	AssemblerReport *AssemblerDecisionReport
+	BAF           types.BatchAttestationFragment
+	Complaint     *Complaint
+	ConfigRequest *ConfigRequest
 }
 
 // String returns a human-readable description of the control event's payload.
@@ -34,8 +33,6 @@ func (ce *ControlEvent) String() string {
 		return ce.BAF.String()
 	} else if ce.ConfigRequest != nil {
 		return ce.ConfigRequest.String()
-	} else if ce.AssemblerReport != nil {
-		return ce.AssemblerReport.String()
 	}
 	return "empty control event"
 }
@@ -63,12 +60,6 @@ func (ce *ControlEvent) ID() string {
 	case ce.ConfigRequest != nil:
 		// TODO: maybe use a different ID for ConfigRequest
 		payloadToHash = ce.ConfigRequest.Bytes()
-	case ce.AssemblerReport != nil:
-		reportWithNoSig := &AssemblerDecisionReport{
-			Party:       ce.AssemblerReport.Party,
-			DecisionNum: ce.AssemblerReport.DecisionNum,
-		}
-		payloadToHash = reportWithNoSig.Bytes()
 	default:
 		return ""
 	}
@@ -86,8 +77,6 @@ func (ce *ControlEvent) SignerID() string {
 	case ce.ConfigRequest != nil:
 		// TODO: add ConfigRequest SignerID
 		return ""
-	case ce.AssemblerReport != nil:
-		return fmt.Sprintf("%d", ce.AssemblerReport.Party)
 	default:
 		return ""
 	}
@@ -114,10 +103,6 @@ func (ce *ControlEvent) toProto() *stateprotos.ControlEvent {
 		protoEvent.Event = &stateprotos.ControlEvent_ConfigRequest{
 			ConfigRequest: ce.ConfigRequest.toProto(),
 		}
-	case ce.AssemblerReport != nil:
-		protoEvent.Event = &stateprotos.ControlEvent_AssemblerDecisionReport{
-			AssemblerDecisionReport: ce.AssemblerReport.toProto(),
-		}
 	default:
 		panic("empty control event")
 	}
@@ -130,7 +115,6 @@ func (ce *ControlEvent) fromProto(pe *stateprotos.ControlEvent) error {
 	ce.BAF = nil
 	ce.Complaint = nil
 	ce.ConfigRequest = nil
-	ce.AssemblerReport = nil
 
 	switch event := pe.Event.(type) {
 	case *stateprotos.ControlEvent_Baf:
@@ -156,14 +140,6 @@ func (ce *ControlEvent) fromProto(pe *stateprotos.ControlEvent) error {
 		}
 		ce.ConfigRequest = &ConfigRequest{}
 		if err := ce.ConfigRequest.fromProto(event.ConfigRequest); err != nil {
-			return err
-		}
-	case *stateprotos.ControlEvent_AssemblerDecisionReport:
-		if event.AssemblerDecisionReport == nil {
-			return fmt.Errorf("AssemblerDecisionReport event payload is nil")
-		}
-		ce.AssemblerReport = &AssemblerDecisionReport{}
-		if err := ce.AssemblerReport.fromProto(event.AssemblerDecisionReport); err != nil {
 			return err
 		}
 	default:
