@@ -34,6 +34,7 @@ type stubConsenter struct {
 	bafs               int                  // number of BAFs received
 	receivedEvents     []state.ControlEvent // received control events
 	receivedEventsLock sync.RWMutex
+	AckConfigHandler   func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error)
 }
 
 func NewStubConsenter(t *testing.T, partyID types.PartyID, n *node) *stubConsenter {
@@ -192,6 +193,9 @@ func (sc *stubConsenter) CreateDecisionConsensusReplicator(conf *config.BatcherN
 	return sc
 }
 
-func (sc *stubConsenter) AckConfig(context.Context, *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+func (sc *stubConsenter) AckConfig(_ context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+	if sc.AckConfigHandler != nil {
+		return sc.AckConfigHandler(req)
+	}
 	return &protos.ConfigAckResponse{}, nil
 }
