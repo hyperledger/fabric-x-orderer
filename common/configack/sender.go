@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-const SubmitConfigAckTimeout = 60 * time.Second // TODO: expose in local config
+const defaultSubmitConfigAckTimeout = 60 * time.Second // TODO: expose in local config
 
 type Sender interface {
 	Stop()
@@ -38,9 +38,10 @@ type sender struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	minRetryInterval time.Duration
-	maxRetryInterval time.Duration
-	DialTimeout      time.Duration
+	minRetryInterval       time.Duration
+	maxRetryInterval       time.Duration
+	DialTimeout            time.Duration
+	submitConfigAckTimeout time.Duration
 }
 
 type ConnectionInfo struct {
@@ -51,25 +52,35 @@ type ConnectionInfo struct {
 	PartyID           types.PartyID
 	NodeType          protos.NodeType
 	Shard             types.ShardID
+
+	// SubmitConfigAckTimeout bounds the total time a single SubmitConfigAck spends
+	// retrying across all attempts. Zero selects defaultSubmitConfigAckTimeout.
+	SubmitConfigAckTimeout time.Duration
 }
 
 func NewSender(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *sender {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	submitConfigAckTimeout := connInfo.SubmitConfigAckTimeout
+	if submitConfigAckTimeout <= 0 {
+		submitConfigAckTimeout = defaultSubmitConfigAckTimeout
+	}
+
 	s := &sender{
-		consensusEndpoint: connInfo.ConsensusEndpoint,
-		consensusRootCAs:  connInfo.ConsensusRootCAs,
-		tlsCert:           connInfo.TLSCert,
-		tlsKey:            connInfo.TLSKey,
-		logger:            logger,
-		partyID:           connInfo.PartyID,
-		nodeType:          connInfo.NodeType,
-		shard:             connInfo.Shard,
-		ctx:               ctx,
-		cancel:            cancel,
-		minRetryInterval:  50 * time.Millisecond, // TODO: take from config
-		maxRetryInterval:  10 * time.Second,      // TODO: take from config
-		DialTimeout:       5 * time.Second,       // TODO: take from config
+		consensusEndpoint:      connInfo.ConsensusEndpoint,
+		consensusRootCAs:       connInfo.ConsensusRootCAs,
+		tlsCert:                connInfo.TLSCert,
+		tlsKey:                 connInfo.TLSKey,
+		logger:                 logger,
+		partyID:                connInfo.PartyID,
+		nodeType:               connInfo.NodeType,
+		shard:                  connInfo.Shard,
+		ctx:                    ctx,
+		cancel:                 cancel,
+		minRetryInterval:       50 * time.Millisecond, // TODO: take from config
+		maxRetryInterval:       10 * time.Second,      // TODO: take from config
+		DialTimeout:            5 * time.Second,       // TODO: take from config
+		submitConfigAckTimeout: submitConfigAckTimeout,
 	}
 	return s
 }
@@ -92,7 +103,7 @@ func NewSender(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *sender 
 // if the total timeout expires or if ca.ctx is cancelled, for example when the
 // sender is stopped.
 func (s *sender) SubmitConfigAck(configSeq uint64) error {
-	ctx, cancel := context.WithTimeout(s.ctx, SubmitConfigAckTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, s.submitConfigAckTimeout)
 	defer cancel()
 
 	err := s.submitWithRetry(ctx, configSeq)
