@@ -114,11 +114,15 @@ func (bs *BatchStore) Prune(f func(k, v interface{}) error) {
 	bs.lock.RLock()
 	defer bs.lock.RUnlock()
 
-	for _, batch := range bs.readyBatches {
-		batch.Prune(f)
+	onPrune := func(key any) {
+		bs.Remove(key.(string))
 	}
 
-	bs.currentBatch.Prune(f)
+	for _, batch := range bs.readyBatches {
+		batch.Prune(f, onPrune)
+	}
+
+	bs.currentBatch.Prune(f, onPrune)
 }
 
 // RemoveRequests removes multiple keys concurrently via parallelForEachKey,
