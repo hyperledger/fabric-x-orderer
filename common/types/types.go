@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package types
 
 import (
+	"fmt"
 	"math"
 )
 
@@ -77,4 +78,74 @@ type Batch interface {
 type AssemblerConsensusPosition struct {
 	DecisionNum DecisionNum
 	BatchIndex  int
+}
+
+// NodeRole is the service a node runs.
+type NodeRole uint8
+
+const (
+	RoleUnknown NodeRole = iota
+	RoleRouter
+	RoleBatcher
+	RoleConsenter
+	RoleAssembler
+)
+
+func (r NodeRole) String() string {
+	switch r {
+	case RoleRouter:
+		return "router"
+	case RoleBatcher:
+		return "batcher"
+	case RoleConsenter:
+		return "consenter"
+	case RoleAssembler:
+		return "assembler"
+	default:
+		return fmt.Sprintf("unknown role (%d)", uint8(r))
+	}
+}
+
+// NodeIdentity consists of the role, the party ID, and the shard ID (for batchers).
+//
+// Construct one through the role-specific constructors below rather than a struct literal: only a
+// batcher belongs to a shard, so ShardID is always 0 for every other role, and the constructors are
+// the single blessed way to enforce that.
+type NodeIdentity struct {
+	PartyID PartyID
+	Role    NodeRole
+	// ShardID identifies a batcher's shard. It is 0 for every other role, which belongs to no
+	// shard; in particular it is never ShardIDConsensus, which encodes config TXs/batches emitted
+	// by consensus and is not a node identity.
+	ShardID ShardID
+}
+
+// NewBatcherIdentity returns the identity of the batcher of the given party in the given shard.
+func NewBatcherIdentity(partyID PartyID, shardID ShardID) NodeIdentity {
+	return NodeIdentity{Role: RoleBatcher, PartyID: partyID, ShardID: shardID}
+}
+
+// NewRouterIdentity returns the identity of the router of the given party. A router belongs to no
+// shard, so its ShardID is 0.
+func NewRouterIdentity(partyID PartyID) NodeIdentity {
+	return NodeIdentity{Role: RoleRouter, PartyID: partyID}
+}
+
+// NewConsenterIdentity returns the identity of the consenter of the given party. A consenter
+// belongs to no shard, so its ShardID is 0.
+func NewConsenterIdentity(partyID PartyID) NodeIdentity {
+	return NodeIdentity{Role: RoleConsenter, PartyID: partyID}
+}
+
+// NewAssemblerIdentity returns the identity of the assembler of the given party. An assembler
+// belongs to no shard, so its ShardID is 0.
+func NewAssemblerIdentity(partyID PartyID) NodeIdentity {
+	return NodeIdentity{Role: RoleAssembler, PartyID: partyID}
+}
+
+func (n NodeIdentity) String() string {
+	if n.Role == RoleBatcher {
+		return fmt.Sprintf("%s of party %d in shard %d", n.Role, n.PartyID, n.ShardID)
+	}
+	return fmt.Sprintf("%s of party %d", n.Role, n.PartyID)
 }

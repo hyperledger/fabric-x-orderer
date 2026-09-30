@@ -71,6 +71,7 @@ type AssemblerInfo struct {
 	PartyID    types.PartyID
 	Endpoint   string
 	TLSCACerts []RawBytes
+	PublicKey  RawBytes
 	TLSCert    RawBytes
 }
 
@@ -178,6 +179,7 @@ type ConsenterNodeConfig struct {
 	// Shared config
 	Shards        []ShardInfo
 	Consenters    []ConsenterInfo
+	Assemblers    []AssemblerInfo
 	Router        RouterInfo
 	Directory     string
 	ListenAddress string

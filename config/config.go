@@ -437,6 +437,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 	consenterConfig := &nodeconfig.ConsenterNodeConfig{
 		Shards:             shards,
 		Consenters:         consenters,
+		Assemblers:         config.ExtractAssemblers(),
 		Router:             config.ExtractRouterInParty(),
 		Directory:          config.LocalConfig.NodeLocalConfig.FileStore.Path,
 		ListenAddress:      net.JoinHostPort(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress, strconv.Itoa(int(config.LocalConfig.NodeLocalConfig.GeneralConfig.ListenPort))),
@@ -648,6 +649,7 @@ func (config *Configuration) ExtractAssemblers() []nodeconfig.AssemblerInfo {
 			PartyID:    types.PartyID(party.PartyID),
 			Endpoint:   net.JoinHostPort(party.AssemblerConfig.Host, strconv.Itoa(int(party.AssemblerConfig.Port))),
 			TLSCACerts: tlsCACertsCollection,
+			PublicKey:  utils.GetPublicKeyFromCertificate(party.AssemblerConfig.SignCert),
 			TLSCert:    party.AssemblerConfig.TlsCert,
 		}
 		assemblers = append(assemblers, assemblerInfo)

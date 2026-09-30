@@ -52,7 +52,7 @@ type Signer interface {
 //
 //go:generate counterfeiter -o mocks/sig_verifier.go . SigVerifier
 type SigVerifier interface {
-	VerifySignature(id types.PartyID, shardID types.ShardID, msg, sig []byte) error
+	VerifySignature(id types.NodeIdentity, msg, sig []byte) error
 }
 
 type Net interface {

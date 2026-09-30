@@ -538,7 +538,7 @@ func (b *BatcherRole) verifyBatch(batch types.Batch) ([]string, error) {
 		return nil, errors.Errorf("batch digest (%v) is not equal to calculated digest (%v)", batch.Digest(), computedDigest)
 	}
 	primaryBAF := types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), batch.Primary(), batch.ConfigSequence(), uint64(len(batch.Requests())), nil)
-	if err := b.SigVerifier.VerifySignature(batch.Primary(), batch.Shard(), primaryBAF.ToBeSigned(), batch.PrimarySignature()); err != nil {
+	if err := b.SigVerifier.VerifySignature(types.NewBatcherIdentity(batch.Primary(), batch.Shard()), primaryBAF.ToBeSigned(), batch.PrimarySignature()); err != nil {
 		return nil, errors.Wrapf(err, "failed verifying primary signature for batch seq %d", b.seq)
 	}
 	reqIDs, err := b.BatchedRequestsVerifier.VerifyBatchedRequests(batch.Requests())

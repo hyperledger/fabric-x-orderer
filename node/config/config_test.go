@@ -92,11 +92,13 @@ func TestConsenterNodeConfigToYaml(t *testing.T) {
 	}
 	shards := []ShardInfo{{ShardId: 1, Batchers: batchers}}
 	consenters := []ConsenterInfo{{1, "127.0.0.1:7050", RawBytes("ConsenterPubKey-1"), []RawBytes{{1, 2, 3}, {4, 5, 6}}}}
+	assemblers := []AssemblerInfo{{1, "127.0.0.1:7050", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("AssemblerPubKey-1"), RawBytes("TLS CERT")}}
 	router := RouterInfo{1, "127.0.0.1:7050", []RawBytes{{1, 2, 3}, {4, 5, 6}}, RawBytes("ConsenterPubKey-1")}
 
 	cnc := &ConsenterNodeConfig{
 		Shards:             shards,
 		Consenters:         consenters,
+		Assemblers:         assemblers,
 		Router:             router,
 		PartyId:            1,
 		TLSPrivateKeyFile:  RawBytes("TlsPrivateKey"),

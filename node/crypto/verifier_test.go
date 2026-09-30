@@ -22,6 +22,13 @@ import (
 
 // generateTestECDSAKey generates a test ECDSA key pair and returns the PEM-encoded public key
 func generateTestECDSAKey(t *testing.T) ([]byte, *ecdsa.PublicKey) {
+	pubKeyPEM, _, pubKey := generateTestECDSAKeyPair(t)
+	return pubKeyPEM, pubKey
+}
+
+// generateTestECDSAKeyPair generates a test ECDSA key pair and returns the PEM-encoded public
+// key along with the private and public keys, so tests can produce signatures to verify.
+func generateTestECDSAKeyPair(t *testing.T) ([]byte, *ecdsa.PrivateKey, *ecdsa.PublicKey) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
@@ -33,7 +40,7 @@ func generateTestECDSAKey(t *testing.T) ([]byte, *ecdsa.PublicKey) {
 		Bytes: pubKeyBytes,
 	})
 
-	return pubKeyPEM, &privateKey.PublicKey
+	return pubKeyPEM, privateKey, &privateKey.PublicKey
 }
 
 func TestParsePublicKeyToPEM(t *testing.T) {
@@ -103,10 +110,10 @@ func TestParsePublicKeyToPEM(t *testing.T) {
 
 			if tt.expectPanic {
 				require.Panics(t, func() {
-					crypto.ParsePublicKeyFromPEM(pubKeyPEM, "test-entity", shardID, partyID, logger)
+					crypto.ParsePublicKeyFromPEM(pubKeyPEM, types.NewBatcherIdentity(partyID, shardID), logger)
 				}, "Expected panic for test case: %s", tt.name)
 			} else {
-				parsedKey := crypto.ParsePublicKeyFromPEM(pubKeyPEM, "test-entity", shardID, partyID, logger)
+				parsedKey := crypto.ParsePublicKeyFromPEM(pubKeyPEM, types.NewBatcherIdentity(partyID, shardID), logger)
 				if tt.validateKey != nil {
 					tt.validateKey(t, parsedKey)
 				}
@@ -133,7 +140,7 @@ func TestAddPublicKeyToVerifier(t *testing.T) {
 			},
 			expectPanic: false,
 			validate: func(t *testing.T, verifier crypto.ECDSAVerifier, shardID types.ShardID, partyID types.PartyID) {
-				key := crypto.ShardPartyKey{Shard: shardID, Party: partyID}
+				key := types.NodeIdentity{Role: types.RoleBatcher, ShardID: shardID, PartyID: partyID}
 				_, exists := verifier[key]
 				require.True(t, exists, "Key should exist in verifier")
 				require.Equal(t, 1, len(verifier))
@@ -146,7 +153,7 @@ func TestAddPublicKeyToVerifier(t *testing.T) {
 				// Add first two keys
 				for i := 0; i < 2; i++ {
 					pubKeyPEM, _ := generateTestECDSAKey(t)
-					verifier.AddPublicKeyToVerifier(pubKeyPEM, "batcher", types.ShardID(i), types.PartyID(i+1), logger)
+					verifier.AddPublicKeyToVerifier(pubKeyPEM, types.NewBatcherIdentity(types.PartyID(i+1), types.ShardID(i)), logger)
 				}
 				// Return third key to add
 				pubKeyPEM, _ := generateTestECDSAKey(t)
@@ -156,22 +163,27 @@ func TestAddPublicKeyToVerifier(t *testing.T) {
 			validate: func(t *testing.T, verifier crypto.ECDSAVerifier, shardID types.ShardID, partyID types.PartyID) {
 				require.Equal(t, 3, len(verifier), "Verifier should contain 3 keys")
 				for i := 0; i < 3; i++ {
-					key := crypto.ShardPartyKey{Shard: types.ShardID(i), Party: types.PartyID(i + 1)}
+					key := types.NodeIdentity{Role: types.RoleBatcher, ShardID: types.ShardID(i), PartyID: types.PartyID(i + 1)}
 					_, exists := verifier[key]
 					require.True(t, exists, "Key %d should exist in verifier", i)
 				}
 			},
 		},
 		{
-			name: "DifferentEntityTypes",
+			name: "DifferentRoles",
 			setup: func(t *testing.T) (crypto.ECDSAVerifier, []byte, types.ShardID, types.PartyID) {
 				verifier := make(crypto.ECDSAVerifier)
-				entityTypes := []string{"batcher", "consenter"}
-				for i, entityType := range entityTypes {
-					pubKeyPEM, _ := generateTestECDSAKey(t)
-					verifier.AddPublicKeyToVerifier(pubKeyPEM, entityType, types.ShardID(i), types.PartyID(i), logger)
+				// A batcher (which belongs to a shard) and a consenter (which does not) are distinct
+				// keys even at the same party.
+				identities := []types.NodeIdentity{
+					types.NewBatcherIdentity(types.PartyID(0), types.ShardID(0)),
+					types.NewConsenterIdentity(types.PartyID(1)),
 				}
-				// Return third key with different entity type
+				for _, id := range identities {
+					pubKeyPEM, _ := generateTestECDSAKey(t)
+					verifier.AddPublicKeyToVerifier(pubKeyPEM, id, logger)
+				}
+				// Return a third (batcher) key to add via the shared runner below.
 				pubKeyPEM, _ := generateTestECDSAKey(t)
 				return verifier, pubKeyPEM, types.ShardID(2), types.PartyID(2)
 			},
@@ -200,7 +212,7 @@ func TestAddPublicKeyToVerifier(t *testing.T) {
 				partyID := types.PartyID(2)
 				// Add first key
 				pubKeyPEM1, _ := generateTestECDSAKey(t)
-				verifier.AddPublicKeyToVerifier(pubKeyPEM1, "batcher", shardID, partyID, logger)
+				verifier.AddPublicKeyToVerifier(pubKeyPEM1, types.NewBatcherIdentity(partyID, shardID), logger)
 				// Return second key with same shard and party (should overwrite)
 				pubKeyPEM2, _ := generateTestECDSAKey(t)
 				return verifier, pubKeyPEM2, shardID, partyID
@@ -208,7 +220,7 @@ func TestAddPublicKeyToVerifier(t *testing.T) {
 			expectPanic: false,
 			validate: func(t *testing.T, verifier crypto.ECDSAVerifier, shardID types.ShardID, partyID types.PartyID) {
 				require.Equal(t, 1, len(verifier), "Verifier should still contain only 1 key")
-				key := crypto.ShardPartyKey{Shard: shardID, Party: partyID}
+				key := types.NodeIdentity{Role: types.RoleBatcher, ShardID: shardID, PartyID: partyID}
 				_, exists := verifier[key]
 				require.True(t, exists, "Key should exist in verifier")
 			},
@@ -221,10 +233,10 @@ func TestAddPublicKeyToVerifier(t *testing.T) {
 
 			if tt.expectPanic {
 				require.Panics(t, func() {
-					verifier.AddPublicKeyToVerifier(pubKeyPEM, "batcher", shardID, partyID, logger)
+					verifier.AddPublicKeyToVerifier(pubKeyPEM, types.NewBatcherIdentity(partyID, shardID), logger)
 				}, "Expected panic for test case: %s", tt.name)
 			} else {
-				verifier.AddPublicKeyToVerifier(pubKeyPEM, "batcher", shardID, partyID, logger)
+				verifier.AddPublicKeyToVerifier(pubKeyPEM, types.NewBatcherIdentity(partyID, shardID), logger)
 			}
 
 			if tt.validate != nil {
@@ -232,4 +244,40 @@ func TestAddPublicKeyToVerifier(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestVerifySignatureRole verifies that the node role is part of the verifier key: a key
+// registered under one role verifies signatures for that role, and a lookup under a
+// different role (same party) does not find it. Assemblers and consenters are not part of a
+// shard, so both carry shard 0 and are told apart only by their role.
+func TestVerifySignatureRole(t *testing.T) {
+	logger := flogging.MustGetLogger("test")
+	partyID := types.PartyID(3)
+
+	pubKeyPEM, privateKey, _ := generateTestECDSAKeyPair(t)
+
+	verifier := make(crypto.ECDSAVerifier)
+	verifier.AddPublicKeyToVerifier(pubKeyPEM, types.NewAssemblerIdentity(partyID), logger)
+
+	msg := []byte("a message signed by the assembler")
+	signer := crypto.ECDSASigner(*privateKey)
+	sig, err := signer.Sign(msg)
+	require.NoError(t, err)
+
+	// The assembler key verifies the assembler's signature.
+	require.NoError(t, verifier.VerifySignature(types.NewAssemblerIdentity(partyID), msg, sig))
+
+	// A lookup under a different role at the same party (also shard 0) does not find the key.
+	require.Error(t, verifier.VerifySignature(types.NewConsenterIdentity(partyID), msg, sig))
+
+	// A zero-valued (unset) role is RoleUnknown, so it fails loudly rather than silently
+	// resolving against a real node's key.
+	require.Zero(t, types.RoleUnknown, "RoleUnknown must be the zero value of NodeRole")
+	require.Error(t, verifier.VerifySignature(types.NodeIdentity{Role: types.RoleUnknown, PartyID: partyID}, msg, sig))
+
+	// A different role's key does not collide with the assembler's key.
+	consenterPEM, _, _ := generateTestECDSAKeyPair(t)
+	verifier.AddPublicKeyToVerifier(consenterPEM, types.NewConsenterIdentity(partyID), logger)
+	require.Len(t, verifier, 2)
+	require.NoError(t, verifier.VerifySignature(types.NewAssemblerIdentity(partyID), msg, sig))
 }
