@@ -144,33 +144,42 @@ func (bs *BatchStore) Remove(key string) {
 
 // Fetch returns a batch of requests and their corresponding ids.
 func (bs *BatchStore) Fetch(ctx context.Context) ([]interface{}, []interface{}) {
-	// Do we have a batch ready for us?
 	bs.lock.Lock()
 	defer bs.lock.Unlock()
 
-	finished := make(chan struct{})
+	// Wake the wait loop below when ctx is done. AfterFunc runs its function in a
+	// goroutine only if/when ctx fires (immediately if ctx is already done), and
+	// stop() cancels it once Fetch stops waiting — so no goroutine is spawned on
+	// the hot path where a batch is already ready, and no Broadcast fires after
+	// Fetch has returned.
+	//
+	// The function takes bs.lock before Broadcast. sync.Cond.Wait releases bs.lock
+	// while parked, so acquiring it here guarantees the wakeup is delivered only
+	// after Fetch is actually parked in Wait; a Broadcast fired before Wait would
+	// be lost, leaving Fetch parked forever inside Pool.NextRequests (which holds
+	// the pool's RLock), which in turn deadlocks Pool.Close (blocked on the pool's
+	// Lock).
+	//
+	// Broadcast (not Signal) keeps the wakeup correct if more than one Fetch ever
+	// waits on this store: Signal wakes one arbitrary waiter, so a canceled Fetch's
+	// wakeup could land on a different, still-live waiter that just re-parks, leaving
+	// the canceled Fetch parked forever. Today NextRequests is called sequentially by
+	// a single batcher loop, but it only holds the pool's RLock, so nothing
+	// structurally enforces a single waiter.
+	stop := context.AfterFunc(ctx, func() {
+		bs.lock.Lock()
+		defer bs.lock.Unlock()
+		bs.signal.Broadcast()
+	})
+	defer stop()
 
-	defer func() {
-		close(finished)
-	}()
-
-	go func() {
-		select {
-		case <-ctx.Done():
-			bs.signal.Signal()
-			return
-		case <-finished:
-			return
-		}
-	}()
-
-	if len(bs.readyBatches) > 0 {
-		return bs.dequeueBatch()
+	// Wait for a batch to become ready or for the context to be done. The loop
+	// re-checks the predicate to tolerate a spurious or stale wakeup (e.g. a late
+	// Broadcast from an earlier Fetch's AfterFunc); an already-done ctx makes
+	// AfterFunc fire immediately, so the loop simply does not block in that case.
+	for len(bs.readyBatches) == 0 && ctx.Err() == nil {
+		bs.signal.Wait()
 	}
-
-	// Else, either wait for the timeout
-	// or for a new batch to be enqueued.
-	bs.signal.Wait()
 
 	// Prefer a ready and full batch over a non-empty one
 	for len(bs.readyBatches) > 0 {

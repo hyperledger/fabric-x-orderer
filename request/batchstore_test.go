@@ -32,6 +32,64 @@ func requireMatchingBatchIDs(t *testing.T, requestID func([]byte) string, batch,
 	}
 }
 
+// TestFetchCancelWhileWaiting is a regression test for a reported deadlock. A
+// batcher stop cancels the context of an in-flight Fetch that is parked in
+// signal.Wait() with no batch ready. The cancellation is the only thing that can
+// wake that parked Fetch; if nothing does, Fetch stays parked forever inside
+// Pool.NextRequests — which holds the pool's RLock — deadlocking Pool.Close,
+// which blocks on the pool's Lock.
+//
+// Each iteration parks a Fetch on an empty store under a live context, gives it a
+// moment to reach signal.Wait(), then cancels; Fetch must be woken by the
+// cancellation and return an empty batch promptly. Removing the wakeup
+// (context.AfterFunc) makes this deadlock on the watchdog, which the earlier
+// pre-canceled variant did not catch because an already-done context
+// short-circuits the wait loop before Fetch ever parks.
+//
+// Note: the wakeup being delivered under bs.lock — which prevents a lost wakeup
+// should cancellation ever race Fetch's parking — is correct by construction with
+// AfterFunc (it schedules its func only after cancel, and the check→park window
+// is too narrow for that func to interleave), so that specific property is not
+// exercised here; this test guards that a parked Fetch is woken at all.
+func TestFetchCancelWhileWaiting(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
+
+	// The wake path is deterministic once Fetch is parked, so a modest count with
+	// a comfortable watchdog suffices; the extra iterations only guard against rare
+	// scheduling where Fetch had not parked yet when cancel fired.
+	const iterations = 500
+	// A correct canceled Fetch returns in microseconds; a regressed Fetch never
+	// returns, so a stuck iteration waits out this watchdog before t.Fatalf ends
+	// the test (the parked Fetch is then torn down with the process). The bound
+	// only affects how long a genuine regression takes to report.
+	const watchdog = 10 * time.Second
+
+	for i := 0; i < iterations; i++ {
+		bs := NewBatchStore(100, 100*8, func(string) {}, sugaredLogger)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		done := make(chan struct{})
+		go func() {
+			// Empty store + live context => Fetch parks in signal.Wait() until the
+			// cancellation below wakes it; it must then return an empty batch.
+			batch, ids := bs.Fetch(ctx)
+			assert.Empty(t, batch, "canceled Fetch must return an empty batch")
+			assert.Empty(t, ids, "canceled Fetch must return no ids")
+			close(done)
+		}()
+
+		time.Sleep(time.Millisecond) // let Fetch reach signal.Wait()
+		cancel()                     // the cancellation must wake the parked Fetch
+
+		select {
+		case <-done:
+		case <-time.After(watchdog):
+			t.Fatalf("Fetch deadlocked when its context was canceled while parked (iteration %d)", i)
+		}
+	}
+}
+
 func TestBatchStore(t *testing.T) {
 	max := uint32(100)
 	lenByte := uint32(8)
