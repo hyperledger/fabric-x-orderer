@@ -199,6 +199,13 @@ func (rp *Pool) submitToBatchStore(reqID string, request []byte) error {
 }
 
 // NextRequests returns the next requests to be batched and their corresponding ids.
+//
+// It holds rp.lock.RLock for the whole call, including the blocking batchStore.Fetch.
+// Because Close (and Halt) take rp.lock.Lock, a caller that wants to stop the pool
+// while a NextRequests is in flight MUST first cancel the ctx passed here so Fetch
+// returns and this RLock is released; otherwise Close would block forever waiting
+// for the write lock. BatcherRole.Stop/SoftStop rely on this: they call cancelBatch()
+// before MemPool.Close()/Halt().
 func (rp *Pool) NextRequests(ctx context.Context) ([][]byte, []string) {
 	rp.lock.RLock()
 	defer rp.lock.RUnlock()
@@ -279,7 +286,11 @@ func (rp *Pool) Prune(predicate func([]byte) error) {
 	}
 }
 
-// Close closes the pool
+// Close closes the pool.
+//
+// It acquires rp.lock.Lock, so it blocks until any in-flight NextRequests releases
+// its RLock. NextRequests only releases it when batchStore.Fetch returns, so callers
+// must cancel the ctx handed to NextRequests before calling Close (see NextRequests).
 func (rp *Pool) Close() {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
