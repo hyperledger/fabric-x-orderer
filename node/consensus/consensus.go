@@ -1317,12 +1317,13 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		// TODO: revisit this return
 		return reqID, ce, nil
 	} else if ce.AssemblerReport != nil {
-		// TODO: verify the assembler's signature over the report once the signing scheme is
-		// defined. For now we only reject unsigned reports; the cryptographic check is deferred.
 		if len(ce.AssemblerReport.Signature) == 0 {
 			return reqID, ce, errors.New("missing assembler decision report signature")
 		}
-		return reqID, ce, nil
+		// Verify the signature against the reporting party's assembler identity. An unknown party
+		// has no registered assembler key, so VerifySignature rejects it with "key does not exist";
+		// this doubles as the check that Party is a known party.
+		return reqID, ce, c.SigVerifier.VerifySignature(arma_types.NewAssemblerIdentity(ce.AssemblerReport.Party), ce.AssemblerReport.ToBeSigned(), ce.AssemblerReport.Signature)
 	} else {
 		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")
 	}
