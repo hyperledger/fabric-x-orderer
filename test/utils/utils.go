@@ -769,7 +769,7 @@ func pullFromAssembler(t *testing.T, userConfig *armageddon.UserConfig, partyID 
 					BlockHeader:          protoutil.BlockHeaderBytes(bhdr),
 					OrdererBlockMetadata: md.GetValue(),
 				}
-				if err = sigVerifier.VerifySignature(types.RoleConsenter, types.PartyID(identifierHeader.Identifier), types.ShardIDConsensus, msg.ASN1MarshalOrPanic(), metadataSignature.GetSignature()); err != nil {
+				if err = sigVerifier.VerifySignature(types.NewConsenterIdentity(types.PartyID(identifierHeader.Identifier)), msg.ASN1MarshalOrPanic(), metadataSignature.GetSignature()); err != nil {
 					t.Logf("failed verifying signature for block %d: %v", block.Header.GetNumber(), err)
 					continue
 				}
@@ -885,7 +885,7 @@ func BuildVerifier(configDir string, partyID types.PartyID, logger *flogging.Fab
 			logger.Panicf("Failed parsing consenter public key: %v", err)
 		}
 
-		verifier[types.NodeIdentity{Role: types.RoleConsenter, ShardID: types.ShardIDConsensus, PartyID: types.PartyID(ci.PartyID)}] = *pk4.(*ecdsa.PublicKey)
+		verifier[types.NewConsenterIdentity(types.PartyID(ci.PartyID))] = *pk4.(*ecdsa.PublicKey)
 	}
 
 	return &verifier

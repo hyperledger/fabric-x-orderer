@@ -229,20 +229,20 @@ func buildVerifier(consenterInfos []node_config.ConsenterInfo, shardInfo []node_
 
 	// Add consenter public keys
 	for _, ci := range consenterInfos {
-		verifier.AddPublicKeyToVerifier(ci.PublicKey, arma_types.RoleConsenter, arma_types.ShardIDConsensus, arma_types.PartyID(ci.PartyID), logger)
+		verifier.AddPublicKeyToVerifier(ci.PublicKey, arma_types.NewConsenterIdentity(arma_types.PartyID(ci.PartyID)), logger)
 	}
 
 	// Add batcher public keys for each shard
 	for _, shard := range shardInfo {
 		for _, bi := range shard.Batchers {
-			verifier.AddPublicKeyToVerifier(bi.PublicKey, arma_types.RoleBatcher, arma_types.ShardID(shard.ShardId), arma_types.PartyID(bi.PartyID), logger)
+			verifier.AddPublicKeyToVerifier(bi.PublicKey, arma_types.NewBatcherIdentity(arma_types.PartyID(bi.PartyID), arma_types.ShardID(shard.ShardId)), logger)
 		}
 	}
 
-	// Add assembler public keys. Assemblers are not part of a shard, so like consenters they are
-	// keyed under the reserved ShardIDConsensus and disambiguated by their entity type.
+	// Add assembler public keys. Assemblers are not part of a shard, so like consenters they carry
+	// shard 0 and are disambiguated by their role.
 	for _, ai := range assemblerInfos {
-		verifier.AddPublicKeyToVerifier(ai.PublicKey, arma_types.RoleAssembler, arma_types.ShardIDConsensus, arma_types.PartyID(ai.PartyID), logger)
+		verifier.AddPublicKeyToVerifier(ai.PublicKey, arma_types.NewAssemblerIdentity(arma_types.PartyID(ai.PartyID)), logger)
 	}
 
 	return verifier

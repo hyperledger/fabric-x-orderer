@@ -107,11 +107,40 @@ func (r NodeRole) String() string {
 }
 
 // NodeIdentity consists of the role, the party ID, and the shard ID (for batchers).
+//
+// Construct one through the role-specific constructors below rather than a struct literal: only a
+// batcher belongs to a shard, so ShardID is always 0 for every other role, and the constructors are
+// the single blessed way to enforce that.
 type NodeIdentity struct {
 	PartyID PartyID
 	Role    NodeRole
-	// ShardID is meaningful only when Role is RoleBatcher.
+	// ShardID identifies a batcher's shard. It is 0 for every other role, which belongs to no
+	// shard; in particular it is never ShardIDConsensus, which encodes config TXs/batches emitted
+	// by consensus and is not a node identity.
 	ShardID ShardID
+}
+
+// NewBatcherIdentity returns the identity of the batcher of the given party in the given shard.
+func NewBatcherIdentity(partyID PartyID, shardID ShardID) NodeIdentity {
+	return NodeIdentity{Role: RoleBatcher, PartyID: partyID, ShardID: shardID}
+}
+
+// NewRouterIdentity returns the identity of the router of the given party. A router belongs to no
+// shard, so its ShardID is 0.
+func NewRouterIdentity(partyID PartyID) NodeIdentity {
+	return NodeIdentity{Role: RoleRouter, PartyID: partyID}
+}
+
+// NewConsenterIdentity returns the identity of the consenter of the given party. A consenter
+// belongs to no shard, so its ShardID is 0.
+func NewConsenterIdentity(partyID PartyID) NodeIdentity {
+	return NodeIdentity{Role: RoleConsenter, PartyID: partyID}
+}
+
+// NewAssemblerIdentity returns the identity of the assembler of the given party. An assembler
+// belongs to no shard, so its ShardID is 0.
+func NewAssemblerIdentity(partyID PartyID) NodeIdentity {
+	return NodeIdentity{Role: RoleAssembler, PartyID: partyID}
 }
 
 func (n NodeIdentity) String() string {

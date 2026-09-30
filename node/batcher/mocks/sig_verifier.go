@@ -9,14 +9,12 @@ import (
 )
 
 type FakeSigVerifier struct {
-	VerifySignatureStub        func(types.NodeRole, types.PartyID, types.ShardID, []byte, []byte) error
+	VerifySignatureStub        func(types.NodeIdentity, []byte, []byte) error
 	verifySignatureMutex       sync.RWMutex
 	verifySignatureArgsForCall []struct {
-		arg1 types.NodeRole
-		arg2 types.PartyID
-		arg3 types.ShardID
-		arg4 []byte
-		arg5 []byte
+		arg1 types.NodeIdentity
+		arg2 []byte
+		arg3 []byte
 	}
 	verifySignatureReturns struct {
 		result1 error
@@ -28,32 +26,30 @@ type FakeSigVerifier struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeSigVerifier) VerifySignature(arg1 types.NodeRole, arg2 types.PartyID, arg3 types.ShardID, arg4 []byte, arg5 []byte) error {
-	var arg4Copy []byte
-	if arg4 != nil {
-		arg4Copy = make([]byte, len(arg4))
-		copy(arg4Copy, arg4)
+func (fake *FakeSigVerifier) VerifySignature(arg1 types.NodeIdentity, arg2 []byte, arg3 []byte) error {
+	var arg2Copy []byte
+	if arg2 != nil {
+		arg2Copy = make([]byte, len(arg2))
+		copy(arg2Copy, arg2)
 	}
-	var arg5Copy []byte
-	if arg5 != nil {
-		arg5Copy = make([]byte, len(arg5))
-		copy(arg5Copy, arg5)
+	var arg3Copy []byte
+	if arg3 != nil {
+		arg3Copy = make([]byte, len(arg3))
+		copy(arg3Copy, arg3)
 	}
 	fake.verifySignatureMutex.Lock()
 	ret, specificReturn := fake.verifySignatureReturnsOnCall[len(fake.verifySignatureArgsForCall)]
 	fake.verifySignatureArgsForCall = append(fake.verifySignatureArgsForCall, struct {
-		arg1 types.NodeRole
-		arg2 types.PartyID
-		arg3 types.ShardID
-		arg4 []byte
-		arg5 []byte
-	}{arg1, arg2, arg3, arg4Copy, arg5Copy})
+		arg1 types.NodeIdentity
+		arg2 []byte
+		arg3 []byte
+	}{arg1, arg2Copy, arg3Copy})
 	stub := fake.VerifySignatureStub
 	fakeReturns := fake.verifySignatureReturns
-	fake.recordInvocation("VerifySignature", []interface{}{arg1, arg2, arg3, arg4Copy, arg5Copy})
+	fake.recordInvocation("VerifySignature", []interface{}{arg1, arg2Copy, arg3Copy})
 	fake.verifySignatureMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3, arg4, arg5)
+		return stub(arg1, arg2, arg3)
 	}
 	if specificReturn {
 		return ret.result1
@@ -67,17 +63,17 @@ func (fake *FakeSigVerifier) VerifySignatureCallCount() int {
 	return len(fake.verifySignatureArgsForCall)
 }
 
-func (fake *FakeSigVerifier) VerifySignatureCalls(stub func(types.NodeRole, types.PartyID, types.ShardID, []byte, []byte) error) {
+func (fake *FakeSigVerifier) VerifySignatureCalls(stub func(types.NodeIdentity, []byte, []byte) error) {
 	fake.verifySignatureMutex.Lock()
 	defer fake.verifySignatureMutex.Unlock()
 	fake.VerifySignatureStub = stub
 }
 
-func (fake *FakeSigVerifier) VerifySignatureArgsForCall(i int) (types.NodeRole, types.PartyID, types.ShardID, []byte, []byte) {
+func (fake *FakeSigVerifier) VerifySignatureArgsForCall(i int) (types.NodeIdentity, []byte, []byte) {
 	fake.verifySignatureMutex.RLock()
 	defer fake.verifySignatureMutex.RUnlock()
 	argsForCall := fake.verifySignatureArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4, argsForCall.arg5
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
 }
 
 func (fake *FakeSigVerifier) VerifySignatureReturns(result1 error) {
