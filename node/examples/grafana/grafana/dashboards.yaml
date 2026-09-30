@@ -1,0 +1,13 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+apiVersion: 1
+
+providers:
+  - name: arma
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
