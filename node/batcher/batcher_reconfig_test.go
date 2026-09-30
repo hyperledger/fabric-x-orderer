@@ -78,9 +78,7 @@ func TestBatcherReconfigAutoRemoveTimeoutReachesPendingAdmin(t *testing.T) {
 	}
 
 	// create config block that changes the AutoRemoveTimeout parameter
-	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "15ms"))
-	require.NotNil(t, configUpdatePbData)
+	configUpdatePbData := autoRemoveTimeoutConfigUpdate(t, dir)
 	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
 	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
 	require.NoError(t, err)
@@ -1189,4 +1187,15 @@ func updateFileStorePath(t *testing.T, dir string, parties []types.PartyID, numO
 		err = utils.WriteToYAML(localConfig.NodeLocalConfig, nodeConfigPath)
 		require.NoError(t, err)
 	}
+}
+
+// autoRemoveTimeoutConfigUpdate builds a config update that changes the AutoRemoveTimeout
+// batching parameter. AutoRemoveTimeout is a memory-pool option, so applying it requires an
+// admin operation and drives the batcher to pending admin.
+// TODO: the router has an identical helper; unify both via a shared testutil helper.
+func autoRemoveTimeoutConfigUpdate(t *testing.T, dir string) []byte {
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "15ms"))
+	require.NotNil(t, configUpdatePbData)
+	return configUpdatePbData
 }

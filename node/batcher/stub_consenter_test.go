@@ -34,7 +34,8 @@ type stubConsenter struct {
 	bafs               int                  // number of BAFs received
 	receivedEvents     []state.ControlEvent // received control events
 	receivedEventsLock sync.RWMutex
-	AckConfigHandler   func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error)
+
+	ackConfigHandler func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error)
 }
 
 func NewStubConsenter(t *testing.T, partyID types.PartyID, n *node) *stubConsenter {
@@ -193,9 +194,22 @@ func (sc *stubConsenter) CreateDecisionConsensusReplicator(conf *config.BatcherN
 	return sc
 }
 
+// SetAckConfigHandler installs a handler invoked by AckConfig to intercept the ConfigAck
+// requests batchers send to the consenter. When no handler is set, AckConfig replies with an
+// empty (successful) response.
+func (sc *stubConsenter) SetAckConfigHandler(handler func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error)) {
+	sc.receivedEventsLock.Lock()
+	defer sc.receivedEventsLock.Unlock()
+	sc.ackConfigHandler = handler
+}
+
 func (sc *stubConsenter) AckConfig(_ context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
-	if sc.AckConfigHandler != nil {
-		return sc.AckConfigHandler(req)
+	sc.receivedEventsLock.RLock()
+	handler := sc.ackConfigHandler
+	sc.receivedEventsLock.RUnlock()
+
+	if handler != nil {
+		return handler(req)
 	}
 	return &protos.ConfigAckResponse{}, nil
 }
