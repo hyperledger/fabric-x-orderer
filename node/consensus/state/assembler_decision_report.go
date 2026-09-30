@@ -83,6 +83,19 @@ func (r *AssemblerDecisionReport) fromProto(pr *stateprotos.AssemblerDecisionRep
 	return nil
 }
 
+// ToBeSigned returns the bytes an assembler signs for this report. It encodes the report with an
+// empty signature (so the value is independent of the Signature field) and binds it to the
+// assembler-report signature domain, matching the pattern used by Complaint.ToBeSigned. The signer
+// (assembler) and the verifier (consensus, in verifyCE) must produce identical bytes here.
+func (r *AssemblerDecisionReport) ToBeSigned() []byte {
+	toBeSigned := AssemblerDecisionReport{
+		Party:       r.Party,
+		DecisionNum: r.DecisionNum,
+		Signature:   nil,
+	}
+	return types.PrefixWithDomain(types.DomainAssemblerDecisionReport, toBeSigned.Bytes())
+}
+
 func (r *AssemblerDecisionReport) String() string {
 	return fmt.Sprintf("AssemblerDecisionReport: Party: %d; DecisionNum: %d", r.Party, r.DecisionNum)
 }

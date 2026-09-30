@@ -892,6 +892,73 @@ func TestVerifyRequestAcceptsStaleConfigSeq(t *testing.T) {
 	require.ErrorContains(t, err, "config sequence ahead")
 }
 
+// TestVerifyRequestAssemblerDecisionReport covers the AssemblerDecisionReport branch of verifyCE
+// (reached via the exported VerifyRequest): a report is accepted only when its signature verifies
+// against the reporting party's assembler identity. A report signed by the right assembler passes;
+// a tampered signature, a report from a party with no registered assembler key, and an unsigned
+// report are all rejected.
+func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	assemblerSK, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	assemblerSigner := crypto.ECDSASigner(*assemblerSK)
+
+	// Only party 1's assembler key is registered in the verifier.
+	verifier := make(crypto.ECDSAVerifier)
+	verifier[arma_types.NewAssemblerIdentity(arma_types.PartyID(1))] = assemblerSigner.PublicKey
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.SequenceReturns(2)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	c := &node_consensus.Consensus{
+		Logger:      logger,
+		SigVerifier: verifier,
+		Config:      &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
+	}
+
+	reportReq := func(r *state.AssemblerDecisionReport) []byte {
+		return (&state.ControlEvent{AssemblerReport: r}).Bytes()
+	}
+
+	t.Run("accepts a report signed by the party's assembler", func(t *testing.T) {
+		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 100}
+		report.Signature, err = assemblerSigner.Sign(report.ToBeSigned())
+		require.NoError(t, err)
+
+		_, err = c.VerifyRequest(reportReq(report))
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects a report with a tampered signature", func(t *testing.T) {
+		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 100}
+		report.Signature, err = assemblerSigner.Sign(report.ToBeSigned())
+		require.NoError(t, err)
+		report.DecisionNum = 200 // signature no longer matches the signed bytes
+
+		_, err = c.VerifyRequest(reportReq(report))
+		require.Error(t, err)
+	})
+
+	t.Run("rejects a report from a party with no registered assembler", func(t *testing.T) {
+		report := &state.AssemblerDecisionReport{Party: 2, DecisionNum: 100}
+		report.Signature, err = assemblerSigner.Sign(report.ToBeSigned())
+		require.NoError(t, err)
+
+		_, err = c.VerifyRequest(reportReq(report))
+		require.ErrorContains(t, err, "key does not exist")
+	})
+
+	t.Run("rejects an unsigned report", func(t *testing.T) {
+		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 100}
+
+		_, err = c.VerifyRequest(reportReq(report))
+		require.ErrorContains(t, err, "missing assembler decision report signature")
+	})
+}
+
 // TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs covers the VerifyProposal reqInfos loop
 // (consensus.go) during a config bump. A BAF exactly one config behind is still verified and reported
 // in reqInfos, so the follower's reqInfos stay consistent with the leader's while consensus surfaces
@@ -1228,7 +1295,11 @@ func TestVerifyProposal(t *testing.T) {
 	// The report is inert in state processing, so it does not affect the computed state / blocks;
 	// it must still be dispatched by getReqConfigSeq and RequestID (not rejected as an empty event).
 	t.Log("proposal with assembler decision report")
-	report := &state.ControlEvent{AssemblerReport: &state.AssemblerDecisionReport{Party: 2, DecisionNum: 100, Signature: []byte{1, 2, 3}}}
+	verifier[arma_types.NewAssemblerIdentity(arma_types.PartyID(2))] = crypto.ECDSASigner(*sks[1]).PublicKey
+	assemblerReport := &state.AssemblerDecisionReport{Party: 2, DecisionNum: 100}
+	assemblerReport.Signature, err = crypto.ECDSASigner(*sks[1]).Sign(assemblerReport.ToBeSigned())
+	require.NoError(t, err)
+	report := &state.ControlEvent{AssemblerReport: assemblerReport}
 	reqsWithReport := append(append([][]byte{}, reqs...), report.Bytes())
 	brsWithReport := arma_types.BatchedRequests(reqsWithReport)
 	infosWithReport, err := c.VerifyProposal(smartbft_types.Proposal{
