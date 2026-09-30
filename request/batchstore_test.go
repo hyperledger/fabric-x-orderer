@@ -9,6 +9,7 @@ package request
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"runtime"
 	"sync"
@@ -222,6 +223,77 @@ func TestBatchStoreRemoveRequests(t *testing.T) {
 	// An empty call must not panic.
 	bs.RemoveRequests()
 	assert.Equal(t, n, int(atomic.LoadUint32(&removed)))
+}
+
+// TestBatchStorePrune is a regression test for the following issue: batch.Prune only
+// deleted matching keys from the batch's own map, without routing them through
+// the same cleanup as Remove. As a result pruned ids stayed in keys2Batches (so
+// re-submissions were rejected as duplicates) and onDelete never fired (so the
+// pool's capacity/semaphore permits leaked).
+//
+// The predicate signals "prune this key" by returning a non-nil error.
+func TestBatchStorePrune(t *testing.T) {
+	const batchMaxSize = uint32(100)
+	const lenByte = uint32(8)
+	var removed uint32
+
+	sugaredLogger := testutil.CreateLogger(t, 0)
+
+	bs := NewBatchStore(batchMaxSize, 1<<30, func(string) {
+		atomic.AddUint32(&removed, 1)
+	}, sugaredLogger)
+
+	requestInspector := &reqInspector{}
+
+	makeKey := func(i int) []byte {
+		key := make([]byte, lenByte)
+		binary.BigEndian.PutUint32(key[4:], uint32(i))
+		return key
+	}
+
+	// Insert enough keys to rotate the current batch into several readyBatches, so
+	// the prune below covers the multi-batch path rather than a single currentBatch.
+	const n = 300
+	ids := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		key := makeKey(i)
+		keyID := requestInspector.RequestID(key)
+		require.True(t, bs.Insert(keyID, key, uint32(len(key))))
+		ids = append(ids, keyID)
+	}
+	require.Greater(t, len(bs.readyBatches), 1, "expected keys to span several rotated batches")
+
+	// Prune every even-indexed key.
+	pruned := make(map[string]bool)
+	for i := 0; i < n; i += 2 {
+		pruned[ids[i]] = true
+	}
+	bs.Prune(func(k, _ interface{}) error {
+		if pruned[k.(string)] {
+			return errors.New("prune")
+		}
+		return nil
+	})
+
+	// onDelete must have fired exactly once per pruned key (reclaimed capacity).
+	assert.Equal(t, len(pruned), int(atomic.LoadUint32(&removed)))
+
+	// Pruned keys must be gone and unpruned keys must remain.
+	for i := 0; i < n; i++ {
+		_, exists := bs.Lookup(ids[i])
+		if pruned[ids[i]] {
+			assert.False(t, exists, "pruned key %s should be gone", ids[i])
+		} else {
+			assert.True(t, exists, "unpruned key %s should remain", ids[i])
+		}
+	}
+
+	// A pruned key must no longer be treated as a duplicate: re-inserting it must
+	// succeed (its keys2Batches entry was cleared).
+	for i := 0; i < n; i += 2 {
+		key := makeKey(i)
+		assert.True(t, bs.Insert(ids[i], key, uint32(len(key))), "pruned key %s should be re-insertable", ids[i])
+	}
 }
 
 // BenchmarkBatchStoreRemoveRequests compares the shipped parallel fan-out
