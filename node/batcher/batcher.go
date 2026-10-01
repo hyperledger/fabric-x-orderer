@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	smartbft_wal "github.com/hyperledger-labs/SmartBFT/pkg/wal"
+	smartbft_wal "github.com/hyperledger/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"

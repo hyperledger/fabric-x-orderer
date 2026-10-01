@@ -130,6 +130,13 @@ PeerOrgs:
     # ---------------------------------------------------------------------------
     # Count: The number of user accounts _in addition_ to Admin
     # PublicKeyAlgorithm: Users' key algorithm ("ecdsa" or "ed25519")
+    # Specs: Explicit user definitions. Each Spec entry may set:
+    #   - Name: (Required) the user's name; the credential is placed at
+    #           users/<Name>@<Domain>, same as any other user.
+    #   - PublicKeyAlgorithm: (Optional) this user's key algorithm.
+    #   - Admin: (Optional, default false) if true, this user is generated as an
+    #            organization administrator, with admin capabilities exactly like
+    #            the pregenerated Admin user.
     # ---------------------------------------------------------------------------
     Users:
       Count: 1

@@ -9,7 +9,7 @@ package synchronizer
 import (
 	"sync"
 
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 )
 
 // Holder is a stable indirection over a SynchronizerWithStop.

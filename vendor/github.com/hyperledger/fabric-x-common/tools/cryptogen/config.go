@@ -64,6 +64,9 @@ type UsersSpec struct {
 type UserSpec struct {
 	Name               string `yaml:"Name"`
 	PublicKeyAlgorithm string `yaml:"PublicKeyAlgorithm"`
+	// Admin marks the user as an organization administrator, granting it admin
+	// capabilities exactly like the pregenerated Admin user. Defaults to false.
+	Admin bool `yaml:"Admin"`
 }
 
 // ParseConfig parses config data from string.
