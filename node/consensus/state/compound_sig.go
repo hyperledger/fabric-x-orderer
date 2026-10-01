@@ -9,7 +9,7 @@ package state
 import (
 	"encoding/asn1"
 
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 	"github.com/pkg/errors"
 )
 

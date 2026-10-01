@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"time"
 
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"

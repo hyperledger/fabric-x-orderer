@@ -13,7 +13,7 @@ import (
 
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
 

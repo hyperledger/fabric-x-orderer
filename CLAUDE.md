@@ -24,7 +24,7 @@ flow is: **Router → Batcher → Consenter → Assembler**.
   replicates them within the shard (one *primary* per shard/term; *secondaries* pull-verify-ack),
   and sends compact **Batch Attestation Fragments (BAFs)** — a signed digest + metadata — to the
   consenters. Payloads stay in the batcher; they never cross the consensus path.
-- **Consenter** (`node/consensus`) — runs SmartBFT (see: https://github.com/hyperledger-labs/SmartBFT) 
+- **Consenter** (`node/consensus`) — runs SmartBFT (see: https://github.com/hyperledger/SmartBFT) 
   over BAFs and control events, emitting a total order of **Batch Attestations (BAs)**. 
   Also the system controller (e.g. changing a shard's primary on enough complaints).
 - **Assembler** (`node/assembler`) — collates the ordered BA stream from consensus with full
@@ -119,7 +119,7 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
 ## Conventions
 
 - Go 1.27. Depends heavily on `hyperledger/fabric-x-common`, `hyperledger/fabric-lib-go` (MSP,
-  BCCSP, flogging), `fabric-protos-go-apiv2`, and `hyperledger-labs/SmartBFT` (consensus engine).
+  BCCSP, flogging), `fabric-protos-go-apiv2`, and `hyperledger/SmartBFT` (consensus engine).
 - Logging is `flogging` (`FabricLogger`), typically named per role/party
   (e.g. `Batcher%dShard%d`).
 - Errors use `github.com/pkg/errors` (wrap with context).

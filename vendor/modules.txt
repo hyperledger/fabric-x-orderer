@@ -101,9 +101,6 @@ github.com/consensys/gnark-crypto/field/hash
 github.com/consensys/gnark-crypto/field/pool
 github.com/consensys/gnark-crypto/internal/parallel
 github.com/consensys/gnark-crypto/utils/cpu
-# github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
-## explicit
-github.com/davecgh/go-spew/spew
 # github.com/expr-lang/expr v1.17.8
 ## explicit; go 1.18
 github.com/expr-lang/expr
@@ -180,16 +177,16 @@ github.com/google/pprof/profile
 # github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 ## explicit; go 1.14
 github.com/grpc-ecosystem/go-grpc-middleware
-# github.com/hyperledger-labs/SmartBFT v1.0.1
-## explicit; go 1.26.0
-github.com/hyperledger-labs/SmartBFT/internal/bft
-github.com/hyperledger-labs/SmartBFT/pkg/api
-github.com/hyperledger-labs/SmartBFT/pkg/consensus
-github.com/hyperledger-labs/SmartBFT/pkg/metrics
-github.com/hyperledger-labs/SmartBFT/pkg/metrics/disabled
-github.com/hyperledger-labs/SmartBFT/pkg/types
-github.com/hyperledger-labs/SmartBFT/pkg/wal
-github.com/hyperledger-labs/SmartBFT/smartbftprotos
+# github.com/hyperledger/SmartBFT v1.0.2
+## explicit; go 1.26.3
+github.com/hyperledger/SmartBFT/internal/bft
+github.com/hyperledger/SmartBFT/pkg/api
+github.com/hyperledger/SmartBFT/pkg/consensus
+github.com/hyperledger/SmartBFT/pkg/metrics
+github.com/hyperledger/SmartBFT/pkg/metrics/disabled
+github.com/hyperledger/SmartBFT/pkg/types
+github.com/hyperledger/SmartBFT/pkg/wal
+github.com/hyperledger/SmartBFT/smartbftprotos
 # github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2
 ## explicit
 github.com/hyperledger/fabric-amcl/amcl
@@ -230,7 +227,7 @@ github.com/hyperledger/fabric-protos-go-apiv2/orderer
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/etcdraft
 github.com/hyperledger/fabric-protos-go-apiv2/orderer/smartbft
 github.com/hyperledger/fabric-protos-go-apiv2/peer
-# github.com/hyperledger/fabric-x-common v0.2.9-0.20260915094628-b0a1726dff6d
+# github.com/hyperledger/fabric-x-common v0.2.9
 ## explicit; go 1.27.0
 github.com/hyperledger/fabric-x-common/api/msppb
 github.com/hyperledger/fabric-x-common/api/ordererpb
@@ -331,9 +328,6 @@ github.com/pelletier/go-toml/v2/unstable
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-## explicit
-github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v1.23.2
 ## explicit; go 1.23.0
 github.com/prometheus/client_golang/internal/github.com/golang/gddo/httputil
@@ -385,13 +379,15 @@ github.com/spf13/viper/internal/encoding/json
 github.com/spf13/viper/internal/encoding/toml
 github.com/spf13/viper/internal/encoding/yaml
 github.com/spf13/viper/internal/features
-# github.com/stretchr/objx v0.5.2
+# github.com/stretchr/objx v0.5.3
 ## explicit; go 1.20
 github.com/stretchr/objx
-# github.com/stretchr/testify v1.11.1
+# github.com/stretchr/testify v1.12.1
 ## explicit; go 1.17
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
+github.com/stretchr/testify/internal/difflib
+github.com/stretchr/testify/internal/spew
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
 # github.com/subosito/gotenv v1.6.0
@@ -432,7 +428,7 @@ go.uber.org/zap/zapgrpc
 # go.yaml.in/yaml/v2 v2.4.2
 ## explicit; go 1.15
 go.yaml.in/yaml/v2
-# go.yaml.in/yaml/v3 v3.0.4
+# go.yaml.in/yaml/v3 v3.0.5
 ## explicit; go 1.16
 go.yaml.in/yaml/v3
 # golang.org/x/crypto v0.55.0
@@ -455,8 +451,8 @@ golang.org/x/net/internal/httpcommon
 golang.org/x/net/internal/httpsfv
 golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
-# golang.org/x/sync v0.22.0
-## explicit; go 1.25.0
+# golang.org/x/sync v0.23.0
+## explicit; go 1.26.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 # golang.org/x/sys v0.47.0
@@ -582,7 +578,7 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.36.11
+# google.golang.org/protobuf v1.36.12
 ## explicit; go 1.23
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson

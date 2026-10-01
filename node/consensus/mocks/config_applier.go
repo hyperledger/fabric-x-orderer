@@ -4,7 +4,7 @@ package mocks
 import (
 	"sync"
 
-	"github.com/hyperledger-labs/SmartBFT/pkg/types"
+	"github.com/hyperledger/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	typesa "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"

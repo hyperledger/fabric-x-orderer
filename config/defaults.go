@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 )
 
 var DefaultNodeLocalConfig = NodeLocalConfig{

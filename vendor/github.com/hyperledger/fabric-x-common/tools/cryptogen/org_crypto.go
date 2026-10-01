@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package cryptogen
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -198,26 +199,14 @@ func (c *orgCryptoTree) generateOrg() error {
 	}
 
 	// generate users with the admin user.
-	orgAdminUser := adminUser(orgName)
-	users := append(c.generateUsers(), orgAdminUser)
+	users := append(c.generateUsers(), adminUser(orgName))
 	err = c.generateNodes(users, p)
 	if err != nil {
 		return err
 	}
 
-	// copy the admin cert to the org's MSP admincerts.
-	if !s.EnableNodeOUs {
-		err = c.overwriteAdminCert(c.AdminCerts, orgAdminUser.CommonName)
-		if err != nil {
-			return err
-		}
-		err = c.overwriteNodesAdminCert(orgAdminUser.CommonName)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	// copy the admin certs to the org's and nodes' MSP admincerts.
+	return c.syncAdminCerts(users)
 }
 
 // extendOrg extends the organization's crypto.
@@ -247,19 +236,13 @@ func (c *orgCryptoTree) extendOrg() error {
 		return err
 	}
 
-	err = c.generateNodes(c.generateUsers(), p)
+	users := append(c.generateUsers(), adminUser(s.Domain))
+	err = c.generateNodes(users, p)
 	if err != nil {
 		return err
 	}
 
-	if !c.OrgSpec.EnableNodeOUs {
-		err = c.overwriteNodesAdminCert(adminUser(s.Domain).CommonName)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return c.syncAdminCerts(users)
 }
 
 func (c *orgCryptoTree) generateUsers() []NodeSpec {
@@ -268,10 +251,15 @@ func (c *orgCryptoTree) generateUsers() []NodeSpec {
 	users := make([]NodeSpec, 0, len(s.Users.Specs)+s.Users.Count)
 	publicKeyAlg := getPublicKeyAlg(s.Users.PublicKeyAlgorithm)
 	for _, spec := range s.Users.Specs {
+		ou := ClientOU
+		if spec.Admin {
+			ou = AdminOU
+		}
 		users = append(users, NodeSpec{
-			CommonName:         fmt.Sprintf("%s@%s", spec.Name, orgName),
-			PublicKeyAlgorithm: publicKeyAlg,
-			OrganizationalUnit: ClientOU,
+			CommonName: fmt.Sprintf("%s@%s", spec.Name, orgName),
+			// the user's own algorithm wins over the org-wide one.
+			PublicKeyAlgorithm: cmp.Or(spec.PublicKeyAlgorithm, publicKeyAlg),
+			OrganizationalUnit: ou,
 		})
 	}
 	for j := range s.Users.Count {
@@ -284,10 +272,40 @@ func (c *orgCryptoTree) generateUsers() []NodeSpec {
 	return users
 }
 
-// overwriteNodesAdminCert overwrite the admin cert to each node with the org's MSP admincerts.
-func (c *orgCryptoTree) overwriteNodesAdminCert(orgAdminUserName string) error {
+// syncAdminCerts copies every admin user's cert into the org's and each node's MSP admincerts.
+// It is a no-op when node OUs are enabled, since admin authority is then conveyed by the OU
+// classification instead of admincerts membership.
+func (c *orgCryptoTree) syncAdminCerts(users []NodeSpec) error {
+	if c.OrgSpec.EnableNodeOUs {
+		return nil
+	}
+
+	// find all admin users so that we can sync their signcerts under the org admincerts/ folder
+	names := adminNames(users)
+	err := c.overwriteAdminCerts(c.AdminCerts, names...)
+	if err != nil {
+		return err
+	}
+
+	return c.overwriteNodesAdminCert(names...)
+}
+
+// adminNames returns the common names of every admin user among the given specs.
+func adminNames(users []NodeSpec) []string {
+	names := make([]string, 0, len(users))
+	for _, u := range users {
+		if u.OrganizationalUnit == AdminOU {
+			names = append(names, u.CommonName)
+		}
+	}
+
+	return names
+}
+
+// overwriteNodesAdminCert overwrites the admin certs on each node with the org's MSP admincerts.
+func (c *orgCryptoTree) overwriteNodesAdminCert(adminUserNames ...string) error {
 	for _, spec := range c.OrgSpec.Specs {
-		err := c.overwriteAdminCert(c.subNodeFromSpec(&spec).AdminCerts, orgAdminUserName)
+		err := c.overwriteAdminCerts(c.subNodeFromSpec(&spec).AdminCerts, adminUserNames...)
 		if err != nil {
 			return err
 		}
@@ -295,11 +313,9 @@ func (c *orgCryptoTree) overwriteNodesAdminCert(orgAdminUserName string) error {
 	return nil
 }
 
-func (c *orgCryptoTree) overwriteAdminCert(adminCertsDir, adminUserName string) error {
-	adminCertPath := filepath.Join(adminCertsDir, adminUserName+"-cert.pem")
-	if _, err := os.Stat(adminCertPath); !os.IsNotExist(err) {
-		return nil
-	}
+// overwriteAdminCerts rebuilds the given admincerts directory from scratch, so that admins
+// dropped from the config lose their authority instead of lingering in an existing directory.
+func (c *orgCryptoTree) overwriteAdminCerts(adminCertsDir string, adminUserNames ...string) error {
 	// delete the contents of admincerts
 	err := os.RemoveAll(adminCertsDir)
 	if err != nil {
@@ -310,8 +326,15 @@ func (c *orgCryptoTree) overwriteAdminCert(adminCertsDir, adminUserName string) 
 	if err != nil {
 		return errors.Wrapf(err, "error creating admin cert directory %s", adminCertsDir)
 	}
-	src := filepath.Join(c.subUser(adminUserName).SignCerts, adminUserName+"-cert.pem")
-	return copyFile(src, adminCertPath)
+	for _, adminUserName := range adminUserNames {
+		src := filepath.Join(c.subUser(adminUserName).SignCerts, adminUserName+"-cert.pem")
+		dst := filepath.Join(adminCertsDir, adminUserName+"-cert.pem")
+		err = copyFile(src, dst)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *orgCryptoTree) generateNodes(nodes []NodeSpec, p nodeParameters) error {

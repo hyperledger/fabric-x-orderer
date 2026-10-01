@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	smartbft_types "github.com/hyperledger-labs/SmartBFT/pkg/types"
+	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
