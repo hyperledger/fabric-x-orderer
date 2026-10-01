@@ -65,6 +65,7 @@ In order to submit a TX the submitting client must connect to the router endpoin
 Even though a submitting party may submit to a single party it trusts, that may incur a performance penalty and may lead to censorship, and thus is strongly discouraged.
 
 In order to pull blocks it is enough for a scalable committer (peer) to connect to the assembler that belongs to its own party.
+For the assembler and its `Deliver` interface in detail, see [assembler](docs/assembler.md).
 
 The standard clients used in Fabric for submitting and pulling blocks should generally be compatible with Arma, with some minor adjustments.
 

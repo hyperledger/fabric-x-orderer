@@ -102,6 +102,7 @@ Routers, Batchers and Assebmlers consume decisions from consensus nodes acting a
 Assembler:
 * `Deliver` - the assembler accepts a signed envelope from a client and responds with the requested blocks.
 In order to pull blocks it is enough for a scalable committer (peer) to connect to the assembler that belongs to its own party.
+For the seek request, the access control applied to it, and the rest of the assembler's client interface, see [Assembler](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/assembler.md#2-consuming-blocks-the-client-interface).
 
 
 For more details on Arma see [Hyperledger Fabric-X orderer](https://github.com/hyperledger/fabric-x-orderer/blob/main/README.md).
