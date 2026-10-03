@@ -61,6 +61,37 @@ func TestAssemblerDecisionReportSerialization(t *testing.T) {
 	})
 }
 
+// TestAssemblerDecisionReportToBeSigned verifies that ToBeSigned is signature-independent (so a
+// signature verifies regardless of the Signature field's current value) and is bound to the
+// assembler-report signature domain (so it can never be replayed as a signature over another
+// message family).
+func TestAssemblerDecisionReportToBeSigned(t *testing.T) {
+	report := consensus_state.AssemblerDecisionReport{
+		Party:       types.PartyID(2),
+		DecisionNum: types.DecisionNum(100),
+		Signature:   []byte{1, 2, 3},
+	}
+
+	reportNoSig := consensus_state.AssemblerDecisionReport{
+		Party:       types.PartyID(2),
+		DecisionNum: types.DecisionNum(100),
+	}
+
+	t.Run("is independent of the Signature field", func(t *testing.T) {
+		assert.Equal(t, reportNoSig.ToBeSigned(), report.ToBeSigned())
+	})
+
+	t.Run("is bound to the assembler-report domain", func(t *testing.T) {
+		expected := types.PrefixWithDomain(types.DomainAssemblerDecisionReport, reportNoSig.Bytes())
+		assert.Equal(t, expected, report.ToBeSigned())
+	})
+
+	t.Run("differs from the complaint domain", func(t *testing.T) {
+		complaint := consensus_state.Complaint{Signer: types.PartyID(2)}
+		assert.NotEqual(t, complaint.ToBeSigned(), report.ToBeSigned())
+	})
+}
+
 // TestAssemblerDecisionReportRejectsPartyZero verifies that a report decoded from protobuf with a
 // zero party is rejected: PartyID must be greater than zero (common/types/types.go), otherwise an
 // unsigned-check-passing report with party 0 would be accepted downstream.
