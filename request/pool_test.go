@@ -520,6 +520,78 @@ func TestBasicPrune(t *testing.T) {
 	assert.ElementsMatch(t, []string{"5", "6", "10", "11"}, ids)
 }
 
+// TestPrunePermitReclaimAndResubmit is a regression test for the following issue. In
+// batching mode a prune must both reclaim the pool's capacity (semaphore permit
+// + size counter) and clear the pruned ids from the batch store, so that pruned
+// requests can be re-submitted rather than rejected as duplicates. Before the fix
+// batch.Prune did neither: RequestCount stayed at the pre-prune value (so the test
+// fails at the RequestCount assertion below), and the pruned ids were rejected as
+// duplicates on re-submission.
+func TestPrunePermitReclaimAndResubmit(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
+	insp := &testRequestInspector{}
+	pool := NewPool(sugaredLogger, insp.RequestID, PoolOptions{
+		FirstStrikeThreshold:  time.Second * 5,
+		SecondStrikeThreshold: time.Minute / 2,
+		BatchMaxSize:          10,
+		BatchMaxSizeBytes:     1000,
+		MaxSize:               5,
+		RequestMaxBytes:       100 * 1024,
+		AutoRemoveTimeout:     time.Second * 10,
+		// Submit's Acquire is already context-bounded (pool.go), so a leaked permit
+		// cannot hang; a short timeout just keeps a permit-leak regression fast.
+		SubmitTimeout: time.Second,
+	}, &striker{})
+	defer pool.Close()
+
+	pool.Restart(true)
+
+	// Fill the pool to its full capacity.
+	for i := 0; i < 5; i++ {
+		require.NoError(t, pool.Submit(makeTestRequest(fmt.Sprintf("%d", i), "foo")))
+	}
+	require.Equal(t, int64(5), pool.RequestCount())
+
+	// Prune everything while still in batching mode (no Restart in between).
+	pool.Prune(func([]byte) error { return errors.New("prune") })
+
+	// Capacity must have been reclaimed.
+	require.Equal(t, int64(0), pool.RequestCount())
+
+	// The pruned ids must be re-submittable (not rejected as duplicates), which
+	// also proves the semaphore permits were released.
+	for i := 0; i < 5; i++ {
+		require.NoError(t, pool.Submit(makeTestRequest(fmt.Sprintf("%d", i), "foo")))
+	}
+	require.Equal(t, int64(5), pool.RequestCount())
+}
+
+// TestPruneAfterClose asserts Pool.Prune is a no-op after Close rather than a
+// nil-deref panic. Close nils batchStore and pending; without an isClosed guard a
+// Prune that wins the lock after Close dereferences them. This is reachable in
+// process when Batcher.Stop races processNewConfigBlock.
+func TestPruneAfterClose(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
+	insp := &testRequestInspector{}
+	pool := NewPool(sugaredLogger, insp.RequestID, PoolOptions{
+		FirstStrikeThreshold:  time.Second * 5,
+		SecondStrikeThreshold: time.Minute / 2,
+		BatchMaxSize:          10,
+		BatchMaxSizeBytes:     1000,
+		MaxSize:               5,
+		RequestMaxBytes:       100 * 1024,
+		AutoRemoveTimeout:     time.Second * 10,
+		SubmitTimeout:         time.Second,
+	}, &striker{})
+
+	pool.Restart(true)
+	pool.Close()
+
+	require.NotPanics(t, func() {
+		pool.Prune(func([]byte) error { return nil })
+	})
+}
+
 // requireMatchingIDs asserts that NextRequests returned exactly one id per
 // request, and that each id is the RequestID of the request at the same index.
 func requireMatchingIDs(t *testing.T, requestID func([]byte) string, requests [][]byte, ids []string) {

@@ -110,15 +110,34 @@ func (bs *BatchStore) ForEach(f func(k, v interface{})) {
 	})
 }
 
+// Prune removes every request for which f returns a non-nil error, routing each
+// removal through the same cleanup as Remove (batch map, keys2Batches index, and
+// the pool's onDelete) so pruned ids reclaim capacity and are re-insertable.
+//
+// It takes the write lock rather than a read lock: Remove is not synchronized by
+// bs.lock, so under a read lock a concurrent Insert of a key being pruned could
+// interleave between Remove's keys2Batches delete and its batch delete, leaving a
+// dangling index entry (the key rejected as a duplicate yet absent from every
+// batch) and a double onDelete. The write lock serializes Prune against Insert.
 func (bs *BatchStore) Prune(f func(k, v interface{}) error) {
-	bs.lock.RLock()
-	defer bs.lock.RUnlock()
+	bs.lock.Lock()
+	defer bs.lock.Unlock()
 
-	for _, batch := range bs.readyBatches {
-		batch.Prune(f)
+	prune := func(b *batch) {
+		b.Range(func(k, v any) bool {
+			if f(k, v) != nil {
+				if key, ok := k.(string); ok {
+					bs.Remove(key)
+				}
+			}
+			return true
+		})
 	}
 
-	bs.currentBatch.Prune(f)
+	for _, b := range bs.readyBatches {
+		prune(b)
+	}
+	prune(bs.currentBatch)
 }
 
 // RemoveRequests removes multiple keys concurrently via parallelForEachKey,
