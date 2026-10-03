@@ -43,10 +43,10 @@ var _ deliver.PolicyChecker = (*deliver.NodeVerifier)(nil)
 
 // allNodes are the nodes of a service every node connects to.
 var allNodes = []types.NodeIdentity{
-	{PartyID: deliver.AnyParty, Role: types.RoleRouter},
-	{PartyID: deliver.AnyParty, Role: types.RoleBatcher, ShardID: deliver.AnyShard},
-	{PartyID: deliver.AnyParty, Role: types.RoleConsenter},
-	{PartyID: deliver.AnyParty, Role: types.RoleAssembler},
+	types.NewRouterIdentity(deliver.AnyParty),
+	types.NewBatcherIdentity(deliver.AnyParty, deliver.AnyShard),
+	types.NewConsenterIdentity(deliver.AnyParty),
+	types.NewAssemblerIdentity(deliver.AnyParty),
 }
 
 // Scenario:
@@ -64,11 +64,11 @@ func TestVerifyRequestSignedByMSPIdentity(t *testing.T) {
 	certPEM, err := signer.GetCertificatePEM()
 	require.NoError(t, err)
 
-	batcher := types.NodeIdentity{PartyID: 1, Role: types.RoleBatcher, ShardID: 2}
+	batcher := types.NewBatcherIdentity(1, 2)
 
 	verifier, err := deliver.NewNodeVerifier(
 		bundleOf(t, sharedConfig(t, map[types.NodeIdentity][]byte{batcher: certPEM})),
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleBatcher, ShardID: deliver.AnyShard},
+		types.NewBatcherIdentity(deliver.AnyParty, deliver.AnyShard),
 	)
 	require.NoError(t, err)
 
@@ -84,16 +84,16 @@ func TestVerifyRequestSignedByMSPIdentity(t *testing.T) {
 // 4. Verify every request, and expect the node whose signing certificate it carries.
 func TestVerifyRequestOfEveryNode(t *testing.T) {
 	nodes := []types.NodeIdentity{
-		{PartyID: 1, Role: types.RoleRouter},
-		{PartyID: 1, Role: types.RoleBatcher, ShardID: 1},
-		{PartyID: 1, Role: types.RoleBatcher, ShardID: 2},
-		{PartyID: 1, Role: types.RoleConsenter},
-		{PartyID: 1, Role: types.RoleAssembler},
-		{PartyID: 2, Role: types.RoleRouter},
-		{PartyID: 2, Role: types.RoleBatcher, ShardID: 1},
-		{PartyID: 2, Role: types.RoleBatcher, ShardID: 2},
-		{PartyID: 2, Role: types.RoleConsenter},
-		{PartyID: 2, Role: types.RoleAssembler},
+		types.NewRouterIdentity(1),
+		types.NewBatcherIdentity(1, 1),
+		types.NewBatcherIdentity(1, 2),
+		types.NewConsenterIdentity(1),
+		types.NewAssemblerIdentity(1),
+		types.NewRouterIdentity(2),
+		types.NewBatcherIdentity(2, 1),
+		types.NewBatcherIdentity(2, 2),
+		types.NewConsenterIdentity(2),
+		types.NewAssemblerIdentity(2),
 	}
 
 	certs, signers := signersOfNodes(t, nodes)
@@ -119,7 +119,7 @@ func TestVerifyRequestOfEveryNode(t *testing.T) {
 //  4. Verify the request, and expect the assembler of party 1.
 func TestVerifyRequestOfReSignedCertificate(t *testing.T) {
 	certPEM, key := generateSignCert(t)
-	node := types.NodeIdentity{PartyID: 1, Role: types.RoleAssembler}
+	node := types.NewAssemblerIdentity(1)
 
 	certs := map[types.NodeIdentity][]byte{node: certPEM}
 	verifier, err := deliver.NewNodeVerifier(bundleOf(t, sharedConfig(t, certs)), allNodes...)
@@ -140,8 +140,8 @@ func TestVerifyRequestOfReSignedCertificate(t *testing.T) {
 func TestVerifyRequestOfSharedSigningCertificate(t *testing.T) {
 	certPEM, key := generateSignCert(t)
 
-	router := types.NodeIdentity{PartyID: 1, Role: types.RoleRouter}
-	assembler := types.NodeIdentity{PartyID: 1, Role: types.RoleAssembler}
+	router := types.NewRouterIdentity(1)
+	assembler := types.NewAssemblerIdentity(1)
 
 	certs := map[types.NodeIdentity][]byte{router: certPEM, assembler: certPEM}
 	verifier, err := deliver.NewNodeVerifier(bundleOf(t, sharedConfig(t, certs)), allNodes...)
@@ -159,7 +159,7 @@ func TestVerifyRequestOfSharedSigningCertificate(t *testing.T) {
 //  3. Build a deliver request for each case in which a request must be refused.
 //  4. Verify every request, and expect a refusal that names the reason.
 func TestVerifyRequestRefusal(t *testing.T) {
-	consenter := types.NodeIdentity{PartyID: 1, Role: types.RoleConsenter}
+	consenter := types.NewConsenterIdentity(1)
 	consenterCertPEM, consenterKey := generateSignCert(t)
 	consenterSigner := &testSigner{certPEM: consenterCertPEM, key: consenterKey}
 
@@ -167,7 +167,7 @@ func TestVerifyRequestRefusal(t *testing.T) {
 
 	verifier, err := deliver.NewNodeVerifier(bundleOf(t, sharedConfig(t, map[types.NodeIdentity][]byte{
 		consenter: consenterCertPEM,
-	})), types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleConsenter})
+	})), types.NewConsenterIdentity(deliver.AnyParty))
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -299,7 +299,16 @@ func TestNewNodeVerifier(t *testing.T) {
 				RouterConfig: &ordererpb.RouterNodeConfig{SignCert: certPEM},
 			}},
 			nodes: []types.NodeIdentity{{PartyID: 1, Role: types.NodeRole(99)}},
-			error: `"unknown role (99)" is not a node role`,
+			error: "role 99 is not a node role",
+		},
+		{
+			name: "a node whose role is unset",
+			parties: []*ordererpb.PartyConfig{{
+				PartyID:      1,
+				RouterConfig: &ordererpb.RouterNodeConfig{SignCert: certPEM},
+			}},
+			nodes: []types.NodeIdentity{{PartyID: 1}},
+			error: "role 0 is not a node role",
 		},
 		{
 			name:    "no parties",
@@ -362,18 +371,18 @@ func TestNewNodeVerifier(t *testing.T) {
 //     authorized.
 func TestCheckPolicy(t *testing.T) {
 	nodes := []types.NodeIdentity{
-		{PartyID: 1, Role: types.RoleRouter},
-		{PartyID: 1, Role: types.RoleBatcher, ShardID: 1},
-		{PartyID: 1, Role: types.RoleConsenter},
-		{PartyID: 1, Role: types.RoleAssembler},
+		types.NewRouterIdentity(1),
+		types.NewBatcherIdentity(1, 1),
+		types.NewConsenterIdentity(1),
+		types.NewAssemblerIdentity(1),
 	}
 
 	certs, signers := signersOfNodes(t, nodes)
 
 	verifier, err := deliver.NewNodeVerifier(
 		bundleOf(t, sharedConfig(t, certs)),
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleBatcher, ShardID: deliver.AnyShard},
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleAssembler},
+		types.NewBatcherIdentity(deliver.AnyParty, deliver.AnyShard),
+		types.NewAssemblerIdentity(deliver.AnyParty),
 	)
 	require.NoError(t, err)
 
@@ -398,7 +407,7 @@ func TestCheckPolicy(t *testing.T) {
 	})
 
 	t.Run("a request that names another channel", func(t *testing.T) {
-		batcher := types.NodeIdentity{PartyID: 1, Role: types.RoleBatcher, ShardID: 1}
+		batcher := types.NewBatcherIdentity(1, 1)
 
 		require.NoError(t, verifier.CheckPolicy(signRequest(t, signers[batcher]), "another-channel"))
 	})
@@ -413,18 +422,18 @@ func TestCheckPolicy(t *testing.T) {
 //     assemblers, and a consenter to serve every role.
 func TestDeliverServiceRoles(t *testing.T) {
 	nodes := []types.NodeIdentity{
-		{PartyID: 1, Role: types.RoleRouter},
-		{PartyID: 1, Role: types.RoleBatcher, ShardID: 1},
-		{PartyID: 1, Role: types.RoleConsenter},
-		{PartyID: 1, Role: types.RoleAssembler},
+		types.NewRouterIdentity(1),
+		types.NewBatcherIdentity(1, 1),
+		types.NewConsenterIdentity(1),
+		types.NewAssemblerIdentity(1),
 	}
 
 	certs, signers := signersOfNodes(t, nodes)
 
 	batcherService, err := deliver.NewNodeVerifier(
 		bundleOf(t, sharedConfig(t, certs)),
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleBatcher, ShardID: 1},
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleAssembler},
+		types.NewBatcherIdentity(deliver.AnyParty, 1),
+		types.NewAssemblerIdentity(deliver.AnyParty),
 	)
 	require.NoError(t, err)
 
@@ -461,20 +470,20 @@ func TestBatcherDeliverServiceShard(t *testing.T) {
 	shardOfService := types.ShardID(1)
 
 	nodes := []types.NodeIdentity{
-		{PartyID: 1, Role: types.RoleBatcher, ShardID: 1},
-		{PartyID: 1, Role: types.RoleBatcher, ShardID: 2},
-		{PartyID: 1, Role: types.RoleAssembler},
-		{PartyID: 2, Role: types.RoleBatcher, ShardID: 1},
-		{PartyID: 2, Role: types.RoleBatcher, ShardID: 2},
-		{PartyID: 2, Role: types.RoleAssembler},
+		types.NewBatcherIdentity(1, 1),
+		types.NewBatcherIdentity(1, 2),
+		types.NewAssemblerIdentity(1),
+		types.NewBatcherIdentity(2, 1),
+		types.NewBatcherIdentity(2, 2),
+		types.NewAssemblerIdentity(2),
 	}
 
 	certs, signers := signersOfNodes(t, nodes)
 
 	batcherService, err := deliver.NewNodeVerifier(
 		bundleOf(t, sharedConfig(t, certs)),
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleBatcher, ShardID: shardOfService},
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleAssembler},
+		types.NewBatcherIdentity(deliver.AnyParty, shardOfService),
+		types.NewAssemblerIdentity(deliver.AnyParty),
 	)
 	require.NoError(t, err)
 
@@ -509,18 +518,18 @@ func TestDeliverServiceParty(t *testing.T) {
 	partyOfService := types.PartyID(1)
 
 	nodes := []types.NodeIdentity{
-		{PartyID: 1, Role: types.RoleRouter},
-		{PartyID: 1, Role: types.RoleConsenter},
-		{PartyID: 2, Role: types.RoleRouter},
-		{PartyID: 2, Role: types.RoleConsenter},
+		types.NewRouterIdentity(1),
+		types.NewConsenterIdentity(1),
+		types.NewRouterIdentity(2),
+		types.NewConsenterIdentity(2),
 	}
 
 	certs, signers := signersOfNodes(t, nodes)
 
 	verifier, err := deliver.NewNodeVerifier(
 		bundleOf(t, sharedConfig(t, certs)),
-		types.NodeIdentity{PartyID: partyOfService, Role: types.RoleRouter},
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleConsenter},
+		types.NewRouterIdentity(partyOfService),
+		types.NewConsenterIdentity(deliver.AnyParty),
 	)
 	require.NoError(t, err)
 
@@ -543,16 +552,16 @@ func TestDeliverServiceParty(t *testing.T) {
 //  3. Check the policy on a request of the assembler and of the router, and expect the decision of
 //     the service not to have followed the slice.
 func TestCheckPolicyAfterTheNodesThatConnectAreOverwritten(t *testing.T) {
-	router := types.NodeIdentity{PartyID: 1, Role: types.RoleRouter}
-	assembler := types.NodeIdentity{PartyID: 1, Role: types.RoleAssembler}
+	router := types.NewRouterIdentity(1)
+	assembler := types.NewAssemblerIdentity(1)
 
 	certs, signers := signersOfNodes(t, []types.NodeIdentity{router, assembler})
 
-	connect := []types.NodeIdentity{{PartyID: deliver.AnyParty, Role: types.RoleAssembler}}
+	connect := []types.NodeIdentity{types.NewAssemblerIdentity(deliver.AnyParty)}
 	verifier, err := deliver.NewNodeVerifier(bundleOf(t, sharedConfig(t, certs)), connect...)
 	require.NoError(t, err)
 
-	connect[0] = types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleRouter}
+	connect[0] = types.NewRouterIdentity(deliver.AnyParty)
 
 	require.NoError(t, verifier.CheckPolicy(signRequest(t, signers[assembler]), "arma"))
 

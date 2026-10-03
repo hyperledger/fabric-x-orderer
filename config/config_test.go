@@ -862,8 +862,8 @@ func TestExtractedBundleAuthorizesInternalDeliver(t *testing.T) {
 
 	batcherAccessControl, err := deliver.NewNodeVerifier(
 		batcherConfig.Bundle,
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleBatcher, ShardID: batcherConfig.ShardId},
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleAssembler},
+		types.NewBatcherIdentity(deliver.AnyParty, batcherConfig.ShardId),
+		types.NewAssemblerIdentity(deliver.AnyParty),
 	)
 	require.NoError(t, err)
 	require.NoError(t, batcherAccessControl.CheckPolicy(signedDeliverRequest(t, batcherOfShard1InParty2), "arma"))
@@ -883,10 +883,10 @@ func TestExtractedBundleAuthorizesInternalDeliver(t *testing.T) {
 
 	consenterAccessControl, err := deliver.NewNodeVerifier(
 		consenterConfig.Bundle,
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleRouter},
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleBatcher, ShardID: deliver.AnyShard},
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleConsenter},
-		types.NodeIdentity{PartyID: deliver.AnyParty, Role: types.RoleAssembler},
+		types.NewRouterIdentity(deliver.AnyParty),
+		types.NewBatcherIdentity(deliver.AnyParty, deliver.AnyShard),
+		types.NewConsenterIdentity(deliver.AnyParty),
+		types.NewAssemblerIdentity(deliver.AnyParty),
 	)
 	require.NoError(t, err)
 	require.NoError(t, consenterAccessControl.CheckPolicy(signedDeliverRequest(t, routerOfParty2), "arma"))

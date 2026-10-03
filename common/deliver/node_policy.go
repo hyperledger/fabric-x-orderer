@@ -63,7 +63,7 @@ func NewNodeVerifier(bundle channelconfig.Resources, nodesThatConnect ...types.N
 					connecting, connecting.ShardID)
 			}
 		default:
-			return nil, errors.Errorf("%q is not a node role", connecting.Role)
+			return nil, errors.Errorf("role %d is not a node role", uint8(connecting.Role))
 		}
 	}
 
