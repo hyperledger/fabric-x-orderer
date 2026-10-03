@@ -44,16 +44,3 @@ func (b *batch) Range(f func(key, value any) bool) {
 func (b *batch) Delete(key any) {
 	b.m.Delete(key)
 }
-
-// Prune invokes onPrune for every key whose predicate f returns a non-nil error.
-// The batch does not touch its own map here: onPrune (supplied by BatchStore) is
-// responsible for the full removal so that pruned keys go through the same
-// cleanup as Remove (batch map, keys2Batches index, and the pool's onDelete).
-func (b *batch) Prune(f func(key, value any) error, onPrune func(key any)) {
-	b.m.Range(func(key, value any) bool {
-		if f(key, value) != nil {
-			onPrune(key)
-		}
-		return true
-	})
-}

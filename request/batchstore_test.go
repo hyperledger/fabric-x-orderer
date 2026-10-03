@@ -269,7 +269,8 @@ func TestBatchStorePrune(t *testing.T) {
 		pruned[ids[i]] = true
 	}
 	bs.Prune(func(k, _ interface{}) error {
-		if pruned[k.(string)] {
+		key, _ := k.(string)
+		if pruned[key] {
 			return errors.New("prune")
 		}
 		return nil
@@ -288,11 +289,130 @@ func TestBatchStorePrune(t *testing.T) {
 		}
 	}
 
+	// Lookup only consults keys2Batches, so it cannot catch a request still sitting
+	// in a batch map that Fetch would propose. Check the batch maps directly: no
+	// pruned id may survive in readyBatches or currentBatch.
+	inBatchMaps := func(id string) bool {
+		for _, b := range bs.readyBatches {
+			if _, ok := b.Load(id); ok {
+				return true
+			}
+		}
+		_, ok := bs.currentBatch.Load(id)
+		return ok
+	}
+	for i := 0; i < n; i += 2 {
+		assert.False(t, inBatchMaps(ids[i]), "pruned key %s still present in a batch map", ids[i])
+	}
+
 	// A pruned key must no longer be treated as a duplicate: re-inserting it must
 	// succeed (its keys2Batches entry was cleared).
 	for i := 0; i < n; i += 2 {
 		key := makeKey(i)
 		assert.True(t, bs.Insert(ids[i], key, uint32(len(key))), "pruned key %s should be re-insertable", ids[i])
+	}
+}
+
+// TestBatchStorePruneConcurrentInsert is a regression test for a race in Prune.
+// Prune routes each removal through Remove, which is not synchronized by bs.lock
+// and works in two steps (keys2Batches.LoadAndDelete, then the batch delete). While
+// Prune held only a read lock, a concurrent Insert could interleave between those
+// two steps: its LoadOrStore re-created the index entry, Remove then cleared the
+// batch map, and the key was left present in keys2Batches but absent from every
+// batch -- so Fetch never proposed it, onDelete leaked a permit, and a later Insert
+// of the same id was rejected as a duplicate.
+//
+// The fix is to take the write lock in Prune so it serializes against Insert. This
+// test fails on the read-lock version (a dangling index entry surfaces as a key
+// that is absent from the store yet rejected as a duplicate) and passes once Prune
+// holds the write lock.
+func TestBatchStorePruneConcurrentInsert(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+	insp := &reqInspector{}
+
+	const iterations = 50000
+	for i := 0; i < iterations; i++ {
+		bs := NewBatchStore(100, 1<<30, func(string) {}, logger)
+
+		key := make([]byte, 8)
+		binary.BigEndian.PutUint32(key[4:], uint32(i))
+		id := insp.RequestID(key)
+
+		// Pre-populate K so the concurrent re-Insert below collides with Prune's
+		// Remove of the same key -- the only way the two-step Remove can interleave.
+		require.True(t, bs.Insert(id, key, uint32(len(key))))
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			bs.Prune(func(interface{}, interface{}) error {
+				return errors.New("prune")
+			})
+		}()
+		go func() {
+			defer wg.Done()
+			bs.Insert(id, key, uint32(len(key)))
+		}()
+		wg.Wait()
+
+		// If the key is absent from the store it must be cleanly absent: a dangling
+		// keys2Batches entry shows up as Lookup==false while a re-Insert is still
+		// rejected as a duplicate.
+		if _, present := bs.Lookup(id); !present {
+			require.True(t, bs.Insert(id, key, uint32(len(key))),
+				"key absent from store but rejected as duplicate: dangling keys2Batches entry (iteration %d)", i)
+		}
+	}
+}
+
+// TestBatchStorePruneConcurrentRemove asserts onDelete fires exactly once per key
+// when a Prune races RemoveRequests over the same keys. Prune holds the write lock
+// but Remove is unsynchronized, so the two removals still run concurrently; Remove's
+// LoadAndDelete makes exactly one of them win each key and fire onDelete.
+func TestBatchStorePruneConcurrentRemove(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+	insp := &reqInspector{}
+
+	const iterations = 2000
+	const n = 50
+	for it := 0; it < iterations; it++ {
+		var mu sync.Mutex
+		counts := make(map[string]int)
+		bs := NewBatchStore(1000, 1<<30, func(k string) {
+			mu.Lock()
+			counts[k]++
+			mu.Unlock()
+		}, logger)
+
+		ids := make([]string, 0, n)
+		for i := 0; i < n; i++ {
+			key := make([]byte, 8)
+			binary.BigEndian.PutUint32(key[0:], uint32(it))
+			binary.BigEndian.PutUint32(key[4:], uint32(i))
+			id := insp.RequestID(key)
+			require.True(t, bs.Insert(id, key, uint32(len(key))))
+			ids = append(ids, id)
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			bs.Prune(func(interface{}, interface{}) error { return errors.New("prune") })
+		}()
+		go func() {
+			defer wg.Done()
+			bs.RemoveRequests(ids...)
+		}()
+		wg.Wait()
+
+		for _, id := range ids {
+			mu.Lock()
+			c := counts[id]
+			mu.Unlock()
+			require.Equal(t, 1, c, "onDelete for %s fired %d times (iteration %d)", id, c, it)
+		}
 	}
 }
 

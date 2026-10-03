@@ -524,9 +524,9 @@ func TestBasicPrune(t *testing.T) {
 // batching mode a prune must both reclaim the pool's capacity (semaphore permit
 // + size counter) and clear the pruned ids from the batch store, so that pruned
 // requests can be re-submitted rather than rejected as duplicates. Before the fix
-// batch.Prune did neither: RequestCount stayed at the pre-prune value and a
-// re-submission of a pruned id blocked on the exhausted semaphore until it timed
-// out.
+// batch.Prune did neither: RequestCount stayed at the pre-prune value (so the test
+// fails at the RequestCount assertion below), and the pruned ids were rejected as
+// duplicates on re-submission.
 func TestPrunePermitReclaimAndResubmit(t *testing.T) {
 	sugaredLogger := testutil.CreateLogger(t, 0)
 	insp := &testRequestInspector{}
@@ -538,7 +538,8 @@ func TestPrunePermitReclaimAndResubmit(t *testing.T) {
 		MaxSize:               5,
 		RequestMaxBytes:       100 * 1024,
 		AutoRemoveTimeout:     time.Second * 10,
-		// Short so a leaked permit surfaces as a Submit timeout rather than hanging.
+		// Submit's Acquire is already context-bounded (pool.go), so a leaked permit
+		// cannot hang; a short timeout just keeps a permit-leak regression fast.
 		SubmitTimeout: time.Second,
 	}, &striker{})
 	defer pool.Close()
@@ -563,6 +564,32 @@ func TestPrunePermitReclaimAndResubmit(t *testing.T) {
 		require.NoError(t, pool.Submit(makeTestRequest(fmt.Sprintf("%d", i), "foo")))
 	}
 	require.Equal(t, int64(5), pool.RequestCount())
+}
+
+// TestPruneAfterClose asserts Pool.Prune is a no-op after Close rather than a
+// nil-deref panic. Close nils batchStore and pending; without an isClosed guard a
+// Prune that wins the lock after Close dereferences them. This is reachable in
+// process when Batcher.Stop races processNewConfigBlock.
+func TestPruneAfterClose(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
+	insp := &testRequestInspector{}
+	pool := NewPool(sugaredLogger, insp.RequestID, PoolOptions{
+		FirstStrikeThreshold:  time.Second * 5,
+		SecondStrikeThreshold: time.Minute / 2,
+		BatchMaxSize:          10,
+		BatchMaxSizeBytes:     1000,
+		MaxSize:               5,
+		RequestMaxBytes:       100 * 1024,
+		AutoRemoveTimeout:     time.Second * 10,
+		SubmitTimeout:         time.Second,
+	}, &striker{})
+
+	pool.Restart(true)
+	pool.Close()
+
+	require.NotPanics(t, func() {
+		pool.Prune(func([]byte) error { return nil })
+	})
 }
 
 // requireMatchingIDs asserts that NextRequests returned exactly one id per
