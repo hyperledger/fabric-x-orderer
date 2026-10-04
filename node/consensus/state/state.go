@@ -476,6 +476,14 @@ func filterCEsWithDiffConfigSeq(
 				l.Debugf("filtering ce complaint with mismatch config seq (currently %d); %s", configSeq, ce.Complaint.String())
 			}
 		}
+		if ce.AssemblerReport != nil {
+			if ce.AssemblerReport.ConfigSeq == configSeq {
+				filteredEvents = append(filteredEvents, ce)
+			} else {
+				l.Debugf("filtering ce assembler report with mismatch config seq (currently %d); %s",
+					configSeq, ce.AssemblerReport.String())
+			}
+		}
 		if ce.ConfigRequest != nil {
 			reqConfigSeq, err := ce.ConfigRequest.ConfigSequence()
 			if err != nil {

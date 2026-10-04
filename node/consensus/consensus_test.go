@@ -895,8 +895,9 @@ func TestVerifyRequestAcceptsStaleConfigSeq(t *testing.T) {
 // TestVerifyRequestAssemblerDecisionReport covers the AssemblerDecisionReport branch of verifyCE
 // (reached via the exported VerifyRequest): a report is accepted only when its signature verifies
 // against the reporting party's assembler identity. A report signed by the right assembler passes;
-// a tampered signature, a report from a party with no registered assembler key, and an unsigned
-// report are all rejected.
+// a report from another config sequence (stale or ahead), a tampered payload or signature, a report
+// signed with the party's consenter key, a report from a party with no registered assembler key, and
+// an unsigned or oversized-signature report are all rejected.
 func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
 
@@ -904,13 +905,19 @@ func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 	require.NoError(t, err)
 	assemblerSigner := crypto.ECDSASigner(*assemblerSK)
 
-	// Only party 1's assembler key is registered in the verifier.
+	consenterSK, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	consenterSigner := crypto.ECDSASigner(*consenterSK)
+
+	// Only party 1's assembler key is registered as an assembler; party 1's consenter has its own key.
 	verifier := make(crypto.ECDSAVerifier)
 	verifier[arma_types.NewAssemblerIdentity(arma_types.PartyID(1))] = assemblerSigner.PublicKey
+	verifier[arma_types.NewConsenterIdentity(arma_types.PartyID(1))] = consenterSigner.PublicKey
 
 	bundle := &configMocks.FakeConfigResources{}
 	configtxValidator := &policyMocks.FakeConfigtxValidator{}
-	configtxValidator.SequenceReturns(2)
+	const currentConfigSeq = arma_types.ConfigSequence(2)
+	configtxValidator.SequenceReturns(uint64(currentConfigSeq))
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
 	c := &node_consensus.Consensus{
@@ -923,39 +930,73 @@ func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 		return (&state.ControlEvent{AssemblerReport: r}).Bytes()
 	}
 
-	t.Run("accepts a report signed by the party's assembler", func(t *testing.T) {
-		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 100}
-		report.Signature, err = assemblerSigner.Sign(report.ToBeSigned())
+	signedReportAt := func(t *testing.T, signer crypto.ECDSASigner, party arma_types.PartyID, configSeq arma_types.ConfigSequence) *state.AssemblerDecisionReport {
+		report := &state.AssemblerDecisionReport{Party: party, DecisionNum: 100, ConfigSeq: configSeq}
+		sig, err := signer.Sign(report.ToBeSigned())
 		require.NoError(t, err)
+		report.Signature = sig
+		return report
+	}
 
-		_, err = c.VerifyRequest(reportReq(report))
+	signedReport := func(t *testing.T, signer crypto.ECDSASigner, party arma_types.PartyID) *state.AssemblerDecisionReport {
+		return signedReportAt(t, signer, party, currentConfigSeq)
+	}
+
+	const invalidSig = "invalid assembler decision report signature"
+
+	t.Run("accepts a report signed by the party's assembler", func(t *testing.T) {
+		_, err := c.VerifyRequest(reportReq(signedReport(t, assemblerSigner, 1)))
 		require.NoError(t, err)
+	})
+
+	t.Run("rejects a report from a previous config sequence", func(t *testing.T) {
+		_, err := c.VerifyRequest(reportReq(signedReportAt(t, assemblerSigner, 1, currentConfigSeq-1)))
+		require.ErrorContains(t, err, "mismatch config sequence")
+	})
+
+	t.Run("rejects a report from a future config sequence", func(t *testing.T) {
+		_, err := c.VerifyRequest(reportReq(signedReportAt(t, assemblerSigner, 1, currentConfigSeq+1)))
+		require.ErrorContains(t, err, "mismatch config sequence")
+	})
+
+	t.Run("rejects a report with a tampered payload", func(t *testing.T) {
+		report := signedReport(t, assemblerSigner, 1)
+		report.DecisionNum = 200 // signature no longer matches the signed bytes
+
+		_, err := c.VerifyRequest(reportReq(report))
+		require.ErrorContains(t, err, invalidSig)
 	})
 
 	t.Run("rejects a report with a tampered signature", func(t *testing.T) {
-		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 100}
-		report.Signature, err = assemblerSigner.Sign(report.ToBeSigned())
-		require.NoError(t, err)
-		report.DecisionNum = 200 // signature no longer matches the signed bytes
+		report := signedReport(t, assemblerSigner, 1)
+		report.Signature[len(report.Signature)-1] ^= 0xFF
 
-		_, err = c.VerifyRequest(reportReq(report))
-		require.Error(t, err)
+		_, err := c.VerifyRequest(reportReq(report))
+		require.ErrorContains(t, err, invalidSig)
+	})
+
+	t.Run("rejects a report signed with the party's consenter key", func(t *testing.T) {
+		_, err := c.VerifyRequest(reportReq(signedReport(t, consenterSigner, 1)))
+		require.ErrorContains(t, err, invalidSig)
 	})
 
 	t.Run("rejects a report from a party with no registered assembler", func(t *testing.T) {
-		report := &state.AssemblerDecisionReport{Party: 2, DecisionNum: 100}
-		report.Signature, err = assemblerSigner.Sign(report.ToBeSigned())
-		require.NoError(t, err)
-
-		_, err = c.VerifyRequest(reportReq(report))
-		require.ErrorContains(t, err, "key does not exist")
+		_, err := c.VerifyRequest(reportReq(signedReport(t, assemblerSigner, 2)))
+		require.ErrorContains(t, err, invalidSig)
 	})
 
 	t.Run("rejects an unsigned report", func(t *testing.T) {
-		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 100}
+		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 100, ConfigSeq: currentConfigSeq}
 
-		_, err = c.VerifyRequest(reportReq(report))
+		_, err := c.VerifyRequest(reportReq(report))
 		require.ErrorContains(t, err, "missing assembler decision report signature")
+	})
+
+	t.Run("rejects a report with an oversized signature", func(t *testing.T) {
+		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 100, ConfigSeq: currentConfigSeq, Signature: make([]byte, 1024)}
+
+		_, err := c.VerifyRequest(reportReq(report))
+		require.ErrorContains(t, err, "assembler decision report signature too large")
 	})
 }
 
@@ -1295,22 +1336,59 @@ func TestVerifyProposal(t *testing.T) {
 	// The report is inert in state processing, so it does not affect the computed state / blocks;
 	// it must still be dispatched by getReqConfigSeq and RequestID (not rejected as an empty event).
 	t.Log("proposal with assembler decision report")
-	verifier[arma_types.NewAssemblerIdentity(arma_types.PartyID(2))] = crypto.ECDSASigner(*sks[1]).PublicKey
-	assemblerReport := &state.AssemblerDecisionReport{Party: 2, DecisionNum: 100}
-	assemblerReport.Signature, err = crypto.ECDSASigner(*sks[1]).Sign(assemblerReport.ToBeSigned())
+	// The assembler has its own key, distinct from party 2's consenter and batcher keys, so a lookup
+	// under the wrong role is caught.
+	assemblerSK, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-	report := &state.ControlEvent{AssemblerReport: assemblerReport}
-	reqsWithReport := append(append([][]byte{}, reqs...), report.Bytes())
-	brsWithReport := arma_types.BatchedRequests(reqsWithReport)
+	assemblerSigner := crypto.ECDSASigner(*assemblerSK)
+	verifier[arma_types.NewAssemblerIdentity(arma_types.PartyID(2))] = assemblerSigner.PublicKey
+	payloadWithReportAt := func(signer crypto.ECDSASigner, party arma_types.PartyID, configSeq arma_types.ConfigSequence) ([][]byte, []byte) {
+		assemblerReport := &state.AssemblerDecisionReport{Party: party, DecisionNum: 100, ConfigSeq: configSeq}
+		sig, err := signer.Sign(assemblerReport.ToBeSigned())
+		require.NoError(t, err)
+		assemblerReport.Signature = sig
+		report := &state.ControlEvent{AssemblerReport: assemblerReport}
+		reqsWithReport := append(append([][]byte{}, reqs...), report.Bytes())
+		brsWithReport := arma_types.BatchedRequests(reqsWithReport)
+		return reqsWithReport, brsWithReport.Serialize()
+	}
+	payloadWithReport := func(signer crypto.ECDSASigner, party arma_types.PartyID) ([][]byte, []byte) {
+		return payloadWithReportAt(signer, party, 0) // the verification sequence in this test is 0
+	}
+	reqsWithReport, payload := payloadWithReport(assemblerSigner, 2)
 	infosWithReport, err := c.VerifyProposal(smartbft_types.Proposal{
 		Header:   header.Serialize(),
-		Payload:  brsWithReport.Serialize(),
+		Payload:  payload,
 		Metadata: mBytes,
 	})
 	require.NoError(t, err)
 	require.Len(t, infosWithReport, len(reqsWithReport))
 	require.Equal(t, c.RequestID(reqsWithReport[2]), infosWithReport[2])
 	require.NotEmpty(t, infosWithReport[2].ID)
+
+	// 1c. a proposal carrying a report signed with the party's consenter key (not its assembler key)
+	// is rejected.
+	t.Log("proposal with forged assembler decision report")
+	_, payload = payloadWithReport(crypto.ECDSASigner(*sks[1]), 2)
+	_, err = c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
+	require.ErrorContains(t, err, "invalid assembler decision report signature")
+
+	// 1d. a proposal carrying a report from a party with no registered assembler is rejected.
+	t.Log("proposal with assembler decision report from an unknown party")
+	_, payload = payloadWithReport(assemblerSigner, 9)
+	_, err = c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
+	require.ErrorContains(t, err, "invalid assembler decision report signature")
+
+	// 1e. a report from another config sequence is filtered out of the computed state, so it is not
+	// verified: even one signed with the wrong key does not fail the proposal (so a report signed under
+	// an old config, whose key a reconfig rotated, cannot stall consensus). It is still reported in
+	// reqInfos, so SmartBFT removes it from its request pool.
+	t.Log("proposal with assembler decision report from another config sequence")
+	reqsWithStaleReport, payload := payloadWithReportAt(crypto.ECDSASigner(*sks[1]), 2, 1)
+	infosWithStaleReport, err := c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
+	require.NoError(t, err)
+	require.Len(t, infosWithStaleReport, len(reqsWithStaleReport))
+	require.Equal(t, c.RequestID(reqsWithStaleReport[2]), infosWithStaleReport[2])
 
 	// 2. nil header
 	t.Log("nil header")

@@ -64,11 +64,7 @@ func (ce *ControlEvent) ID() string {
 		// TODO: maybe use a different ID for ConfigRequest
 		payloadToHash = ce.ConfigRequest.Bytes()
 	case ce.AssemblerReport != nil:
-		reportWithNoSig := &AssemblerDecisionReport{
-			Party:       ce.AssemblerReport.Party,
-			DecisionNum: ce.AssemblerReport.DecisionNum,
-		}
-		payloadToHash = reportWithNoSig.Bytes()
+		payloadToHash = ce.AssemblerReport.unsignedBytes()
 	default:
 		return ""
 	}
