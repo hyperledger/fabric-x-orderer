@@ -163,9 +163,9 @@ FAILURE_RUNNER_ENABLED    ?= true
 FAILURE_RUNNER_STOP_DURATION  ?= 30
 FAILURE_RUNNER_RESTART_WAIT   ?= 30
 # How long submit keeps verifying after it finished sending (deadline, not delay)
-SUBMIT_DRAIN_SECONDS          ?= 420
+SUBMIT_DRAIN_SECONDS          ?= 120
 # Grace period before the failure runner's first kill
-FAILURE_RUNNER_START_DELAY    ?= 60
+FAILURE_RUNNER_START_DELAY    ?= 10
 
 .PHONY: deterministic-failure-test
 deterministic-failure-test: binary
