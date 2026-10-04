@@ -11,8 +11,8 @@ produces.*
 
 This document describes the **consenter**, the Fabric-X Orderer node that runs Byzantine fault
 tolerant consensus. It covers the events the consenter ingests and the ordered stream it serves, the
-internal design and algorithms a contributor needs to work on the component, and the configuration,
-recovery, and failure behavior an operator needs to run it. It focuses on the consenter; for the
+internal design and algorithms, and the configuration,
+recovery, and failure behavior. It focuses on the consenter; for the
 end-to-end system flow and how the consenter relates to the other three roles, start with the
 [architecture overview](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/architecture.md).
 
@@ -45,21 +45,22 @@ is the party-local node that establishes total order, and the third stage of the
 tolerance, on the sequence of everything that reaches the ledger. What it orders is deliberately
 small: **control events** — a signed **batch attestation fragment (BAF)** from a batcher, a
 **complaint** against a shard's primary, or a **configuration request** from the router — never
-transaction payloads, which travel the parallel batcher–assembler path. The consenter feeds these
-events into **SmartBFT**, the BFT engine the consenters of all parties run together, and interprets
-the ordered result: once enough batchers have attested the same batch, it emits a **batch
-attestation (BA)**, and its output is a totally ordered stream of BAs and configuration decisions
-that every correct consenter produces identically.
+data transaction payloads, which travel the parallel batcher–assembler path. The consenter feeds these
+events into [SmartBFT](https://github.com/hyperledger/SmartBFT), the BFT engine the consenters of all
+parties run together, and interprets the ordered result: once enough batchers have attested the same
+batch, it emits a **batch attestation (BA)**, and its output is a totally ordered stream of BAs and
+configuration decisions that every correct consenter produces identically.
 
 Beyond ordering, the consenter is the system's **controller**. Because it sees every attestation and
 every complaint, it is the node that decides when a shard's primary batcher must be replaced — on
-enough complaints, or on proof that a primary equivocated — and it enacts that decision as part of
+enough complaints, or on proof that a primary equivocated — and it enacts that ruling as part of
 the same ordered stream, so all parties rotate the primary at the same point in the order.
 
 <!-- Figure 1 placeholder -->
-*Figure 1: The consenter's inputs and output — control events from the batchers and the router of its
-own party, SmartBFT messages exchanged with the consenters of the other parties, and the ordered
-decision stream served to the assembler, batchers, and routers. (Diagram to be added.)*
+*Figure 1: The consenter's inputs and output — batch attestation fragments and complaints from the
+batchers of every party, configuration requests from the router of its own party, SmartBFT messages
+exchanged with the consenters of the other parties, and the ordered decision stream served to the
+assembler, batchers, and routers. (Diagram to be added.)*
 
 ### 1.1 Units and Terms
 
@@ -112,8 +113,9 @@ of the architecture overview.
 ## 2. Interfaces: Ingesting Events and Serving Decisions
 
 The consenter is an internal ordering-service node: it does not face clients. Its interfaces connect
-it to the batchers and router of its own party, to the consenters of the other parties, and to the
-nodes that read its ordered stream.
+it to the batchers of every party, which broadcast their attestations and complaints to all
+consenters; to the router of its own party, for configuration changes; to the consenters of the other
+parties, for the consensus protocol itself; and to the nodes that read its ordered stream.
 
 **Ingesting events** happens through the `Consensus` gRPC service, defined in
 [`communication.proto`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/protos/comm/communication.proto):
@@ -129,9 +131,9 @@ service Consensus {
 }
 ```
 
-- `NotifyEvent` is the batchers' path. Each `Event` carries one serialized `ControlEvent` — a BAF or a
-  complaint. The consenter verifies the event's signature, updates its BAF and complaint metrics, and
-  submits the event to SmartBFT for ordering.
+- `NotifyEvent` is the batchers' path, and the batchers of every party stream to it. Each `Event`
+  carries one serialized `ControlEvent` — a BAF or a complaint. The consenter verifies the event's
+  signature, updates its BAF and complaint metrics, and submits the event to SmartBFT for ordering.
 - `SubmitConfig` is the router's path for a configuration change. The consenter checks that the caller
   is the party's router (by its TLS certificate), validates and re-derives the configuration update,
   and, if it is well-formed, submits it as a configuration-request control event.
@@ -156,12 +158,15 @@ seekInfo := &orderer.SeekInfo{
 }
 ```
 
-Three kinds of consumer follow this stream, all node-to-node and authenticated by mutual TLS:
-assemblers pull the ordered **batch attestations** to materialize blocks; batchers pull the full
-ordered **decisions** to learn what was committed and to prune their mempools; and routers track
-decisions to stay current with configuration. Because a decision carries a quorum of consenter
-signatures per block (see [Building a Decision](#35-building-a-decision)), a consumer can verify the
-order it reads without trusting the single consenter it happens to be connected to.
+Three kinds of consumer follow this stream in steady state, all node-to-node and authenticated by
+mutual TLS: assemblers pull the ordered **decisions** containing **batch attestations** to materialize
+blocks; batchers pull the ordered decision to learn the current term; and routers track decisions
+to stay current with configuration. Beyond these, the consenter itself consumes the stream: a node
+that is new or has fallen behind reads the same `Deliver` stream from its peer consenters to rebuild
+its own ledger before it can take part (see [Catching Up from Other Consenters](#62-catching-up-from-other-consenters)).
+Because a decision carries a quorum of consenter signatures per block (see
+[Building a Decision](#35-building-a-decision)), a consumer — including a synchronizing consenter —
+can verify the order it reads without trusting the single consenter it happens to be connected to.
 
 ## 3. Design and Internal Architecture
 
@@ -195,8 +200,7 @@ inspector — and hands SmartBFT its communication layer and its synchronizer. T
 (the `Consenter` and the `state` package) is invoked from proposal assembly to compute the next state;
 the **BADB** is consulted there to drop already-ordered batches and updated on delivery; the
 **consensus ledger** is where delivered decisions are appended. A **synchronizer** catches a lagging
-node up from its peers, reached through a **holder** — a stable indirection that lets the synchronizer
-be swapped during reconfiguration without racing SmartBFT's access to it. A **communication layer**
+node up from its peers. A **communication layer**
 (the cluster service and an egress client) carries SmartBFT traffic between parties, a
 **configuration-ack receiver** collects reconfiguration acknowledgments, and the **`Deliver`
 service** reads the consensus ledger for consumers. Around these run the operations subsystem, the
@@ -242,27 +246,34 @@ treated apart from the rest: they must *advance* the configuration sequence by e
 complaint must instead *match* the current sequence), and they are not folded into the state but
 returned for the block-building layer to turn into a configuration block.
 
+BAFs are handled by config sequence in three ways: those matching the current sequence are processed
+as above; those *ahead* of it are dropped and will be re-sent; and those *behind* it are not dropped
+but set aside as **stale config BAFs**, carried in the state so a batch attested under an outgoing
+configuration can be revived after a reconfiguration (see [Reconfiguration](#7-reconfiguration)).
+
 ### 3.3 From BAFs to a Batch Attestation
 
 A batch is identified by its ⟨shard, primary, sequence⟩. Within that key the consenter groups pending
 BAFs by the digest they attest, and a digest becomes a **batch attestation** as soon as `threshold`
 (`f+1`) distinct signers have attested it — `f+1` is the smallest set that must contain a correct
-signer, so a BA cannot rest on faulty attesters alone. When a batch is decided, only the fragments on
-the digest that reached threshold are extracted; a minority digest, such as one a faulty batcher put
-forward, is dropped, and all of the batch's pending fragments are cleared. A fragment whose digest is
-already recorded in the **BADB** is discarded before the fold even runs, so a batch that has already
-been ordered is never ordered again.
+signer, so a BA cannot rest on faulty attesters alone. Every digest that reaches threshold is
+extracted; digests below it — a minority a faulty batcher put forward — are dropped, and once any
+digest is decided the batch is settled and all of its pending fragments are cleared. With an honest
+primary exactly one digest reaches threshold, so the batch yields a single BA. An **equivocating**
+primary, though, can drive two conflicting digests to threshold for the same ⟨shard, primary,
+sequence⟩; both are then extracted and each becomes its own block. Detecting the equivocation rotates
+the primary for later sequences (see [The Consenter as System Controller](#34-the-consenter-as-system-controller)),
+but it does not retract the attestations already decided here. A fragment whose digest is already
+recorded in the **BADB** is discarded before the fold even runs, so a batch that has already been
+ordered is never ordered again.
 
 A single decision often commits several batches at once. SmartBFT produces, per consenter, one
-composite signature covering the proposal together with each block header in the decision; on delivery
-the consenter unpacks these into a separate signature set per block. Each emitted block therefore
-carries a quorum of consenter signatures over *its own* header, which is exactly what an assembler or
-other consumer checks when it reads the ordered stream.
-
-<!-- Figure 3 placeholder -->
-*Figure 3: Fragments becoming an attestation — BAFs grouped by ⟨shard, primary, sequence⟩ then by
-digest, the threshold that decides a digest, and the composite signature unpacked into one signature
-set per block. (Diagram to be added.)*
+composite signature covering the proposal together with each block header in the decision; the
+consenter stores and serves these composite signatures unchanged, one per party. The **consumer**
+unpacks them: an assembler or a synchronizing consenter, on reading the decision, splits each party's
+composite signature into a per-block signature set, so every block it materializes carries a quorum of
+consenter signatures over *its own* header. That per-block check is what lets a consumer verify the
+order without trusting the single consenter it pulled from.
 
 ### 3.4 The Consenter as System Controller
 
@@ -283,10 +294,6 @@ are excluded from this check, so a non-primary cannot manufacture equivocation e
 primary. At most one rotation per shard happens in a single step, and shards are processed in a fixed
 order, keeping the outcome identical across consenters.
 
-<!-- Figure 4 placeholder -->
-*Figure 4: Primary rotation — the two triggers (f+1 complaints against the current term, or two
-conflicting digests from the primary) both incrementing a shard's term. (Diagram to be added.)*
-
 ### 3.5 Building a Decision
 
 The consenter does not merely order references to batches; it builds the blocks. When SmartBFT asks it
@@ -299,13 +306,13 @@ digest, which is what later binds the ordered metadata to the payload an assembl
 block's metadata the consenter writes its **ordering information**: the decision number, the block's
 index within the decision, and the number of blocks in the decision.
 
-On delivery the consenter records the decided batch digests in the BADB, writes the per-block
-signatures into each block, and appends the decision to the consensus ledger. One decision thus becomes
-as many BA blocks as it committed, appended in the decision's own order; the ordering information is
-what lets an assembler reassemble these blocks into the single global order across decisions.
+On delivery the consenter records the decided batch digests in the BADB, writes the composite
+signatures into the decision block, and appends that block to the consensus ledger. One decision thus
+becomes as many BA blocks as it committed, carried in the decision's own order; the ordering information
+is what lets an assembler reassemble these blocks into the single global order across decisions.
 
-<!-- Figure 5 placeholder -->
-*Figure 5: One decision becoming blocks — the header and state snapshot, one common block per batch
+<!-- Figure 3 placeholder -->
+*Figure 3: One decision becoming blocks — the header and state snapshot, one common block per batch
 attestation with the batch digest as its data hash, and the ordering information written into each
 block. (Diagram to be added.)*
 
@@ -313,7 +320,7 @@ block. (Diagram to be added.)*
 
 Ordering itself — leaders, views, view changes, the exchange of protocol messages, and the write-ahead
 log that makes agreement durable — is handled by
-[SmartBFT](https://github.com/hyperledger-labs/SmartBFT), which the consenter embeds as its engine and
+[SmartBFT](https://github.com/hyperledger/SmartBFT), which the consenter embeds as its engine and
 which this document treats as a black box. What the consenter supplies is the boundary between that
 engine and Arma's meaning of the ordered bytes. It registers itself as the engine's application,
 signer, verifier, and request inspector, and provides the adapter methods the engine calls: to inspect
@@ -422,7 +429,7 @@ for the network-wide part.
 A consenter exposes its metrics in Prometheus format on the operations endpoint configured by
 `Operations.ListenAddress` and `Operations.ListenPort`, alongside a health check, a logging-spec
 endpoint, and version information. When `Metrics.MetricsLogInterval` is non-zero the node also writes a
-periodic `CONSENSUS_METRICS` line to its log, with the totals so far and the decisions and blocks made
+periodic `CONSENSUS_METRICS` line to its log, with running totals and the decisions and blocks made
 during the last interval — enough to watch progress without a Prometheus deployment.
 
 Five metrics are the consenter's own, each a counter labelled with the party ID:
@@ -458,17 +465,20 @@ mid-agreement therefore comes back exactly where it left off, without re-orderin
 
 ### 6.2 Catching Up from Other Consenters
 
-A consenter that is new, or whose ledger is behind the config block it was given, has to be filled from
-the consenters of the other parties before it can take part. It first works out a target height by
-asking every consenter endpoint for its height and taking the `f+1`-th highest — a height at least one
-correct node is guaranteed to have reached, so a set of faulty nodes cannot lure it to a bad target. If
-its ledger is empty it first obtains the genesis block, accepting the block that `f+1` endpoints agree
-on, which is what makes a fresh node's first block safe to accept from parties it does not trust. From
+Catch-up serves two situations through one path. A consenter that is new, or whose ledger is behind the
+config block it was given, must be filled from the consenters of the other parties before it can take
+part. A consenter that is already running can also fall behind — and when SmartBFT determines it has, it
+drives the node's synchronizer to catch up in place, without a restart. Either way the synchronizer
+first works out a target height by asking every consenter endpoint for its height and taking the
+`f+1`-th highest — a height at least one correct node is guaranteed to have reached, so a set of faulty
+nodes cannot lure it to a bad target. If its ledger is empty it first obtains the genesis block,
+accepting the block that `f+1` endpoints agree on, which is what makes a fresh node's first block safe
+to accept from parties it does not trust. From
 there, blocks are pulled and committed up to the target height, and each one is verified before it is
 written — that it chains to the previous block, that its data hash matches its data, and that it
 carries a quorum of consenter signatures under the channel's block-validation policy — so a party that
 serves a wrong block cannot advance a synchronizing node's ledger. Once the target is reached the node
-starts normally, and 6.1 applies from that point on.
+resumes normal ordering, and 6.1 applies from that point on.
 
 ### 6.3 When Other Nodes Fail
 
@@ -525,7 +535,7 @@ inter-consenter mesh.*
   that consumes the consenter's ordered batch attestations and materializes the block ledger.
 - [Monitoring and metrics](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/monitoring/metrics.md)
   — the full list of metrics, and how to collect and visualize them.
-- [SmartBFT](https://github.com/hyperledger-labs/SmartBFT) — the BFT engine the consenter embeds.
+- [SmartBFT](https://github.com/hyperledger/SmartBFT) — the BFT engine the consenter embeds.
 - [`arma` CLI](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/cli/arma.md) — the node
   binary and its subcommands.
 - [`node/consensus`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus) — the
