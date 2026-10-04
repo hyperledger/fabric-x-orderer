@@ -1,316 +1,110 @@
 # Fully Randomized Failure Test
 
-## Overview
+Starts a local ARMA network (4 parties, 2 shards by default), sends transactions with
+`armageddon submit`, and kills and restarts components **chosen completely at random** while it
+runs. The test passes only if assembler 1 confirms every transaction that was sent.
 
-This directory contains the script used to run the ARMA fully randomized failure test.
+Unlike the deterministic failure test there is no fixed order: any component of any party can be
+killed at any point, even right after it was restarted.
 
-The test starts a local ARMA network (4 parties, 2 shards by default), sends transactions and verifies that every party's assembler confirmed each one using a single `armageddon submit`, optionally runs a failure runner that stops and restarts ARMA components chosen **completely at random**, monitors progress, and then collects logs and a summary.
-
-Unlike the deterministic failure test, the randomized failure runner does not cycle through parties or components in any fixed order. Any component — assembler, consenter, router, or batcher — from any party can be killed at any point, including immediately after being restarted. The test is designed to exercise unpredictable failure scenarios that a fixed ordering cannot cover.
-
-The same script is used by the GitHub Actions workflow and can also be executed locally from the command line on a Linux machine.
-
-## Scripts
-
-```text
-test/fully-randomized-failure-test/
-├── fully-randomized-failure-test.sh
-└── README.md
-```
-
-### `fully-randomized-failure-test.sh`
-
-Single entry-point script that contains all logic previously split across five separate files.
-
-It defines the following internal functions, then calls `main`:
-
-- **`start_arma_network`** — Starts all ARMA network components in the correct order: consenters first, then batchers, assemblers, and routers. Stores each process PID under the test directory.
-- **`run_failure_runner`** — Its verbose output goes to `failure_runner.log`; only short one-line events (`pick: batcher party 2 shard 1`, `batcher party 2 shard 1 down for 30s`) are printed to the console, so status snapshots are never interleaved. Builds a flat pool of every component across all parties (`NUM_PARTIES × (3 + NUM_SHARDS)` entries). On each iteration, picks one entry at random using `$RANDOM`, kills it, waits `FAILURE_RUNNER_STOP_DURATION` seconds, restarts it, then waits `FAILURE_RUNNER_RESTART_WAIT` seconds. After every `N = 3 + NUM_SHARDS` kills a signal file is written so `monitor_completion` knows to print a status snapshot. A running kill counter is maintained in the test directory.
-- **`monitor_completion`** — Monitors test execution, reading all progress numbers from `submit.log`. In failure runner mode: prints a status snapshot after every `N = 3 + NUM_SHARDS` kills. Without failure runner: prints a status snapshot every 5 minutes. Always stops when the configured duration is reached, or as soon as `submit` logs `Submit Finished`. It then signals the failure runner to stop and **waits** for `submit` to finish draining and print its verdict, recording its exit code for `main` to propagate.
-- **`collect_results`** — Cleans the `test-results/` directory from any previous run, counts per-component kills from `failure_runner.log`, extracts the per-party results and the verdict from `submit.log`, reads the assembler block result from `submit.log`, copies all component logs plus `submit.log` and `failure_runner.log` into `test-results/logs/` and gzips them, writes a single-block `summary.txt` (and `failure_reason.txt` when the verdict is not a pass) plus `summary-kills.txt`, then deletes the working-directory logs now that the compressed copies exist.
-- **`main`** — Reads configuration from environment variables, removes stale log files from previous runs, generates the network config YAML, runs `armageddon generate` to produce all crypto and config files, patches the generated FileStore `Location` and consenter `WALDir` paths to writable temp directories, then calls the functions above in order.
-
-## Prerequisites
-
-Build the binaries before running the test:
-
-```bash
-make binary
-```
-
-The scripts expect the following binaries to exist:
-
-```text
-./bin/arma
-./bin/armageddon
-```
-
-Run the test from the repository root.
+The same script runs in GitHub Actions and locally on Linux. Run it from the repository root.
 
 ## Running Locally
 
-Execute the test from the repository root.
-
-### Without failure runner (basic smoke test)
-
-```bash
-chmod +x test/fully-randomized-failure-test/fully-randomized-failure-test.sh
-
-DURATION_MINUTES=5 \
-TX_RATE=100 \
-TX_SIZE=300 \
-NUM_PARTIES=4 \
-NUM_SHARDS=2 \
-FAILURE_RUNNER_ENABLED=false \
-test/fully-randomized-failure-test/fully-randomized-failure-test.sh
-```
-
-### With failure runner enabled
-
-Use the `make` target — it builds the binaries automatically and runs with sensible defaults:
+With the failure runner (builds the binaries first):
 
 ```bash
 make fully-randomized-failure-test
+make fully-randomized-failure-test DURATION_MINUTES=10 TX_RATE=500   # override any variable
 ```
 
-Default values used by the target:
-
-| Variable                       | Value  |
-| ------------------------------ | ------ |
-| `DURATION_MINUTES`             | `5`    |
-| `TX_RATE`                      | `1000` |
-| `TX_SIZE`                      | `300`  |
-| `NUM_PARTIES`                  | `4`    |
-| `NUM_SHARDS`                   | `2`    |
-| `FAILURE_RUNNER_ENABLED`       | `true` |
-| `FAILURE_RUNNER_STOP_DURATION` | `30`   |
-| `FAILURE_RUNNER_RESTART_WAIT`  | `30`   |
-
-Any variable can be overridden on the command line:
+Without the failure runner (basic smoke test, needs `make binary` first):
 
 ```bash
-make fully-randomized-failure-test DURATION_MINUTES=10 TX_RATE=500
+DURATION_MINUTES=5 TX_RATE=100 FAILURE_RUNNER_ENABLED=false \
+test/fully-randomized-failure-test/fully-randomized-failure-test.sh
 ```
 
-The values can be adjusted as needed for the desired test configuration.
+The exit code is `0` if every transaction was confirmed, `1` otherwise.
 
 ## Configuration
 
-The test is configured using environment variables.
+Environment variables, with the defaults of the script and of the `make` target:
 
-The values shown below are the defaults used by `fully-randomized-failure-test.sh`.
-
-| Variable                       | Description                                   | Default |
-| ------------------------------ | --------------------------------------------- | ------- |
-| `DURATION_MINUTES`             | Test duration in minutes                      | `120`   |
-| `TX_RATE`                      | Transactions per second                       | `1000`  |
-| `TX_SIZE`                      | Transaction size in bytes                     | `300`   |
-| `NUM_PARTIES`                  | Number of parties                             | `4`     |
-| `NUM_SHARDS`                   | Number of shards                              | `2`     |
-| `FAILURE_RUNNER_ENABLED`       | Whether to run the failure runner             | `true`  |
-| `FAILURE_RUNNER_STOP_DURATION` | How long to keep a component down, in seconds | `60`    |
-| `FAILURE_RUNNER_RESTART_WAIT`  | Wait after restarting a component, in seconds | `60`    |
-
-Network readiness is detected automatically via `/healthz` on each component after it starts — no startup wait needs to be configured.
+| Variable                       | Description                                             | Script | `make` |
+| ------------------------------ | ------------------------------------------------------- | ------ | ------ |
+| `DURATION_MINUTES`             | Test duration in minutes                                | `120`  | `5`    |
+| `TX_RATE`                      | Transactions per second                                 | `1000` | `1000` |
+| `TX_SIZE`                      | Transaction size in bytes                               | `300`  | `300`  |
+| `NUM_PARTIES`                  | Number of parties                                       | `4`    | `4`    |
+| `NUM_SHARDS`                   | Number of shards                                        | `2`    | `2`    |
+| `FAILURE_RUNNER_ENABLED`       | Run the failure runner                                  | `true` | `true` |
+| `FAILURE_RUNNER_STOP_DURATION` | Seconds a component stays down                          | `60`   | `30`   |
+| `FAILURE_RUNNER_RESTART_WAIT`  | Seconds to wait after restarting a component            | `60`   | `30`   |
+| `FAILURE_RUNNER_START_DELAY`   | Seconds before the first kill, so submit can connect    | `10`   | `10`   |
+| `SUBMIT_DRAIN_SECONDS`         | Max seconds to wait for the last txs after sending ends | `120`  | `120`  |
 
 ## Test Flow
 
-When `fully-randomized-failure-test.sh` runs, it performs the following steps:
+1. Generates the network config and crypto material (`armageddon generate`) in a temp directory.
+2. Starts consenters, batchers, assemblers and routers, and waits for `/healthz` on each one. A component that is not healthy within 60s aborts the test and is named in `test-results/startup_failure.txt`.
+3. Starts `armageddon submit`: it sends `DURATION_MINUTES × 60 × TX_RATE` txs to every router and checks off each one as it appears in **assembler 1**'s blocks.
+4. Starts the failure runner (if enabled).
+5. Prints a status snapshot every `3 + NUM_SHARDS` kills (every 5 minutes without the runner) until the duration ends or submit finishes.
+6. Stops the failure runner and waits up to `SUBMIT_DRAIN_SECONDS` for submit to confirm the last txs.
+7. Writes the results to `test-results/` and exits with the test outcome.
 
-1. Reads configuration from environment variables.
-2. Calculates the total number of transactions (`DURATION_MINUTES × 60 × TX_RATE`).
-3. Creates a temporary test directory using `mktemp`.
-4. Generates a network config YAML with ports allocated at `127.0.0.1:8011–8045`.
-5. Runs `./bin/armageddon generate --sampleConfigPath=testutil/fabric/sampleconfig`.
-6. Patches all generated `Location` (FileStore) and `WALDir` (consenter) paths to writable per-component subdirectories under the temp dir.
-7. Removes stale log files from any previous run.
-8. Starts the ARMA network via `start_arma_network`, which polls `/healthz` on each component immediately after it starts. If any component fails to become healthy within 60 s the test aborts immediately, naming the failing component in the error output and in `test-results/startup_failure.txt`.
-9. Starts `armageddon submit` (background) — it sends transactions, verifies them against assembler 1, then checks that every assembler has the last block.
-10. (nothing — `submit` replaced the separate loader and receivers.)
-11. Starts `run_failure_runner` if `FAILURE_RUNNER_ENABLED=true` (background).
-12. Calls `monitor_completion` (blocks until duration expires or all components finish).
-13. Waits briefly for the failure runner to stop gracefully.
-14. Calls `collect_results`.
-15. Kills any remaining `arma` and `armageddon` processes.
+## Pass / Fail
 
-## Transaction Verification
+The test passes only if `submit.log` contains `all N txs were sent to the routers and received by assembler 1`.
+A lost transaction makes submit wait forever, so it never logs that line; the drain window then stops it
+and the test fails. A crash of submit fails the same way.
 
-A single `armageddon submit` replaces the loader and the receivers. It sends transactions to
-every router and, in the same process, pulls blocks from **assembler 1** and checks off each
-transaction it sent. Whatever is left unchecked at the end was never confirmed.
+`SUBMIT_DRAIN_SECONDS` is a deadline, not a delay: on a healthy run the drain takes seconds. It must be
+larger than `FAILURE_RUNNER_STOP_DURATION` plus ~25s of recovery (measured), because the component that is down when
+the run ends stays down until the runner restarts it (the runner starts no new kills after that).
 
-Every transaction is committed to every party's assembler ledger, so assembler 1 alone is expected
-to confirm the full `TOTAL_TXS` count. `submit` has no deadline of its own, so this script supplies
-one: when the drain window closes `submit` is stopped, and a run stopped that way logs no result.
+## Failure Runner
 
-### Assembler blocks
+Builds a pool of all `NUM_PARTIES × (3 + NUM_SHARDS)` components (assembler, consenter, router and each
+batcher of every party). Each iteration picks one at random (`$RANDOM`), stops it, waits
+`FAILURE_RUNNER_STOP_DURATION`, restarts it, and waits `FAILURE_RUNNER_RESTART_WAIT`. The same component
+can be picked several times in a row. Its details go to `failure_runner.log`; the console only shows
+short event lines.
 
-Before exiting, `submit` asks **every** assembler to deliver the last block it verified — that is
-what shows the blocks reached the other parties' ledgers, since a ledger is a chain and an assembler
-that can serve block N holds every block before it. It is `verifyAssemblersHaveBlock` in
-`common/tools/armageddon/armageddon.go`, not part of this script. The request uses
-`BLOCK_UNTIL_READY`, so an assembler that is still catching up delivers the block as soon as it
-commits it; one shared 3-minute deadline (`assemblerBlockTimeout`) covers all parties.
-
-`collect_results` only counts the outcome lines in `submit.log`, one per assembler:
-
-```
-assembler 1 has block 6542
-assembler 3 does not have block 6542: context deadline exceeded
-```
-
-### The drain window (`SUBMIT_DRAIN_SECONDS`, default 420)
-
-`TOTAL_TXS = DURATION x 60 x TX_RATE`, so the last transaction is sent right at the end of the
-test window while thousands are still legitimately in flight through
-router -> batcher -> consensus -> assembler. `SUBMIT_DRAIN_SECONDS` is how long `submit` keeps
-verifying after sending stops.
-
-It is a **deadline, not a delay**: `submit` exits as soon as every transaction is confirmed, so a
-generous value costs nothing on a healthy run. It must exceed
-`FAILURE_RUNNER_STOP_DURATION + FAILURE_RUNNER_RESTART_WAIT`, because the failure runner finishes
-the component it is working on after being told to stop, and it must also cover `submit`'s block
-check, which waits up to 3 minutes after the transactions are confirmed.
-
-The script waits for `submit` rather than killing it, because `submit` logs both results on the way
-out. It is only stopped if the drain window closes first.
-
-### Exit codes
-
-`submit` always exits 0, so `collect_results` decides the outcome from the two results it logs, and
-a run passes only if both are good. Note there is no "verification failed" line: `submit` waits for
-a transaction that never arrives, so the *absence* of the passed line is what fails the run.
-
-| Code | Meaning | evidence in submit.log |
-| ---- | ------- | ---------------------- |
-| `0`  | every transaction confirmed, and every assembler has the last block | `... received by assembler N` **and** one `assembler N has block M` per party |
-| `1`  | a transaction was sent but never confirmed — the bug this test hunts | no `received by assembler` line |
-| `1`  | `submit` crashed or could not start | no `received by assembler` line |
-| `1`  | an assembler is missing the last block | at least one `does not have block` line |
-| `1`  | `submit` was stopped before its block check finished | no `has block` / `does not have block` line |
-
-
-## Failure Runner Behaviour
-
-The failure runner builds a flat pool of all `NUM_PARTIES × (3 + NUM_SHARDS)` components:
-
-```
-[assembler party 1, consenter party 1, router party 1,
- batcher party 1 shard 1, batcher party 1 shard 2,
- assembler party 2, consenter party 2, router party 2,
- batcher party 2 shard 1, batcher party 2 shard 2,
- ... etc.]
-```
-
-On each iteration it selects one entry completely at random (`$RANDOM % pool_size`), kills it, waits `FAILURE_RUNNER_STOP_DURATION` seconds, restarts it, then waits `FAILURE_RUNNER_RESTART_WAIT` seconds. There is no ordering guarantee — the same component can be selected multiple times in a row.
-
-A status snapshot is printed every `N = 3 + NUM_SHARDS` kills. This matches one "equivalent party's worth" of kill events:
-
-| Configuration | N (kills per snapshot) |
-| ------------- | ---------------------- |
-| 4P 1S         | 4                      |
-| 4P 2S         | 5                      |
-| 7P 1S         | 4                      |
-| 7P 4S         | 7                      |
-
-With default timings (`STOP_DURATION=60`, `RESTART_WAIT=60`) the time between snapshots is approximately:
-```
-(3 + NUM_SHARDS) × (60 + 60)s
-```
-e.g. for 4P2S: `5 × 120s ≈ 10 minutes per snapshot`
-
-## Generated Artifacts
-
-During execution, the test creates a temporary directory:
-
-```text
-/tmp/fully-randomized-failure-test-XXXXXX/
-├── config/          # generated armageddon config per party
-├── crypto/          # generated crypto material
-├── bootstrap/       # genesis block and shared config
-├── data/            # per-component writable data directories
-├── pids/            # PID files for all started processes
-└── kill_counter     # running total of kills written by the failure runner
-```
-
-Result artifacts are written to (cleaned at the start of each run):
+## Results
 
 ```text
 test-results/
-├── logs/                  # component logs, submit.log, failure_runner.log (gzipped)
-├── summary.txt            # per-party confirmed/missing counts, kill counts, assembler blocks, verdict
-├── summary-kills.txt      # full per-component kill report (artifact only)
-└── failure_reason.txt     # (only on failure) one-line reason, used by the Slack step
+├── logs/                  # all component logs, submit.log, failure_runner.log (gzipped)
+├── summary.txt            # load, network, kills, reconnects, blocks, verdict
+├── summary-kills.txt      # kill count per component and total
+└── failure_reason.txt     # only on failure: one-line reason, used by the Slack notification
 ```
 
-### `summary-kills.txt`
-
-After each run a dedicated kill report is written. Example (4 parties, 2 shards, 2-hour run):
-
-```
-========================================
-Fully Randomized Failure Test — Kill Report
-========================================
-Date: Mon Jan  6 03:00:00 UTC 2025
-Duration: 120 minutes
-Total components in pool: 20 (4 parties × 5 components each)
-
-========================================
-Per-Component Kill Counts
-========================================
-Party 1:
-  assembler  party 1:          4 kills
-  consenter  party 1:          3 kills
-  router     party 1:          5 kills
-  batcher    party 1 shard 1:  2 kills
-  batcher    party 1 shard 2:  3 kills
-Party 2:
-  ...
-
-========================================
-Total kills: 28
-========================================
-```
-
-This report is useful for spotting whether certain components were never selected over a run — which may indicate a need to adjust the randomization or introduce a minimum-kill guarantee in a future version.
+`summary-kills.txt` shows whether some components were never picked during a run.
 
 ## GitHub Actions Workflow
 
-The workflow is defined at `.github/workflows/fully-randomized-failure-test.yml`.
+Defined in `.github/workflows/fully-randomized-failure-test.yml`. It runs `make binary` and this script,
+publishes `summary.txt` and `summary-kills.txt` to the run's Summary tab, and uploads `test-results/logs/`
+and the kill report as artifacts.
 
-Schedule:
+| Day         | Time (UTC) | Duration                                        |
+| ----------- | ---------- | ----------------------------------------------- |
+| Mon/Wed/Fri | 03:00      | 2 hours                                         |
+| Sat         | 09:00      | 5.5 hours (after the deterministic test ends)   |
 
-| Day | Time (UTC) | Duration |
-| --- | ---------- | -------- |
-| Mon | 03:00      | 2 hours  |
-| Wed | 03:00      | 2 hours  |
-| Fri | 03:00      | 2 hours  |
-| Sat | 09:00      | 5.5 hours (starts after deterministic test ends at 08:30 + 30 min gap) |
+It can also be triggered manually (`workflow_dispatch`) with these parameters:
 
-The workflow can also be triggered manually via `workflow_dispatch`.
-
-Steps:
-1. Checks out the repository.
-2. Installs Go.
-3. Builds binaries with `make binary`.
-4. Determines test duration (schedule-based or from manual input).
-5. Sets configuration via environment variables.
-6. Runs `test/fully-randomized-failure-test/fully-randomized-failure-test.sh`.
-7. Publishes the test summary directly to the workflow run's Summary tab (plain text, no download needed).
-8. Uploads `test-results/logs/` and the kill report as CI artifacts.
-
-## Manual Workflow Trigger
-
-The following parameters can be set when triggering manually:
-
-| Parameter                      | Description                                 | Default |
-| ------------------------------ | ------------------------------------------- | ------- |
-| `duration_minutes`             | Test duration in minutes                    | `120`   |
-| `tx_rate`                      | Transactions per second                     | `1000`  |
-| `tx_size`                      | Transaction size in bytes                   | `300`   |
-| `num_parties`                  | Number of parties (4, 7, or 10)             | `4`     |
-| `num_shards`                   | Number of shards (1, 2, or 4)               | `2`     |
-| `failure_runner_enabled`       | Enable fully randomized failure runner      | `true`  |
-| `failure_runner_stop_duration` | How long to keep component down (s)         | `60`    |
-| `failure_runner_restart_wait`  | Wait after component restart (s)            | `60`    |
-| `submit_drain_seconds`         | How long submit keeps verifying after sending | `420` |
+| Parameter                      | Default |
+| ------------------------------ | ------- |
+| `duration_minutes`             | `120`   |
+| `tx_rate`                      | `1000`  |
+| `tx_size`                      | `300`   |
+| `num_parties` (4, 7, or 10)    | `4`     |
+| `num_shards` (1, 2, or 4)      | `2`     |
+| `failure_runner_enabled`       | `true`  |
+| `failure_runner_stop_duration` | `60`    |
+| `failure_runner_restart_wait`  | `60`    |
+| `submit_drain_seconds`         | `120`   |
