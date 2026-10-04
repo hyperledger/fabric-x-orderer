@@ -1723,11 +1723,11 @@ func TestAddRemoveApplicationClient(t *testing.T) {
 	configFileContent, err := os.ReadFile(configPath)
 	require.NoError(t, err)
 
-	err = yaml.Unmarshal([]byte(configFileContent), &network)
+	err = yaml.Unmarshal(configFileContent, &network)
 	require.NoError(t, err)
 
 	network.Peers = append(network.Peers, "peer2")
-	testutil.ExtendConfigAndCrypto(&network, dir, true)
+	testutil.ExtendConfigAndCrypto(&network, dir, true, true)
 
 	caCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "cacerts", "peer2-CA-cert.pem"))
 	require.NoError(t, err)

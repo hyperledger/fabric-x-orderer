@@ -1430,7 +1430,7 @@ func overwriteNestedJSONValue(t *testing.T, data map[string]any, value any, path
 // and adds the new party to the builder's config data. It returns the added party ID and the network information of the added party.
 func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (types.PartyID, map[testutil.NodeName]*testutil.ArmaNodeInfo) {
 	addedNetInfo, addedPartyConfig := testutil.ExtendNetwork(t, filepath.Join(dir, "config.yaml"))
-	testutil.ExtendConfigAndCrypto(addedPartyConfig, dir, true)
+	testutil.ExtendConfigAndCrypto(addedPartyConfig, dir, true, true)
 
 	addedPartyId := types.PartyID(addedPartyConfig.Parties[0].ID)
 	addedPartyDir := fmt.Sprintf("party%d", addedPartyId)

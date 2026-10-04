@@ -40,6 +40,7 @@ This command enables to create configuration files for ARMA nodes.
 | ` config`             | The absolute or relative path to the configuration template to use                                                                                                    |
 | ` output`             | The absolute or relative path to which the configuration files will be saved. If missing configuration files will be saved under `arma-config`                        |
 | ` sampleConfigPath`   | The absolute or relative path to the sample config directory that includes the msp and the `configtx.yaml` file. For example, see `ARMA/testutil/fabric/sampleconfig` |
+| ` noOUs`              | Express admin roles with admincerts instead of node OUs, which are the default. For more details see [admin identities](#admin-identities)                           |
 
 ###
 ##### Example:
@@ -67,9 +68,11 @@ arma-config
 	└── ordererOrganizations
 	    └── org{partyID}
 	        ├── msp
-	        │	├── cacerts
+	        │   ├── cacerts
 	        │   ├── tlscacerts
-	        │   └── admincerts
+	        │   ├── knowncerts
+	        │   ├── admincerts   (empty, unless --noOUs is used)
+	        │   └── config.yaml  (NodeOUs configuration, absent when --noOUs is used)
 	        ├── orderers
 	        │   └── party{partyID}
 	        │       ├── router
@@ -89,6 +92,20 @@ For example, all cryptographic materials for party1 are located under `arma-conf
    - Each node within party1 has its own TLS certificates and keys located in `arma-config/crypto/ordererOrganizations/org1/orderers/party1/{node}`. For each node a signing certificate with a corresponding key are generated. 
    - TLS certificate and key for user of party1 is stored in `arma-config/crypto/ordererOrganizations/org1/users`.
 NOTE: A fake CA is created for each party.
+
+###
+<a id="admin-identities"></a>
+Admin identities:  
+By default, the crypto material uses Fabric [node OUs](https://hyperledger-fabric.readthedocs.io/en/release-2.5/membership/membership.html) rather than admincerts to express the role of an identity:
+   - Every MSP folder (of the org, of each node and of each user) contains a `config.yaml` that enables NodeOUs and binds the `client`, `peer`, `admin` and `orderer` OUs to the org CA.
+   - Each certificate carries the OU of its role: the signing certificates of the nodes carry `orderer`, `Admin@org{i}` carries `admin` and `client@org{i}` carries `client`.
+   - An identity is an admin of its org because its certificate carries the `admin` OU, hence the `admincerts` folders are empty.
+
+To express admin roles with admincerts instead, add the `--noOUs` flag:  
+`./bin/armageddon generate --config=config.yaml --output=arma-config --noOUs`  
+In this mode no `config.yaml` is generated, and the admin certificate `Admin@org{i}-cert.pem` is placed in the `admincerts` folder of the org MSP and of every node MSP, which is what grants it admin authority.
+
+NOTE: With node OUs, the OU identifiers in the org's channel MSP configuration (`fabric_node_ous`) reference the org CA certificate. When replacing a party's CA through a config update, the OU identifiers must be moved to the new CA as well: otherwise identities issued by the new CA do not resolve to any role, and removing the old CA from the root certificates makes the MSP configuration invalid.
 
 ###
 <a id="local-configuration"></a>

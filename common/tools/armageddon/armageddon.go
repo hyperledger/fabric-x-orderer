@@ -324,11 +324,10 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 		fmt.Fprintf(os.Stderr, "Error reading config: %s", err)
 		os.Exit(-1)
 	}
-	// Node OUs are the default; the --noOUs flag switches the generated crypto to admincerts.
-	networkConfig.DisableNodeOUs = *noNodeOUs
 
-	// generate crypto material and profile for the config block
-	profile, err := GenerateCryptoConfigWithProfile(networkConfig, *outputDir)
+	// generate crypto material and profile for the config block; node OUs are the default and the --noOUs flag
+	// switches the generated crypto to admincerts.
+	profile, err := GenerateCryptoConfigWithProfile(networkConfig, *outputDir, !*noNodeOUs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating crypto config: %s", err)
 		os.Exit(-1)

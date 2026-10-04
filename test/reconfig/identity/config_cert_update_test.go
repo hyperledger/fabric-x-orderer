@@ -443,7 +443,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	require.NoError(t, err, "failed to create config update directory")
 	defer os.RemoveAll(configUpdateDir)
 
-	_, err = armageddon.GenerateCryptoConfigWithProfile(networkConfig, configUpdateDir)
+	_, err = armageddon.GenerateCryptoConfigWithProfile(networkConfig, configUpdateDir, true)
 	require.NoError(t, err, "failed to regenerate crypto config with Armageddon")
 
 	// merge the new crypto config for the updated party to the existing crypto config directory so that the config update builder can pick up the new certs
@@ -600,7 +600,7 @@ func TestChangePartyCACertificates(t *testing.T) {
 	configUpdateBuilder.UpdateConsenterSignCert(t, partyToUpdate, newConsenterSignCertBytes)
 
 	// Move the MSP node OUs to the new signing CA together with the certs it issued. A node OU pins a
-	// single CA, so from this update on only identities of the new CA are valid in the party's org;
+	// single CA, so from this update on only identities of the new CA are valid in the party's org.
 	configUpdateBuilder.UpdateMSPNodeOUsCertificate(t, partyToUpdate, newSignCACertBytes)
 
 	// Submit config update

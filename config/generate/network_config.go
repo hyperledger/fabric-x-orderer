@@ -23,9 +23,6 @@ type Network struct {
 	UseTLSAssembler string        `yaml:"UseTLSAssembler"`
 	MaxPartyID      types.PartyID `yaml:"MaxPartyID"`
 	Peers           []string      `yaml:"Peers"`
-	// DisableNodeOUs turns off node-OU based identity classification for the generated crypto, so
-	// admin authority is conveyed by admincerts instead of by the admin OU. Node OUs are the default.
-	DisableNodeOUs bool `yaml:"-"`
 }
 
 // UnmarshalYAML defaults Peers to ["peer1"] when the field is absent or empty in the YAML source.

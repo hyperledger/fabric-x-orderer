@@ -604,8 +604,6 @@ github.com/IBM/mathlib v0.3.0/go.mod h1:r5/+9SWcYCm1TSZE9HRXq9/ejjdtS0Ab2MjLYBuF
 github.com/JohnCGriffin/overflow v0.0.0-20211019200055-46fa312c352c/go.mod h1:X0CRv0ky0k6m906ixxpzmDRLvX58TFUKS2eePweuyxk=
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
-github.com/MayRosenbaum/fabric-x-common v0.0.0-20261001091325-d8971c209633 h1:vMFVTYZoj+0gIJbzscabRvr16+tX3aiFO97mn9PuwcM=
-github.com/MayRosenbaum/fabric-x-common v0.0.0-20261001091325-d8971c209633/go.mod h1:1MFxP9J5FKHA7+vHxM3rvVGxgJc9FhHMM/Zkk61jOSc=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/ajstarks/deck v0.0.0-20200831202436-30c9fc6549a9/go.mod h1:JynElWSGnm/4RlzPXRlREEwqTHAN3T56Bv2ITsFT3gY=
 github.com/ajstarks/deck/generate v0.0.0-20210309230005-c3f852c02e19/go.mod h1:T13YZdzov6OU0A1+RfKZiZN9ca6VeKdBdyDV+BY97Tk=
