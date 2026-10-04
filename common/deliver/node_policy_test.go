@@ -42,11 +42,11 @@ const testMSPID = "SampleOrg"
 var _ deliver.PolicyChecker = (*deliver.NodeVerifier)(nil)
 
 // allNodes are the nodes of a service every node connects to.
-var allNodes = []types.NodeIdentity{
-	types.NewRouterIdentity(deliver.AnyParty),
-	types.NewBatcherIdentity(deliver.AnyParty, deliver.AnyShard),
-	types.NewConsenterIdentity(deliver.AnyParty),
-	types.NewAssemblerIdentity(deliver.AnyParty),
+var allNodes = []deliver.ConnectingNodes{
+	deliver.EveryRouter(),
+	deliver.EveryBatcher(),
+	deliver.EveryConsenter(),
+	deliver.EveryAssembler(),
 }
 
 // Scenario:
@@ -68,7 +68,7 @@ func TestVerifyRequestSignedByMSPIdentity(t *testing.T) {
 
 	verifier, err := deliver.NewNodeVerifier(
 		bundleOf(t, sharedConfig(t, map[types.NodeIdentity][]byte{batcher: certPEM})),
-		types.NewBatcherIdentity(deliver.AnyParty, deliver.AnyShard),
+		deliver.EveryBatcher(),
 	)
 	require.NoError(t, err)
 
@@ -167,7 +167,7 @@ func TestVerifyRequestRefusal(t *testing.T) {
 
 	verifier, err := deliver.NewNodeVerifier(bundleOf(t, sharedConfig(t, map[types.NodeIdentity][]byte{
 		consenter: consenterCertPEM,
-	})), types.NewConsenterIdentity(deliver.AnyParty))
+	})), deliver.EveryConsenter())
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -180,7 +180,7 @@ func TestVerifyRequestRefusal(t *testing.T) {
 			request: func(t *testing.T) *cb.Envelope {
 				return signRequest(t, &testSigner{certPEM: otherCertPEM, key: otherKey})
 			},
-			error: "not in the shared configuration",
+			error: "the signing certificate of no node that connects to this service",
 		},
 		{
 			name: "the signing certificate of the consenter, signed by another key",
@@ -280,7 +280,7 @@ func TestNewNodeVerifier(t *testing.T) {
 	tests := []struct {
 		name    string
 		parties []*ordererpb.PartyConfig
-		nodes   []types.NodeIdentity
+		nodes   []deliver.ConnectingNodes
 		error   string
 	}{
 		{
@@ -293,37 +293,46 @@ func TestNewNodeVerifier(t *testing.T) {
 			error: "no node connects to the service",
 		},
 		{
-			name: "a role that does not exist",
-			parties: []*ordererpb.PartyConfig{{
-				PartyID:      1,
-				RouterConfig: &ordererpb.RouterNodeConfig{SignCert: certPEM},
-			}},
-			nodes: []types.NodeIdentity{{PartyID: 1, Role: types.NodeRole(99)}},
-			error: "role 99 is not a node role",
+			name:    "nodes that connect, built without a constructor",
+			parties: []*ordererpb.PartyConfig{completeParty(t, 1)},
+			nodes:   []deliver.ConnectingNodes{{}},
+			error:   "role 0 is not a node role",
 		},
 		{
-			name: "a node whose role is unset",
-			parties: []*ordererpb.PartyConfig{{
-				PartyID:      1,
-				RouterConfig: &ordererpb.RouterNodeConfig{SignCert: certPEM},
-			}},
-			nodes: []types.NodeIdentity{{PartyID: 1}},
-			error: "role 0 is not a node role",
+			name:    "the router of party 0",
+			parties: []*ordererpb.PartyConfig{completeParty(t, 1)},
+			nodes:   []deliver.ConnectingNodes{deliver.RouterOfParty(0)},
+			error:   "the router of party 0: parties are numbered from 1",
+		},
+		{
+			name:    "the batchers of shard 0",
+			parties: []*ordererpb.PartyConfig{completeParty(t, 1)},
+			nodes:   []deliver.ConnectingNodes{deliver.BatchersOfShard(0)},
+			error:   "every batcher of shard 0: shards are numbered from 1",
+		},
+		{
+			name:    "the batcher of party 0",
+			parties: []*ordererpb.PartyConfig{completeParty(t, 1)},
+			nodes:   []deliver.ConnectingNodes{deliver.BatcherOfParty(0, 1)},
+			error:   "the batcher of party 0 in shard 1: parties are numbered from 1",
+		},
+		{
+			name:    "the batcher of a party in shard 0",
+			parties: []*ordererpb.PartyConfig{completeParty(t, 1)},
+			nodes:   []deliver.ConnectingNodes{deliver.BatcherOfParty(1, 0)},
+			error:   "the batcher of party 1 in shard 0: shards are numbered from 1",
 		},
 		{
 			name:    "no parties",
 			parties: nil,
 			nodes:   allNodes,
-			error:   "holds no parties",
+			error:   "no node of the shared configuration connects to the service",
 		},
 		{
-			name: "a node of a role that belongs to no shard, named with a shard",
-			parties: []*ordererpb.PartyConfig{{
-				PartyID:      1,
-				RouterConfig: &ordererpb.RouterNodeConfig{SignCert: certPEM},
-			}},
-			nodes: []types.NodeIdentity{{PartyID: 1, Role: types.RoleRouter, ShardID: 3}},
-			error: "the router of party 1 names shard 3, but only a batcher belongs to a shard",
+			name:    "no node of the shared configuration among the nodes that connect",
+			parties: []*ordererpb.PartyConfig{completeParty(t, 1)},
+			nodes:   []deliver.ConnectingNodes{deliver.BatchersOfShard(7)},
+			error:   "no node of the shared configuration connects to the service",
 		},
 		{
 			name:    "a node with no signing certificate",
@@ -361,6 +370,25 @@ func TestNewNodeVerifier(t *testing.T) {
 }
 
 // Scenario:
+//  1. Place a signing certificate that cannot be parsed in the shared configuration as the router of
+//     party 1, and a usable one for every other node of the party.
+//  2. Build a verifier for a service that only assemblers connect to, and expect no error.
+//  3. Sign a deliver request with the signing key of the assembler, and expect it to be authorized.
+func TestNewNodeVerifierOverAnUnusableNodeThatDoesNotConnect(t *testing.T) {
+	assemblerCertPEM, assemblerKey := generateSignCert(t)
+
+	party := completeParty(t, 1)
+	party.RouterConfig = &ordererpb.RouterNodeConfig{SignCert: []byte("not a certificate")}
+	party.AssemblerConfig = &ordererpb.AssemblerNodeConfig{SignCert: assemblerCertPEM}
+
+	verifier, err := deliver.NewNodeVerifier(bundleOf(t, []*ordererpb.PartyConfig{party}), deliver.EveryAssembler())
+	require.NoError(t, err)
+
+	request := signRequest(t, &testSigner{certPEM: assemblerCertPEM, key: assemblerKey})
+	require.NoError(t, verifier.CheckPolicy(request, "arma"))
+}
+
+// Scenario:
 //  1. Generate a signing certificate for every node of a party, and place all of them in the
 //     shared configuration.
 //  2. Build a verifier for a service that only batchers and assemblers connect to.
@@ -381,8 +409,8 @@ func TestCheckPolicy(t *testing.T) {
 
 	verifier, err := deliver.NewNodeVerifier(
 		bundleOf(t, sharedConfig(t, certs)),
-		types.NewBatcherIdentity(deliver.AnyParty, deliver.AnyShard),
-		types.NewAssemblerIdentity(deliver.AnyParty),
+		deliver.EveryBatcher(),
+		deliver.EveryAssembler(),
 	)
 	require.NoError(t, err)
 
@@ -395,7 +423,7 @@ func TestCheckPolicy(t *testing.T) {
 				return
 			}
 
-			require.ErrorContains(t, err, "does not connect to this service")
+			require.ErrorContains(t, err, "the signing certificate of no node that connects to this service")
 		})
 	}
 
@@ -403,7 +431,7 @@ func TestCheckPolicy(t *testing.T) {
 		certPEM, key := generateSignCert(t)
 
 		err := verifier.CheckPolicy(signRequest(t, &testSigner{certPEM: certPEM, key: key}), "arma")
-		require.ErrorContains(t, err, "not in the shared configuration")
+		require.ErrorContains(t, err, "the signing certificate of no node that connects to this service")
 	})
 
 	t.Run("a request that names another channel", func(t *testing.T) {
@@ -432,8 +460,8 @@ func TestDeliverServiceRoles(t *testing.T) {
 
 	batcherService, err := deliver.NewNodeVerifier(
 		bundleOf(t, sharedConfig(t, certs)),
-		types.NewBatcherIdentity(deliver.AnyParty, 1),
-		types.NewAssemblerIdentity(deliver.AnyParty),
+		deliver.BatchersOfShard(1),
+		deliver.EveryAssembler(),
 	)
 	require.NoError(t, err)
 
@@ -448,7 +476,7 @@ func TestDeliverServiceRoles(t *testing.T) {
 			if servedByBatcher {
 				require.NoError(t, err)
 			} else {
-				require.ErrorContains(t, err, "does not connect to this service")
+				require.ErrorContains(t, err, "the signing certificate of no node that connects to this service")
 			}
 
 			require.NoError(t, consenterService.CheckPolicy(signRequest(t, signers[node]), "arma"))
@@ -482,8 +510,8 @@ func TestBatcherDeliverServiceShard(t *testing.T) {
 
 	batcherService, err := deliver.NewNodeVerifier(
 		bundleOf(t, sharedConfig(t, certs)),
-		types.NewBatcherIdentity(deliver.AnyParty, shardOfService),
-		types.NewAssemblerIdentity(deliver.AnyParty),
+		deliver.BatchersOfShard(shardOfService),
+		deliver.EveryAssembler(),
 	)
 	require.NoError(t, err)
 
@@ -496,7 +524,7 @@ func TestBatcherDeliverServiceShard(t *testing.T) {
 
 			err := batcherService.CheckPolicy(signRequest(t, signers[node]), "arma")
 			if ofAnotherShard {
-				require.ErrorContains(t, err, node.String()+" does not connect to this service")
+				require.ErrorContains(t, err, "the signing certificate of no node that connects to this service")
 			} else {
 				require.NoError(t, err)
 			}
@@ -528,8 +556,8 @@ func TestDeliverServiceParty(t *testing.T) {
 
 	verifier, err := deliver.NewNodeVerifier(
 		bundleOf(t, sharedConfig(t, certs)),
-		types.NewRouterIdentity(partyOfService),
-		types.NewConsenterIdentity(deliver.AnyParty),
+		deliver.RouterOfParty(partyOfService),
+		deliver.EveryConsenter(),
 	)
 	require.NoError(t, err)
 
@@ -537,7 +565,7 @@ func TestDeliverServiceParty(t *testing.T) {
 		t.Run(node.String(), func(t *testing.T) {
 			err := verifier.CheckPolicy(signRequest(t, signers[node]), "arma")
 			if node.Role == types.RoleRouter && node.PartyID != partyOfService {
-				require.ErrorContains(t, err, node.String()+" does not connect to this service")
+				require.ErrorContains(t, err, "the signing certificate of no node that connects to this service")
 			} else {
 				require.NoError(t, err)
 			}
@@ -546,27 +574,48 @@ func TestDeliverServiceParty(t *testing.T) {
 }
 
 // Scenario:
-//  1. Build the access control of a service that the assembler of every party connects to, passing
-//     the nodes that connect as a slice.
-//  2. Overwrite that slice with the router of every party.
-//  3. Check the policy on a request of the assembler and of the router, and expect the decision of
-//     the service not to have followed the slice.
-func TestCheckPolicyAfterTheNodesThatConnectAreOverwritten(t *testing.T) {
-	router := types.NewRouterIdentity(1)
-	assembler := types.NewAssemblerIdentity(1)
+//  1. Generate a signing certificate for the batchers of shards 1 and 2, the consenter and the
+//     assembler of two parties, and place all of them in the shared configuration.
+//  2. Build the access control of a service that the batcher of party 2 in shard 1, the consenter of
+//     party 1 and the assembler of party 2 connect to.
+//  3. Sign a deliver request with the signing key of each of those nodes.
+//  4. Check the policy on every request, and expect only those three nodes to be authorized.
+func TestDeliverServiceOfSingleNodes(t *testing.T) {
+	batcher := types.NewBatcherIdentity(2, 1)
+	consenter := types.NewConsenterIdentity(1)
+	assembler := types.NewAssemblerIdentity(2)
 
-	certs, signers := signersOfNodes(t, []types.NodeIdentity{router, assembler})
+	nodes := []types.NodeIdentity{
+		types.NewBatcherIdentity(1, 1),
+		types.NewBatcherIdentity(1, 2),
+		types.NewConsenterIdentity(1),
+		types.NewAssemblerIdentity(1),
+		types.NewBatcherIdentity(2, 1),
+		types.NewBatcherIdentity(2, 2),
+		types.NewConsenterIdentity(2),
+		types.NewAssemblerIdentity(2),
+	}
 
-	connect := []types.NodeIdentity{types.NewAssemblerIdentity(deliver.AnyParty)}
-	verifier, err := deliver.NewNodeVerifier(bundleOf(t, sharedConfig(t, certs)), connect...)
+	certs, signers := signersOfNodes(t, nodes)
+
+	verifier, err := deliver.NewNodeVerifier(
+		bundleOf(t, sharedConfig(t, certs)),
+		deliver.BatcherOfParty(batcher.PartyID, batcher.ShardID),
+		deliver.ConsenterOfParty(consenter.PartyID),
+		deliver.AssemblerOfParty(assembler.PartyID),
+	)
 	require.NoError(t, err)
 
-	connect[0] = types.NewRouterIdentity(deliver.AnyParty)
-
-	require.NoError(t, verifier.CheckPolicy(signRequest(t, signers[assembler]), "arma"))
-
-	err = verifier.CheckPolicy(signRequest(t, signers[router]), "arma")
-	require.ErrorContains(t, err, "the router of party 1 does not connect to this service")
+	for _, node := range nodes {
+		t.Run(node.String(), func(t *testing.T) {
+			err := verifier.CheckPolicy(signRequest(t, signers[node]), "arma")
+			if node == batcher || node == consenter || node == assembler {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "the signing certificate of no node that connects to this service")
+			}
+		})
+	}
 }
 
 // Scenario:

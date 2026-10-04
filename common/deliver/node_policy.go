@@ -22,21 +22,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// AnyParty names a node of every party. AnyShard names a batcher of every shard, and is also the
-// shard of a node of any other role, which belongs to none.
-const (
-	AnyParty types.PartyID = 0
-	AnyShard types.ShardID = 0
-)
-
 // NodeVerifier authorizes a request one node sends to another: it resolves the signer by the signing
-// certificate the request carries, verifies the signature against it, and refuses a node that does
-// not connect to the service. Certificates are public, so only the signature proves possession.
+// certificate the request carries among the nodes that connect to the service, and verifies the
+// signature against it. Certificates are public, so only the signature proves possession.
 type NodeVerifier struct {
-	nodes map[string]node
-	// connect are the nodes that connect to the service, each naming a single node or, through
-	// AnyParty and AnyShard, a whole set of them.
-	connect []types.NodeIdentity
+	// permittedNodes are the nodes that connect to the service, by the signed part of their signing
+	// certificate.
+	permittedNodes map[string]node
 }
 
 type node struct {
@@ -45,45 +37,44 @@ type node struct {
 }
 
 // NewNodeVerifier collects the signing certificate of every node of the shared configuration the
-// bundle carries, and accepts only a request of a node that nodesThatConnect names, where AnyParty
-// stands for every party and AnyShard for every shard. A missing or unusable certificate is an
-// error, because no request of that node could ever be authorized.
-func NewNodeVerifier(bundle channelconfig.Resources, nodesThatConnect ...types.NodeIdentity) (*NodeVerifier, error) {
+// bundle carries that nodesThatConnect covers, and refuses a request of any other node. A missing or
+// unusable certificate of such a node is an error, because no request of it could ever be
+// authorized.
+func NewNodeVerifier(bundle channelconfig.Resources, nodesThatConnect ...ConnectingNodes) (*NodeVerifier, error) {
 	if len(nodesThatConnect) == 0 {
 		return nil, errors.New("no node connects to the service, so every request would be refused")
 	}
 
 	for _, connecting := range nodesThatConnect {
-		switch connecting.Role {
-		case types.RoleBatcher:
-		case types.RoleRouter, types.RoleConsenter, types.RoleAssembler:
-			// A node of any other role belongs to no shard, so a shard here would go unread.
-			if connecting.ShardID != AnyShard {
-				return nil, errors.Errorf("the %s names shard %d, but only a batcher belongs to a shard",
-					connecting, connecting.ShardID)
-			}
-		default:
-			return nil, errors.Errorf("role %d is not a node role", uint8(connecting.Role))
+		if err := connecting.validate(); err != nil {
+			return nil, err
 		}
 	}
-
-	v := &NodeVerifier{nodes: make(map[string]node), connect: slices.Clone(nodesThatConnect)}
 
 	parties, err := partiesOfBundle(bundle)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(parties) == 0 {
-		return nil, errors.New("the shared configuration holds no parties, so every request would be refused")
-	}
-
+	v := &NodeVerifier{permittedNodes: make(map[string]node)}
 	for _, party := range parties {
 		for _, node := range nodesOfParty(party) {
+			connects := slices.ContainsFunc(nodesThatConnect, func(connecting ConnectingNodes) bool {
+				return connecting.covers(node.identity)
+			})
+			if !connects {
+				continue
+			}
+
 			if err := v.addNode(node.signCert, node.identity); err != nil {
 				return nil, err
 			}
 		}
+	}
+
+	if len(v.permittedNodes) == 0 {
+		return nil, errors.New("no node of the shared configuration connects to the service, so every " +
+			"request would be refused")
 	}
 
 	return v, nil
@@ -172,51 +163,25 @@ func (v *NodeVerifier) addNode(signCert []byte, identity types.NodeIdentity) err
 
 	// A certificate two nodes share admits both, but resolves to the one added last. The verification
 	// of a configuration is where such a configuration is meant to be refused.
-	if shared, taken := v.nodes[string(cert.RawTBSCertificate)]; taken {
+	if shared, taken := v.permittedNodes[string(cert.RawTBSCertificate)]; taken {
 		logger.Warnf("The %s and the %s share a signing certificate, so a request that carries it is "+
 			"attributed to the %s", shared.identity, identity, identity)
 	}
 
-	v.nodes[string(cert.RawTBSCertificate)] = node{identity: identity, publicKey: publicKey}
+	v.permittedNodes[string(cert.RawTBSCertificate)] = node{identity: identity, publicKey: publicKey}
 
 	return nil
 }
 
-// CheckPolicy refuses a request that no node of the shared configuration signed, and a request of a
-// node that does not connect to this service. The channel is not part of the decision.
+// CheckPolicy refuses a request of any node that does not connect to the service. The channel is not
+// part of the decision.
 func (v *NodeVerifier) CheckPolicy(envelope *cb.Envelope, channelID string) error {
-	requester, err := v.VerifyRequest(envelope)
-	if err != nil {
-		return err
-	}
-
-	for _, connecting := range v.connect {
-		if covers(connecting, requester) {
-			return nil
-		}
-	}
-
-	return errors.Errorf("the %s does not connect to this service", requester)
+	_, err := v.VerifyRequest(envelope)
+	return err
 }
 
-// covers reports whether a node that connects to the service names the requester, AnyParty naming a
-// node of every party and AnyShard a batcher of every shard.
-func covers(connecting, requester types.NodeIdentity) bool {
-	if connecting.Role != requester.Role {
-		return false
-	}
-
-	if connecting.PartyID != AnyParty && connecting.PartyID != requester.PartyID {
-		return false
-	}
-
-	return connecting.Role != types.RoleBatcher ||
-		connecting.ShardID == AnyShard ||
-		connecting.ShardID == requester.ShardID
-}
-
-// VerifyRequest returns the node that signed the request, or an error if no node of the shared
-// configuration signed it.
+// VerifyRequest returns the node that signed the request, or an error if no node that connects to the
+// service signed it.
 func (v *NodeVerifier) VerifyRequest(envelope *cb.Envelope) (types.NodeIdentity, error) {
 	signedData, err := protoutil.EnvelopeAsSignedData(envelope)
 	if err != nil {
@@ -237,10 +202,10 @@ func (v *NodeVerifier) VerifyRequest(envelope *cb.Envelope) (types.NodeIdentity,
 		return types.NodeIdentity{}, errors.Wrap(err, "failed parsing the signing certificate the request carries")
 	}
 
-	signer, known := v.nodes[string(cert.RawTBSCertificate)]
+	signer, known := v.permittedNodes[string(cert.RawTBSCertificate)]
 	if !known {
 		return types.NodeIdentity{}, errors.New(
-			"the request carries a signing certificate that is not in the shared configuration",
+			"the request carries the signing certificate of no node that connects to this service",
 		)
 	}
 

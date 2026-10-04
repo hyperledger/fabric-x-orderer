@@ -862,18 +862,18 @@ func TestExtractedBundleAuthorizesInternalDeliver(t *testing.T) {
 
 	batcherAccessControl, err := deliver.NewNodeVerifier(
 		batcherConfig.Bundle,
-		types.NewBatcherIdentity(deliver.AnyParty, batcherConfig.ShardId),
-		types.NewAssemblerIdentity(deliver.AnyParty),
+		deliver.BatchersOfShard(batcherConfig.ShardId),
+		deliver.EveryAssembler(),
 	)
 	require.NoError(t, err)
 	require.NoError(t, batcherAccessControl.CheckPolicy(signedDeliverRequest(t, batcherOfShard1InParty2), "arma"))
 	require.NoError(t, batcherAccessControl.CheckPolicy(signedDeliverRequest(t, assemblerOfParty2), "arma"))
 	err = batcherAccessControl.CheckPolicy(signedDeliverRequest(t, routerOfParty2), "arma")
-	require.ErrorContains(t, err, "router of party 2 does not connect to this service")
+	require.ErrorContains(t, err, "the signing certificate of no node that connects to this service")
 	err = batcherAccessControl.CheckPolicy(signedDeliverRequest(t, consenterOfParty2), "arma")
-	require.ErrorContains(t, err, "consenter of party 2 does not connect to this service")
+	require.ErrorContains(t, err, "the signing certificate of no node that connects to this service")
 	err = batcherAccessControl.CheckPolicy(signedDeliverRequest(t, batcherOfShard2InParty2), "arma")
-	require.ErrorContains(t, err, "batcher of party 2 in shard 2 does not connect to this service")
+	require.ErrorContains(t, err, "the signing certificate of no node that connects to this service")
 
 	consenterConfigPath := filepath.Join(dir, "config", "party1", "local_config_consenter.yaml")
 	testutil.EditDirectoryInNodeConfigYAML(t, consenterConfigPath, filepath.Join(dir, "storage", "consenter"), "", 0)
@@ -883,10 +883,10 @@ func TestExtractedBundleAuthorizesInternalDeliver(t *testing.T) {
 
 	consenterAccessControl, err := deliver.NewNodeVerifier(
 		consenterConfig.Bundle,
-		types.NewRouterIdentity(deliver.AnyParty),
-		types.NewBatcherIdentity(deliver.AnyParty, deliver.AnyShard),
-		types.NewConsenterIdentity(deliver.AnyParty),
-		types.NewAssemblerIdentity(deliver.AnyParty),
+		deliver.EveryRouter(),
+		deliver.EveryBatcher(),
+		deliver.EveryConsenter(),
+		deliver.EveryAssembler(),
 	)
 	require.NoError(t, err)
 	require.NoError(t, consenterAccessControl.CheckPolicy(signedDeliverRequest(t, routerOfParty2), "arma"))
