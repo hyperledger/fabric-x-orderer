@@ -10,7 +10,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
-	"fmt"
 	"slices"
 
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -22,31 +21,6 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
-
-// NodeRole is the service a node runs.
-type NodeRole string
-
-const (
-	RoleRouter    NodeRole = "router"
-	RoleBatcher   NodeRole = "batcher"
-	RoleConsenter NodeRole = "consenter"
-	RoleAssembler NodeRole = "assembler"
-)
-
-// NodeIdentity names the node a signing certificate belongs to.
-type NodeIdentity struct {
-	PartyID types.PartyID
-	Role    NodeRole
-	// ShardID is meaningful only when Role is RoleBatcher.
-	ShardID types.ShardID
-}
-
-func (n NodeIdentity) String() string {
-	if n.Role == RoleBatcher {
-		return fmt.Sprintf("batcher of party %d in shard %d", n.PartyID, n.ShardID)
-	}
-	return fmt.Sprintf("%s of party %d", n.Role, n.PartyID)
-}
 
 // AnyParty names a node of every party. AnyShard names a batcher of every shard, and is also the
 // shard of a node of any other role, which belongs to none.
@@ -62,11 +36,11 @@ type NodeVerifier struct {
 	nodes map[string]node
 	// connect are the nodes that connect to the service, each naming a single node or, through
 	// AnyParty and AnyShard, a whole set of them.
-	connect []NodeIdentity
+	connect []types.NodeIdentity
 }
 
 type node struct {
-	identity  NodeIdentity
+	identity  types.NodeIdentity
 	publicKey *ecdsa.PublicKey
 }
 
@@ -74,22 +48,22 @@ type node struct {
 // bundle carries, and accepts only a request of a node that nodesThatConnect names, where AnyParty
 // stands for every party and AnyShard for every shard. A missing or unusable certificate is an
 // error, because no request of that node could ever be authorized.
-func NewNodeVerifier(bundle channelconfig.Resources, nodesThatConnect ...NodeIdentity) (*NodeVerifier, error) {
+func NewNodeVerifier(bundle channelconfig.Resources, nodesThatConnect ...types.NodeIdentity) (*NodeVerifier, error) {
 	if len(nodesThatConnect) == 0 {
 		return nil, errors.New("no node connects to the service, so every request would be refused")
 	}
 
 	for _, connecting := range nodesThatConnect {
 		switch connecting.Role {
-		case RoleBatcher:
-		case RoleRouter, RoleConsenter, RoleAssembler:
+		case types.RoleBatcher:
+		case types.RoleRouter, types.RoleConsenter, types.RoleAssembler:
 			// A node of any other role belongs to no shard, so a shard here would go unread.
 			if connecting.ShardID != AnyShard {
 				return nil, errors.Errorf("the %s names shard %d, but only a batcher belongs to a shard",
 					connecting, connecting.ShardID)
 			}
 		default:
-			return nil, errors.Errorf("%q is not a node role", connecting.Role)
+			return nil, errors.Errorf("role %d is not a node role", uint8(connecting.Role))
 		}
 	}
 
@@ -137,7 +111,7 @@ func partiesOfBundle(bundle channelconfig.Resources) ([]*ordererpb.PartyConfig, 
 
 // signCertOfNode is the signing certificate the shared configuration holds for one node of a party.
 type signCertOfNode struct {
-	identity NodeIdentity
+	identity types.NodeIdentity
 	signCert []byte
 }
 
@@ -148,28 +122,24 @@ func nodesOfParty(party *ordererpb.PartyConfig) []signCertOfNode {
 
 	nodes := make([]signCertOfNode, 0, len(party.GetBatchersConfig())+3)
 	nodes = append(nodes, signCertOfNode{
-		identity: NodeIdentity{PartyID: partyID, Role: RoleRouter},
+		identity: types.NewRouterIdentity(partyID),
 		signCert: party.GetRouterConfig().GetSignCert(),
 	})
 
 	for _, batcher := range party.GetBatchersConfig() {
 		nodes = append(nodes, signCertOfNode{
-			identity: NodeIdentity{
-				PartyID: partyID,
-				Role:    RoleBatcher,
-				ShardID: types.ShardID(batcher.GetShardID()),
-			},
+			identity: types.NewBatcherIdentity(partyID, types.ShardID(batcher.GetShardID())),
 			signCert: batcher.GetSignCert(),
 		})
 	}
 
 	nodes = append(nodes, signCertOfNode{
-		identity: NodeIdentity{PartyID: partyID, Role: RoleConsenter},
+		identity: types.NewConsenterIdentity(partyID),
 		signCert: party.GetConsenterConfig().GetSignCert(),
 	})
 
 	return append(nodes, signCertOfNode{
-		identity: NodeIdentity{PartyID: partyID, Role: RoleAssembler},
+		identity: types.NewAssemblerIdentity(partyID),
 		signCert: party.GetAssemblerConfig().GetSignCert(),
 	})
 }
@@ -177,7 +147,7 @@ func nodesOfParty(party *ordererpb.PartyConfig) []signCertOfNode {
 // addNode indexes a node by the DER of the signed part of its signing certificate, so that neither
 // the PEM encoding nor a re-encoded certificate signature matters: an MSP rewrites a high-S ECDSA
 // signature to low-S, which leaves the certificate equivalent but changes its bytes.
-func (v *NodeVerifier) addNode(signCert []byte, identity NodeIdentity) error {
+func (v *NodeVerifier) addNode(signCert []byte, identity types.NodeIdentity) error {
 	if len(signCert) == 0 {
 		return errors.Errorf("the shared configuration holds no signing certificate for the %s", identity)
 	}
@@ -221,7 +191,7 @@ func (v *NodeVerifier) CheckPolicy(envelope *cb.Envelope, channelID string) erro
 	}
 
 	for _, connecting := range v.connect {
-		if connecting.covers(requester) {
+		if covers(connecting, requester) {
 			return nil
 		}
 	}
@@ -231,50 +201,52 @@ func (v *NodeVerifier) CheckPolicy(envelope *cb.Envelope, channelID string) erro
 
 // covers reports whether a node that connects to the service names the requester, AnyParty naming a
 // node of every party and AnyShard a batcher of every shard.
-func (n NodeIdentity) covers(requester NodeIdentity) bool {
-	if n.Role != requester.Role {
+func covers(connecting, requester types.NodeIdentity) bool {
+	if connecting.Role != requester.Role {
 		return false
 	}
 
-	if n.PartyID != AnyParty && n.PartyID != requester.PartyID {
+	if connecting.PartyID != AnyParty && connecting.PartyID != requester.PartyID {
 		return false
 	}
 
-	return n.Role != RoleBatcher || n.ShardID == AnyShard || n.ShardID == requester.ShardID
+	return connecting.Role != types.RoleBatcher ||
+		connecting.ShardID == AnyShard ||
+		connecting.ShardID == requester.ShardID
 }
 
 // VerifyRequest returns the node that signed the request, or an error if no node of the shared
 // configuration signed it.
-func (v *NodeVerifier) VerifyRequest(envelope *cb.Envelope) (NodeIdentity, error) {
+func (v *NodeVerifier) VerifyRequest(envelope *cb.Envelope) (types.NodeIdentity, error) {
 	signedData, err := protoutil.EnvelopeAsSignedData(envelope)
 	if err != nil {
-		return NodeIdentity{}, errors.Wrap(err, "could not convert the request to signed data")
+		return types.NodeIdentity{}, errors.Wrap(err, "could not convert the request to signed data")
 	}
 	if len(signedData) != 1 {
-		return NodeIdentity{}, errors.Errorf("expected a single signature over the request, got %d",
+		return types.NodeIdentity{}, errors.Errorf("expected a single signature over the request, got %d",
 			len(signedData))
 	}
 
 	certPEM := signedData[0].Identity.GetCertificate()
 	if len(certPEM) == 0 {
-		return NodeIdentity{}, errors.New("the request carries no signing certificate")
+		return types.NodeIdentity{}, errors.New("the request carries no signing certificate")
 	}
 
 	cert, err := utils.Parsex509Cert(certPEM)
 	if err != nil {
-		return NodeIdentity{}, errors.Wrap(err, "failed parsing the signing certificate the request carries")
+		return types.NodeIdentity{}, errors.Wrap(err, "failed parsing the signing certificate the request carries")
 	}
 
 	signer, known := v.nodes[string(cert.RawTBSCertificate)]
 	if !known {
-		return NodeIdentity{}, errors.New(
+		return types.NodeIdentity{}, errors.New(
 			"the request carries a signing certificate that is not in the shared configuration",
 		)
 	}
 
 	digest := sha256.Sum256(signedData[0].Data)
 	if !ecdsa.VerifyASN1(signer.publicKey, digest[:], signedData[0].Signature) {
-		return NodeIdentity{}, errors.Errorf(
+		return types.NodeIdentity{}, errors.Errorf(
 			"the signature over the request does not verify against the signing certificate of the %s",
 			signer.identity,
 		)
