@@ -50,11 +50,14 @@ to its ledger, and serves it to block consumers. Doing this without stalling the
 the assembler's central design problem, since obtaining a batch only once its BA has arrived would
 cost a network round trip per block, and most of this document is about how that cost is avoided.
 
-<!-- Figure 1 placeholder -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/assembler-context-dark.svg">
+  <img alt="The assembler's inputs and output" src="figures/assembler-context.svg">
+</picture>
+
 *Figure 1: The assembler's two input streams and its output — decisions from the consensus cluster,
 full batches from the batchers of each shard, and the block ledger served to clients. The nodes shown
-are part of a network of 4 parties and 2 shards; A1, C1 and B1 belong to party 1.
-(Diagram to be added.)*
+are part of a network of 4 parties and 2 shards; A1, C1 and B1 belong to party 1.*
 
 ### 1.1 Units and Terms
 
@@ -201,9 +204,12 @@ each shard's stream in one more. A single goroutine consumes the index's request
 one per on-demand fetch, which asks every batcher of the shard in parallel. The ledger is written by
 the collator alone.
 
-<!-- Figure 2 placeholder -->
-*Figure 2: The assembler's units, and how decisions, batches and blocks move between them.
-(Diagram to be added.)*
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/assembler-units-dark.svg">
+  <img alt="The assembler's units and how they connect" src="figures/assembler-units.svg">
+</picture>
+
+*Figure 2: The assembler's units, and how decisions, batches and blocks move between them.*
 
 ### 3.2 Collation
 
@@ -284,10 +290,13 @@ put in.
 One decision therefore becomes as many blocks as it carries BAs, appended in the decision's own
 order, and each block records which batch it came from and where in the ordered stream it sat.
 
-<!-- Figure 3 placeholder -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/assembler-block-dark.svg">
+  <img alt="One decision becoming blocks, and where each part of a block comes from" src="figures/assembler-block.svg">
+</picture>
+
 *Figure 3: One decision becoming blocks — where the header, the data and each metadata field come
-from.
-(Diagram to be added.)*
+from.*
 
 ### 3.7 Code Map
 

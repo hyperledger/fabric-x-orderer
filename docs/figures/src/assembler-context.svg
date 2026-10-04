@@ -1,0 +1,63 @@
+<!--
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560">
+  <!-- theme -->
+  <defs>
+    <marker id="arrow-digests" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="m-digests" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="arrow-batches" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="m-batches" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="arrow-blocks" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="m-blocks" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <!-- Shard columns: 20 px above the first batcher and below the last; staggered so the stream
+       from shard 1 passes above shard 2 -->
+  <text class="group-label" x="115" y="108">Shard 1</text>
+  <rect class="group shard-1" x="60" y="120" width="110" height="266" rx="14"/>
+  <text class="group-label" x="255" y="228">Shard 2</text>
+  <rect class="group shard-2" x="200" y="240" width="110" height="266" rx="14"/>
+
+  <!-- Batchers: Bp in shard s -->
+  <rect class="node" x="75" y="140" width="80" height="40"/><text class="node-label" x="115" y="168">B1<tspan class="node-sub">s1</tspan></text>
+  <rect class="node" x="75" y="202" width="80" height="40"/><text class="node-label" x="115" y="230">B2<tspan class="node-sub">s1</tspan></text>
+  <rect class="node" x="75" y="264" width="80" height="40"/><text class="node-label" x="115" y="292">B3<tspan class="node-sub">s1</tspan></text>
+  <rect class="node" x="75" y="326" width="80" height="40"/><text class="node-label" x="115" y="354">B4<tspan class="node-sub">s1</tspan></text>
+  <rect class="node" x="215" y="260" width="80" height="40"/><text class="node-label" x="255" y="288">B1<tspan class="node-sub">s2</tspan></text>
+  <rect class="node" x="215" y="322" width="80" height="40"/><text class="node-label" x="255" y="350">B2<tspan class="node-sub">s2</tspan></text>
+  <rect class="node" x="215" y="384" width="80" height="40"/><text class="node-label" x="255" y="412">B3<tspan class="node-sub">s2</tspan></text>
+  <rect class="node" x="215" y="446" width="80" height="40"/><text class="node-label" x="255" y="474">B4<tspan class="node-sub">s2</tspan></text>
+
+  <!-- Consensus -->
+  <text class="group-label" x="670" y="40">Consensus</text>
+  <rect class="group consensus" x="610" y="52" width="120" height="76" rx="14"/>
+  <rect class="node" x="630" y="68" width="80" height="44"/><text class="node-label" x="670" y="98">C1</text>
+
+  <!-- Assembler, with its ledger inside -->
+  <rect class="node" x="590" y="212" width="160" height="90"/>
+  <text class="node-label-main" x="630" y="266">A1</text>
+  <path class="ledger" d="M675,232 v36 a25,7 0 0 0 50,0 v-36"/>
+  <ellipse class="ledger" cx="700" cy="232" rx="25" ry="7"/>
+  <text class="note" x="700" y="294">ledger</text>
+
+  <!-- Clients -->
+  <rect class="node" x="880" y="230" width="104" height="54"/><text class="node-label" x="932" y="264">Clients</text>
+
+  <!-- Decisions: C1 -> A1 -->
+  <line class="flow digests" x1="670" y1="128" x2="670" y2="210" marker-end="url(#arrow-digests)"/>
+  <text class="flow-label digests end" x="659" y="176">decisions (BAs)</text>
+
+  <!-- Streamed batches: the batcher of the assembler's own party in each shard -> A1 -->
+  <line class="flow batches" x1="155" y1="160" x2="588" y2="245" marker-end="url(#arrow-batches)"/>
+  <line class="flow batches" x1="295" y1="280" x2="588" y2="265" marker-end="url(#arrow-batches)"/>
+  <text class="flow-label batches" x="400" y="196">streamed</text>
+
+  <!-- On-demand batches: any batcher of a shard -> A1 -->
+  <path class="flow batches dashed" d="M115,386 V540 H670 V304" marker-end="url(#arrow-batches)"/>
+  <path class="flow batches dashed" d="M255,506 V540"/>
+  <text class="flow-label batches" x="460" y="530">on demand, from any batcher of the shard</text>
+
+  <!-- Blocks: A1 -> clients -->
+  <line class="flow blocks" x1="750" y1="257" x2="876" y2="257" marker-end="url(#arrow-blocks)"/>
+  <text class="flow-label blocks" x="813" y="245">Deliver: blocks</text>
+</svg>
