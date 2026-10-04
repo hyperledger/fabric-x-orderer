@@ -1253,15 +1253,16 @@ func (c *Consensus) getReqConfigSeq(req []byte) (uint64, bool, error) {
 		}
 		return uint64(configSeq) - 1, false, nil
 	case ce.AssemblerReport != nil:
-		// Assembler decision reports carry no config sequence of their own; report the current
-		// verification sequence so they are always treated as current and verified (never skipped
-		// or rejected as stale) in VerifyProposal.
-		return c.VerificationSequence(), false, nil
+		return uint64(ce.AssemblerReport.ConfigSeq), false, nil
 	default:
 		return 0, false, errors.New("empty control event")
 
 	}
 }
+
+// maxAssemblerReportSignatureSize caps an AssemblerDecisionReport signature. An ASN.1 ECDSA
+// signature is at most 72 bytes for P-256 (and 139 for P-521), so this leaves ample headroom.
+const maxAssemblerReportSignatureSize = 256
 
 func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
 	ce := &state.ControlEvent{}
@@ -1317,13 +1318,29 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		// TODO: revisit this return
 		return reqID, ce, nil
 	} else if ce.AssemblerReport != nil {
-		if len(ce.AssemblerReport.Signature) == 0 {
+		report := ce.AssemblerReport
+		if report.ConfigSeq != configSeq {
+			return reqID, ce, errors.Errorf(
+				"mismatch config sequence; the assembler decision report's config seq is %d while the config seq should be %d",
+				report.ConfigSeq, configSeq)
+		}
+		if len(report.Signature) == 0 {
 			return reqID, ce, errors.New("missing assembler decision report signature")
 		}
-		// Verify the signature against the reporting party's assembler identity. An unknown party
-		// has no registered assembler key, so VerifySignature rejects it with "key does not exist";
-		// this doubles as the check that Party is a known party.
-		return reqID, ce, c.SigVerifier.VerifySignature(arma_types.NewAssemblerIdentity(ce.AssemblerReport.Party), ce.AssemblerReport.ToBeSigned(), ce.AssemblerReport.Signature)
+		// Bound the signature before verifying it, so an oversized junk signature is not copied into
+		// the verification error and logged.
+		if len(report.Signature) > maxAssemblerReportSignatureSize {
+			return reqID, ce, errors.Errorf("assembler decision report signature too large (%d > %d bytes)",
+				len(report.Signature), maxAssemblerReportSignatureSize)
+		}
+		// Verify the signature against the reporting party's assembler identity. An unknown party has
+		// no registered assembler key, so verification fails; this doubles as the check that Party is a
+		// known party.
+		reporter := arma_types.NewAssemblerIdentity(report.Party)
+		if err := c.SigVerifier.VerifySignature(reporter, report.ToBeSigned(), report.Signature); err != nil {
+			return reqID, ce, errors.Wrap(err, "invalid assembler decision report signature")
+		}
+		return reqID, ce, nil
 	} else {
 		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")
 	}
