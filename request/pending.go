@@ -288,9 +288,10 @@ func (ps *PendingStore) removeRequest(reqID string, now time.Time) {
 		return
 	}
 
-	bucket.delete(reqID)
-
-	ps.OnDelete(reqID)
+	// The request may have been deleted concurrently (e.g., a duplicate id in requestIDs, or a Prune).
+	if bucket.delete(reqID) {
+		ps.OnDelete(reqID)
+	}
 }
 
 // Contains reports whether a request with the given id is currently held in the store.
@@ -319,8 +320,9 @@ func (ps *PendingStore) Prune(predicate func([]byte) error) {
 		if predicate(request.([]byte)) == nil {
 			return true
 		}
-		b.delete(reqID)
-		ps.OnDelete(reqID)
+		if b.delete(reqID) {
+			ps.OnDelete(reqID)
+		}
 		return true
 	})
 }
@@ -336,10 +338,9 @@ func (ps *PendingStore) Submit(request []byte) error {
 	// In such a case, wait for a new un-sealed bucket to replace the current bucket.
 	for {
 		currentBucket := ps.currentBucket.Load().(*bucket)
-		if !currentBucket.tryInsert(reqID, request) {
-			continue
+		if err := currentBucket.tryInsert(reqID, request); !errors.Is(err, errBucketSealed) {
+			return err
 		}
-		return nil
 	}
 }
 

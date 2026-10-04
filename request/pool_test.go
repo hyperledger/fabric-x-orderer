@@ -698,3 +698,73 @@ func (ins *testRequestInspector) RequestID(req []byte) string {
 	ID, _ := parseTestRequest(req)
 	return ID
 }
+
+// TestPoolPendingPermitAccounting checks that in pending mode every permit taken by Submit is
+// released exactly once.
+func TestPoolPendingPermitAccounting(t *testing.T) {
+	requestInspector := &reqInspector{}
+
+	newPendingPool := func(t *testing.T, maxSize uint64) *Pool {
+		pool := NewPool(testutil.CreateLogger(t, 0), requestInspector.RequestID, PoolOptions{
+			FirstStrikeThreshold:  time.Second * 5,
+			SecondStrikeThreshold: time.Minute / 2,
+			BatchMaxSize:          1000,
+			BatchMaxSizeBytes:     1000 * 32,
+			MaxSize:               maxSize,
+			RequestMaxBytes:       100 * 1024,
+			AutoRemoveTimeout:     time.Second * 10,
+			SubmitTimeout:         time.Millisecond * 100,
+		}, &striker{})
+		t.Cleanup(pool.Close)
+		pool.Restart(false)
+		return pool
+	}
+
+	makeReq := func(i uint64) []byte {
+		req := make([]byte, 8)
+		binary.BigEndian.PutUint64(req, i)
+		return req
+	}
+
+	t.Run("submit of a pooled request", func(t *testing.T) {
+		pool := newPendingPool(t, 2)
+
+		require.NoError(t, pool.Submit(makeReq(1)))
+		require.ErrorContains(t, pool.Submit(makeReq(1)), "already inserted")
+		require.Equal(t, int64(1), pool.RequestCount())
+
+		// The rejected submit released its permit, so the pool still has room for one more.
+		require.NoError(t, pool.Submit(makeReq(2)))
+		require.Equal(t, int64(2), pool.RequestCount())
+	})
+
+	t.Run("submit of a removed request", func(t *testing.T) {
+		pool := newPendingPool(t, 1)
+
+		pool.RemoveRequests(requestInspector.RequestID(makeReq(1)))
+		require.ErrorContains(t, pool.Submit(makeReq(1)), "already inserted")
+		require.Equal(t, int64(0), pool.RequestCount())
+
+		require.NoError(t, pool.Submit(makeReq(2)))
+		require.Equal(t, int64(1), pool.RequestCount())
+	})
+
+	t.Run("duplicate ids in RemoveRequests", func(t *testing.T) {
+		pool := newPendingPool(t, 1)
+
+		for i := uint64(0); i < 300; i++ {
+			req := makeReq(i)
+			require.NoError(t, pool.Submit(req))
+
+			// Enough copies of the id for RemoveRequests to process them concurrently.
+			// Releasing the single permit more than once panics the semaphore.
+			reqID := requestInspector.RequestID(req)
+			ids := make([]string, 8*runtime.NumCPU())
+			for j := range ids {
+				ids[j] = reqID
+			}
+			pool.RemoveRequests(ids...)
+			require.Equal(t, int64(0), pool.RequestCount())
+		}
+	})
+}
