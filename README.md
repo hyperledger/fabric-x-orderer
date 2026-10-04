@@ -1,6 +1,7 @@
 [![Verify Build](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/verify-build.yml/badge.svg)](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/verify-build.yml)
 [![Deterministic Failure Test](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/deterministic-failure-test.yml/badge.svg)](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/deterministic-failure-test.yml)
 [![Fully Randomized Failure Test](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/fully-randomized-failure-test.yml/badge.svg)](https://github.com/hyperledger/fabric-x-orderer/actions/workflows/fully-randomized-failure-test.yml)
+[![Coverage Status](https://coveralls.io/repos/github/hyperledger/fabric-x-orderer/badge.svg?branch=main)](https://coveralls.io/github/hyperledger/fabric-x-orderer?branch=main)
 
 # Hyperledger Fabric-X Orderer
 
