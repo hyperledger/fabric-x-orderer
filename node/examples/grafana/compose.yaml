@@ -3,11 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-# Prometheus, Grafana and the test client, added to the Arma network of
-# ../compose.yaml. Both files are used together by scripts/run_dashboard.sh, which
-# generates everything mounted below.
-
 name: arma-grafana
+
+include:
+  - ../compose.yaml
 
 services:
 
@@ -26,12 +25,12 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
     volumes:
-      - /tmp/arma-sample/grafana/provisioning:/etc/grafana/provisioning:ro
-      - /tmp/arma-sample/grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./grafana/datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml:ro
+      - ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./grafana/arma-dashboard.json:/etc/grafana/dashboards/arma-dashboard.json:ro
 
-  # Started by run_dashboard.sh once the network is up, hence the profile.
   submitter:
-    image: arma
+    image: "arma"
     profiles:
       - client
     entrypoint: /usr/local/bin/armageddon

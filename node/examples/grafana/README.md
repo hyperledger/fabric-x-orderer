@@ -16,22 +16,23 @@ towards the host.
 
 Both commands are run from the root directory.
 
-```
-1.
+1. Build the `arma` image from [node/examples/Dockerfile](../Dockerfile), the same image the
+other examples use:
+
+```bash
 (cd node/examples; bash ./scripts/build_docker.sh)
 ```
-This builds the `arma` image from [node/examples/Dockerfile](../Dockerfile), the same image the
-other examples use.
 
-```
-2.
+2. Run the network with Prometheus and Grafana:
+
+```bash
 ./node/examples/grafana/scripts/run_dashboard.sh
 ```
 
 This script performs the following tasks:
 - Generates a configuration file for each node using `armageddon generate`.
 - Sets a known metrics port in each node configuration, so Prometheus can scrape it.
-- Writes the Prometheus scrape targets and the Grafana data source and dashboard.
+- Writes the Prometheus scrape targets.
 - Starts the network of [node/examples/compose.yaml](../compose.yaml) together with Prometheus and Grafana.
 - Waits until every node is being scraped.
 - Submits transactions using `armageddon submit`, which processes 300000 transactions at a
@@ -39,26 +40,17 @@ This script performs the following tasks:
 - Prints the dashboard link and opens it in a browser if there is a display.
 
 Grafana and Prometheus are published on ports chosen by Docker, so they never collide with
-anything already running. The script prints both:
+anything already running. The script prints both, for example:
 
 ```
-EXAMPLE:
   Dashboard  : http://localhost:32769/d/arma-dashboard
   Prometheus : http://localhost:32770
-```
-
-The script returns once the network is up, leaving the test running. Watch the dashboard
-for progress: `submit` itself stays quiet until it has seen every transaction in a block,
-then reports the transaction rate, block rate and block size.
-
-```
-docker logs -f arma-grafana-submitter-1
 ```
 
 ### Clean Up Sample
 
 To clean up the environment after running the example, run:
-```
+```bash
 ./node/examples/grafana/scripts/clean_dashboard.sh
 ```
 
@@ -75,9 +67,9 @@ The following variables can be used to run the default arma network differently:
 | `DURATION_SECONDS` | `300`     | how long to submit; times `RATE` gives the transaction count |
 | `OPEN_BROWSER`     | `auto`    | `false` to never open a browser            |
 
-```
-EXAMPLE:
+For example, to submit 500 transactions per second for one minute:
 
+```bash
 RATE=500 DURATION_SECONDS=60 ./node/examples/grafana/scripts/run_dashboard.sh
 ```
 
