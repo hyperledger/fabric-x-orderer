@@ -10,10 +10,6 @@ on:
     - cron: '17 4 * * 1' # Every Monday at 04:17 UTC
   workflow_dispatch:
 
-env:
-  GOPATH: /opt/go
-  PATH: /opt/go/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin
-
 permissions:
   contents: read
 
@@ -21,7 +17,6 @@ jobs:
   coverage:
     name: Coverage ${{ matrix.target }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -54,13 +49,11 @@ jobs:
         with:
           name: coverdata-${{ matrix.target }}
           path: coverdata/${{ matrix.target }}
-          retention-days: 7
 
   report:
     name: Coverage Report
     needs: coverage
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v5
@@ -81,7 +74,6 @@ jobs:
         with:
           name: coverage-profile
           path: coverage.profile
-          retention-days: 30
 
       - name: Send Coverage To Coveralls
         if: github.repository == 'hyperledger/fabric-x-orderer'
