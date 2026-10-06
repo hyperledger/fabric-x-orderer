@@ -57,22 +57,7 @@ func TestConsensusConfigAck(t *testing.T) {
 	consensusNodes, servers, _ := createConsensusNodesAndGRPCServers(t, dir, parties)
 	startConsensusNodesAndRegisterGRPCServers(t, parties, consensusNodes, servers)
 
-	// submit a config update that the consenters apply dynamically, without an admin action.
-	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
-	env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
-	configReq := &protos.Request{
-		Payload:   env.Payload,
-		Signature: env.Signature,
-		ConfigSeq: uint32(0),
-	}
-	_, err := consensusNodes[0].SubmitConfig(nodeTLSContext(t, dir, parties[0], "router"), configReq)
-	require.NoError(t, err)
-
-	// every consenter decides the config block and soft stops, waiting for config acks.
-	for _, node := range consensusNodes {
-		waitForSoftStoppedState(t, node)
-	}
+	submitDynamicConfigUpdate(t, dir, parties, consensusNodes)
 
 	const configSeq = uint64(1)
 	routerAck := &protos.ConfigAck{NodeType: protos.NodeType_ROUTER, ConfigSeq: configSeq}
@@ -143,6 +128,94 @@ func TestConsensusConfigAck(t *testing.T) {
 
 	for _, node := range consensusNodes {
 		node.Stop()
+	}
+}
+
+// TestConsensusConfigAckTimeout verifies that a consenter that does not receive config acks from all the
+// members of its own party waits until the config ack timeout expires, and then applies the new config anyway.
+//
+// Scenario:
+//  1. Start a 4-party, single-shard consensus network with a short config ack timeout.
+//  2. Submit a config update that is applied dynamically, and wait until every consenter has decided
+//     it and soft stopped, waiting in ApplyConfig for config acks.
+//  3. Send valid acks from the party's router and batcher only; the assembler never acks.
+//  4. Verify every consenter stays soft stopped before the timeout expires.
+//  5. Verify every consenter applies the new config on sequence 1 once the timeout expires.
+func TestConsensusConfigAckTimeout(t *testing.T) {
+	parties := []types.PartyID{1, 2, 3, 4}
+	numOfShards := 1
+	const ackTimeout = 6 * time.Second
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetworkWithPortAllocator(t, configPath, len(parties), numOfShards, "TLS", "none", testutil.SharedTestPortAllocator())
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	updateFileStoreAndMonitoringPort(t, dir, netInfo)
+
+	netInfo.CleanUp()
+	consensusNodes, servers, _ := createConsensusNodesAndGRPCServers(t, dir, parties)
+	for _, node := range consensusNodes {
+		node.ConfigAckReceiverTimeout = ackTimeout
+	}
+	startConsensusNodesAndRegisterGRPCServers(t, parties, consensusNodes, servers)
+
+	submitDynamicConfigUpdate(t, dir, parties, consensusNodes)
+
+	// only the router and the batcher ack the new config; the assembler's ack never arrives.
+	const configSeq = uint64(1)
+	for i, node := range consensusNodes {
+		resp, err := node.AckConfig(nodeTLSContext(t, dir, parties[i], "router"), &protos.ConfigAck{NodeType: protos.NodeType_ROUTER, ConfigSeq: configSeq})
+		require.NoError(t, err)
+		require.Empty(t, resp.GetError())
+		resp, err = node.AckConfig(nodeTLSContext(t, dir, parties[i], "batcher1"), &protos.ConfigAck{NodeType: protos.NodeType_BATCHER, Shard: 1, ConfigSeq: configSeq})
+		require.NoError(t, err)
+		require.Empty(t, resp.GetError())
+	}
+
+	// every consenter keeps waiting for the missing ack until the timeout expires.
+	require.Never(t, func() bool {
+		for _, node := range consensusNodes {
+			if node.GetStatus().State != node_utils.StateSoftStopped {
+				return true
+			}
+		}
+		return false
+	}, ackTimeout/3, 100*time.Millisecond, "a consenter applied the new config before the config ack timeout expired")
+
+	// once the timeout expires, every consenter applies the new config without the assembler's ack.
+	for i, node := range consensusNodes {
+		require.Eventually(t, func() bool {
+			status := node.GetStatus()
+			return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == configSeq
+		}, ackTimeout+20*time.Second, 100*time.Millisecond)
+		waitForConsensusServing(t, dir, parties[i], node)
+	}
+
+	for _, node := range consensusNodes {
+		node.Stop()
+	}
+}
+
+// submitDynamicConfigUpdate submits to the first consenter a config update that the consenters apply
+// dynamically, without an admin action, and waits until every consenter has decided it and soft stopped,
+// waiting in ApplyConfig for config acks on config sequence 1.
+func submitDynamicConfigUpdate(t *testing.T, dir string, parties []types.PartyID, consensusNodes []*consensus_node.Consensus) {
+	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdatePbData := configUpdateBuilder.UpdateSmartBFTConfig(t, configutil.NewSmartBFTConfig(configutil.SmartBFTConfigName.SyncOnStart, true))
+	env := configutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+	configReq := &protos.Request{
+		Payload:   env.Payload,
+		Signature: env.Signature,
+		ConfigSeq: uint32(0),
+	}
+	_, err := consensusNodes[0].SubmitConfig(nodeTLSContext(t, dir, parties[0], "router"), configReq)
+	require.NoError(t, err)
+
+	for _, node := range consensusNodes {
+		waitForSoftStoppedState(t, node)
 	}
 }
 
