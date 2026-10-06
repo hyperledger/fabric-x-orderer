@@ -35,10 +35,6 @@ const (
 // way, since pruning removes whole block files and the readable bound may fall inside the oldest surviving
 // one.
 //
-// Each file is written once, under the next sequence number of its base name, and the file it supersedes is
-// removed afterwards. Nothing is overwritten, so the highest sequence number of a base name is always a whole
-// file; a crash between the two steps leaves two behind, which the next read resolves in favour of the higher.
-//
 // It is not safe for concurrent use; the prune operation above it serializes access.
 type pruneStore struct {
 	rootDir string
