@@ -54,6 +54,21 @@ binary:
 	go build -o ./bin/arma ./cmd/arma
 	go build -o ./bin/armageddon ./cmd/armageddon
 
+# Cross-compile both binaries for a single GOOS/GOARCH and place them under
+# $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/.  Called by scripts/create-binary-package.sh.
+#
+# Required vars: GOOS, GOARCH, RELEASE_DIR
+# Optional vars: METADATA_VAR  (space-separated key=value pairs forwarded as -X ldflags)
+RELEASE_DIR ?= release
+LDFLAGS     := $(patsubst %,-X 'github.com/hyperledger/fabric-x-orderer/metadata.%',$(METADATA_VAR))
+.PHONY: release-bins
+release-bins:
+	mkdir -p $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin
+	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 \
+	  go build -ldflags "$(LDFLAGS)" -o $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/arma ./cmd/arma
+	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 \
+	  go build -ldflags "$(LDFLAGS)" -o $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/armageddon ./cmd/armageddon
+
 .PHONY: clean-binary
 clean-binary:
 	rm -rf ./bin/*
