@@ -50,6 +50,7 @@ message AssemblerDecisionReport {
   uint32 party = 1;        // the reporting assembler's party
   uint64 decision_num = 2; // the highest committed decision number
   bytes signature = 3;     // the reporting assembler's signature over the report
+  uint64 config_seq = 4;   // the config sequence the report was signed under
 }
 
 // ControlEvent represents a control event that can be one of several types

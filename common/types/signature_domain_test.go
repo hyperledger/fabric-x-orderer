@@ -14,6 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// allDomains lists every signature domain, so the separation tests cover each pair.
+var allDomains = []types.SignatureDomain{
+	types.DomainBAF,
+	types.DomainComplaint,
+	types.DomainAssemblerDecisionReport,
+}
+
 func TestPrefixWithDomain(t *testing.T) {
 	msg := []byte{1, 2, 3}
 	tag := []byte(types.DomainBAF)
@@ -30,11 +37,11 @@ func TestPrefixWithDomain(t *testing.T) {
 func TestPrefixWithDomainSeparatesDomains(t *testing.T) {
 	// The same payload signed under two different domains must never collide.
 	msg := []byte{1, 2, 3}
-	require.NotEqual(
-		t,
-		types.PrefixWithDomain(types.DomainBAF, msg),
-		types.PrefixWithDomain(types.DomainComplaint, msg),
-	)
+	for i, a := range allDomains {
+		for _, b := range allDomains[i+1:] {
+			require.NotEqual(t, types.PrefixWithDomain(a, msg), types.PrefixWithDomain(b, msg), "%s vs %s", a, b)
+		}
+	}
 }
 
 // TestDomainFramesAreDisjoint is the core security property: because each
@@ -43,11 +50,16 @@ func TestPrefixWithDomainSeparatesDomains(t *testing.T) {
 // another domain, for ANY payloads. This is what blocks replaying a signature
 // over one message type (e.g. a BAF) as a signature over another (a Complaint).
 func TestDomainFramesAreDisjoint(t *testing.T) {
-	bafFrame := types.PrefixWithDomain(types.DomainBAF, nil)
-	complaintFrame := types.PrefixWithDomain(types.DomainComplaint, nil)
-
-	require.False(t, bytes.HasPrefix(bafFrame, complaintFrame))
-	require.False(t, bytes.HasPrefix(complaintFrame, bafFrame))
+	for _, a := range allDomains {
+		for _, b := range allDomains {
+			if a == b {
+				continue
+			}
+			aFrame := types.PrefixWithDomain(a, nil)
+			bFrame := types.PrefixWithDomain(b, nil)
+			require.False(t, bytes.HasPrefix(aFrame, bFrame), "%s frame starts with %s frame", a, b)
+		}
+	}
 }
 
 // TestPrefixWithDomainPanicsOnOversizedTag guards the disjointness invariant:
