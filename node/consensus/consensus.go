@@ -465,6 +465,13 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	}
 
 	c.lock.Lock()
+	// The requests are verified outside the lock, so a reconfiguration may have replaced the config and the
+	// state since verificationSeq was read. The sequence only grows, so if it is unchanged here, c.State
+	// belongs to the config the requests were verified against.
+	if currentSeq := c.verificationSequence(); currentSeq != verificationSeq {
+		c.lock.Unlock()
+		return nil, errors.Errorf("verification sequence changed from %d to %d while verifying the proposal", verificationSeq, currentSeq)
+	}
 	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(verificationSeq), requests)
 	if configRequests != nil {
 		if computedState, err = c.ConfigApplier.ApplyConfigToState(computedState, configRequests[0]); err != nil {
