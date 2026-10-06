@@ -369,7 +369,7 @@ func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
 	bccsp := factory.GetDefault()
 
 	// add two parties
-	_, netInfo1 := builder.PrepareAndAddNewParty(t, dir)
+	_, netInfo1 := builder.PrepareAndAddNewParty(t, dir, true)
 	defer func() {
 		for _, ni := range netInfo1 {
 			if ni != nil {
@@ -377,7 +377,7 @@ func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
 			}
 		}
 	}()
-	_, netInfo2 := builder.PrepareAndAddNewParty(t, dir)
+	_, netInfo2 := builder.PrepareAndAddNewParty(t, dir, true)
 	defer func() {
 		for _, ni := range netInfo2 {
 			if ni != nil {
@@ -466,7 +466,7 @@ func TestValidateTransition_FailedAddAndModify(t *testing.T) {
 	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 2)
 
 	// add a new party
-	_, netInfo := builder.PrepareAndAddNewParty(t, dir)
+	_, netInfo := builder.PrepareAndAddNewParty(t, dir, true)
 	defer func() {
 		for _, ni := range netInfo {
 			if ni != nil {

@@ -506,7 +506,7 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 	require.NoError(t, os.WriteFile(evictionBlockPath, evictionBlockBytes, 0o644))
 
 	addPartyBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, evictionBlockPath)
-	addedPartyID, addedNetInfo := addPartyBuilder.PrepareAndAddNewParty(t, dir)
+	addedPartyID, addedNetInfo := addPartyBuilder.PrepareAndAddNewParty(t, dir, true)
 	// free the ports reserved for the added party's nodes so its batcher can bind them
 	for _, info := range addedNetInfo {
 		if info != nil && info.Listener != nil {

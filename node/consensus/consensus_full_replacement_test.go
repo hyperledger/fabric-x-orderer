@@ -118,7 +118,7 @@ func TestConsensusFullReplacement(t *testing.T) {
 			}
 
 			configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-			addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
+			addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir, true)
 			require.NotNil(t, addedNetInfo)
 			require.Equal(t, newParty, addedPartyID, "Unexpected added party ID")
 

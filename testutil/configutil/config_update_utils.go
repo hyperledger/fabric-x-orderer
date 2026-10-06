@@ -1428,9 +1428,14 @@ func overwriteNestedJSONValue(t *testing.T, data map[string]any, value any, path
 
 // PrepareAndAddNewParty prepares the config update for adding a new party with the configuration from the given directory,
 // and adds the new party to the builder's config data. It returns the added party ID and the network information of the added party.
-func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (types.PartyID, map[testutil.NodeName]*testutil.ArmaNodeInfo) {
+// enableNodeOUs must match the mode the network's crypto was generated with, i.e., false if generated with --noOUs.
+func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(
+	t *testing.T,
+	dir string,
+	enableNodeOUs bool,
+) (types.PartyID, map[testutil.NodeName]*testutil.ArmaNodeInfo) {
 	addedNetInfo, addedPartyConfig := testutil.ExtendNetwork(t, filepath.Join(dir, "config.yaml"))
-	testutil.ExtendConfigAndCrypto(addedPartyConfig, dir, true, true)
+	testutil.ExtendConfigAndCrypto(addedPartyConfig, dir, true, enableNodeOUs)
 
 	addedPartyId := types.PartyID(addedPartyConfig.Parties[0].ID)
 	addedPartyDir := fmt.Sprintf("party%d", addedPartyId)
@@ -1497,6 +1502,15 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 		require.NoError(t, err)
 	}
 
+	// Without node OUs, admin authority is conveyed by the admin certificate in admincerts.
+	var adminCerts [][]byte
+	if !enableNodeOUs {
+		adminCertsDir := filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "admincerts")
+		adminCert, err := os.ReadFile(filepath.Join(adminCertsDir, fmt.Sprintf("Admin@%s-cert.pem", addedOrg)))
+		require.NoError(t, err)
+		adminCerts = [][]byte{adminCert}
+	}
+
 	c.AddNewParty(t, &PartyConfig{
 		PartyConfig: ordererpb.PartyConfig{
 			CACerts:    [][]byte{caCert},
@@ -1521,6 +1535,7 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 			},
 			BatchersConfig: batchersConfig,
 		},
+		AdminCerts: adminCerts,
 	}, knownCerts)
 
 	return addedPartyId, addedNetInfo

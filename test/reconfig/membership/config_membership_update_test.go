@@ -539,7 +539,7 @@ func TestAddNewParty(t *testing.T) {
 
 	// Create config update to add a party
 	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	addedPartyId, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
+	addedPartyId, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir, true)
 
 	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
 	require.NotNil(t, env)
@@ -855,7 +855,7 @@ func TestPartiesFullReplacement(t *testing.T) {
 		// 7.
 		// Create config update to add a new party
 		builder = configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir)
+		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir, true)
 
 		uc, err = testutil.GetUserConfig(dir, submittingPartyID)
 		require.NoError(t, err)
@@ -1265,7 +1265,7 @@ func TestJoinMultipleParties(t *testing.T) {
 	for range 3 {
 		// Create config update to add a new party
 		builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir)
+		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir, true)
 		uc, err = testutil.GetUserConfig(dir, submittingPartyID)
 		require.NoError(t, err)
 
