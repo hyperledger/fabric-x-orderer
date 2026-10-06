@@ -33,6 +33,16 @@ import (
 	"go.uber.org/zap"
 )
 
+// autoRemoveTimeoutConfigUpdate builds a config update that changes a batching timeout. It
+// does not require an admin restart in the assembler, so the assembler applies it dynamically
+// and advances to config sequence 1.
+func autoRemoveTimeoutConfigUpdate(t *testing.T, dir string) []byte {
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "15ms"))
+	require.NotNil(t, configUpdatePbData)
+	return configUpdatePbData
+}
+
 // Scenario:
 // 1. Start assembler with stub consenter and batcher.
 // 2. Submit a valid config update that changes batch timeout settings.
@@ -53,11 +63,7 @@ func TestSendConfigUpdate(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// create the config request.
-	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.AutoRemoveTimeout, "15ms"))
-	require.NotNil(t, configUpdatePbData)
-
-	testSetup.SendConfigUpdate(t, configUpdatePbData, parties, dir, 1)
+	testSetup.SendConfigUpdate(t, autoRemoveTimeoutConfigUpdate(t, dir), parties, dir, 1)
 
 	// check that the assembler has applied the new config and is running with the new config
 	require.Eventually(t, func() bool {
