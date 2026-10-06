@@ -521,3 +521,92 @@ func TestStopAfterClose(t *testing.T) {
 
 	// If we got here without panic or deadlock, test passed
 }
+
+func newTestPendingStore(t *testing.T, onDelete func(key string)) *request.PendingStore {
+	ticker := time.NewTicker(time.Millisecond * 100)
+	t.Cleanup(ticker.Stop)
+
+	ps := &request.PendingStore{
+		ReqIDLifetime:         time.Second * 10,
+		ReqIDGCInterval:       time.Second,
+		Logger:                testutil.CreateLogger(t, 0),
+		SecondStrikeCallback:  func() {},
+		StartTime:             time.Now(),
+		Time:                  ticker.C,
+		FirstStrikeCallback:   func([]byte) {},
+		Epoch:                 time.Millisecond * 200,
+		FirstStrikeThreshold:  time.Second * 10,
+		Inspector:             &reqInspector{},
+		OnDelete:              onDelete,
+		SecondStrikeThreshold: time.Second,
+	}
+
+	ps.Init()
+	ps.Start()
+	t.Cleanup(ps.Close)
+
+	return ps
+}
+
+func TestPendingStoreSubmitDuplicate(t *testing.T) {
+	requestInspector := &reqInspector{}
+	ps := newTestPendingStore(t, func(key string) {})
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+
+	// Submitting a request that is already held is rejected.
+	require.NoError(t, ps.Submit(req))
+	require.ErrorContains(t, ps.Submit(req), "already inserted")
+
+	// Submitting a request that was removed before it arrived (tombstoned) is rejected.
+	req2 := make([]byte, 8)
+	binary.BigEndian.PutUint64(req2, uint64(2))
+	ps.RemoveRequests(requestInspector.RequestID(req2))
+	require.ErrorContains(t, ps.Submit(req2), "already inserted")
+	require.False(t, ps.Contains(requestInspector.RequestID(req2)))
+}
+
+func TestPendingStoreOnDeleteOncePerRequest(t *testing.T) {
+	requestInspector := &reqInspector{}
+
+	t.Run("duplicate ids in RemoveRequests", func(t *testing.T) {
+		var deleted atomic.Int64
+		ps := newTestPendingStore(t, func(key string) { deleted.Add(1) })
+
+		trials := 300
+		for i := 0; i < trials; i++ {
+			req := make([]byte, 8)
+			binary.BigEndian.PutUint64(req, uint64(i))
+			require.NoError(t, ps.Submit(req))
+
+			// Enough copies of the id for RemoveRequests to process them concurrently.
+			reqID := requestInspector.RequestID(req)
+			ids := make([]string, 8*runtime.NumCPU())
+			for j := range ids {
+				ids[j] = reqID
+			}
+			ps.RemoveRequests(ids...)
+		}
+
+		require.Equal(t, int64(trials), deleted.Load())
+	})
+
+	t.Run("Prune racing with RemoveRequests", func(t *testing.T) {
+		var deleted atomic.Int64
+		ps := newTestPendingStore(t, func(key string) { deleted.Add(1) })
+
+		req := make([]byte, 8)
+		binary.BigEndian.PutUint64(req, uint64(1))
+		require.NoError(t, ps.Submit(req))
+
+		// The request is removed after Prune looked it up but before Prune deletes it.
+		ps.Prune(func(r []byte) error {
+			ps.RemoveRequests(requestInspector.RequestID(r))
+			return errors.New("drop")
+		})
+
+		require.Equal(t, int64(1), deleted.Load())
+		require.False(t, ps.Contains(requestInspector.RequestID(req)))
+	})
+}

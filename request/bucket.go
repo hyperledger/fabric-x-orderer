@@ -10,7 +10,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pkg/errors"
 )
+
+// errBucketSealed is returned by tryInsert when the bucket was sealed concurrently.
+var errBucketSealed = errors.New("bucket sealed")
 
 type bucket struct {
 	id                   uint64
@@ -66,21 +71,24 @@ func (b *bucket) getFirstStrikeTimestamp() time.Time {
 	return b.firstStrikeTimestamp
 }
 
-func (b *bucket) tryInsert(reqID string, request []byte) bool {
+// tryInsert inserts the request into the bucket. It returns errBucketSealed if the bucket is sealed,
+// in which case the caller should retry with the new current bucket. It returns an error if the
+// request id is already known to the store, either held or tombstoned, in which case nothing is stored.
+func (b *bucket) tryInsert(reqID string, request []byte) error {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
 	if !b.lastTimestamp.IsZero() {
-		return false
+		return errBucketSealed
 	}
 
 	if _, existed := b.reqID2Bucket.LoadOrStore(reqID, b); existed {
-		return true
+		return errors.Errorf("request %s already inserted", reqID)
 	}
 	b.requests.Store(reqID, request)
 	atomic.AddUint32(&b.size, 1)
 
-	return true
+	return nil
 }
 
 func (b *bucket) delete(reqID string) bool {
