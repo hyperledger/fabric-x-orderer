@@ -184,7 +184,7 @@ fold them into the state, and emit whatever became decided.
 4     state, bafs, cfgReqs ← state.Process(ces);      // deterministic fold
 5     bas   ← aggregateFragments(bafs);               // group fragments into batch attestations
 6     blocks ← buildBlocks(bas, cfgReqs, state);      // one block per BA, plus any config block
-7     Deliver(blocks);                                // sign, append to ledger, serve, index digests
+7     Deliver(blocks);                                // index digests, then append to ledger and serve
 8  end
 ```
 
@@ -267,13 +267,13 @@ but it does not retract the attestations already decided here. A fragment whose 
 recorded in the **BADB** is discarded before the fold even runs, so a batch that has already been
 ordered is never ordered again.
 
-A single decision often commits several batches at once. SmartBFT produces, per consenter, one
-composite signature covering the proposal together with each block header in the decision; the
-consenter stores and serves these composite signatures unchanged, one per party. The **consumer**
-unpacks them: an assembler or a synchronizing consenter, on reading the decision, splits each party's
-composite signature into a per-block signature set, so every block it materializes carries a quorum of
-consenter signatures over *its own* header. That per-block check is what lets a consumer verify the
-order without trusting the single consenter it pulled from.
+A single decision often commits several batches at once. Each consenter's `SignProposal` callback
+produces one composite signature covering the proposal together with each block header in the
+decision; SmartBFT collects a quorum of these, and the consenter stores and serves them unchanged, one
+per party. The **consumer** unpacks them: an assembler or a synchronizing consenter, on reading the
+decision, splits each party's composite signature into a per-block signature set, so every block it
+materializes carries a quorum of consenter signatures over *its own* header. That per-block check is
+what lets a consumer verify the order without trusting the single consenter it pulled from.
 
 ### 3.4 The Consenter as System Controller
 
@@ -410,7 +410,7 @@ Consensus:
 | `ViewChangeResendInterval`, `ViewChangeTimeout` | How often view-change messages are resent, and how long a view change may take before it is retried. |
 | `LeaderHeartbeatTimeout`, `LeaderHeartbeatCount` | How the followers detect a silent leader and start a view change. |
 | `CollectTimeout` | How long the state-collection phase of a view change waits. |
-| `IncomingMessageBufferSize` | How many incoming consensus messages a node buffers per sender. |
+| `IncomingMessageBufferSize` | How many incoming consensus messages a node buffers before processing them; the buffer is shared by all senders. |
 | `RequestPoolSize` | The capacity of the request (control-event) pool. |
 
 Note that these govern SmartBFT's ordering of *control events*, not transaction batching — batch
@@ -531,8 +531,6 @@ inter-consenter mesh.*
   — the four roles, the end-to-end flow, and the configuration model.
 - [APIs](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/api.md) — the gRPC services of
   every role, and which role implements which.
-- [Assembler](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/assembler.md) — the node
-  that consumes the consenter's ordered batch attestations and materializes the block ledger.
 - [Monitoring and metrics](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/monitoring/metrics.md)
   — the full list of metrics, and how to collect and visualize them.
 - [SmartBFT](https://github.com/hyperledger/SmartBFT) — the BFT engine the consenter embeds.
