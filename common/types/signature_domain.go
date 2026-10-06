@@ -18,6 +18,8 @@ const (
 	DomainBAF SignatureDomain = "arma.baf"
 	// DomainComplaint tags bytes signed as a Complaint.
 	DomainComplaint SignatureDomain = "arma.complaint"
+	// DomainAssemblerDecisionReport tags bytes signed as an AssemblerDecisionReport.
+	DomainAssemblerDecisionReport SignatureDomain = "arma.assembler_decision_report"
 )
 
 // PrefixWithDomain binds msg to a signature domain by prepending a

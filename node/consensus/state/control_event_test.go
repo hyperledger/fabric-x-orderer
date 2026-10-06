@@ -54,7 +54,7 @@ func TestControlEventSerialization(t *testing.T) {
 	assert.Equal(t, cr.Envelope.Signature, ce3.ConfigRequest.Envelope.Signature)
 
 	// Serialization and deserialization of ControlEvent with AssemblerDecisionReport
-	ce = consensus_state.ControlEvent{AssemblerReport: &consensus_state.AssemblerDecisionReport{Party: 2, DecisionNum: 100}}
+	ce = consensus_state.ControlEvent{AssemblerReport: &consensus_state.AssemblerDecisionReport{Party: 2, DecisionNum: 100, ConfigSeq: 3}}
 
 	var ce4 consensus_state.ControlEvent
 	err = ce4.FromBytes(ce.Bytes())
@@ -130,9 +130,9 @@ func TestControlEventID(t *testing.T) {
 	})
 
 	t.Run("assembler report ID excludes the signature", func(t *testing.T) {
-		// ID() hashes <Party, DecisionNum> only; two reports that differ solely in their
+		// ID() hashes <Party, DecisionNum, ConfigSeq> only; two reports that differ solely in their
 		// signature are the same logical event and must share an ID.
-		base := consensus_state.AssemblerDecisionReport{Party: 2, DecisionNum: 100, Signature: []byte{1}}
+		base := consensus_state.AssemblerDecisionReport{Party: 2, DecisionNum: 100, ConfigSeq: 3, Signature: []byte{1}}
 		diffSig := base
 		diffSig.Signature = []byte{2, 3, 4}
 		ceA := consensus_state.ControlEvent{AssemblerReport: &base}
@@ -140,7 +140,7 @@ func TestControlEventID(t *testing.T) {
 		assert.NotEmpty(t, ceA.ID())
 		assert.Equal(t, ceA.ID(), ceB.ID())
 
-		// Different party and different decision number are distinct events.
+		// Different party, decision number, and config sequence are distinct events.
 		diffParty := base
 		diffParty.Party = 3
 		ceParty := consensus_state.ControlEvent{AssemblerReport: &diffParty}
@@ -150,6 +150,11 @@ func TestControlEventID(t *testing.T) {
 		diffNum.DecisionNum = 101
 		ceNum := consensus_state.ControlEvent{AssemblerReport: &diffNum}
 		assert.NotEqual(t, ceA.ID(), ceNum.ID())
+
+		diffSeq := base
+		diffSeq.ConfigSeq = 4
+		ceSeq := consensus_state.ControlEvent{AssemblerReport: &diffSeq}
+		assert.NotEqual(t, ceA.ID(), ceSeq.ID())
 	})
 }
 

@@ -17,16 +17,36 @@ import (
 
 // AssemblerDecisionReport is an assembler's report of the highest global decision number it has
 // committed. Consensus aggregates these across parties to agree on a durable pruning watermark.
+// ConfigSeq is the config sequence the report was signed under; consensus drops reports from any
+// other config sequence, as it does complaints.
 type AssemblerDecisionReport struct {
 	Party       types.PartyID
 	DecisionNum types.DecisionNum
+	ConfigSeq   types.ConfigSequence
 	Signature   []byte
 }
 
-// reportHeaderLen is the fixed prefix: Party (uint16) + DecisionNum (uint64) + len(Signature) (uint32).
-const reportHeaderLen = 2 + 8 + 4
+// reportHeaderLen is the fixed prefix: Party (uint16) + DecisionNum (uint64) + ConfigSeq (uint64) +
+// len(Signature) (uint32).
+const reportHeaderLen = 2 + 8 + 8 + 4
 
-// Bytes serializes the report as <Party, DecisionNum, len(Signature), Signature>. The signature is
+// ToBeSigned returns the bytes an assembler signs for this report: its signature-less encoding (so
+// the value is independent of the Signature field) bound to the assembler-report signature domain,
+// matching the pattern used by Complaint.ToBeSigned. The signer (assembler) and the verifier
+// (consensus, in verifyCE) must produce identical bytes here.
+func (r *AssemblerDecisionReport) ToBeSigned() []byte {
+	return types.PrefixWithDomain(types.DomainAssemblerDecisionReport, r.unsignedBytes())
+}
+
+// unsignedBytes encodes the report without its signature. It is the single definition of the
+// report's signed and identifying fields, shared by ToBeSigned and ControlEvent.ID.
+func (r *AssemblerDecisionReport) unsignedBytes() []byte {
+	u := *r
+	u.Signature = nil
+	return u.Bytes()
+}
+
+// Bytes serializes the report as <Party, DecisionNum, ConfigSeq, len(Signature), Signature>. The signature is
 // appended (not hashed away) so Bytes/FromBytes round-trips the full value; ID() hashes a
 // signature-less encoding separately. The length is a uint32 so the full value survives even for
 // signatures larger than 64 KiB.
@@ -36,6 +56,8 @@ func (r *AssemblerDecisionReport) Bytes() []byte {
 	binary.BigEndian.PutUint16(buff[pos:], uint16(r.Party))
 	pos += 2
 	binary.BigEndian.PutUint64(buff[pos:], uint64(r.DecisionNum))
+	pos += 8
+	binary.BigEndian.PutUint64(buff[pos:], uint64(r.ConfigSeq))
 	pos += 8
 	binary.BigEndian.PutUint32(buff[pos:], uint32(len(r.Signature)))
 	pos += 4
@@ -49,7 +71,8 @@ func (r *AssemblerDecisionReport) FromBytes(bytes []byte) error {
 	}
 	r.Party = types.PartyID(binary.BigEndian.Uint16(bytes[0:2]))
 	r.DecisionNum = types.DecisionNum(binary.BigEndian.Uint64(bytes[2:10]))
-	sigSize := int(binary.BigEndian.Uint32(bytes[10:14]))
+	r.ConfigSeq = types.ConfigSequence(binary.BigEndian.Uint64(bytes[10:18]))
+	sigSize := int(binary.BigEndian.Uint32(bytes[18:22]))
 	sigEnd := reportHeaderLen + sigSize
 	if sigEnd > len(bytes) {
 		return fmt.Errorf("input too small for signature (%d < %d)", len(bytes), sigEnd)
@@ -66,6 +89,7 @@ func (r *AssemblerDecisionReport) toProto() *stateprotos.AssemblerDecisionReport
 	return &stateprotos.AssemblerDecisionReport{
 		Party:       uint32(r.Party),
 		DecisionNum: uint64(r.DecisionNum),
+		ConfigSeq:   uint64(r.ConfigSeq),
 		Signature:   r.Signature,
 	}
 }
@@ -79,10 +103,12 @@ func (r *AssemblerDecisionReport) fromProto(pr *stateprotos.AssemblerDecisionRep
 	}
 	r.Party = types.PartyID(pr.GetParty())
 	r.DecisionNum = types.DecisionNum(pr.GetDecisionNum())
+	r.ConfigSeq = types.ConfigSequence(pr.GetConfigSeq())
 	r.Signature = pr.GetSignature()
 	return nil
 }
 
 func (r *AssemblerDecisionReport) String() string {
-	return fmt.Sprintf("AssemblerDecisionReport: Party: %d; DecisionNum: %d", r.Party, r.DecisionNum)
+	return fmt.Sprintf("AssemblerDecisionReport: Party: %d; DecisionNum: %d; Config Seq: %d",
+		r.Party, r.DecisionNum, r.ConfigSeq)
 }

@@ -23,6 +23,7 @@ func TestAssemblerDecisionReportSerialization(t *testing.T) {
 		report := consensus_state.AssemblerDecisionReport{
 			Party:       types.PartyID(2),
 			DecisionNum: types.DecisionNum(100),
+			ConfigSeq:   types.ConfigSequence(3),
 			Signature:   []byte{1, 2, 3},
 		}
 
@@ -36,6 +37,7 @@ func TestAssemblerDecisionReportSerialization(t *testing.T) {
 		report := consensus_state.AssemblerDecisionReport{
 			Party:       types.PartyID(2),
 			DecisionNum: types.DecisionNum(100),
+			ConfigSeq:   types.ConfigSequence(3),
 		}
 
 		var report2 consensus_state.AssemblerDecisionReport
@@ -51,6 +53,7 @@ func TestAssemblerDecisionReportSerialization(t *testing.T) {
 		report := consensus_state.AssemblerDecisionReport{
 			Party:       types.PartyID(2),
 			DecisionNum: types.DecisionNum(100),
+			ConfigSeq:   types.ConfigSequence(3),
 			Signature:   sig,
 		}
 
@@ -58,6 +61,54 @@ func TestAssemblerDecisionReportSerialization(t *testing.T) {
 		err := report2.FromBytes(report.Bytes())
 		assert.NoError(t, err)
 		assert.Equal(t, report, report2)
+	})
+}
+
+// TestAssemblerDecisionReportToBeSigned verifies that ToBeSigned is signature-independent (so a
+// signature verifies regardless of the Signature field's current value) and is bound to the
+// assembler-report signature domain (so it can never be replayed as a signature over another
+// message family).
+func TestAssemblerDecisionReportToBeSigned(t *testing.T) {
+	report := consensus_state.AssemblerDecisionReport{
+		Party:       types.PartyID(2),
+		DecisionNum: types.DecisionNum(100),
+		ConfigSeq:   types.ConfigSequence(3),
+		Signature:   []byte{1, 2, 3},
+	}
+
+	reportNoSig := consensus_state.AssemblerDecisionReport{
+		Party:       types.PartyID(2),
+		DecisionNum: types.DecisionNum(100),
+		ConfigSeq:   types.ConfigSequence(3),
+	}
+
+	t.Run("is independent of the Signature field", func(t *testing.T) {
+		assert.Equal(t, reportNoSig.ToBeSigned(), report.ToBeSigned())
+	})
+
+	t.Run("is bound to the assembler-report domain", func(t *testing.T) {
+		expected := types.PrefixWithDomain(types.DomainAssemblerDecisionReport, reportNoSig.Bytes())
+		assert.Equal(t, expected, report.ToBeSigned())
+	})
+
+	t.Run("is not in the complaint or BAF domain", func(t *testing.T) {
+		assert.True(t, bytes.HasPrefix(report.ToBeSigned(), types.PrefixWithDomain(types.DomainAssemblerDecisionReport, nil)))
+		assert.False(t, bytes.HasPrefix(report.ToBeSigned(), types.PrefixWithDomain(types.DomainComplaint, nil)))
+		assert.False(t, bytes.HasPrefix(report.ToBeSigned(), types.PrefixWithDomain(types.DomainBAF, nil)))
+	})
+
+	t.Run("changes when a signed field changes", func(t *testing.T) {
+		otherParty := reportNoSig
+		otherParty.Party = types.PartyID(3)
+		assert.NotEqual(t, reportNoSig.ToBeSigned(), otherParty.ToBeSigned())
+
+		otherDecision := reportNoSig
+		otherDecision.DecisionNum = types.DecisionNum(101)
+		assert.NotEqual(t, reportNoSig.ToBeSigned(), otherDecision.ToBeSigned())
+
+		otherConfigSeq := reportNoSig
+		otherConfigSeq.ConfigSeq = types.ConfigSequence(4)
+		assert.NotEqual(t, reportNoSig.ToBeSigned(), otherConfigSeq.ToBeSigned())
 	})
 }
 
