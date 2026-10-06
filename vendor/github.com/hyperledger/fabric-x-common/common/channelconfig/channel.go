@@ -97,7 +97,12 @@ func NewChannelConfig(channelGroup *cb.ConfigGroup, bccsp bccsp.BCCSP) (*Channel
 		return nil, err
 	}
 
-	mspConfigHandler := NewMSPConfigHandler(channelCapabilities.MSPVersion(), bccsp)
+	// Node-OU based identity classification is enforced regardless of the channel capability.
+	// The MSP version selects whether OUs are honored, so we floor it to MSPv3_0 (the default
+	// local MSP version) — an MSP that declares NodeOUs then enforces them even when the channel
+	// declares no capabilities, while MSPs without NodeOUs keep using admincerts.
+	mspVersion := max(channelCapabilities.MSPVersion(), msp.MSPv3_0)
+	mspConfigHandler := NewMSPConfigHandler(mspVersion, bccsp)
 
 	var err error
 	for groupName, group := range channelGroup.Groups {

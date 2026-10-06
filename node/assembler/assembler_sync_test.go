@@ -312,7 +312,7 @@ func (s *syncTestSetup) addParty() (types.PartyID, *cb.Block) {
 
 	bootstrapBlockPath := filepath.Join(s.dir, "bootstrap", "bootstrap.block")
 	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, s.dir, bootstrapBlockPath)
-	addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, s.dir)
+	addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, s.dir, true)
 	for _, info := range addedNetInfo {
 		if info != nil && info.Listener != nil {
 			info.Listener.Close()

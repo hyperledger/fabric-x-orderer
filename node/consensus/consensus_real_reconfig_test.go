@@ -461,7 +461,7 @@ func TestConsensusWithRealConfigUpdate(t *testing.T) {
 		configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(addConfigBlockStoreDir, "config.block"))
 
 		// add the new party to the configuration
-		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
+		addedPartyID, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir, true)
 		require.NotNil(t, addedNetInfo)
 
 		// create and sign the config transaction (parties are now [2,3,4,5] after party 1 was removed)

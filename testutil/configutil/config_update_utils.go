@@ -728,9 +728,13 @@ func (c *ConfigUpdateBuilder) AppendMSPRootCerts(t *testing.T, partyID types.Par
 	return c.createConfigUpdate(t, c.configData)
 }
 
-func (c *ConfigUpdateBuilder) UpdateMSPAdminCerts(t *testing.T, partyID types.PartyID, adminCerts [][]byte) []byte {
-	org := fmt.Sprintf("org%d", partyID)
-	overwriteNestedJSONValue(t, c.configData, adminCerts, "channel_group", "groups", "Orderer", "groups", org, "values", "MSP", "value", "config", "admins")
+// UpdateMSPNodeOUsCertificate points the node-OU classifiers of the party's org MSP at caCert, which
+// must be one of the org's root certificates. A classifier pins a single CA, so identities issued by
+// any other CA of the org stop being valid. It leaves an org MSP without node OUs unchanged.
+func (c *ConfigUpdateBuilder) UpdateMSPNodeOUsCertificate(t *testing.T, partyID types.PartyID, caCert []byte) []byte {
+	org, ok := getNestedJSONValue(t, c.configData, "channel_group", "groups", "Orderer", "groups", fmt.Sprintf("org%d", partyID)).(map[string]any)
+	require.True(t, ok, "orderer org of party %d not found", partyID)
+	retargetNodeOUs(t, org, caCert)
 	return c.createConfigUpdate(t, c.configData)
 }
 
@@ -1108,6 +1112,7 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, k
 	overwriteNestedJSONValue(t, newOrg, newParty.TLSCACerts, "values", "MSP", "value", "config", "tls_root_certs")
 	overwriteNestedJSONValue(t, newOrg, knownCerts, "values", "MSP", "value", "config", "known_certs")
 	overwriteNestedJSONValue(t, newOrg, newParty.AdminCerts, "values", "MSP", "value", "config", "admins")
+	retargetNodeOUs(t, newOrg, newParty.CACerts[0])
 	orgs[orgName] = newOrg
 
 	overwriteNestedJSONValue(t, c.configData, sharedConfig, sharedConfigPath...)
@@ -1141,6 +1146,7 @@ func (c *ConfigUpdateBuilder) AddNewPeer(t *testing.T, newPeer *PeerConfig) []by
 	overwriteNestedJSONValue(t, newOrg, newPeer.TLSCACerts, "values", "MSP", "value", "config", "tls_root_certs")
 	overwriteNestedJSONValue(t, newOrg, newPeer.AdminCerts, "values", "MSP", "value", "config", "admins")
 	overwriteNestedJSONValue(t, newOrg, newPeer.KnownCerts, "values", "MSP", "value", "config", "known_certs")
+	retargetNodeOUs(t, newOrg, newPeer.CACerts[0])
 	orgs[newPeer.Name] = newOrg
 
 	return c.createConfigUpdate(t, c.configData)
@@ -1422,9 +1428,14 @@ func overwriteNestedJSONValue(t *testing.T, data map[string]any, value any, path
 
 // PrepareAndAddNewParty prepares the config update for adding a new party with the configuration from the given directory,
 // and adds the new party to the builder's config data. It returns the added party ID and the network information of the added party.
-func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (types.PartyID, map[testutil.NodeName]*testutil.ArmaNodeInfo) {
+// enableNodeOUs must match the mode the network's crypto was generated with, i.e., false if generated with --noOUs.
+func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(
+	t *testing.T,
+	dir string,
+	enableNodeOUs bool,
+) (types.PartyID, map[testutil.NodeName]*testutil.ArmaNodeInfo) {
 	addedNetInfo, addedPartyConfig := testutil.ExtendNetwork(t, filepath.Join(dir, "config.yaml"))
-	testutil.ExtendConfigAndCrypto(addedPartyConfig, dir, true)
+	testutil.ExtendConfigAndCrypto(addedPartyConfig, dir, true, enableNodeOUs)
 
 	addedPartyId := types.PartyID(addedPartyConfig.Parties[0].ID)
 	addedPartyDir := fmt.Sprintf("party%d", addedPartyId)
@@ -1473,8 +1484,6 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 	require.NoError(t, err)
 	assemblerSignCert, err := os.ReadFile(filepath.Join(assemblerConfig.NodeLocalConfig.GeneralConfig.LocalMSPDir, "signcerts", "assembler-cert.pem"))
 	require.NoError(t, err)
-	adminCert, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "admincerts", fmt.Sprintf("Admin@%s-cert.pem", addedOrg)))
-	require.NoError(t, err)
 	knownCerts := [][]byte{}
 	knownCertsDir := filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "knowncerts")
 	if _, err := os.Stat(knownCertsDir); err == nil {
@@ -1491,6 +1500,15 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 		}
 	} else if !os.IsNotExist(err) {
 		require.NoError(t, err)
+	}
+
+	// Without node OUs, admin authority is conveyed by the admin certificate in admincerts.
+	var adminCerts [][]byte
+	if !enableNodeOUs {
+		adminCertsDir := filepath.Join(dir, "crypto", "ordererOrganizations", addedOrg, "msp", "admincerts")
+		adminCert, err := os.ReadFile(filepath.Join(adminCertsDir, fmt.Sprintf("Admin@%s-cert.pem", addedOrg)))
+		require.NoError(t, err)
+		adminCerts = [][]byte{adminCert}
 	}
 
 	c.AddNewParty(t, &PartyConfig{
@@ -1517,10 +1535,28 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(t *testing.T, dir string) (t
 			},
 			BatchersConfig: batchersConfig,
 		},
-		AdminCerts: [][]byte{adminCert},
+		AdminCerts: adminCerts,
 	}, knownCerts)
 
 	return addedPartyId, addedNetInfo
+}
+
+// retargetNodeOUs points the node-OU classifiers of the given org at caCert. A classifier's
+// certificate must be one of the org's own root certificates, so it has to follow the org's CA: when
+// an org is copied from a template org, and when the org's CA is replaced.
+func retargetNodeOUs(t *testing.T, org map[string]any, caCert []byte) {
+	t.Helper()
+	mspConfig, ok := getNestedJSONValue(t, org, "values", "MSP", "value", "config").(map[string]any)
+	require.True(t, ok, "org MSP config not found")
+	nodeOUs, ok := mspConfig["fabric_node_ous"].(map[string]any)
+	if !ok {
+		return
+	}
+	for _, key := range []string{"client_ou_identifier", "peer_ou_identifier", "admin_ou_identifier", "orderer_ou_identifier"} {
+		if ou, ok := nodeOUs[key].(map[string]any); ok && ou["certificate"] != nil {
+			ou["certificate"] = caCert
+		}
+	}
 }
 
 func (c *ConfigUpdateBuilder) syncBlockValidationPolicy(t *testing.T, consenterMappingList []any) {

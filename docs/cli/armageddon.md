@@ -63,6 +63,8 @@ Flags:
                           The path to the sample config files
   --clientSignatureVerificationRequired
                           Specify if client signature verification is required
+  --noOUs                 Convey admin authority through admincerts instead of
+                          node-OU based identity classification (the default)
 ```
 
 

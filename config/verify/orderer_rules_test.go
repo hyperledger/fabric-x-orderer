@@ -369,7 +369,7 @@ func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
 	bccsp := factory.GetDefault()
 
 	// add two parties
-	_, netInfo1 := builder.PrepareAndAddNewParty(t, dir)
+	_, netInfo1 := builder.PrepareAndAddNewParty(t, dir, true)
 	defer func() {
 		for _, ni := range netInfo1 {
 			if ni != nil {
@@ -377,7 +377,7 @@ func TestValidateTransition_FailedAddTwoParties(t *testing.T) {
 			}
 		}
 	}()
-	_, netInfo2 := builder.PrepareAndAddNewParty(t, dir)
+	_, netInfo2 := builder.PrepareAndAddNewParty(t, dir, true)
 	defer func() {
 		for _, ni := range netInfo2 {
 			if ni != nil {
@@ -466,7 +466,7 @@ func TestValidateTransition_FailedAddAndModify(t *testing.T) {
 	dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 2)
 
 	// add a new party
-	_, netInfo := builder.PrepareAndAddNewParty(t, dir)
+	_, netInfo := builder.PrepareAndAddNewParty(t, dir, true)
 	defer func() {
 		for _, ni := range netInfo {
 			if ni != nil {
@@ -554,13 +554,21 @@ func TestValidateTransition_ChannelID(t *testing.T) {
 	require.Contains(t, err.Error(), "channel ID cannot change")
 }
 
-func setupOrdererRulesTest(t *testing.T, parties int) (string, *common.Envelope, channelconfig.Resources, *configutil.ConfigUpdateBuilder, *policy.DefaultConfigUpdateProposer, identity.SignerSerializer, *requestfilter.RulesVerifier) {
+func setupOrdererRulesTest(t *testing.T, parties int, genArgs ...string) (
+	string,
+	*common.Envelope,
+	channelconfig.Resources,
+	*configutil.ConfigUpdateBuilder,
+	*policy.DefaultConfigUpdateProposer,
+	identity.SignerSerializer,
+	*requestfilter.RulesVerifier,
+) {
 	t.Helper()
 	dir := t.TempDir()
 
 	configPath := filepath.Join(dir, "config.yaml")
 	testutil.CreateNetwork(t, configPath, parties, 1, "TLS", "none")
-	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+	armageddon.NewCLI().Run(append([]string{"generate", "--config", configPath, "--output", dir}, genArgs...))
 
 	genesisBlockPath := filepath.Join(dir, "bootstrap", "bootstrap.block")
 	blockBytes, err := os.ReadFile(genesisBlockPath)

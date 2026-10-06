@@ -70,7 +70,14 @@ import (
 //			                        ├── keystore
 //			                        ├── signcerts
 //			                        ├── tlscacerts
-func GenerateCryptoConfigWithProfile(networkConfig *generate.Network, outputDir string) (*configtxgen.Profile, error) {
+//
+// enableNodeOUs selects how the role of an identity is expressed: when true, every MSP gets a NodeOUs
+// config.yaml and admin authority is conveyed by the admin OU; when false, it is conveyed by admincerts.
+func GenerateCryptoConfigWithProfile(
+	networkConfig *generate.Network,
+	outputDir string,
+	enableNodeOUs bool,
+) (*configtxgen.Profile, error) {
 	orgs := make([]cryptogen.OrganizationParameters, 0, len(networkConfig.Parties)+len(networkConfig.Peers))
 
 	for _, party := range networkConfig.Parties {
@@ -153,6 +160,7 @@ func GenerateCryptoConfigWithProfile(networkConfig *generate.Network, outputDir 
 		BaseProfile:   configtxgen.SampleFabricX,
 		ChannelID:     "arma",
 		Organizations: orgs,
+		EnableNodeOUs: enableNodeOUs,
 	})
 }
 
@@ -190,11 +198,15 @@ func CopyFile(src, dst string) error {
 
 func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, certType string, pathToNewCert string, pathToNewPrivateKey string, nodesIPs []string) ([]byte, error) {
 	var ku x509.KeyUsage
+	var orgUnits []string
 	switch certType {
 	case "tls":
 		ku = x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
 	case "sign":
 		ku = x509.KeyUsageDigitalSignature
+		// A signing certificate is an orderer node identity; with node OUs enabled the org MSP only
+		// accepts it if it carries the orderer OU.
+		orgUnits = []string{cryptogen.OrdererOU}
 	default:
 		return nil, fmt.Errorf("unsupported cert type: %s", certType)
 	}
@@ -242,7 +254,7 @@ func CreateNewCertificateFromCA(caCertPath string, caPrivateKeyPath string, cert
 	}
 
 	newCertDir := filepath.Dir(pathToNewCert)
-	_, err = ca.SignCertificate(newCertDir, certType, nil, nodesIPs, GetPublicKey(privateKey), ku, []x509.ExtKeyUsage{
+	_, err = ca.SignCertificate(newCertDir, certType, orgUnits, nodesIPs, GetPublicKey(privateKey), ku, []x509.ExtKeyUsage{
 		x509.ExtKeyUsageClientAuth,
 		x509.ExtKeyUsageServerAuth,
 	})
