@@ -63,6 +63,14 @@ func (index *blockIndex) indexBlock(blockIdxInfo *blockIdxInfo) error {
 	return index.db.WriteBatch(batch, true)
 }
 
+// addBlockNumDeletions queues the removal of the index entries of blocks [from, to). The savepoint is not
+// touched: it records how far indexing has reached, which pruning the front does not change.
+func (index *blockIndex) addBlockNumDeletions(batch *leveldbhelper.UpdateBatch, from, to uint64) {
+	for n := from; n < to; n++ {
+		batch.Delete(constructBlockNumKey(n))
+	}
+}
+
 func (index *blockIndex) getBlockLocByBlockNum(blockNum uint64) (*fileLocPointer, error) {
 	b, err := index.db.Get(constructBlockNumKey(blockNum))
 	if err != nil {
