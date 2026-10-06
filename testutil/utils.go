@@ -259,9 +259,15 @@ func ExtendNetworkWithPortAllocator(t *testing.T, configPath string, allocator P
 }
 
 // ExtendConfigAndCrypto generates crypto materials for the network, extends the config with the new party and writes the updated config to a file.
-func ExtendConfigAndCrypto(networkConfig *genconfig.Network, outputDir string, clientSignatureVerificationRequired bool) {
+// enableNodeOUs must match the mode the network's crypto was generated with, i.e., false if generated with --noOUs.
+func ExtendConfigAndCrypto(
+	networkConfig *genconfig.Network,
+	outputDir string,
+	clientSignatureVerificationRequired bool,
+	enableNodeOUs bool,
+) {
 	// generate crypto material
-	_, err := armageddon.GenerateCryptoConfigWithProfile(networkConfig, outputDir)
+	_, err := armageddon.GenerateCryptoConfigWithProfile(networkConfig, outputDir, enableNodeOUs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating crypto config: %s", err)
 		os.Exit(-1)
@@ -350,7 +356,7 @@ func PrepareSharedConfigBinary(t *testing.T, dir string) (*config.SharedConfigYa
 // The function returns the path to the file and the shared config in the yaml format.
 // This function is used in testing only.
 func PrepareSharedConfigBinaryFromNetwork(t *testing.T, networkConfig genconfig.Network, dir string) (*config.SharedConfigYaml, string) {
-	_, err := armageddon.GenerateCryptoConfigWithProfile(&networkConfig, dir)
+	_, err := armageddon.GenerateCryptoConfigWithProfile(&networkConfig, dir, true)
 	require.NoError(t, err)
 
 	networkLocalConfig, err := genconfig.CreateArmaLocalConfig(networkConfig, dir, dir, false)

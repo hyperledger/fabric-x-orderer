@@ -120,6 +120,7 @@ type CLI struct {
 	sampleConfigPath                    *string
 	useTLS                              *bool
 	clientSignatureVerificationRequired *bool
+	noNodeOUs                           *bool
 	// submit command flags
 	userConfigFile **os.File
 	transactions   *int // transactions is the number of txs to be sent
@@ -161,6 +162,7 @@ func (cli *CLI) configureCommands() {
 	cli.useTLS = gen.Flag("useTLS", "Defines if the connection between a client to a router and an assembler is a TLS one or not").Bool()
 	cli.sampleConfigPath = gen.Flag("sampleConfigPath", "The path to the sample config files").String()
 	cli.clientSignatureVerificationRequired = gen.Flag("clientSignatureVerificationRequired", "Specify if client signature verification is required").Bool()
+	cli.noNodeOUs = gen.Flag("noOUs", "Convey admin authority through admincerts instead of node-OU based identity classification (the default)").Bool()
 	commands["generate"] = gen
 
 	showtemplate := cli.app.Command("showtemplate", "Show the default configuration template needed to build Arma config material")
@@ -211,7 +213,7 @@ func (cli *CLI) Run(args []string) {
 
 	// "generate" command
 	case cli.commands["generate"].FullCommand():
-		generateConfigAndCrypto(cli.genConfigFile, cli.outputDir, cli.sampleConfigPath, cli.clientSignatureVerificationRequired)
+		generateConfigAndCrypto(cli.genConfigFile, cli.outputDir, cli.sampleConfigPath, cli.clientSignatureVerificationRequired, cli.noNodeOUs)
 		logger.Infof("Configuration material was created successfully in %s", *cli.outputDir)
 
 	// "showtemplate" command
@@ -306,7 +308,7 @@ func sharedConfigToBlock(sharedConfig *ordererpb.SharedConfig, sharedConfigYaml 
 }
 
 // generateConfigAndCrypto is generating the crypto material and the configuration files in the new format.
-func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleConfigPath *string, clientSignatureVerificationRequired *bool) {
+func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleConfigPath *string, clientSignatureVerificationRequired *bool, noNodeOUs *bool) {
 	if *sampleConfigPath == "" {
 		if path, err := fabric.SafeGetDevConfigDir(); err == nil && path != "" {
 			*sampleConfigPath = path
@@ -323,8 +325,9 @@ func generateConfigAndCrypto(genConfigFile **os.File, outputDir *string, sampleC
 		os.Exit(-1)
 	}
 
-	// generate crypto material and profile for the config block
-	profile, err := GenerateCryptoConfigWithProfile(networkConfig, *outputDir)
+	// generate crypto material and profile for the config block; node OUs are the default and the --noOUs flag
+	// switches the generated crypto to admincerts.
+	profile, err := GenerateCryptoConfigWithProfile(networkConfig, *outputDir, !*noNodeOUs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating crypto config: %s", err)
 		os.Exit(-1)

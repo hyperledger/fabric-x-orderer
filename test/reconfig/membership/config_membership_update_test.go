@@ -539,7 +539,7 @@ func TestAddNewParty(t *testing.T) {
 
 	// Create config update to add a party
 	configUpdateBuilder := configutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	addedPartyId, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir)
+	addedPartyId, addedNetInfo := configUpdateBuilder.PrepareAndAddNewParty(t, dir, true)
 
 	env := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2, 3}, int(submittingParty), configUpdateBuilder.ConfigUpdatePBData(t))
 	require.NotNil(t, env)
@@ -855,7 +855,7 @@ func TestPartiesFullReplacement(t *testing.T) {
 		// 7.
 		// Create config update to add a new party
 		builder = configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir)
+		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir, true)
 
 		uc, err = testutil.GetUserConfig(dir, submittingPartyID)
 		require.NoError(t, err)
@@ -1265,7 +1265,7 @@ func TestJoinMultipleParties(t *testing.T) {
 	for range 3 {
 		// Create config update to add a new party
 		builder := configutil.NewConfigUpdateBuilder(t, dir, configBlockPath)
-		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir)
+		addedPartyId, addedNetInfo := builder.PrepareAndAddNewParty(t, dir, true)
 		uc, err = testutil.GetUserConfig(dir, submittingPartyID)
 		require.NoError(t, err)
 
@@ -1723,17 +1723,15 @@ func TestAddRemoveApplicationClient(t *testing.T) {
 	configFileContent, err := os.ReadFile(configPath)
 	require.NoError(t, err)
 
-	err = yaml.Unmarshal([]byte(configFileContent), &network)
+	err = yaml.Unmarshal(configFileContent, &network)
 	require.NoError(t, err)
 
 	network.Peers = append(network.Peers, "peer2")
-	testutil.ExtendConfigAndCrypto(&network, dir, true)
+	testutil.ExtendConfigAndCrypto(&network, dir, true, true)
 
 	caCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "cacerts", "peer2-CA-cert.pem"))
 	require.NoError(t, err)
 	tlsCaCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "tlscacerts", "tlspeer2-CA-cert.pem"))
-	require.NoError(t, err)
-	adminCerts, err := os.ReadFile(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "admincerts", "Admin@peer2-cert.pem"))
 	require.NoError(t, err)
 
 	knownCertPaths, err := utils.PemFilesFromDir(filepath.Join(dir, "crypto", "peerOrganizations", "peer2", "msp", "knowncerts"))
@@ -1753,7 +1751,6 @@ func TestAddRemoveApplicationClient(t *testing.T) {
 		Name:       "peer2",
 		CACerts:    [][]byte{caCerts},
 		TLSCACerts: [][]byte{tlsCaCerts},
-		AdminCerts: [][]byte{adminCerts},
 		KnownCerts: knownCerts,
 	})
 
