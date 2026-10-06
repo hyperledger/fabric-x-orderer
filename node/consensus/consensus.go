@@ -449,11 +449,19 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		return nil, fmt.Errorf("proposed number %d isn't equal to computed number %x", hdr.Num, md.LatestSequence)
 	}
 
+	// The requests are verified before the state transition is simulated, because the payload comes from
+	// the leader: a request that does not decode would otherwise panic in SimulateStateTransition, and an
+	// unverified request would otherwise be processed into the computed state.
+	reqInfos, err := c.verifyProposalRequests(requests)
+	if err != nil {
+		return nil, err
+	}
+
 	c.lock.Lock()
 	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(c.VerificationSequence()), requests)
 	if configRequests != nil {
-		var err error
 		if computedState, err = c.ConfigApplier.ApplyConfigToState(computedState, configRequests[0]); err != nil {
+			c.lock.Unlock()
 			return nil, fmt.Errorf("failed applying config to state, err: %s", err)
 		}
 	}
@@ -533,6 +541,12 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		return nil, fmt.Errorf("proposed state %x isn't equal to computed state %x", hdr.State, computedState)
 	}
 
+	return reqInfos, nil
+}
+
+// verifyProposalRequests decodes every request in the proposal payload, verifies the ones that affect
+// the computed state, and returns the info of all of them.
+func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests) ([]smartbft_types.RequestInfo, error) {
 	reqInfos := make([]smartbft_types.RequestInfo, 0, len(requests))
 	for _, rawReq := range requests {
 		configSeq, isBAF, err := c.getReqConfigSeq(rawReq)

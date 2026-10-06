@@ -11,6 +11,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/asn1"
+	"math"
 	"math/big"
 	"os"
 	"strings"
@@ -39,9 +40,11 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	stateprotos "github.com/hyperledger/fabric-x-orderer/node/protos/state"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -1106,6 +1109,158 @@ func TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs(t *testing.T) {
 	require.NotPanics(t, func() {
 		require.Len(t, c.RequestsFromProposal(proposal), 2)
 	})
+}
+
+// TestVerifyProposalRejectsMalformedRequest checks that a proposal carrying a request that does not
+// decode into a valid control event is rejected with an error rather than crashing the follower.
+// A byzantine leader controls the proposal payload, and a panic in VerifyProposal kills the
+// follower's SmartBFT view goroutine before it can complain about the leader.
+func TestVerifyProposalRejectsMalformedRequest(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	db, err := badb.NewBatchAttestationDB(t.TempDir(), logger)
+	require.NoError(t, err)
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	initialState := &state.State{
+		N:          4,
+		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Threshold:  2,
+		Quorum:     3,
+		AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 0}),
+	}
+
+	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	signer := crypto.ECDSASigner(*sk)
+	verifier := make(crypto.ECDSAVerifier)
+	verifier[arma_types.NodeIdentity{Role: roleForShard(1), PartyID: 1, ShardID: 1}] = signer.PublicKey
+
+	validBAF, err := batcher.CreateBAF(signer, 1, 1, make([]byte, 32), 1, 1, 0, 0, nil)
+	require.NoError(t, err)
+	validReq := (&state.ControlEvent{BAF: validBAF}).Bytes()
+
+	mBytes, err := proto.Marshal(&smartbftprotos.ViewMetadata{LatestSequence: 0})
+	require.NoError(t, err)
+
+	header := state.Header{Num: 0, State: initialState}
+
+	reportWithParty := func(party uint32) []byte {
+		raw, err := proto.Marshal(&stateprotos.ControlEvent{
+			Event: &stateprotos.ControlEvent_AssemblerDecisionReport{
+				AssemblerDecisionReport: &stateprotos.AssemblerDecisionReport{Party: party, DecisionNum: 1},
+			},
+		})
+		require.NoError(t, err)
+		return raw
+	}
+
+	garbage := []byte{0xff, 0xff, 0xff}
+
+	for _, tc := range []struct {
+		name string
+		reqs [][]byte
+	}{
+		{name: "garbage bytes", reqs: [][]byte{garbage}},
+		{name: "report with zero party", reqs: [][]byte{reportWithParty(0)}},
+		{name: "report with party above uint16", reqs: [][]byte{reportWithParty(math.MaxUint16 + 1)}},
+		{name: "valid BAF followed by garbage bytes", reqs: [][]byte{validReq, garbage}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// A fresh instance per case, so a panic that leaves c.lock held cannot hang the next case.
+			c := &node_consensus.Consensus{
+				Arma:        &node_consensus.Consenter{DB: db, Logger: logger},
+				State:       initialState,
+				Logger:      logger,
+				SigVerifier: verifier,
+				Config:      &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
+			}
+
+			brs := arma_types.BatchedRequests(tc.reqs)
+			proposal := smartbft_types.Proposal{
+				Header:   header.Serialize(),
+				Payload:  brs.Serialize(),
+				Metadata: mBytes,
+			}
+
+			var infos []smartbft_types.RequestInfo
+			require.NotPanics(t, func() {
+				infos, err = c.VerifyProposal(proposal)
+			})
+			require.ErrorContains(t, err, "invalid request")
+			require.Nil(t, infos)
+		})
+	}
+}
+
+// TestVerifyProposalReleasesLockWhenApplyingConfigFails checks that VerifyProposal releases c.lock when
+// applying a proposed config request to the computed state fails, so later calls that take the lock
+// do not block forever.
+func TestVerifyProposalReleasesLockWhenApplyingConfigFails(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	db, err := badb.NewBatchAttestationDB(t.TempDir(), logger)
+	require.NoError(t, err)
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	initialState := &state.State{
+		N:          4,
+		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
+		Threshold:  2,
+		Quorum:     3,
+		AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 0}),
+	}
+
+	mockConfigApplier := &consensus_mocks.FakeConfigApplier{}
+	mockConfigApplier.ApplyConfigToStateReturns(nil, errors.New("bad config"))
+
+	c := &node_consensus.Consensus{
+		Arma:                   &node_consensus.Consenter{DB: db, Logger: logger},
+		State:                  initialState,
+		Logger:                 logger,
+		SigVerifier:            make(crypto.ECDSAVerifier),
+		Config:                 &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
+		ConfigApplier:          mockConfigApplier,
+		ConfigRequestValidator: &configrequest_mocks.FakeConfigRequestValidator{},
+		ConfigRulesVerifier:    &ordererRulesMocks.FakeOrdererRules{},
+	}
+
+	// The config request moves the config sequence from the current 0 to 1, so it is verified and
+	// applied to the computed state.
+	configReq := (&state.ControlEvent{ConfigRequest: &state.ConfigRequest{Envelope: configReqEnvelopeWithID(1, "tx")}}).Bytes()
+	brs := arma_types.BatchedRequests([][]byte{configReq})
+
+	mBytes, err := proto.Marshal(&smartbftprotos.ViewMetadata{LatestSequence: 0})
+	require.NoError(t, err)
+
+	header := state.Header{Num: 0, State: initialState}
+	proposal := smartbft_types.Proposal{
+		Header:   header.Serialize(),
+		Payload:  brs.Serialize(),
+		Metadata: mBytes,
+	}
+
+	_, err = c.VerifyProposal(proposal)
+	require.ErrorContains(t, err, "failed applying config to state")
+
+	// A second call takes c.lock again; it blocks forever if the first call did not release it.
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.VerifyProposal(proposal)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		require.ErrorContains(t, err, "failed applying config to state")
+	case <-time.After(5 * time.Second):
+		t.Fatal("VerifyProposal did not release the lock after failing to apply the config")
+	}
 }
 
 // configReqEnvelopeWithID builds a config request envelope whose config envelope carries the given
