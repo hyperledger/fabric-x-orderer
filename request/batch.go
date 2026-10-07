@@ -44,13 +44,3 @@ func (b *batch) Range(f func(key, value any) bool) {
 func (b *batch) Delete(key any) {
 	b.m.Delete(key)
 }
-
-func (b *batch) Prune(f func(key, value any) error) {
-	delFunc := func(key, value any) bool {
-		if f(key, value) != nil {
-			b.m.Delete(key)
-		}
-		return true
-	}
-	b.m.Range(delFunc)
-}
