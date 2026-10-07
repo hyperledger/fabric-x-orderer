@@ -376,8 +376,9 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 
 	c.Logger.Infof("Received config request from router %s with config sequence %d", c.Config.Router.Endpoint, request.ConfigSeq)
 
-	if request.ConfigSeq != uint32(c.VerificationSequence()) {
-		return nil, errors.Errorf("config sequence mismatch: expected %d, got %d", c.VerificationSequence(), request.ConfigSeq)
+	verificationSeq := c.VerificationSequence()
+	if request.ConfigSeq != uint32(verificationSeq) {
+		return nil, errors.Errorf("config sequence mismatch: expected %d, got %d", verificationSeq, request.ConfigSeq)
 	}
 
 	configRequest, err := c.verifyAndClassifyRequest(request)
@@ -449,16 +450,29 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		return nil, fmt.Errorf("proposed number %d isn't equal to computed number %x", hdr.Num, md.LatestSequence)
 	}
 
+	// The verification sequence is read once, so that the whole proposal is verified against one config.
+	verificationSeq := c.VerificationSequence()
+	if verificationSeq != uint64(proposal.VerificationSequence) {
+		return nil, errors.Errorf("expected verification sequence %d, but proposal has %d", verificationSeq, proposal.VerificationSequence)
+	}
+
 	// The requests are verified before the state transition is simulated, because the payload comes from
 	// the leader: a request that does not decode would otherwise panic in SimulateStateTransition, and an
 	// unverified request would otherwise be processed into the computed state.
-	reqInfos, err := c.verifyProposalRequests(requests)
+	reqInfos, err := c.verifyProposalRequests(requests, verificationSeq)
 	if err != nil {
 		return nil, err
 	}
 
 	c.lock.Lock()
-	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(c.VerificationSequence()), requests)
+	// The requests are verified outside the lock, so a reconfiguration may have replaced the config and the
+	// state since verificationSeq was read. The sequence only grows, so if it is unchanged here, c.State
+	// belongs to the config the requests were verified against.
+	if currentSeq := c.verificationSequence(); currentSeq != verificationSeq {
+		c.lock.Unlock()
+		return nil, errors.Errorf("verification sequence changed from %d to %d while verifying the proposal", verificationSeq, currentSeq)
+	}
+	computedState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(verificationSeq), requests)
 	if configRequests != nil {
 		if computedState, err = c.ConfigApplier.ApplyConfigToState(computedState, configRequests[0]); err != nil {
 			c.lock.Unlock()
@@ -475,11 +489,6 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	if len(configRequests) > 0 {
 		decisionNumOfLastConfigBlock = arma_types.DecisionNum(md.LatestSequence)
 		numOfAvailableBlocks++
-	}
-
-	verificationSeq := c.VerificationSequence()
-	if verificationSeq != uint64(proposal.VerificationSequence) {
-		return nil, errors.Errorf("expected verification sequence %d, but proposal has %d", verificationSeq, proposal.VerificationSequence)
 	}
 
 	if hdr.DecisionNumOfLastConfigBlock != decisionNumOfLastConfigBlock {
@@ -545,22 +554,21 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 }
 
 // verifyProposalRequests decodes every request in the proposal payload, verifies the ones that affect
-// the computed state, and returns the info of all of them.
-func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests) ([]smartbft_types.RequestInfo, error) {
+// the computed state at verificationSeq, and returns the info of all of them.
+func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, verificationSeq uint64) ([]smartbft_types.RequestInfo, error) {
 	reqInfos := make([]smartbft_types.RequestInfo, 0, len(requests))
 	for _, rawReq := range requests {
 		configSeq, isBAF, err := c.getReqConfigSeq(rawReq)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
 		}
-		verSeq := c.VerificationSequence()
 		// Only requests that affect the computed state are verified here: those at the current config
 		// sequence, and BAFs any number of configs behind (which consensus surfaces for revival). A
 		// request with any other config sequence is filtered out of the computed state, so its content
 		// cannot affect this decision and is not verified. Every proposed request is still reported in
 		// reqInfos so SmartBFT removes it from its request pool; a request's ID embeds its config sequence,
 		// so reporting a stale one removes exactly it and never a legitimate request at the current sequence.
-		if configSeq == verSeq || (isBAF && configSeq < verSeq) {
+		if configSeq == verificationSeq || (isBAF && configSeq < verificationSeq) {
 			reqID, err := c.VerifyRequest(rawReq)
 			if err != nil {
 				return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
@@ -749,6 +757,14 @@ func (c *Consensus) VerifySignature(signature smartbft_types.Signature) error {
 // VerificationSequence returns the current verification sequence
 // (from SmartBFT API)
 func (c *Consensus) VerificationSequence() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.verificationSequence()
+}
+
+// verificationSequence returns the current verification sequence. The caller must hold c.lock, since a
+// dynamic reconfiguration replaces c.Config under it.
+func (c *Consensus) verificationSequence() uint64 {
 	return c.Config.Bundle.ConfigtxValidator().Sequence()
 }
 
@@ -896,7 +912,7 @@ func (c *Consensus) SignProposal(proposal smartbft_types.Proposal, _ []byte) *sm
 // (from SmartBFT API)
 func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbft_types.Proposal {
 	c.lock.Lock()
-	newState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(c.VerificationSequence()), requests)
+	newState, attestations, configRequests := c.Arma.SimulateStateTransition(c.State, arma_types.ConfigSequence(c.verificationSequence()), requests)
 	if configRequests != nil {
 		var err error
 		if newState, err = c.ConfigApplier.ApplyConfigToState(newState, configRequests[0]); err != nil {
@@ -1286,13 +1302,22 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 
 	reqID := c.RequestID(req)
 
-	configSeq := arma_types.ConfigSequence(c.VerificationSequence())
+	// A dynamic reconfiguration replaces these fields under c.lock (configureConsensus) while requests are
+	// verified concurrently, so take a consistent snapshot of them and verify against it. The verification
+	// itself runs outside the lock.
+	c.lock.RLock()
+	configSeq := arma_types.ConfigSequence(c.verificationSequence())
+	cfg := c.Config
+	sigVerifier := c.SigVerifier
+	configRequestValidator := c.ConfigRequestValidator
+	configRulesVerifier := c.ConfigRulesVerifier
+	c.lock.RUnlock()
 
 	if ce.Complaint != nil {
 		if ce.Complaint.ConfigSeq != configSeq {
 			return reqID, ce, errors.Errorf("mismatch config sequence; the complaint's config seq is %d while the config seq should be %d", ce.Complaint.ConfigSeq, configSeq)
 		}
-		return reqID, ce, c.SigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.Complaint.Signer, ce.Complaint.Shard), ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
+		return reqID, ce, sigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.Complaint.Signer, ce.Complaint.Shard), ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
 	} else if ce.BAF != nil {
 		// Accept a BAF whose config sequence is behind, in addition to the current one, so
 		// that the BAFs from a batcher which fell behind a config change are not silently dropped: consensus surfaces it
@@ -1306,11 +1331,11 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 				return reqID, ce, errors.New("missing primary signature")
 			}
 			dupBAF := duplicateBAFSetSigner(ce.BAF, ce.BAF.Primary())
-			if err := c.SigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.BAF.Primary(), ce.BAF.Shard()), toBeSignedBAF(dupBAF), ce.BAF.PrimarySignature()); err != nil {
+			if err := sigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.BAF.Primary(), ce.BAF.Shard()), toBeSignedBAF(dupBAF), ce.BAF.PrimarySignature()); err != nil {
 				return reqID, ce, errors.Wrap(err, "failed to verify primary signature")
 			}
 		}
-		return reqID, ce, c.SigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.BAF.Signer(), ce.BAF.Shard()), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
+		return reqID, ce, sigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.BAF.Signer(), ce.BAF.Shard()), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
 		reqConfigSeq, err := ce.ConfigRequest.ConfigSequence()
 		if err != nil {
@@ -1319,14 +1344,14 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if reqConfigSeq != configSeq+1 {
 			return reqID, ce, errors.Errorf("mismatch config sequence; the config request's config seq is %d while the config seq should be %d", reqConfigSeq, configSeq+1)
 		}
-		err = c.ConfigRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
+		err = configRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
 		if err != nil {
 			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
 		}
-		if err := c.ConfigRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope, c.Config.BCCSP, c.PartyID); err != nil {
+		if err := configRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope, cfg.BCCSP, c.PartyID); err != nil {
 			return reqID, ce, errors.Wrap(err, "failed to validate rules in new config")
 		}
-		if err := c.ConfigRulesVerifier.ValidateTransition(c.Config.Bundle, ce.ConfigRequest.Envelope, c.Config.BCCSP); err != nil {
+		if err := configRulesVerifier.ValidateTransition(cfg.Bundle, ce.ConfigRequest.Envelope, cfg.BCCSP); err != nil {
 			return reqID, ce, errors.Wrap(err, "failed to validate config transition rules")
 		}
 		// TODO: revisit this return
@@ -1351,7 +1376,7 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		// no registered assembler key, so verification fails; this doubles as the check that Party is a
 		// known party.
 		reporter := arma_types.NewAssemblerIdentity(report.Party)
-		if err := c.SigVerifier.VerifySignature(reporter, report.ToBeSigned(), report.Signature); err != nil {
+		if err := sigVerifier.VerifySignature(reporter, report.ToBeSigned(), report.Signature); err != nil {
 			return reqID, ce, errors.Wrap(err, "invalid assembler decision report signature")
 		}
 		return reqID, ce, nil
