@@ -143,8 +143,8 @@ func TestStubBatcherReceivesClientRouterRequests(t *testing.T) {
 	res := submitStreamRequests(testSetup.clientConn, 10)
 	require.NoError(t, res.err)
 
-	res = submitBroadcastRequests(testSetup.clientConn, 10)
-	require.NoError(t, res.err)
+	bRes := submitBroadcast(t, testSetup.clientConn, 10, 0)
+	require.Equal(t, 10, bRes.success)
 
 	require.Eventually(t, func() bool {
 		return testSetup.batchers[0].ReceivedMessageCount() == uint32(20)
@@ -170,8 +170,8 @@ func TestSubmitToStubBatchersGetMetrics(t *testing.T) {
 	require.NoError(t, res.err)
 	time.Sleep(5 * time.Second) // wait a bit before sending the next batch to allow metrics to be logged
 
-	res = submitBroadcastRequests(testSetup.clientConn, 1000)
-	require.NoError(t, res.err)
+	bRes := submitBroadcast(t, testSetup.clientConn, 1000, 0)
+	require.Equal(t, 1000, bRes.success)
 
 	pattern := fmt.Sprintf(`router_requests_completed\{party_id="%d"\} \d+`, types.PartyID(1))
 	re := regexp.MustCompile(pattern)
@@ -296,8 +296,8 @@ func TestStubBatcherReceivesClientRouterSingleRequest(t *testing.T) {
 	err = submitRequest(testSetup.clientConn)
 	require.NoError(t, err)
 
-	res := submitBroadcastRequests(testSetup.clientConn, 1)
-	require.NoError(t, res.err)
+	res := submitBroadcast(t, testSetup.clientConn, 1, 0)
+	require.Equal(t, 1, res.success)
 
 	require.Eventually(t, func() bool {
 		return testSetup.batchers[0].ReceivedMessageCount() == uint32(2)
@@ -438,12 +438,13 @@ func TestBroadcastOnBatcherStopAndRestart(t *testing.T) {
 	}, 10*time.Second, 200*time.Millisecond)
 
 	// Broadcast 5 requests. should get server error
-	res := submitBroadcastRequests(testSetup.clientConn, numOfRequests)
-	require.Equal(t, 0, res.successRequests)
-	require.Equal(t, numOfRequests, res.failRequests)
-	require.Equal(t, numOfRequests, len(res.respondsErrors))
-	for _, e := range res.respondsErrors {
-		require.EqualError(t, e, "receiving response with error: server error: connection between router and batcher "+testSetup.batchers[0].Server().Address()+" is broken, try again later")
+	res := submitBroadcast(t, testSetup.clientConn, numOfRequests, 0)
+	require.Zero(t, res.success)
+	require.Zero(t, res.throttled)
+	require.Equal(t, numOfRequests, res.other)
+	require.Len(t, res.infos, numOfRequests)
+	for _, info := range res.infos {
+		require.Equal(t, "server error: connection between router and batcher "+testSetup.batchers[0].Server().Address()+" is broken, try again later", info)
 	}
 
 	// restart the batcher
@@ -455,11 +456,10 @@ func TestBroadcastOnBatcherStopAndRestart(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// Broadcast same 5 requests again. expect success
-	res = submitBroadcastRequests(testSetup.clientConn, numOfRequests)
-	require.NoError(t, res.err)
-	require.Equal(t, numOfRequests, res.successRequests)
-	require.Equal(t, 0, res.failRequests)
-	require.Equal(t, 0, len(res.respondsErrors))
+	res = submitBroadcast(t, testSetup.clientConn, numOfRequests, 0)
+	require.Equal(t, numOfRequests, res.success)
+	require.Zero(t, res.throttled)
+	require.Zero(t, res.other)
 	require.Eventually(t, func() bool {
 		return testSetup.batchers[0].ReceivedMessageCount() == uint32(numOfRequests)
 	}, 10*time.Second, 10*time.Millisecond)
@@ -527,8 +527,8 @@ func TestClientRouterBroadcastRequestsAgainstMultipleBatchers(t *testing.T) {
 
 	defer testSetup.Close()
 
-	res := submitBroadcastRequests(testSetup.clientConn, 10)
-	require.NoError(t, res.err)
+	res := submitBroadcast(t, testSetup.clientConn, 10, 0)
+	require.Equal(t, 10, res.success)
 
 	recvCond := func() uint32 {
 		receivedTxCount := uint32(0)
@@ -948,61 +948,57 @@ func submitStreamRequests(conn *grpc.ClientConn, numOfRequests int) (res testStr
 	return res
 }
 
-func submitBroadcastRequests(conn *grpc.ClientConn, numOfRequests int) (res testStreamResult) {
-	res = testStreamResult{
-		failRequests: numOfRequests,
-	}
+// broadcastOutcome tallies the responses a Broadcast client received.
+type broadcastOutcome struct {
+	success   int      // responses with common.Status_SUCCESS
+	throttled int      // responses with common.Status_SERVICE_UNAVAILABLE (rate limited)
+	other     int      // responses with any other status
+	infos     []string // Info of every non-success response, in arrival order
+}
 
-	cl := ab.NewAtomicBroadcastClient(conn)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+// submitBroadcast opens a Broadcast stream and sends numRequests envelopes, sleeping interval
+// between consecutive sends (interval == 0 sends them as a fast burst). It reads back one response
+// per request and tallies accepted vs. throttled vs. other, asserting that every throttling
+// rejection carries the SERVICE_UNAVAILABLE status and the throttle message.
+func submitBroadcast(t *testing.T, conn *grpc.ClientConn, numRequests int, interval time.Duration) broadcastOutcome {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	cl := ab.NewAtomicBroadcastClient(conn)
 	stream, err := cl.Broadcast(ctx)
-	if err != nil {
-		res.err = err
-		return res
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(1)
+	require.NoError(t, err)
 
 	go func() {
-		defer wg.Done()
 		buff := make([]byte, 300)
-		for j := 0; j < numOfRequests; j++ {
-			binary.BigEndian.PutUint32(buff, uint32(j))
-			env := tx.CreateStructuredEnvelope(buff)
-			err := stream.Send(env)
-			if err != nil {
+		for i := 0; i < numRequests; i++ {
+			binary.BigEndian.PutUint32(buff, uint32(i))
+			if sendErr := stream.Send(tx.CreateStructuredEnvelope(buff)); sendErr != nil {
 				return
+			}
+			if interval > 0 {
+				time.Sleep(interval)
 			}
 		}
 	}()
 
-	for j := 0; j < numOfRequests; j++ {
-		select {
+	var out broadcastOutcome
+	for i := 0; i < numRequests; i++ {
+		resp, recvErr := stream.Recv()
+		require.NoError(t, recvErr)
+		switch resp.Status {
+		case common.Status_SUCCESS:
+			out.success++
+		case common.Status_SERVICE_UNAVAILABLE:
+			out.throttled++
+			out.infos = append(out.infos, resp.Info)
+			require.Contains(t, resp.Info, "throttled", "a throttling rejection must carry the throttle message")
 		default:
-			resp, err := stream.Recv()
-			if err != nil {
-				res.err = fmt.Errorf("error receiving response: %s", err)
-			}
-			if resp.Status != common.Status_SUCCESS {
-				requestErr := fmt.Errorf("receiving response with error: %s", resp.Info)
-				res.respondsErrors = append(res.respondsErrors, requestErr)
-				res.err = requestErr
-			} else {
-				res.successRequests++
-				res.failRequests--
-			}
-		case <-ctx.Done():
-			res.err = fmt.Errorf("a time out occured during submitting request: %w", ctx.Err())
+			out.other++
+			out.infos = append(out.infos, resp.Info)
 		}
 	}
-
-	wg.Wait()
-
-	return res
+	return out
 }
 
 func submitRequest(conn *grpc.ClientConn) error {
