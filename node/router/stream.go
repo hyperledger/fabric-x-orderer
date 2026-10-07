@@ -31,14 +31,15 @@ type stream struct {
 	doneChannel                       chan bool
 	doneOnce                          sync.Once
 	lock                              sync.Mutex
-	requestTraceIdToResponseChannel   map[string]chan Response
-	connNum                           int
-	streamNum                         int
-	srReconnectChan                   chan reconnectReq
-	notifiedReconnect                 bool
-	verifier                          *requestfilter.RulesVerifier
-	configSubmitter                   ConfigurationSubmitter
-	reconnectBackoffInterval          time.Duration
+	// requestsByTraceID holds the traced requests awaiting a batcher response.
+	requestsByTraceID        map[string]*TrackedRequest
+	connNum                  int
+	streamNum                int
+	srReconnectChan          chan reconnectReq
+	notifiedReconnect        bool
+	verifier                 *requestfilter.RulesVerifier
+	configSubmitter          ConfigurationSubmitter
+	reconnectBackoffInterval time.Duration
 }
 
 // readResponses listens for responses from the batcher.
@@ -90,6 +91,10 @@ func (s *stream) sendRequests() {
 
 			if reqType == common.HeaderType_CONFIG_UPDATE {
 				s.logger.Infof("received request with type %s, forwarding to consenter", reqType)
+				// The consenter answers this request, not the batcher, so drop its registration.
+				if tr.trace != nil {
+					s.unregisterReply(tr.trace)
+				}
 				// forward to consenter. configSubmitter will handle sending response to client.
 				s.configSubmitter.Forward(tr)
 			} else {
@@ -99,7 +104,7 @@ func (s *stream) sendRequests() {
 					s.logger.Errorf("Failed sending request to batcher %s", s.endpoint)
 					if tr.trace == nil {
 						// send error to client, in case request is not traced.
-						tr.responses <- Response{err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint)}
+						tr.feedback.reply(Response{err: fmt.Errorf("server error: could not establish connection between router and batcher %s", s.endpoint)})
 					}
 					// withBackoff is set to false because it is not the case of a stopped batcher.
 					s.cancelOnServerError(false)
@@ -109,7 +114,7 @@ func (s *stream) sendRequests() {
 				// send fast response to client for untraced requests.
 				// traced requests get their response from readResponses goroutine.
 				if tr.trace == nil {
-					tr.responses <- Response{err: nil}
+					tr.feedback.reply(Response{err: nil})
 				}
 			}
 		}
@@ -144,15 +149,15 @@ func (s *stream) verifyAndClassifyRequest(request *protos.Request) (common.Heade
 func (s *stream) forwardResponseToClient(response *protos.SubmitResponse) error {
 	traceID := response.TraceId
 	s.lock.Lock()
-	ch, exists := s.requestTraceIdToResponseChannel[string(traceID)]
-	delete(s.requestTraceIdToResponseChannel, string(traceID))
+	tr, exists := s.requestsByTraceID[string(traceID)]
+	delete(s.requestsByTraceID, string(traceID))
 	s.reconnectBackoffInterval = minRetryInterval
 	s.lock.Unlock()
 	if exists {
 		s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", traceID)
-		ch <- Response{
+		tr.feedback.reply(Response{
 			SubmitResponse: response,
-		}
+		})
 		return nil
 	} else {
 		return fmt.Errorf("request with traceID %x is not in map", traceID)
@@ -163,18 +168,18 @@ func (s *stream) responseToClientWithError(rr *TrackedRequest, err error) {
 	traceID := rr.trace
 	if traceID == nil {
 		// request is untraced, send a response
-		rr.responses <- Response{err: err}
+		rr.feedback.reply(Response{err: err})
 	} else {
 		// request is traced, and there was an error
 		s.lock.Lock()
-		ch, exists := s.requestTraceIdToResponseChannel[string(traceID)]
-		delete(s.requestTraceIdToResponseChannel, string(traceID))
+		tr, exists := s.requestsByTraceID[string(traceID)]
+		delete(s.requestsByTraceID, string(traceID))
 		s.lock.Unlock()
 		if exists {
 			s.logger.Debugf("responding to request with trace id %x, and removing registration from map", traceID)
-			ch <- Response{
+			tr.feedback.reply(Response{
 				SubmitResponse: &protos.SubmitResponse{Error: err.Error(), TraceId: traceID},
-			}
+			})
 		} else {
 			s.logger.Debugf("request with traceID %x is not in map", traceID)
 		}
@@ -194,29 +199,37 @@ func (s *stream) cancel() {
 	s.cancelOnce.Do(s.cancelFunc)
 }
 
-// Send an error to all clients that are still waiting for a response
+// sendResponseToAllClientsOnError answers every request still waiting on this
+// stream, both those already handed to a batcher and those still queued.
 func (s *stream) sendResponseToAllClientsOnError(e error) {
-	s.lock.Lock()
 	s.logger.Debugf("Sending error %s to all response channels registerd in stream ", e)
-	for _, respChan := range s.requestTraceIdToResponseChannel {
-		respChan <- Response{
-			err: e,
-		}
-	}
-	clear(s.requestTraceIdToResponseChannel)
 
-	// Drain the requests channel. it could block another reader (none are expected)
+	// Answer the requests that never reached a batcher first, dropping the
+	// registration of each so that the pending map below cannot answer it a second
+	// time. requestsChannel is not guarded by s.lock, so this must not run under it.
 DrainChannelLoop:
 	for {
 		select {
-		case rr := <-s.requestsChannel:
-			rr.responses <- Response{err: e, reqID: rr.reqID}
+		case tr := <-s.requestsChannel:
+			if tr.trace != nil {
+				s.unregisterReply(tr.trace)
+			}
+			tr.feedback.reply(Response{err: e, reqID: tr.reqID})
 		default:
 			break DrainChannelLoop
 		}
 	}
 
+	// Then answer the requests already handed to a batcher. Detach the
+	// registrations under the lock, and answer them without it.
+	s.lock.Lock()
+	pending := s.requestsByTraceID
+	s.requestsByTraceID = make(map[string]*TrackedRequest)
 	s.lock.Unlock()
+
+	for _, tr := range pending {
+		tr.feedback.reply(Response{err: e, reqID: tr.reqID})
+	}
 }
 
 // Here we notify the reconnect goroutine in the shard router that this stream need to be reconnected. However, we do it
@@ -263,11 +276,18 @@ func (s *stream) faulty() bool {
 	}
 }
 
-func (s *stream) registerReply(traceID []byte, responses chan Response) {
+func (s *stream) registerReply(tr *TrackedRequest) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.requestTraceIdToResponseChannel[string(traceID)] = responses
+	s.requestsByTraceID[string(tr.trace)] = tr
+}
+
+func (s *stream) unregisterReply(traceID []byte) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	delete(s.requestsByTraceID, string(traceID))
 }
 
 // renewStream creates a new stream that inherits the map and the requests channel
@@ -280,7 +300,7 @@ func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint strin
 	}
 
 	newStreamRequests := make(chan *TrackedRequest, 1000)
-	newRequestTraceIdToResponseChannelMap := make(map[string]chan Response)
+	newRequestsByTraceID := make(map[string]*TrackedRequest)
 
 	// close the old stream. This should stop the sendRequests and readResponses goroutines.
 	s.close()
@@ -299,7 +319,7 @@ CopyChannelLoop:
 
 	s.lock.Lock()
 	// copy the response-Channels map
-	maps.Copy(newRequestTraceIdToResponseChannelMap, s.requestTraceIdToResponseChannel)
+	maps.Copy(newRequestsByTraceID, s.requestsByTraceID)
 
 	newStream := &stream{
 		endpoint:                          endpoint,
@@ -307,7 +327,7 @@ CopyChannelLoop:
 		requestTransmitSubmitStreamClient: newGRPCStream,
 		ctx:                               ctx,
 		cancelFunc:                        cancel,
-		requestTraceIdToResponseChannel:   newRequestTraceIdToResponseChannelMap,
+		requestsByTraceID:                 newRequestsByTraceID,
 		requestsChannel:                   newStreamRequests,
 		doneChannel:                       make(chan bool),
 		connNum:                           s.connNum,
@@ -327,11 +347,11 @@ CopyChannelLoop:
 }
 
 // isRequestRegistered is only used for testing to validate that a request has been recorded in the map
-func (s *stream) isRequestRegistered(traceID []byte) (chan Response, bool) {
+func (s *stream) isRequestRegistered(traceID []byte) (*TrackedRequest, bool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	respChan, exists := s.requestTraceIdToResponseChannel[string(traceID)]
-	return respChan, exists
+	tr, exists := s.requestsByTraceID[string(traceID)]
+	return tr, exists
 }
 
 // close closes the read and send channels
