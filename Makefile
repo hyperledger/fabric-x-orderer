@@ -27,8 +27,13 @@ IMAGE_NAMESPACE = docker.io/hyperledger
 IMAGE_NAME = fabric-x-orderer
 TEST_NODE_IMAGE_NAME = fabric-x-orderer-test-node
 VERSION = latest
-ORDERER_REVISION = $(shell git rev-parse HEAD)
+ORDERER_REVISION = $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 ORDERER_CREATED = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# Write the version and commit hash into the binaries at build time; /version and the version metric show them.
+# VERSION defaults to "latest"; for a real release pass it in, e.g. make binary VERSION=1.0.6
+METADATA_PKG = github.com/hyperledger/fabric-x-orderer/common/metadata
+GO_LDFLAGS = -X $(METADATA_PKG).Version=$(VERSION) -X $(METADATA_PKG).CommitSHA=$(ORDERER_REVISION)
 
 .PHONY: basic-checks
 basic-checks: check-license check-dco check-imports check-protos linter
@@ -51,8 +56,8 @@ check-deps:
 .PHONY: binary
 binary:
 	mkdir -p ./bin
-	go build -o ./bin/arma ./cmd/arma
-	go build -o ./bin/armageddon ./cmd/armageddon
+	go build -ldflags "$(GO_LDFLAGS)" -o ./bin/arma ./cmd/arma
+	go build -ldflags "$(GO_LDFLAGS)" -o ./bin/armageddon ./cmd/armageddon
 
 .PHONY: clean-binary
 clean-binary:
@@ -199,22 +204,22 @@ sample-tests:
 .PHONY: build-image
 build-image:
 	@echo "Building the image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --build-arg VERSION=${VERSION} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
 
 # Build the HLFX Orderer multiplatform image
 .PHONY: build-multiplatform-image
 build-multiplatform-image:
 	@echo "Building the multiplatform image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg VERSION=${VERSION} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
 
 # Build the all-in-one test-node image
 .PHONY: build-test-node-image
 build-test-node-image:
 	@echo "Building the image ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION} -f ${TEST_NODE_DOCKERFILE} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION} -f ${TEST_NODE_DOCKERFILE} --build-arg VERSION=${VERSION} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
 
 # Build the all-in-one test-node multiplatform image
 .PHONY: build-multiplatform-test-node-image
 build-multiplatform-test-node-image:
 	@echo "Building the multiplatform image ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION} -f ${TEST_NODE_DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION} -f ${TEST_NODE_DOCKERFILE} --multiplatform --build-arg VERSION=${VERSION} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)

@@ -23,8 +23,11 @@ COPY . .
 
 RUN ls -la .
 
-# Build using your Makefile target
-RUN make binary
+# The .git folder is not copied into the image, so make cannot read the commit hash by itself.
+# The release workflow passes the real version and commit with --build-arg; with none, they are "latest" and "unknown".
+ARG VERSION=latest
+ARG REVISION=unknown
+RUN make binary VERSION=${VERSION} ORDERER_REVISION=${REVISION}
 
 ###########################################
 # Stage 2: Production runtime image
