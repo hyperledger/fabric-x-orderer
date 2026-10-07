@@ -28,7 +28,7 @@
       }
     ],
     "cursorSync": "Off",
-    "description": "Metrics of an Arma network: routers, batchers, consenters and assemblers, split per party and per shard. Provisioned by the sample in node/examples/grafana, which runs a network together with Prometheus and Grafana; see its README for how to start one.",
+    "description": "Metrics of an Arma network: routers, batchers, consenters and assemblers, split per party and per shard. Provisioned by the sample in examples/grafana, which runs a network together with Prometheus and Grafana; see its README for how to start one.",
     "editable": true,
     "elements": {
       "panel-1": {
