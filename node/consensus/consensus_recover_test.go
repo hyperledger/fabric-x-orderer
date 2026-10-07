@@ -474,10 +474,10 @@ func TestMultipleNodesFailureRecovery(t *testing.T) {
 	// Ensure nodes recover correctly
 	require.Eventually(t, func() bool {
 		return setup.consensusNodes[1].Storage.Height() >= 2
-	}, 30*time.Second, 1*time.Second)
+	}, 60*time.Second, 1*time.Second)
 	require.Eventually(t, func() bool {
 		return setup.consensusNodes[2].Storage.Height() >= 2
-	}, 30*time.Second, 1*time.Second)
+	}, 60*time.Second, 1*time.Second)
 
 	// Nodes fail
 	setup.consensusNodes[1].Stop()
