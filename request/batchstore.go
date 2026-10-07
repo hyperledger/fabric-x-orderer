@@ -119,6 +119,11 @@ func (bs *BatchStore) ForEach(f func(k, v interface{})) {
 // interleave between Remove's keys2Batches delete and its batch delete, leaving a
 // dangling index entry (the key rejected as a duplicate yet absent from every
 // batch) and a double onDelete. The write lock serializes Prune against Insert.
+//
+// Known limitation: Remove does not decrement a batch's sizeBytes, and Prune leaves the pruned batches in
+// readyBatches even when they become undersized or empty (Fetch skips empty ones). So right after a prune Fetch
+// may return undersized batches, costing a few extra batches. This is not a safety issue, and since Prune runs
+// only on reconfiguration it is rare, so we leave it as is for now.
 func (bs *BatchStore) Prune(f func(k, v interface{}) error) {
 	bs.lock.Lock()
 	defer bs.lock.Unlock()
