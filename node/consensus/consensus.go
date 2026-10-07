@@ -553,22 +553,32 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	return reqInfos, nil
 }
 
-// verifyProposalRequests decodes every request in the proposal payload, verifies the ones that affect
-// the computed state at verificationSeq, and returns the info of all of them.
+// verifyProposalRequests decodes every request in the proposal payload, verifies the ones at
+// verificationSeq, and returns the info of all of them.
 func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, verificationSeq uint64) ([]smartbft_types.RequestInfo, error) {
 	reqInfos := make([]smartbft_types.RequestInfo, 0, len(requests))
 	for _, rawReq := range requests {
-		configSeq, isBAF, err := c.getReqConfigSeq(rawReq)
+		configSeq, err := c.getReqConfigSeq(rawReq)
 		if err != nil {
 			return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
 		}
-		// Only requests that affect the computed state are verified here: those at the current config
-		// sequence, and BAFs any number of configs behind (which consensus surfaces for revival). A
-		// request with any other config sequence is filtered out of the computed state, so its content
-		// cannot affect this decision and is not verified. Every proposed request is still reported in
-		// reqInfos so SmartBFT removes it from its request pool; a request's ID embeds its config sequence,
-		// so reporting a stale one removes exactly it and never a legitimate request at the current sequence.
-		if configSeq == verificationSeq || (isBAF && configSeq < verificationSeq) {
+		// Only requests at the current config sequence are verified here. A request with any other config
+		// sequence is filtered out of the computed state, so its content cannot affect this decision.
+		//
+		// The exception is a BAF behind the current config sequence, which consensus surfaces in
+		// State.StaleConfigBAFs so its signer revives the batch's requests. Its signature is deliberately
+		// not verified here: it was verified when the BAF was submitted, but the BAF may have been pooled
+		// before a reconfiguration that changed its batcher's certificate, and verifying it against the new
+		// config would then fail every proposal that carries it, since SmartBFT does not prune its pool on
+		// reconfiguration. A stale BAF never contributes to a batch attestation; its only effect is to make
+		// the batcher it names revive a batch from its own ledger. A byzantine leader may therefore propose a
+		// forged stale BAF, and the worst it can do is make that batcher resubmit the requests of a batch it
+		// holds, which may already have been ordered and so yield duplicate requests.
+		//
+		// Every proposed request is still reported in reqInfos so SmartBFT removes it from its request pool;
+		// a request's ID embeds its config sequence, so reporting a stale one removes exactly it and never a
+		// legitimate request at the current sequence.
+		if configSeq == verificationSeq {
 			reqID, err := c.VerifyRequest(rawReq)
 			if err != nil {
 				return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
@@ -1259,33 +1269,31 @@ func (c *Consensus) getBothDecisionNumAndLastConfigBlockNum() (uint64, uint64) {
 	return uint64(c.decisionNumOfLastConfigBlock), c.lastConfigBlockNum
 }
 
-// getReqConfigSeq returns the config sequence carried by the request's control event, and whether the
-// event is a BAF. The BAF flag lets callers apply the stale-config revival exception to BAFs only
-// (a stale complaint or config request is not surfaced for revival, only dropped).
-func (c *Consensus) getReqConfigSeq(req []byte) (uint64, bool, error) {
+// getReqConfigSeq returns the config sequence carried by the request's control event.
+func (c *Consensus) getReqConfigSeq(req []byte) (uint64, error) {
 	ce := &state.ControlEvent{}
 	if err := ce.FromBytes(req); err != nil {
-		return 0, false, err
+		return 0, err
 	}
 
 	switch {
 	case ce.Complaint != nil:
-		return uint64(ce.Complaint.ConfigSeq), false, nil
+		return uint64(ce.Complaint.ConfigSeq), nil
 	case ce.BAF != nil:
-		return uint64(ce.BAF.ConfigSequence()), true, nil
+		return uint64(ce.BAF.ConfigSequence()), nil
 	case ce.ConfigRequest != nil:
 		configSeq, err := ce.ConfigRequest.ConfigSequence()
 		if err != nil {
-			return 0, false, err
+			return 0, err
 		}
 		if configSeq == 0 {
-			return 0, false, nil
+			return 0, nil
 		}
-		return uint64(configSeq) - 1, false, nil
+		return uint64(configSeq) - 1, nil
 	case ce.AssemblerReport != nil:
-		return uint64(ce.AssemblerReport.ConfigSeq), false, nil
+		return uint64(ce.AssemblerReport.ConfigSeq), nil
 	default:
-		return 0, false, errors.New("empty control event")
+		return 0, errors.New("empty control event")
 
 	}
 }
@@ -1322,7 +1330,9 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		// Accept a BAF whose config sequence is behind, in addition to the current one, so
 		// that the BAFs from a batcher which fell behind a config change are not silently dropped: consensus surfaces it
 		// in State.StaleConfigBAFs for one decision and the batcher revives the batch's requests. Its
-		// signature is still verified below.
+		// signature is still verified below, against the current config: a BAF whose batcher's certificate
+		// was changed by a reconfiguration is therefore rejected on submit and its batch is not revived.
+		// (VerifyProposal does not verify the signatures of stale BAFs, see verifyProposalRequests.)
 		if ce.BAF.ConfigSequence() > configSeq {
 			return reqID, ce, errors.Errorf("config sequence ahead; the BAF's config seq is %d while it should be at most %d", ce.BAF.ConfigSequence(), configSeq)
 		}
