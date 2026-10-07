@@ -1,0 +1,52 @@
+{
+  "font": "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif",
+  "sizes": {
+    "node-label": 22,
+    "node-label-main": 26,
+    "node-sub": 14,
+    "group-label": 20,
+    "flow-label": 17,
+    "note": 13,
+    "node-label-small": 18
+  },
+  "light": {
+    "text": "#1F2328",
+    "muted": "#59636E",
+    "node-fill": "#FFFFFF",
+    "node-stroke": "#1F2328",
+    "group-stroke": "#D1D9E0",
+    "group-label": "#0969DA",
+    "shard-1": "#F6F8FA",
+    "shard-2": "#DDF4FF",
+    "shard-3": "#FFF8C5",
+    "consensus": "#FBEFFF",
+    "txs": "#BC4C00",
+    "digests": "#8250DF",
+    "batches": "#1A7F37",
+    "blocks": "#1F2328",
+    "control": "#CF222E",
+    "primary": "#9A6700",
+    "requests": "#59636E",
+    "batches-fill": "#DAFBE1"
+  },
+  "dark": {
+    "text": "#F0F6FC",
+    "muted": "#9198A1",
+    "node-fill": "#151B23",
+    "node-stroke": "#D1D7E0",
+    "group-stroke": "#3D444D",
+    "group-label": "#4493F8",
+    "shard-1": "#212830",
+    "shard-2": "#121D2F",
+    "shard-3": "#272115",
+    "consensus": "#252138",
+    "txs": "#DB6D28",
+    "digests": "#AB7DF8",
+    "batches": "#3FB950",
+    "blocks": "#F0F6FC",
+    "control": "#F85149",
+    "primary": "#D29922",
+    "requests": "#9198A1",
+    "batches-fill": "#12261E"
+  }
+}
