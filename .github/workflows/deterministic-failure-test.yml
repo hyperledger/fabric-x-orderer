@@ -128,15 +128,15 @@ jobs:
           FAILURE_RUNNER_RESTART_WAIT: ${{ inputs.failure_runner_restart_wait || '60' }}
           SUBMIT_DRAIN_SECONDS: ${{ inputs.submit_drain_seconds || '120' }}
         run: |
-          chmod +x test/deterministic-failure-test/*.sh
-          test/deterministic-failure-test/deterministic-failure-test.sh
+          chmod +x test/failure-tests/deterministic-failure-test/*.sh
+          test/failure-tests/deterministic-failure-test/deterministic-failure-test.sh
 
       - name: Publish test summary
         if: always()
         run: |
           echo "## Deterministic Failure Test — Run #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
-          if [ -f test-results/summary.txt ]; then
-            cat test-results/summary.txt >> $GITHUB_STEP_SUMMARY
+          if [ -f test/failure-tests/test-results/summary.txt ]; then
+            cat test/failure-tests/test-results/summary.txt >> $GITHUB_STEP_SUMMARY
           else
             echo "_No summary files were produced._" >> $GITHUB_STEP_SUMMARY
           fi
@@ -146,7 +146,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: deterministic-failure-test-logs-${{ github.run_number }}
-          path: test-results/logs/
+          path: test/failure-tests/test-results/logs/
           retention-days: 30
           if-no-files-found: ignore
 
@@ -154,10 +154,10 @@ jobs:
         if: failure()
         id: failure_reason
         run: |
-          if [ -f test-results/failure_reason.txt ]; then
-            echo "reason=$(cat test-results/failure_reason.txt)" >> $GITHUB_OUTPUT
-          elif [ -f test-results/startup_failure.txt ]; then
-            echo "reason=$(cat test-results/startup_failure.txt)" >> $GITHUB_OUTPUT
+          if [ -f test/failure-tests/test-results/failure_reason.txt ]; then
+            echo "reason=$(cat test/failure-tests/test-results/failure_reason.txt)" >> $GITHUB_OUTPUT
+          elif [ -f test/failure-tests/test-results/startup_failure.txt ]; then
+            echo "reason=$(cat test/failure-tests/test-results/startup_failure.txt)" >> $GITHUB_OUTPUT
           else
             echo "reason=The test job failed to run (possibly due to insufficient runner resources or an infrastructure issue)" >> $GITHUB_OUTPUT
           fi

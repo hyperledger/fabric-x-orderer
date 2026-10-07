@@ -169,7 +169,7 @@ FAILURE_RUNNER_START_DELAY    ?= 10
 
 .PHONY: deterministic-failure-test
 deterministic-failure-test: binary
-	@chmod +x test/deterministic-failure-test/deterministic-failure-test.sh
+	@chmod +x test/failure-tests/deterministic-failure-test/deterministic-failure-test.sh
 	DURATION_MINUTES=$(DURATION_MINUTES) \
 	TX_RATE=$(TX_RATE) \
 	TX_SIZE=$(TX_SIZE) \
@@ -180,11 +180,11 @@ deterministic-failure-test: binary
 	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
 	SUBMIT_DRAIN_SECONDS=$(SUBMIT_DRAIN_SECONDS) \
 	FAILURE_RUNNER_START_DELAY=$(FAILURE_RUNNER_START_DELAY) \
-	test/deterministic-failure-test/deterministic-failure-test.sh
+	test/failure-tests/deterministic-failure-test/deterministic-failure-test.sh
 
 .PHONY: fully-randomized-failure-test
 fully-randomized-failure-test: binary
-	@chmod +x test/fully-randomized-failure-test/fully-randomized-failure-test.sh
+	@chmod +x test/failure-tests/fully-randomized-failure-test/fully-randomized-failure-test.sh
 	DURATION_MINUTES=$(DURATION_MINUTES) \
 	TX_RATE=$(TX_RATE) \
 	TX_SIZE=$(TX_SIZE) \
@@ -195,7 +195,7 @@ fully-randomized-failure-test: binary
 	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
 	SUBMIT_DRAIN_SECONDS=$(SUBMIT_DRAIN_SECONDS) \
 	FAILURE_RUNNER_START_DELAY=$(FAILURE_RUNNER_START_DELAY) \
-	test/fully-randomized-failure-test/fully-randomized-failure-test.sh
+	test/failure-tests/fully-randomized-failure-test/fully-randomized-failure-test.sh
 
 .PHONY: sample-tests
 sample-tests:
