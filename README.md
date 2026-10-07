@@ -30,6 +30,7 @@ Arma is composed of 4 types of servers: routers, batchers, consenters and assemb
 
 - Consenters run a BFT consensus protocol which receives as input the BAF's from the batcher shards and provide a total
   order of batch attestations (BA). This induces total order among the batches and hence among TXs.
+  For the consenter, the events it ingests, and the ordered stream it serves in detail, see [consenter](docs/consensus.md).
 
 - Assemblers consume the stream of totally ordered batch attestations from the consensus cluster, and pull batches from
   the batchers. They then fuse the two sources to create a totally ordered ledger of blocks - one block for each batch.

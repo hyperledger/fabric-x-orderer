@@ -141,6 +141,8 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 
 ### Consenter
 
+What each of these metrics tells you about the consenter is described in [Consenter](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/consensus.md#5-metrics-and-monitoring).
+
 - **Namespace:** "consensus"  
   **Name:** "decisions_count"  
   **Help:** "The total number of decisions made by the consenter."
@@ -156,6 +158,10 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 - **Namespace:** "consensus"  
   **Name:** "complaints_count"  
   **Help:** "The total number of complaints received by the consenter."
+
+- **Namespace:** "consensus"  
+  **Name:** "txs_count"  
+  **Help:** "The total number of transactions ordered by the consenter."
 
 ---
 

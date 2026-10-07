@@ -98,6 +98,7 @@ Consenter:
 It also accepts configuration requests, performs validation checks and processes them.
 * `Deliver` - exposed by each consenter to enable pulling decisions. 
 Routers, Batchers and Assebmlers consume decisions from consensus nodes acting as clients of the consensus nodes.
+For the events the consenter ingests, the decisions it serves, and the access control applied to them, see [Consenter](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/consensus.md#2-interfaces-ingesting-events-and-serving-decisions).
 
 Assembler:
 * `Deliver` - the assembler accepts a signed envelope from a client and responds with the requested blocks.

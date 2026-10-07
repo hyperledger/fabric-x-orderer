@@ -219,7 +219,7 @@ The role-specific documents contain deeper operational and implementation detail
 
 - Router details: [`node/router`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/router)
 - Batcher details: [`node/batcher`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/batcher)
-- Consenter details: [`node/consensus`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus)
+- Consenter details: [`docs/consensus.md`](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/consensus.md) and [`node/consensus`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus)
 - Assembler details: [`node/assembler`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/assembler)
 - Deployment guide: [../deployment/README.md](https://github.com/hyperledger/fabric-x-orderer/blob/main/deployment/README.md)
 - Configuration generator: [../cmd/armageddon/README.md](https://github.com/hyperledger/fabric-x-orderer/blob/main/cmd/armageddon/README.md)
