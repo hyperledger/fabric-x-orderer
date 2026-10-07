@@ -276,6 +276,13 @@ func (rp *Pool) Prune(predicate func([]byte) error) {
 	rp.lock.RLock()
 	defer rp.lock.RUnlock()
 
+	// Close (which also holds rp.lock) nils batchStore and pending; without this
+	// guard a Prune that wins the lock after Close dereferences them. Reachable
+	// when Batcher.Stop races processNewConfigBlock.
+	if rp.isClosed() {
+		return
+	}
+
 	if rp.isBatchingEnabled() {
 		rp.batchStore.Prune(func(_, v interface{}) error {
 			req := v.(*requestItem).request
