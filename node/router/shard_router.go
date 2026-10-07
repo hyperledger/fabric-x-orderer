@@ -129,14 +129,14 @@ func (sr *ShardRouter) Forward(trackedReq *TrackedRequest) {
 		sr.maybeNotifyReconnectRoutine(stream)
 
 		// Send a response and return
-		trackedReq.responses <- Response{
+		trackedReq.client.reply(Response{
 			err:   fmt.Errorf("server error: connection between router and batcher %s is broken, try again later", sr.batcherEndpoint),
 			reqID: trackedReq.reqID,
-		}
+		})
 		return
 	}
 	if trackedReq.trace != nil {
-		stream.registerReply(trackedReq.trace, trackedReq.responses)
+		stream.registerReply(trackedReq)
 		trackedReq.request.TraceId = trackedReq.trace
 	}
 
@@ -303,7 +303,7 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 		s := &stream{
 			endpoint:                          sr.batcherEndpoint,
 			logger:                            sr.logger,
-			requestTraceIdToResponseChannel:   make(map[string]chan Response),
+			requestsByTraceID:                 make(map[string]*TrackedRequest),
 			requestsChannel:                   make(chan *TrackedRequest, 1000),
 			doneChannel:                       make(chan bool, 1),
 			requestTransmitSubmitStreamClient: newStream,
