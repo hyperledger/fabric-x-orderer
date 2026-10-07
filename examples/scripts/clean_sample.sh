@@ -7,9 +7,9 @@
 
 set -eux
 
-cd node/examples && docker compose down
+cd examples && docker compose down
 docker stop "arma-config-vol"
 docker rm "arma-config-vol"
 
-cd ../../ && rm -rf "/tmp/arma-sample"
+cd .. && rm -rf "/tmp/arma-sample"
 make clean-binary

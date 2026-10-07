@@ -64,7 +64,7 @@ docker run -d \
 From the repository root:
 
 ```bash
-cd node/examples/all-in-one/scripts
+cd examples/all-in-one/scripts
 bash clean_sample.sh
 bash build_docker.sh
 bash run_sample.sh

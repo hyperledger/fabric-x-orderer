@@ -20,7 +20,7 @@ EXAMPLE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DEPLOYMENT=${EXAMPLE_DIR}/../config/example-deployment.yaml
 COMPOSE=(${DOCKER_CMD} compose -f "${EXAMPLE_DIR}/compose.yaml")
 
-cd "${EXAMPLE_DIR}/../../.."
+cd "${EXAMPLE_DIR}/../.."
 make binary
 
 rm -rf "${SAMPLE_DIR}"
