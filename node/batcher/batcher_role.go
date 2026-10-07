@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package batcher
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -272,7 +273,12 @@ func (b *BatcherRole) ResubmitPendingBAFs(state *state.State, prevPrimary types.
 				continue
 			}
 			b.Logger.Debugf("found pending BAF signed by me (id: %d) from primary: %d ; %s", b.ID, baf.Primary(), baf.String())
-			b.reviveBAFRequests(baf)
+			batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
+			if batch == nil {
+				b.Logger.Panicf("Error: No such batch; BAF signed by me (id: %d) from primary: %d; %s",
+					b.ID, baf.Primary(), baf.String())
+			}
+			b.reviveBatchRequests(baf, batch)
 		}
 	}
 }
@@ -282,29 +288,50 @@ func (b *BatcherRole) ResubmitPendingBAFs(state *state.State, prevPrimary types.
 // every delivered decision (the array lives for a single decision) and has no prevPrimary filter.
 // Because decisions are applied in order, the batcher has already applied the config block by the time
 // such a BAF is surfaced, so the revived requests re-batch under the new config sequence.
+//
+// Consensus does not verify the signatures of stale BAFs when it verifies a proposal (a reconfiguration
+// may have changed the signer's certificate since the BAF was pooled), so a byzantine leader may surface
+// a forged one. A BAF that does not match a batch in the local ledger is therefore skipped rather than
+// treated as an inconsistency: its primary may not be a party of this shard, the batch may be missing,
+// or its digest may differ. This does not rule out forgery, since the digests of ordered batches are
+// public; a forged BAF that matches a batch in the ledger revives that batch's requests, which may
+// already have been ordered and so be ordered again as duplicates.
 func (b *BatcherRole) ResubmitStaleConfigBAFs(state *state.State) {
 	for _, baf := range state.StaleConfigBAFs {
-		if baf.Shard() == b.Shard && baf.Signer() == b.ID {
-			b.Logger.Infof("reviving requests of stale-config BAF signed by me (id: %d) from primary: %d; %s",
-				b.ID, baf.Primary(), baf.String())
-			b.reviveBAFRequests(baf)
+		if baf.Shard() != b.Shard || baf.Signer() != b.ID {
+			continue
 		}
+		// The ledger has a part only for the parties it knows, and panics on any other.
+		if !slices.Contains(b.Batchers, baf.Primary()) {
+			b.Logger.Warnf("Skipping stale-config BAF signed by me (id: %d) from primary %d, which is not a party of this shard; %s",
+				b.ID, baf.Primary(), baf.String())
+			continue
+		}
+		batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
+		if batch == nil {
+			b.Logger.Warnf("Skipping stale-config BAF signed by me (id: %d) from primary %d: no such batch; %s",
+				b.ID, baf.Primary(), baf.String())
+			continue
+		}
+		if !bytes.Equal(batch.Digest(), baf.Digest()) {
+			b.Logger.Warnf("Skipping stale-config BAF signed by me (id: %d) from primary %d: its digest does not match the batch's digest %x; %s",
+				b.ID, baf.Primary(), batch.Digest(), baf.String())
+			continue
+		}
+		b.Logger.Infof("reviving requests of stale-config BAF signed by me (id: %d) from primary: %d; %s",
+			b.ID, baf.Primary(), baf.String())
+		b.reviveBatchRequests(baf, batch)
 	}
 }
 
-// reviveBAFRequests re-reads, from the local ledger, the batch that baf attests and resubmits its
-// requests to the mempool so they can be re-batched. When baf was created under an older config the
+// reviveBatchRequests resubmits the requests of batch, the batch that baf attests read from the local
+// ledger, to the mempool so they can be re-batched. When baf was created under an older config the
 // channel policies may have changed since, so the requests are not guaranteed to still satisfy the
 // current policy: they must be re-verified before re-entering the pool (the secondary pull path treats
 // pool membership as "already verified under the current config" and skips re-verifying pooled
 // requests). When baf is from the current config the requests were already verified under it, so
 // re-verification is unnecessary.
-func (b *BatcherRole) reviveBAFRequests(baf types.BatchAttestationFragment) {
-	batch := b.Ledger.RetrieveBatchByNumber(baf.Primary(), uint64(baf.Seq()))
-	if batch == nil {
-		b.Logger.Panicf("Error: No such batch; BAF signed by me (id: %d) from primary: %d; %s",
-			b.ID, baf.Primary(), baf.String())
-	}
+func (b *BatcherRole) reviveBatchRequests(baf types.BatchAttestationFragment, batch types.Batch) {
 	reverify := baf.ConfigSequence() < b.ConfigSequenceGetter.ConfigSequence()
 	for _, req := range batch.Requests() {
 		if reverify {

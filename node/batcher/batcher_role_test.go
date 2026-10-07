@@ -1024,6 +1024,62 @@ func TestResubmitStaleConfigBAFs(t *testing.T) {
 	require.Equal(t, validReq, pool.SubmitArgsForCall(0))
 }
 
+// TestResubmitStaleConfigBAFsSkipsUnmatchedBAF checks that a stale-config BAF that does not match a batch
+// in the local ledger is skipped without panicking. Consensus does not verify the signatures of stale
+// BAFs in proposals, so such a BAF may be forged.
+func TestResubmitStaleConfigBAFsSkipsUnmatchedBAF(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := arma_types.PartyID(2)
+	shardID := arma_types.ShardID(0)
+
+	batch := arma_types.NewSimpleBatch(shardID, 1, 0, arma_types.BatchedRequests{[]byte("request")}, 0, nil)
+
+	for _, tc := range []struct {
+		name          string
+		baf           arma_types.BatchAttestationFragment
+		ledgerBatch   arma_types.Batch
+		expectedReads int
+	}{
+		{
+			name:          "primary is not a party of the shard",
+			baf:           arma_types.NewSimpleBatchAttestationFragment(shardID, 7, batch.Seq(), batch.Digest(), batcherID, 0, 0, nil),
+			expectedReads: 0,
+		},
+		{
+			name:          "batch is missing",
+			baf:           arma_types.NewSimpleBatchAttestationFragment(shardID, batch.Primary(), batch.Seq(), batch.Digest(), batcherID, 0, 0, nil),
+			expectedReads: 1,
+		},
+		{
+			name:          "digest does not match",
+			baf:           arma_types.NewSimpleBatchAttestationFragment(shardID, batch.Primary(), batch.Seq(), make([]byte, 32), batcherID, 0, 0, nil),
+			ledgerBatch:   batch,
+			expectedReads: 1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := createBatcher(t, batcherID, shardID, batchers, N, testutil.CreateLogger(t, int(batcherID)))
+
+			ledger := &mocks.FakeBatchLedger{}
+			ledger.RetrieveBatchByNumberReturns(tc.ledgerBatch)
+			b.Ledger = ledger
+
+			pool := &mocks.FakeMemPool{}
+			b.MemPool = pool
+
+			st := &state.State{
+				Shards:          []state.ShardTerm{{Shard: shardID, Term: 1}},
+				StaleConfigBAFs: []arma_types.BatchAttestationFragment{tc.baf},
+			}
+
+			require.NotPanics(t, func() { b.ResubmitStaleConfigBAFs(st) })
+			require.Equal(t, tc.expectedReads, ledger.RetrieveBatchByNumberCallCount())
+			require.Zero(t, pool.SubmitCallCount())
+		})
+	}
+}
+
 func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_types.ShardID, batchers []arma_types.PartyID, N uint16, logger *flogging.FabricLogger) *batcher.BatcherRole {
 	bafCreator := &mocks.FakeBAFCreator{}
 	bafCreator.CreateBAFCalls(func(seq arma_types.BatchSequence, primary arma_types.PartyID, si arma_types.ShardID, digest []byte, txCount uint64, primarySignature []byte) arma_types.BatchAttestationFragment {
