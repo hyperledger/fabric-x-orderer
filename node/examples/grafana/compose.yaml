@@ -1,0 +1,43 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+name: arma-grafana
+
+include:
+  - ../compose.yaml
+
+services:
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    ports:
+      - "9090"
+    volumes:
+      - /tmp/arma-sample/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:13.2.1
+    ports:
+      - "3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./grafana/datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml:ro
+      - ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./grafana/arma-dashboard.json:/etc/grafana/dashboards/arma-dashboard.json:ro
+
+  submitter:
+    image: "arma"
+    profiles:
+      - client
+    entrypoint: /usr/local/bin/armageddon
+    command: submit
+      --config /tmp/arma-sample/config/party1/user_config.yaml
+      --transactions ${TRANSACTIONS:-300000}
+      --rate ${RATE:-1000}
+      --txSize ${TX_SIZE:-300}
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
