@@ -29,11 +29,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 )
@@ -142,12 +143,13 @@ func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID
 
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
 		require.NoError(t, err)
-		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
+		signer, _ := signutil.NewSignerOfKey(t, batcherNodes[i].sk, "org")
 
 		bundle := &configMocks.FakeConfigResources{}
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
+		configutil.AdmitSigners(bundle)
 
 		dir := t.TempDir()
 		configStorePath := path.Join(dir, "configstore")
@@ -233,7 +235,7 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *flogging.FabricLogger, c
 	})
 	require.NoError(t, err)
 
-	signer := crypto.ECDSASigner(*newBatcherNode.sk)
+	signer, _ := signutil.NewSignerOfKey(t, newBatcherNode.sk, "org")
 
 	batcher := batcher.CreateBatcher(conf, pinning.ConfigurationWithRouters(conf.PartyId, routerKeyPairs), logger, make(chan struct{}), sc, &batcher.ConsenterControlEventSenderFactory{}, signer)
 	batcher.Net = newBatcherNode

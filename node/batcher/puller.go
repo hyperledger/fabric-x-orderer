@@ -8,6 +8,7 @@ package batcher
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -35,16 +36,18 @@ type BatchPuller struct {
 	ledger     BatchLedger
 	logger     *flogging.FabricLogger
 	config     *config.BatcherNodeConfig
+	signer     Signer
 	tlsKey     []byte
 	tlsCert    []byte
 	stopPuller context.CancelFunc
 }
 
-func NewBatchPuller(config *config.BatcherNodeConfig, ledger BatchLedger, logger *flogging.FabricLogger) *BatchPuller {
+func NewBatchPuller(config *config.BatcherNodeConfig, ledger BatchLedger, signer Signer, logger *flogging.FabricLogger) *BatchPuller {
 	puller := &BatchPuller{
 		ledger:  ledger,
 		logger:  logger,
 		config:  config,
+		signer:  signer,
 		tlsKey:  config.TLSPrivateKeyFile,
 		tlsCert: config.TLSCertificateFile,
 	}
@@ -61,21 +64,22 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 
 	primary := bp.findPrimary(bp.config.ShardId, from)
 	channelName := node_ledger.ShardPartyChannelIDToChannelName(bp.config.ShardId, primary.PartyID, bp.config.GetChannelID())
-	requestEnvelopeFactoryFunc := func() *common.Envelope {
+	requestEnvelopeFactoryFunc := func() (*common.Envelope, error) {
 		seq := bp.ledger.Height(from)
-		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
+		tlsCertHash, err := protoutil.HashTLSCertificate(bp.tlsCert)
+		if err != nil {
+			return nil, fmt.Errorf("failed hashing the TLS certificate: %w", err)
+		}
+
+		return protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			channelName,
-			nil,
+			bp.signer,
 			nextSeekInfo(seq),
 			int32(0),
 			uint64(0),
-			nil,
+			tlsCertHash,
 		)
-		if err != nil {
-			bp.logger.Panicf("Failed creating seek envelope: %v", err)
-		}
-		return requestEnvelope
 	}
 
 	res := make(chan types.Batch, 100)

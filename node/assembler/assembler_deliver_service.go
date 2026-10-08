@@ -16,6 +16,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
+	"github.com/hyperledger/fabric-x-common/common/crypto"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
@@ -51,14 +52,12 @@ func (a AssemblerDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverS
 	a.logger.Infof("Received new deliver request from client %s", util.ExtractRemoteAddress(stream.Context()))
 
 	handler := &deliver.Handler{
-		ChainManager:     &assemblerChainManager{ledger: a.blockledger, bundle: a.bundle},
-		BindingInspector: deliver.InspectorFunc(deliver.NewBindingInspector(a.mutualTLS, deliver.ExtractChannelHeaderCertHash)),
-		TimeWindow:       time.Hour,
-		Metrics:          a.deliverMetrics,
-		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
-			return time.Now().Add(time.Hour * 365 * 24)
-		},
-		ConfigBlockOps: &utils.CommonConfigBlockOperations{},
+		ChainManager:        &assemblerChainManager{ledger: a.blockledger, bundle: a.bundle},
+		BindingInspector:    deliver.InspectorFunc(deliver.NewBindingInspector(a.mutualTLS, deliver.ExtractChannelHeaderCertHash)),
+		TimeWindow:          time.Hour,
+		Metrics:             a.deliverMetrics,
+		ExpirationCheckFunc: crypto.ExpiresAt,
+		ConfigBlockOps:      &utils.CommonConfigBlockOperations{},
 	}
 
 	policyChecker := func(env *common.Envelope, channelID string) error {
