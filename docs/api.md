@@ -92,6 +92,7 @@ Batcher:
 * `BatcherControlService` - implemented by the primary batcher to manage acknowledgments and handle requests from the secondary batchers.
 * `Deliver` - exposed by each batcher (primary or secondary) to enable pulling batches.
 The deliver service enables assemblers to pull batches from primary or secondary batchers for block assembly, and enables secondary batchers to pull batches from the primary batcher.
+For the services the batcher serves and the ones it calls, see [Batcher](batcher.md#2-interfaces).
 
 Consenter:
 * `Consensus` - the consenter accepts events (BAF or complaint), which then are totally ordered through the BFT consensus protocol.

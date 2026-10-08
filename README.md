@@ -27,6 +27,7 @@ Arma is composed of 4 types of servers: routers, batchers, consenters and assemb
 - Batchers are grouped in to shards. A transaction is dispatched to a single shard. The batchers in a shard then bundle
   transactions into batches, and save them to disk. Batchers then send digests of the batches, called batch attestation
   fragments (BAF) to the consenters.
+  For the batcher, how a shard creates, replicates, and attests batches in detail, see [batcher](docs/batcher.md).
 
 - Consenters run a BFT consensus protocol which receives as input the BAF's from the batcher shards and provide a total
   order of batch attestations (BA). This induces total order among the batches and hence among TXs.
