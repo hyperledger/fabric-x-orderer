@@ -43,7 +43,7 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 
 - **Namespace**: "router"  
   **Name**: "batcher_reconnects"  
-  **Help**: "The number of times the router reconnected a gRPC connection to a batcher, identified by its shard id."
+  **Help**: "The number of times the router's connection to a batcher was restored after being fully disconnected, identified by its shard id."
 
 - **Namespace**: "router"  
   **Name**: "batcher_connected"  

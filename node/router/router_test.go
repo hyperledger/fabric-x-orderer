@@ -231,7 +231,7 @@ func TestRouterBatcherConnectivityMetrics(t *testing.T) {
 	}, 10*time.Second, 10*time.Millisecond)
 
 	requireConnected(types.ShardID(1), 1)
-	require.Positive(t, reconnects(types.ShardID(1)))
+	require.Equal(t, 1, reconnects(types.ShardID(1)))
 	require.Equal(t, 0, reconnects(types.ShardID(2)))
 	require.Equal(t, 1, connected(types.ShardID(2)))
 }

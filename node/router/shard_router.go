@@ -75,6 +75,7 @@ type ShardRouter struct {
 	configSubmitter              ConfigurationSubmitter
 	batcherReconnects            metrics.Counter
 	batcherConnected             metrics.Gauge
+	wasConnected                 bool
 }
 
 func NewShardRouter(l *flogging.FabricLogger,
@@ -105,8 +106,7 @@ func NewShardRouter(l *flogging.FabricLogger,
 		DialTimeout: time.Second * 20,
 	}
 
-	partyID := fmt.Sprintf("%d", routerMetrics.partyID)
-	shard := fmt.Sprintf("%d", shardID)
+	batcherReconnects, batcherConnected := routerMetrics.shardMetrics(shardID)
 
 	sr := &ShardRouter{
 		tlsCert:                      tlsCert,
@@ -121,8 +121,10 @@ func NewShardRouter(l *flogging.FabricLogger,
 		closeReconnect:               make(chan struct{}),
 		verifier:                     verifier,
 		configSubmitter:              configSubmitter,
-		batcherReconnects:            routerMetrics.batcherReconnectsVec.With(partyID, shard),
-		batcherConnected:             routerMetrics.batcherConnectedVec.With(partyID, shard),
+		batcherReconnects:            batcherReconnects,
+		batcherConnected:             batcherConnected,
+		// so the first connection at startup is not counted as a reconnect
+		wasConnected: true,
 	}
 
 	return sr
@@ -239,7 +241,6 @@ func (sr *ShardRouter) reconnect(connIndex int) error {
 				sr.lock.Lock()
 				sr.connPool[connIndex] = conn
 				sr.lock.Unlock()
-				sr.batcherReconnects.Add(1)
 				sr.logger.Debugf("Reconnection succeeded for connection %d", connIndex)
 				return nil
 			}
@@ -255,14 +256,20 @@ func (sr *ShardRouter) InitShardRouter() {
 	})
 }
 
-// refreshBatcherConnected updates the connectivity gauge for this shard.
+// refreshBatcherConnected updates the connectivity gauge for this shard and counts each reconnect.
 // It reads the streams, so it must only be called after initConnPoolAndStreams and without holding sr.lock.
 func (sr *ShardRouter) refreshBatcherConnected() {
-	if sr.IsConnectionsToBatcherDown() {
-		sr.batcherConnected.Set(0)
-		return
+	connected := !sr.IsConnectionsToBatcherDown()
+	if connected && !sr.wasConnected {
+		sr.batcherReconnects.Add(1)
 	}
-	sr.batcherConnected.Set(1)
+	sr.wasConnected = connected
+
+	if connected {
+		sr.batcherConnected.Set(1)
+	} else {
+		sr.batcherConnected.Set(0)
+	}
 }
 
 func (sr *ShardRouter) fillConnPool() error {
