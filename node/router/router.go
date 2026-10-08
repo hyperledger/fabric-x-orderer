@@ -183,7 +183,7 @@ func (r *Router) initFromConfig(rconfig *nodeconfig.RouterNodeConfig, configurat
 	}
 
 	// TODO - pull decisions from all consenter nodes, not only the one in party
-	r.decisionPuller = CreateConsensusDecisionReplicator(rconfig, seekInfo, r.logger)
+	r.decisionPuller = CreateConsensusDecisionReplicator(rconfig, seekInfo, r.signer, r.logger)
 
 	r.metrics = NewRouterMetrics(rconfig, r.logger)
 	r.opsSystem = operations.NewOperationsSystem(*rconfig.Operations, *rconfig.Metrics)

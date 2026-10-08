@@ -7,7 +7,6 @@ SPDX-License-Identifier: Apache-2.0
 package batcher
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
-	"google.golang.org/protobuf/proto"
 )
 
 // TODO The deliver service and client (puller) were copied almost as is from Fabric.
@@ -29,7 +27,9 @@ import (
 
 type BatcherDeliverService struct {
 	LedgerArray *ledger.BatchLedgerArray
-	Logger      *flogging.FabricLogger
+	// AccessControl authorizes a request whose signature satisfies /Channel/Orderer/Readers.
+	AccessControl *deliver.AccessControl
+	Logger        *flogging.FabricLogger
 }
 
 func (d *BatcherDeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
@@ -39,7 +39,7 @@ func (d *BatcherDeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastSer
 func (d *BatcherDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 	handler := &deliver.Handler{
 		ChainManager:     &chainManager{ledgerArray: d.LedgerArray, logger: d.Logger},
-		BindingInspector: &noopBindingInspector{},
+		BindingInspector: deliver.InspectorFunc(deliver.NewBindingInspector(true, deliver.ExtractChannelHeaderCertHash)),
 		TimeWindow:       time.Hour,
 		Metrics:          deliver.NewMetrics(&disabled.Provider{}),
 		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
@@ -49,7 +49,7 @@ func (d *BatcherDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverSe
 	}
 
 	return handler.Handle(stream.Context(), &deliver.Server{
-		PolicyChecker:  &policyChecker{},
+		PolicyChecker:  d.AccessControl,
 		ResponseSender: &responseSender{stream: stream},
 		Receiver:       stream,
 	})
@@ -60,7 +60,11 @@ type responseSender struct {
 }
 
 func (r *responseSender) SendStatusResponse(status common.Status) error {
-	return nil
+	return r.stream.Send(&orderer.DeliverResponse{
+		Type: &orderer.DeliverResponse_Status{
+			Status: status,
+		},
+	})
 }
 
 func (r *responseSender) SendBlockResponse(block *common.Block, channelID string, chain deliver.Chain, signedData *protoutil.SignedData) error {
@@ -73,12 +77,6 @@ func (r *responseSender) SendBlockResponse(block *common.Block, channelID string
 
 func (r *responseSender) DataType() string {
 	return "block"
-}
-
-type policyChecker struct{}
-
-func (p *policyChecker) CheckPolicy(envelope *common.Envelope, channelID string) error {
-	return nil
 }
 
 type chainManager struct {
@@ -117,7 +115,7 @@ func (c *chainReader) Sequence() uint64 {
 }
 
 func (c *chainReader) PolicyManager() policies.Manager {
-	panic("implement me")
+	panic("internal deliver authorizes by node signature, not by a channel policy")
 }
 
 func (c *chainReader) Reader() blockledger.Reader {
@@ -137,10 +135,4 @@ func (d *delayedReader) Iterator(startType *orderer.SeekPosition) (blockledger.I
 		time.Sleep(time.Millisecond)
 	}
 	return d.Reader.Iterator(startType)
-}
-
-type noopBindingInspector struct{}
-
-func (nbi noopBindingInspector) Inspect(context.Context, proto.Message) error {
-	return nil
 }

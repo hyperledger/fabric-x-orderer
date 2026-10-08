@@ -23,12 +23,31 @@ import (
 	commonsyncmocks "github.com/hyperledger/fabric-x-orderer/common/synchronizer/mocks"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer/mocks"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
+
+// clusterClientConfig carries the TLS certificate the synchronizer presents to the consenters.
+func clusterClientConfig(t *testing.T) comm.ClientConfig {
+	t.Helper()
+
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	certKeyPair, err := ca.NewClientCertKeyPair()
+	require.NoError(t, err)
+
+	return comm.ClientConfig{
+		SecOpts: comm.SecureOptions{
+			Key:         certKeyPair.Key,
+			Certificate: certKeyPair.Cert,
+		},
+	}
+}
 
 //go:generate counterfeiter -o mocks/updatable_block_verifier.go --fake-name UpdatableBlockVerifier . updatableBlockVerifier
 //lint:ignore U1000 used to generate mock
@@ -401,7 +420,7 @@ func TestBFTSynchronizer(t *testing.T) {
 				return types.Reconfig{}
 			},
 			Support:             fakeCS,
-			ClusterDialer:       &comm.PredicateDialer{Config: comm.ClientConfig{}},
+			ClusterDialer:       &comm.PredicateDialer{Config: clusterClientConfig(t)},
 			LocalConfigCluster:  config.Cluster{},
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
@@ -901,7 +920,7 @@ func TestBFTSynchronizer(t *testing.T) {
 				return types.Reconfig{}
 			},
 			Support:             fakeCS,
-			ClusterDialer:       &comm.PredicateDialer{Config: comm.ClientConfig{}},
+			ClusterDialer:       &comm.PredicateDialer{Config: clusterClientConfig(t)},
 			LocalConfigCluster:  config.Cluster{},
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
@@ -1054,7 +1073,7 @@ func TestBFTSynchronizer(t *testing.T) {
 				return types.Reconfig{}
 			},
 			Support:             fakeCS,
-			ClusterDialer:       &comm.PredicateDialer{Config: comm.ClientConfig{}},
+			ClusterDialer:       &comm.PredicateDialer{Config: clusterClientConfig(t)},
 			LocalConfigCluster:  config.Cluster{},
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
@@ -1218,7 +1237,7 @@ func TestBFTSynchronizer(t *testing.T) {
 				}
 			},
 			Support:             fakeCS,
-			ClusterDialer:       &comm.PredicateDialer{Config: comm.ClientConfig{}},
+			ClusterDialer:       &comm.PredicateDialer{Config: clusterClientConfig(t)},
 			LocalConfigCluster:  config.Cluster{},
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,

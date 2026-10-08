@@ -5,18 +5,20 @@ import (
 	"sync"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
 type FakeBatchBringerFactory struct {
-	CreateStub        func(map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, *flogging.FabricLogger) assembler.BatchBringer
+	CreateStub        func(map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, identity.SignerSerializer, *flogging.FabricLogger) assembler.BatchBringer
 	createMutex       sync.RWMutex
 	createArgsForCall []struct {
 		arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence
 		arg2 *config.AssemblerNodeConfig
-		arg3 *flogging.FabricLogger
+		arg3 identity.SignerSerializer
+		arg4 *flogging.FabricLogger
 	}
 	createReturns struct {
 		result1 assembler.BatchBringer
@@ -28,20 +30,21 @@ type FakeBatchBringerFactory struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeBatchBringerFactory) Create(arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence, arg2 *config.AssemblerNodeConfig, arg3 *flogging.FabricLogger) assembler.BatchBringer {
+func (fake *FakeBatchBringerFactory) Create(arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence, arg2 *config.AssemblerNodeConfig, arg3 identity.SignerSerializer, arg4 *flogging.FabricLogger) assembler.BatchBringer {
 	fake.createMutex.Lock()
 	ret, specificReturn := fake.createReturnsOnCall[len(fake.createArgsForCall)]
 	fake.createArgsForCall = append(fake.createArgsForCall, struct {
 		arg1 map[types.ShardID]map[types.PartyID]types.BatchSequence
 		arg2 *config.AssemblerNodeConfig
-		arg3 *flogging.FabricLogger
-	}{arg1, arg2, arg3})
+		arg3 identity.SignerSerializer
+		arg4 *flogging.FabricLogger
+	}{arg1, arg2, arg3, arg4})
 	stub := fake.CreateStub
 	fakeReturns := fake.createReturns
-	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3})
+	fake.recordInvocation("Create", []interface{}{arg1, arg2, arg3, arg4})
 	fake.createMutex.Unlock()
 	if stub != nil {
-		return stub(arg1, arg2, arg3)
+		return stub(arg1, arg2, arg3, arg4)
 	}
 	if specificReturn {
 		return ret.result1
@@ -55,17 +58,17 @@ func (fake *FakeBatchBringerFactory) CreateCallCount() int {
 	return len(fake.createArgsForCall)
 }
 
-func (fake *FakeBatchBringerFactory) CreateCalls(stub func(map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, *flogging.FabricLogger) assembler.BatchBringer) {
+func (fake *FakeBatchBringerFactory) CreateCalls(stub func(map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, identity.SignerSerializer, *flogging.FabricLogger) assembler.BatchBringer) {
 	fake.createMutex.Lock()
 	defer fake.createMutex.Unlock()
 	fake.CreateStub = stub
 }
 
-func (fake *FakeBatchBringerFactory) CreateArgsForCall(i int) (map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, *flogging.FabricLogger) {
+func (fake *FakeBatchBringerFactory) CreateArgsForCall(i int) (map[types.ShardID]map[types.PartyID]types.BatchSequence, *config.AssemblerNodeConfig, identity.SignerSerializer, *flogging.FabricLogger) {
 	fake.createMutex.RLock()
 	defer fake.createMutex.RUnlock()
 	argsForCall := fake.createArgsForCall[i]
-	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3
+	return argsForCall.arg1, argsForCall.arg2, argsForCall.arg3, argsForCall.arg4
 }
 
 func (fake *FakeBatchBringerFactory) CreateReturns(result1 assembler.BatchBringer) {
