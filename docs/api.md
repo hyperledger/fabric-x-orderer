@@ -11,7 +11,7 @@ ListenAddress: 127.0.0.1
 ListenPort: 7050
 ```
 In addition, each node exposes a monitoring endpoint that provides runtime metrics such as transaction throughput and latency. 
-For more details on monitoring see [Monitoring and Metrics](https://github.com/hyperledger/fabric-x-orderer/blob/main/doc/monitoring/metrics.md).  
+For more details on monitoring see [Monitoring and Metrics](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/monitoring/metrics.md).  
 
 Here is a description of Arma gRPC services:
 

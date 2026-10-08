@@ -26,14 +26,14 @@ var (
 	incomingTxs = metrics.CounterOpts{
 		Namespace:  "router",
 		Name:       "requests_completed",
-		Help:       "The number of incomming requests that have been completed.",
+		Help:       "The number of incoming requests that have been completed.",
 		LabelNames: []string{"party_id"},
 	}
 
 	rejectedTxs = metrics.CounterOpts{
 		Namespace:  "router",
 		Name:       "requests_rejected",
-		Help:       "The number of incomming requests that have been rejected.",
+		Help:       "The number of incoming requests that have been rejected.",
 		LabelNames: []string{"code", "party_id"},
 	}
 
