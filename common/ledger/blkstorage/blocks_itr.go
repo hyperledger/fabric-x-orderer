@@ -69,6 +69,13 @@ func (itr *blocksItr) Next() (ledger.QueryResult, error) {
 		return nil, nil
 	}
 
+	// A prune may have overtaken the iterator since it was created, so the bound is checked for every block,
+	// and before the cache: the cache holds the newest blocks, which a prune close to the tail hides too, and
+	// an open stream keeps reading a block file after a prune unlinks it.
+	if err := itr.mgr.checkBlockAvailable(itr.blockNumToRetrieve); err != nil {
+		return nil, err
+	}
+
 	cachedBlock, existsInCache := itr.mgr.cache.get(itr.blockNumToRetrieve)
 	if existsInCache {
 
@@ -88,7 +95,7 @@ func (itr *blocksItr) Next() (ledger.QueryResult, error) {
 	if itr.stream == nil {
 		logger.Debugf("Initializing block stream for iterator. itr.maxBlockNumAvailable=%d", itr.maxBlockNumAvailable)
 		if err := itr.initStream(); err != nil {
-			return nil, err
+			return nil, itr.mgr.errAfterFailedRead(itr.blockNumToRetrieve, err)
 		}
 	}
 
@@ -96,7 +103,7 @@ func (itr *blocksItr) Next() (ledger.QueryResult, error) {
 
 	nextBlockBytes, err := itr.stream.nextBlockBytes()
 	if err != nil {
-		return nil, err
+		return nil, itr.mgr.errAfterFailedRead(itr.blockNumToRetrieve, err)
 	}
 	itr.blockNumToRetrieve++
 	return deserializeBlock(nextBlockBytes)

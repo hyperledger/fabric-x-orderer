@@ -7,8 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 package blkstorage
 
 import (
+	"os"
+	"sync"
 	"sync/atomic"
 
+	"github.com/hyperledger/fabric-x-common/tools/fileutil"
 	"github.com/pkg/errors"
 )
 
@@ -16,18 +19,24 @@ import (
 // still on disk.
 var ErrPruned = errors.New("block has been pruned")
 
-// pruneMgr owns the prune info: the live value readers consult, and the store that makes it durable. It is
-// deliberately independent of blockfileMgr: it needs only the ledger's root directory.
+// pruneMgr owns the prune info -- the live value readers consult, and the store that makes it durable --
+// and the removal of the block files a new bound covers.
 type pruneMgr struct {
-	// store is only touched by setInfo, under its own serialization.
+	rootDir string
+	index   *blockIndex
+
+	// store is only touched by setInfo, under mutex.
 	store *pruneStore
 
 	// info is held atomically so that read guards can consult it without locking, and is non-nil once the
 	// manager is constructed.
 	info atomic.Pointer[pruneInfo]
+
+	// mutex serializes pruneBefore against itself, which is what setInfo requires of its caller.
+	mutex sync.Mutex
 }
 
-func newPruneMgr(rootDir string) (*pruneMgr, error) {
+func newPruneMgr(rootDir string, index *blockIndex) (*pruneMgr, error) {
 	store := newPruneStore(rootDir)
 
 	// A ledger that has never been pruned has nothing stored, which reads as a zero bound.
@@ -36,9 +45,185 @@ func newPruneMgr(rootDir string) (*pruneMgr, error) {
 		return nil, err
 	}
 
-	p := &pruneMgr{store: store}
+	p := &pruneMgr{rootDir: rootDir, index: index, store: store}
 	p.info.Store(info)
 	return p, nil
+}
+
+// pruneBefore removes the block files whose blocks all lie below blockNum, and refuses reads below it.
+// blockNum is an upper bound: only whole files can go, because index offsets are absolute within a file.
+// It is capped at lastPersistedBlock, whose header newBlockfileMgr reads on open, and it never lowers the
+// bound already in force.
+//
+// The algorithm:
+//
+//  1. Take the prune mutex, and sweep any file left behind below the lowest one the info records.
+//  2. Count the files that lie entirely below the capped request.
+//  3. If none qualify, persist the new bound alone, or return if the bound did not move either.
+//  4. Otherwise remove each counted file, advancing the durable info ahead of each removal.
+//
+// A call that stops partway keeps the bound it reached and the files it removed; the next call counts again
+// to find the rest, which is why step 2 cannot be skipped when the bound is unchanged.
+func (p *pruneMgr) pruneBefore(blockNum uint64, tail *blockfilesInfo) error {
+	if tail.noBlockFiles {
+		return nil
+	}
+
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	current := p.info.Load()
+
+	if err := p.sweepOrphans(current.firstStoredBlockfileNum); err != nil {
+		return err
+	}
+
+	// lastPersistedBlock+1 is the ordinary way to ask for everything; above that the caller names a block
+	// the ledger does not have.
+	if blockNum > tail.lastPersistedBlock+1 {
+		logger.Warnf("Prune request [%d] names a block the ledger does not have; its last block is [%d], "+
+			"so the request is capped there", blockNum, tail.lastPersistedBlock)
+	}
+
+	// bound is how far removal may reach; firstAvailable is the lowest block a read may return. They differ
+	// when the request is below the bound already in force, which must not lower it.
+	bound := min(blockNum, tail.lastPersistedBlock)
+	firstAvailable := max(current.firstReadableBlockNum, bound)
+
+	lowestFile := current.firstStoredBlockfileNum
+	eligible, err := p.countEligibleFiles(bound, lowestFile, tail)
+	if err != nil {
+		return err
+	}
+
+	if eligible == 0 {
+		if firstAvailable == current.firstReadableBlockNum {
+			// Nothing moved, so nothing is worth a durable write.
+			return nil
+		}
+		// The request falls inside the lowest file, so only the bound moves.
+		logger.Infof("Pruned blocks below [%d]; no block file became eligible", firstAvailable)
+		return p.setInfo(&pruneInfo{
+			firstReadableBlockNum:   firstAvailable,
+			firstStoredBlockfileNum: lowestFile,
+		})
+	}
+
+	// Block numbers run on across files, so a file holds the blocks from its own first one up to the first
+	// one of the file above. Each file's range is known from these first blocks without reading the file.
+	from, err := retrieveFirstBlockNumFromFile(p.rootDir, lowestFile)
+	if err != nil {
+		return errors.WithMessagef(err, "cannot determine the first block of block file [%d]", lowestFile)
+	}
+	for f := lowestFile; f < lowestFile+eligible; f++ {
+		to, err := p.firstBlockNumAfter(f, tail)
+		if err != nil {
+			return err
+		}
+		if err := p.pruneBlockfile(f, from, to, firstAvailable); err != nil {
+			return err
+		}
+		from = to
+	}
+
+	logger.Infof("Pruned blocks below [%d]; removed block files [%d] to [%d]",
+		firstAvailable, lowestFile, lowestFile+eligible-1)
+	return nil
+}
+
+// countEligibleFiles returns how many files, counting up from lowestFile, hold only blocks below bound.
+// The active file is excluded, so the last block always survives.
+func (p *pruneMgr) countEligibleFiles(bound uint64, lowestFile int, tail *blockfilesInfo) (int, error) {
+	count := 0
+	for f := lowestFile; f < tail.latestFileNumber; f++ {
+		firstAbove, err := p.firstBlockNumAfter(f, tail)
+		if err != nil {
+			return 0, err
+		}
+		if firstAbove > bound {
+			break
+		}
+		count++
+	}
+	return count, nil
+}
+
+// firstBlockNumAfter returns the first block number of the file above fileNum. Reading that file's first
+// record is O(1); finding fileNum's own last block would mean scanning it.
+func (p *pruneMgr) firstBlockNumAfter(fileNum int, tail *blockfilesInfo) (uint64, error) {
+	if fileNum+1 == tail.latestFileNumber && tail.latestFileSize == 0 {
+		return tail.lastPersistedBlock + 1, nil
+	}
+	n, err := retrieveFirstBlockNumFromFile(p.rootDir, fileNum+1)
+	if err != nil {
+		return 0, errors.WithMessagef(err, "cannot determine the first block of block file [%d]", fileNum+1)
+	}
+	return n, nil
+}
+
+// pruneBlockfile removes one block file, which holds blocks [from, to): it records the file as gone, deletes
+// the index entries of those blocks, and only then unlinks it. Each step is durable before the next begins,
+// which is what makes an interrupted prune recoverable without a single atomic write across the three of them.
+//
+// A crash after the first step leaves a file recorded as gone, which sweepOrphans unlinks on the next call.
+// Its index entries stay behind: no read reaches them, since their blocks lie below firstReadableBlockNum
+// and checkBlockAvailable refuses those before the index is consulted, and an index rebuild drops them. A
+// crash after the second step leaves the same kind of file without the entries.
+func (p *pruneMgr) pruneBlockfile(fileNum int, from, to, firstAvailable uint64) error {
+	err := p.setInfo(&pruneInfo{firstReadableBlockNum: firstAvailable, firstStoredBlockfileNum: fileNum + 1})
+	if err != nil {
+		return err
+	}
+
+	batch := p.index.db.NewUpdateBatch()
+	p.index.addBlockNumDeletions(batch, from, to)
+	if err := p.index.db.WriteBatch(batch, true); err != nil {
+		return err
+	}
+
+	logger.Debugf("Pruning block file [%d], dropping the index entries of blocks [%d] to [%d]", fileNum, from, to-1)
+	return p.removeBlockfile(fileNum)
+}
+
+// sweepOrphans unlinks the block files below the lowest one the info records. A prune that recorded a file
+// as gone and then failed to unlink it leaves it behind the bound, where counting would never reach it
+// again. It lists the directory rather than probing from zero, and syncs it once at the end.
+//
+// It leaves the index alone: entries such a prune did not get to delete stay behind, unreachable (see
+// pruneBlockfile).
+func (p *pruneMgr) sweepOrphans(below int) error {
+	if below == 0 {
+		return nil
+	}
+	nums, err := blockfileNumsIn(p.rootDir)
+	if err != nil {
+		return err
+	}
+
+	swept := 0
+	for _, n := range nums {
+		if n >= below {
+			break // ascending, so nothing lower remains
+		}
+		if err := os.Remove(deriveBlockfilePath(p.rootDir, n)); err != nil && !os.IsNotExist(err) {
+			return errors.Wrapf(err, "error removing orphaned block file [%d]", n)
+		}
+		swept++
+	}
+	if swept == 0 {
+		return nil
+	}
+	logger.Infof("Removed [%d] block files below [%d], left behind by an earlier prune", swept, below)
+	return fileutil.SyncDir(p.rootDir)
+}
+
+// removeBlockfile unlinks a block file and syncs the directory, so each removal is durable on return
+// instead of depending on the caller finishing the loop.
+func (p *pruneMgr) removeBlockfile(fileNum int) error {
+	if err := os.Remove(deriveBlockfilePath(p.rootDir, fileNum)); err != nil && !os.IsNotExist(err) {
+		return errors.Wrapf(err, "error removing block file [%d]", fileNum)
+	}
+	return fileutil.SyncDir(p.rootDir)
 }
 
 func (p *pruneMgr) firstReadableBlockNum() uint64 {
@@ -52,6 +237,9 @@ func (p *pruneMgr) firstStoredBlockfileNum() int {
 // setInfo persists the prune info and only then publishes it to readers; removing the blocks the new bound
 // covers follows. That order is what makes a crash survivable without a single atomic write: a reader refused
 // a block the store could still serve is harmless, whereas one served a block about to disappear is not.
+//
+// It must be called under mutex, so that two prunes cannot publish their bounds in one order and remove
+// their blocks in the other.
 func (p *pruneMgr) setInfo(info *pruneInfo) error {
 	if err := p.store.saveInfo(info); err != nil {
 		return err
