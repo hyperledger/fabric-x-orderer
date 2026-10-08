@@ -24,6 +24,7 @@ Additionally, Arma ensures censorship resistance by imposing a maximum time limi
 Arma is composed of 4 types of servers: routers, batchers, consenters and assemblers.
 
 - Routers accept transactions from submitting clients, perform some validation on the transactions, and dispatch them to batchers.
+  For the router, how it maps, verifies, and forwards transactions in detail, see [router](docs/router.md).
 
 - Batchers are grouped in to shards. A transaction is dispatched to a single shard. The batchers in a shard then bundle
   transactions into batches, and save them to disk. Batchers then send digests of the batches, called batch attestation

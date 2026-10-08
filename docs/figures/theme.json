@@ -27,7 +27,8 @@
     "control": "#CF222E",
     "primary": "#9A6700",
     "requests": "#59636E",
-    "batches-fill": "#DAFBE1"
+    "batches-fill": "#DAFBE1",
+    "responses": "#59636E"
   },
   "dark": {
     "text": "#F0F6FC",
@@ -47,6 +48,7 @@
     "control": "#F85149",
     "primary": "#D29922",
     "requests": "#9198A1",
-    "batches-fill": "#12261E"
+    "batches-fill": "#12261E",
+    "responses": "#9198A1"
   }
 }

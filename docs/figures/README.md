@@ -46,10 +46,11 @@ theme:
 | `group` with `shard-1`, `shard-2`, `shard-3` or `consensus` | A rounded group behind nodes. |
 | `group frame` | A dashed boundary around the units of one node, with no fill. |
 | `group-label` | A group's name. |
-| `flow` with `txs`, `digests`, `batches`, `blocks`, `control` or `requests` | A line or path carrying that kind of data; add `dashed` for an occasional path. |
+| `flow` with `txs`, `digests`, `batches`, `blocks`, `control`, `requests` or `responses` | A line or path carrying that kind of data; add `dashed` for an occasional path. |
 | `flow-label` with the same flow class | A label on that flow, in its colour. |
 | `m-<flow>` | The arrowhead path of a marker for that flow. |
 | `primary` | The primary marker, such as the star on a shard's primary batcher. |
+| `envelope` | A `g` of a `rect` and a flap `path`, marking a transaction on its flow. |
 | `note` | Small, muted text. |
 | `small` | Text at the note size, in its own colour; for labels on short flows. |
 | `start`, `end` | Left- or right-anchored text; text is centred otherwise. |
@@ -75,4 +76,5 @@ The palette is GitHub's Primer, so that figures sit naturally on the page in bot
 | `blocks` | blocks | `#1F2328` | `#F0F6FC` |
 | `control` | the control path | `#CF222E` | `#F85149` |
 | `requests` | requests for a batch by its batchID | `#59636E` | `#9198A1` |
+| `responses` | responses to a client's requests | `#59636E` | `#9198A1` |
 | `primary` | the primary marker | `#9A6700` | `#D29922` |
