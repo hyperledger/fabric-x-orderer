@@ -1,7 +1,7 @@
 # Copyright IBM Corp. All Rights Reserved.
 #
 # SPDX-License-Identifier: Apache-2.0
----
+
 name: Release Fabric-X Orderer Docker Image
 
 on:
@@ -55,13 +55,12 @@ jobs:
       - name: Set image build prefix and metadata
         run: |
           echo "CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
-          echo "REVISION=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          echo "REVISION=$(git rev-parse HEAD)" >> $GITHUB_ENV        
           if [ "$GITHUB_REPOSITORY_OWNER" == "hyperledger" ]; then
            echo "IMAGE_PREFIX=hyperledger" >> $GITHUB_ENV
           else
            echo "IMAGE_PREFIX=${{ secrets.DOCKERHUB_USERNAME }}" >> $GITHUB_ENV
           fi
-           echo "GHCR_PREFIX=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
       - name: Build and Push Multi-Platform Docker Image
         uses: docker/build-push-action@v6
@@ -69,18 +68,16 @@ jobs:
           context: .
           file: ./images/multi-platform/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/s390x
-          push: true
-          tags: |
-            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:${{ env.VERSION }}
-            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:latest
-            ghcr.io/${{ env.GHCR_PREFIX }}/fabric-x-orderer:${{ env.VERSION }}
-            ghcr.io/${{ env.GHCR_PREFIX }}/fabric-x-orderer:latest
           build-args: |
             VERSION=${{ env.VERSION }}
             CREATED=${{ env.CREATED }}
             REVISION=${{ env.REVISION }}
-          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:buildcache
-          cache-to: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:buildcache,mode=max
+          push: true
+          tags: |
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:${{ env.VERSION }}
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:latest
+            ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:${{ env.VERSION }}
+            ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer:latest
 
       - name: Build and Push Multi-Platform All-In-One Test Node Image
         uses: docker/build-push-action@v6
@@ -88,15 +85,13 @@ jobs:
           context: .
           file: ./node/examples/all-in-one/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/s390x
-          push: true
-          tags: |
-            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:${{ env.VERSION }}
-            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:latest
-            ghcr.io/${{ env.GHCR_PREFIX }}/fabric-x-orderer-test-node:${{ env.VERSION }}
-            ghcr.io/${{ env.GHCR_PREFIX }}/fabric-x-orderer-test-node:latest
           build-args: |
             VERSION=${{ env.VERSION }}
             CREATED=${{ env.CREATED }}
             REVISION=${{ env.REVISION }}
-          cache-from: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:buildcache
-          cache-to: type=registry,ref=docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:buildcache,mode=max
+          push: true
+          tags: |
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:${{ env.VERSION }}
+            docker.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:latest
+            ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:${{ env.VERSION }}
+            ghcr.io/${{ env.IMAGE_PREFIX }}/fabric-x-orderer-test-node:latest

@@ -59,12 +59,12 @@ jobs:
             arch: arm64
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -77,8 +77,8 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: fabric-x-orderer-tools-${{ matrix.os }}-${{ matrix.arch }}
-          path: release/${{ matrix.os }}-${{ matrix.arch }}/fabric-x-orderer-tools-*.tar.gz
+          name: fabric-x-orderer-${{ matrix.os }}-${{ matrix.arch }}
+          path: release/${{ matrix.os }}-${{ matrix.arch }}/fabric-x-orderer-*.tar.gz
           if-no-files-found: error
 
   release:

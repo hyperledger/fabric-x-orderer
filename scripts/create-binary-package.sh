@@ -53,7 +53,7 @@ make release-bins GOOS="${GOOS}" GOARCH="${GOARCH}" RELEASE_DIR=release \
 cp LICENSE "${RELEASE_DIR}/"
 
 # -C changes into RELEASE_DIR first, so the archive holds relative paths (bin/, LICENSE).
-ARCHIVE="fabric-x-orderer-tools-${TARGET}-${VERSION}.tar.gz"
+ARCHIVE="fabric-x-orderer-${TARGET}-${VERSION}.tar.gz"
 tar -czf "${RELEASE_DIR}/${ARCHIVE}" -C "${RELEASE_DIR}" bin LICENSE
 
 echo "${RELEASE_DIR}/${ARCHIVE}"
