@@ -18,9 +18,6 @@ for i in 1 2 3 4; do
   mkdir -p ${BASE}/storage/party${i}/{router,assembler,batcher,consenter}
 done
 
-REPO_ROOT=$(cd "$(dirname "$0")/../../../.." && pwd)
-cd ${REPO_ROOT}
-
 echo "Starting all-in-one container..."
 
 CONTAINER_ID=$(docker run -d \
@@ -30,7 +27,6 @@ CONTAINER_ID=$(docker run -d \
   -p 6322:6322 -p 6323:6323 -p 6324:6324 -p 6325:6325 \
   -v ${BASE}:/tmp/arma-all-in-one \
   -v ${BASE}/storage:/storage \
-  -v ${REPO_ROOT}/node/examples/all-in-one/config:/config \
   arma-4p1s)
 
 echo "Container started: ${CONTAINER_ID}"

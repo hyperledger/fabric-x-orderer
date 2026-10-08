@@ -44,11 +44,11 @@ COPY --from=builder /src/bin/arma /usr/local/bin/arma
 COPY --from=builder /src/bin/armageddon /usr/local/bin/armageddon
 
 # scripts
-COPY --chmod=755 node/examples/all-in-one/entrypoint.sh /entrypoint.sh
-COPY --chmod=755 node/examples/all-in-one/run_all.sh /run_all.sh
+COPY --chmod=755 examples/all-in-one/entrypoint.sh /entrypoint.sh
+COPY --chmod=755 examples/all-in-one/run_all.sh /run_all.sh
 
 # network topology, so the image runs standalone without a /config mount
-COPY node/examples/all-in-one/config /config
+COPY examples/all-in-one/config /config
 
 # OCI metadata labels
 LABEL org.opencontainers.image.created="${CREATED}" \

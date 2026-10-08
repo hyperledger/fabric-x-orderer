@@ -22,7 +22,7 @@
 
 # Docker image vars
 DOCKERFILE ?= images/multi-platform/Dockerfile
-TEST_NODE_DOCKERFILE ?= node/examples/all-in-one/Dockerfile
+TEST_NODE_DOCKERFILE ?= examples/all-in-one/Dockerfile
 IMAGE_NAMESPACE = docker.io/hyperledger
 IMAGE_NAME = fabric-x-orderer
 TEST_NODE_IMAGE_NAME = fabric-x-orderer-test-node
@@ -191,9 +191,9 @@ fully-randomized-failure-test: binary
 
 .PHONY: sample-tests
 sample-tests:
-	set -e
-	(cd node/examples; bash ./scripts/build_docker.sh)
-	(bash ./node/examples/scripts/run_sample.sh)
+	(cd examples; bash ./scripts/build_docker.sh)
+	(bash ./examples/scripts/run_sample.sh)
+	(bash ./examples/scripts/clean_sample.sh)
 
 # Build the HLFX Orderer image
 .PHONY: build-image

@@ -8,13 +8,13 @@ It explains how to create and run a network of four parties with two shards. Tha
 To build the Docker container required for running the Arma sample, run the following command from the root directory:
 
 ```
-(cd node/examples; bash ./scripts/build_docker.sh)
+(cd examples; bash ./scripts/build_docker.sh)
 ```
 
 ### Run Arma Sample
 To run the Arma example, run the following command from the root directory:
 ```
-./node/examples/scripts/run_sample.sh
+./examples/scripts/run_sample.sh
 ```
 The `run_sample.sh` script performs the following tasks:
 - Generates a configuration file for each node using `armageddon generate`.
@@ -24,6 +24,6 @@ The `run_sample.sh` script performs the following tasks:
 ### Clean Up Sample
 To clean up the environment after running the Arma example, run the following command from the root directory:
 ```
-./node/examples/scripts/clean_sample.sh
+./examples/scripts/clean_sample.sh
 ```
 This script stops and removes Docker containers, and deletes temporary files.
