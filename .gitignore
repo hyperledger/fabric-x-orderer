@@ -25,6 +25,9 @@
 # Binaries built with `make binary`
 bin/
 
+# Results of the failure tests (logs + summary are uploaded as CI artifacts)
+test/failure-tests/test-results/
+
 # Logs 
 *.log
 
