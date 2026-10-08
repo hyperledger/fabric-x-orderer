@@ -12,6 +12,7 @@ import (
 
 	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/api/msppb"
@@ -24,6 +25,8 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
+
+var logger = flogging.MustGetLogger("config.verify")
 
 // partyChanges keeps information about membership changes introduced during configuration update.
 type partyChanges struct {
@@ -57,6 +60,8 @@ type DefaultOrdererRules struct{}
 //  9. BlockValidationPolicy must be consistent with the current consenters.
 //  10. Party certificates must be valid, with expiration enforced for genesis
 //     configs and ignored for later config updates.
+//  11. Router and assembler ports in SharedConfig should match the corresponding
+//     broadcast and deliver OrdererEndpoints. Mismatches are logged as warnings.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
@@ -161,6 +166,11 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 		if err := validatePartyCertificates(party, ignoreExpiration); err != nil {
 			return errors.Wrapf(err, "certificate validation failed for party ID %d", party.PartyID)
 		}
+	}
+
+	// 11.
+	if err := validateRouterAndAssemblerEndpoints(sharedConfig.PartiesConfig, partyOrgMap); err != nil {
+		return errors.Wrap(err, "orderer organization endpoints are inconsistent with shared config")
 	}
 
 	return nil
@@ -663,6 +673,32 @@ func certificateSetsEqual(sharedConfigCerts, orgCerts [][]byte) error {
 	for _, cert := range sharedConfigCerts {
 		if _, exists := orgCertSet[string(cert)]; !exists {
 			return errors.Errorf("certificate exists in shared config but is missing from orderer organization MSP: %q", string(cert))
+		}
+	}
+
+	return nil
+}
+
+func validateRouterAndAssemblerEndpoints(parties []*ordererpb.PartyConfig, partyOrgMap map[uint32]channelconfig.OrdererOrg) error {
+	for _, party := range parties {
+		org, exists := partyOrgMap[party.PartyID]
+		if !exists {
+			return errors.Errorf("missing orderer organization for party %d", party.PartyID)
+		}
+
+		routerPort := int(party.GetRouterConfig().GetPort())
+		assemblerPort := int(party.GetAssemblerConfig().GetPort())
+		for _, raw := range org.Endpoints() {
+			ep, err := types.ParseOrdererEndpoint(raw)
+			if err != nil {
+				return err
+			}
+			if slices.Contains(ep.API, types.Broadcast) && ep.Port != routerPort {
+				logger.Warnf("router port mismatch for party %d: %d != %d", party.PartyID, ep.Port, routerPort)
+			}
+			if slices.Contains(ep.API, types.Deliver) && ep.Port != assemblerPort {
+				logger.Warnf("assembler port mismatch for party %d: %d != %d", party.PartyID, ep.Port, assemblerPort)
+			}
 		}
 	}
 
