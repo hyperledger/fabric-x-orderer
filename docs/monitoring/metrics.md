@@ -20,6 +20,8 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 
 ### Router
 
+What each of these metrics tells you about the router is described in [Router](../router.md#5-metrics-and-monitoring).
+
 - **Namespace**: "router"  
   **Name**: "requests_arrived"  
   **Help**: "The number of requests that arrived at the router."
