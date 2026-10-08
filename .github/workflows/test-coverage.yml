@@ -1,0 +1,85 @@
+# Copyright the Hyperledger Fabric contributors. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Test Coverage
+
+on:
+  pull_request: # temporary for testing
+  schedule:
+    - cron: '0 4 * * 1' # Every Monday at 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Coverage ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - unit-tests-other
+          - unit-tests-consensus
+          - unit-tests-consensus-full-replacement
+          - unit-tests-batcher
+          - integration-basic
+          - integration-faulttolerance
+          - integration-reconfig-membership
+          - integration-reconfig-membership-full-parties-replacement
+          - integration-reconfig-membership-rejoin-single-party
+          - integration-reconfig-identity
+          - integration-reconfig-endpoints
+          - integration-reconfig-params
+          - integration-reconfig-configtx
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run ${{ matrix.target }} With Coverage
+        run: make coverage-${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: coverdata-${{ matrix.target }}
+          path: coverdata/${{ matrix.target }}
+          retention-days: 1
+
+  report:
+    name: Coverage Report
+    needs: coverage
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: coverdata-*
+          path: coverdata
+
+      - name: Generate Coverage Report
+        run: make cover-report
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: coverage-profile
+          path: coverage.profile
+          retention-days: 1
+
+      - name: Send Coverage To Coveralls
+        if: github.repository == 'hyperledger/fabric-x-orderer'
+        uses: shogo82148/actions-goveralls@v1
+        with:
+          path-to-profile: coverage.profile
+        continue-on-error: true
