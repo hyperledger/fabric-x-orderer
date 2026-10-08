@@ -57,12 +57,26 @@ func (store *BlockStore) GetBlockchainInfo() (*common.BlockchainInfo, error) {
 
 // RetrieveBlocks returns an iterator that can be used for iterating over a range of blocks
 func (store *BlockStore) RetrieveBlocks(startNum uint64) (ledger.ResultsIterator, error) {
-	return store.fileMgr.retrieveBlocks(startNum)
+	itr, err := store.fileMgr.retrieveBlocks(startNum)
+	if err != nil {
+		// Returned explicitly rather than as a typed nil, so that a caller testing the iterator instead of
+		// the error does not get something that looks like an iterator and panics on first use.
+		return nil, err
+	}
+	return itr, nil
 }
 
 // RetrieveBlockByNumber returns the block at a given blockchain height
 func (store *BlockStore) RetrieveBlockByNumber(blockNum uint64) (*common.Block, error) {
 	return store.fileMgr.retrieveBlockByNumber(blockNum)
+}
+
+// PruneBefore removes the block files whose blocks all lie below blockNum, advancing a durable bound so
+// that reads below it fail with ErrPruned. blockNum is an upper bound: files are removed on whole-file
+// boundaries, so the bound lands at or below it. Height() is unchanged, and the last block always survives.
+// Idempotent and monotone: a request below the bound in force does not lower it.
+func (store *BlockStore) PruneBefore(blockNum uint64) error {
+	return store.fileMgr.pruneBefore(blockNum)
 }
 
 // FirstAvailableBlockNumber returns the lowest block number this store can serve. It is 0 unless the
