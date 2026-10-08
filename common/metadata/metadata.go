@@ -9,7 +9,7 @@ package metadata
 // Variables defined by the Makefile and passed in with ldflags
 var (
 	Version         = "latest"
-	CommitSHA       = "development build"
+	CommitSHA       = "unknown"
 	BaseDockerLabel = "org.hyperledger.fabric-x-orderer"
 	DockerNamespace = "hyperledger"
 )
