@@ -46,10 +46,10 @@ and metadata, stating that the batch is stored. The payload itself never enters 
 the batchers until an assembler pulls it to build a block.
 
 Within a shard, one batcher is the **primary** and creates the batches; the others are
-**secondaries**, which pull each batch from the primary, verify it, store it, and attest it. Which
-batcher is primary is decided by the consenters, and the secondaries are what keep the primary honest:
-a secondary that sees its requests ignored, or receives an invalid batch, complains to the consenters,
-and enough complaints replace the primary.
+**secondaries**, which pull each batch from the primary, verify it, store it, and attest it. The
+consenters decide which batcher is primary, and the secondaries watch it: a secondary that sees its
+requests ignored, or receives an invalid batch, complains to the consenters, and enough complaints
+replace the primary.
 
 <!-- Figure 1 placeholder: from slide 6 of the batcher tech-transfer deck. -->
 *Figure 1: The batcher's inputs and outputs — transactions from the router of its own party, batches
@@ -95,8 +95,8 @@ them in full.
 
 - `RequestTransmit` (`Submit`, `SubmitStream`) — the router's path. Only the router of the batcher's
   own party is served, checked by its TLS certificate. The router has already verified the request,
-  so the batcher only checks that it was routed under the batcher's current config sequence, then
-  re-encodes it as a Fabric `Envelope` and submits it to the mempool.
+  so the batcher only checks that it was routed under the batcher's current config sequence before
+  submitting it to the mempool.
 - `BatcherControlService` — the path between the batchers of one shard, served by the primary:
   `NotifyAck` receives the secondaries' acks, and `FwdRequestStream` receives requests a secondary
   forwards after the first strike. A forwarded request is verified before it enters the primary's
@@ -107,8 +107,8 @@ them in full.
 
 **Used by the batcher**
 
-- `Consensus.NotifyEvent`, on every consenter — to send BAFs and complaints. Each is sent to all
-  consenters and retried, with back-off, until at least `N−f` have accepted it.
+- `Consensus.NotifyEvent`, on every consenter — to send BAFs and complaints. Each is broadcast to all
+  consenters.
 - `Deliver`, on the consenter of its own party — to pull the decision stream. A decision carries the
   current term of every shard, which is how the batcher learns who the primary is, and it may carry a
   config block.
@@ -224,10 +224,11 @@ The mempool works in one of two modes, chosen by the batcher's role:
   `MaxMessageCount` requests and `AbsoluteMaxBytes` bytes, and the primary takes the next batch from
   it.
 - On a **secondary**, it is a **pending store**. Requests wait until a batch from the primary contains
-  them, and a timer runs for each.
+  them. They are grouped into buckets by arrival time, and the strike timeouts below are checked per
+  bucket.
 
-A router forwards each transaction to the batcher of its own party in the shard, and a client that
-wants censorship resistance submits to the routers of several parties. A secondary therefore usually
+A router forwards each transaction to the batcher of its own party in the shard, and a client
+broadcasts each transaction to the routers of all parties. A secondary therefore usually
 holds the same requests as the primary, and the pending store is how it notices when the primary
 leaves one out:
 
@@ -357,8 +358,8 @@ store. On restart it reads the last decision number from the WAL and resumes pul
 there, and it takes its configuration from the last config block in the config store. The batch
 sequence it resumes from is the height of the current primary's ledger, so a primary continues after
 its last stored batch, and a secondary pulls from where it stopped. The mempool is not persisted, so
-the requests it held that were not yet in a stored batch are lost on this batcher; a client that
-submitted to the routers of several parties still has them in the other batchers' mempools.
+the requests it held that were not yet in a stored batch are lost on this batcher; since clients
+broadcast to the routers of all parties, they are still in the other batchers' mempools.
 
 ### 6.2 When Other Nodes Fail
 
@@ -370,9 +371,8 @@ The shard tolerates up to `f` faulty batchers out of `N ≥ 3f+1`.
   to store or attest it, and complain.
 - **A slow or failed secondary** does not stop the shard, as long as `f` secondaries keep acking. If
   fewer do, the primary stops cutting batches once it is `BatchSequenceGap` ahead.
-- **A failed consenter** does not stop the batcher either, since a BAF only has to reach `N−f`
-  consenters. If fewer are reachable, the batcher keeps retrying and does not move on to the next
-  batch.
+- **A failed consenter** does not stop the batcher either: BAFs and complaints are broadcast to
+  all consenters, and the consensus cluster tolerates up to `f` faulty consenters.
 
 ## 7. Reconfiguration
 
