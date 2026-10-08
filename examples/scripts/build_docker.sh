@@ -7,5 +7,6 @@
 set -eux
 
 DOCKER_CMD=${DOCKER_CMD:-docker}
+EXAMPLE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
-$DOCKER_CMD build --target=arma --tag=arma -f ./Dockerfile ../
+$DOCKER_CMD build --target=arma --tag=arma -f "${EXAMPLE_DIR}/Dockerfile" "${EXAMPLE_DIR}/.."

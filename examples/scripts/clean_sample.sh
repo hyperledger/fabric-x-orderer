@@ -7,7 +7,9 @@
 
 set -eux
 
-cd examples && docker compose down
+EXAMPLE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+cd "${EXAMPLE_DIR}" && docker compose down
 docker stop "arma-config-vol"
 docker rm "arma-config-vol"
 

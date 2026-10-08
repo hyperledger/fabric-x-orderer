@@ -208,3 +208,5 @@ jobs:
           version: latest
       - run: make sample-tests
         name: Run Sample Tests
+      - run: make build-test-node-image
+        name: Build All-In-One Test Node Image
