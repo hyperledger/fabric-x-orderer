@@ -61,4 +61,9 @@ LABEL org.opencontainers.image.created="${CREATED}" \
     org.opencontainers.image.url="https://github.com/hyperledger/fabric-x-orderer" \
     org.opencontainers.image.version="${VERSION}"
 
+# routers start last (see run_all.sh), so healthy routers mean the whole network is up
+HEALTHCHECK --interval=5s --timeout=3s --retries=20 --start-period=10s \
+    CMD curl -sf http://127.0.0.1:8022/healthz && curl -sf http://127.0.0.1:8122/healthz && \
+        curl -sf http://127.0.0.1:8222/healthz && curl -sf http://127.0.0.1:8322/healthz
+
 ENTRYPOINT ["/entrypoint.sh"]

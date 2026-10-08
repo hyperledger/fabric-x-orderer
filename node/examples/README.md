@@ -19,6 +19,7 @@ To run the Arma example, run the following command from the root directory:
 The `run_sample.sh` script performs the following tasks:
 - Generates a configuration file for each node using `armageddon generate`.
 - Creates and manages a volume for configuration files, with each node running in its own container.
+- Starts the nodes in the order consenters → batchers → assemblers → routers; each group starts only after the group before it reports healthy on `/healthz`.
 - Submits transactions using `armageddon submit`, which processes 1000 transactions at a rate of 500 per second. 
 
 ### Clean Up Sample
