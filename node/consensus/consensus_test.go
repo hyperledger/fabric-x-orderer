@@ -1004,13 +1004,13 @@ func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 }
 
 // TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs covers the VerifyProposal reqInfos loop
-// (consensus.go) during a config bump. A BAF exactly one config behind is still verified and reported
-// in reqInfos, so the follower's reqInfos stay consistent with the leader's while consensus surfaces
-// the BAF for revival (and reporting it in reqInfos is what removes it from the request pool, so it is
-// not re-proposed and re-surfaced every decision). A one-behind complaint — the same distance behind,
-// but not revivable — must NOT be verified (verifyCE's exact-match check would fail and reject the
-// whole proposal); it is reported in reqInfos without verification so it is removed from the pool too.
-// So every proposed request appears in reqInfos, but only the state-affecting ones are verified.
+// (consensus.go) during a config bump. A BAF exactly one config behind is reported in reqInfos, so the
+// follower's reqInfos stay consistent with the leader's while consensus surfaces the BAF for revival (and
+// reporting it in reqInfos is what removes it from the request pool, so it is not re-proposed and
+// re-surfaced every decision). A one-behind complaint — the same distance behind, but not revivable —
+// must NOT be verified (verifyCE's exact-match check would fail and reject the whole proposal); it is
+// reported in reqInfos without verification so it is removed from the pool too. So every proposed
+// request appears in reqInfos, but only the ones at the current config sequence are verified.
 func TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
 
@@ -1045,8 +1045,7 @@ func TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs(t *testing.T) {
 	dig := make([]byte, 32-3)
 	dig123 := append([]byte{1, 2, 3}, dig...)
 
-	// A BAF one config behind (configSeq 0 while current is 1). primary == signer (party 1), so
-	// verifyCE checks only the signer signature.
+	// A BAF one config behind (configSeq 0 while current is 1).
 	oneBehindBAF, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 0, 0, nil)
 	require.NoError(t, err)
 
@@ -1100,8 +1099,8 @@ func TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs(t *testing.T) {
 
 	reqInfos, err := c.VerifyProposal(proposal)
 	require.NoError(t, err) // the one-behind complaint must not reject the proposal
-	// Both proposed requests are reported in reqInfos (so both are removed from the request pool); the
-	// BAF was verified, the complaint was not.
+	// Both proposed requests are reported in reqInfos (so both are removed from the request pool),
+	// neither was verified.
 	require.Len(t, reqInfos, 2)
 
 	// RequestsFromProposal runs post-agreement (only to report request info for pool cleanup) and must
@@ -1109,6 +1108,63 @@ func TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs(t *testing.T) {
 	require.NotPanics(t, func() {
 		require.Len(t, c.RequestsFromProposal(proposal), 2)
 	})
+}
+
+// TestVerifyProposalAcceptsStaleBAFFromChangedCertificate models a BAF that was pooled before a
+// reconfiguration changed its batcher's certificate: it is signed with a key the current config no
+// longer has. It is rejected when submitted, but a proposal that carries it is accepted and surfaces it
+// for revival, since otherwise every proposal carrying it would be rejected.
+func TestVerifyProposalAcceptsStaleBAFFromChangedCertificate(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	db, err := badb.NewBatchAttestationDB(t.TempDir(), logger)
+	require.NoError(t, err)
+
+	newSK, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	oldSK, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	// The current config has only the batcher's new key.
+	verifier := crypto.ECDSAVerifier{
+		arma_types.NewBatcherIdentity(1, 1): crypto.ECDSASigner(*newSK).PublicKey,
+	}
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.SequenceReturns(1)
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+	config := &nodeconfig.ConsenterNodeConfig{Bundle: bundle, RequestMaxBytes: 1000}
+
+	c := &node_consensus.Consensus{
+		Arma:            &node_consensus.Consenter{DB: db, Logger: logger},
+		State:           &state.State{N: 4, Shards: []state.ShardTerm{{Shard: 1}}, Threshold: 2, Quorum: 3, AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 0})},
+		Logger:          logger,
+		SigVerifier:     verifier,
+		RequestVerifier: node_consensus.CreateConsensusRulesVerifier(config),
+		Config:          config,
+	}
+
+	// The BAF was signed under config sequence 0 with the old key.
+	dig123 := append([]byte{1, 2, 3}, make([]byte, 32-3)...)
+	staleBAF, err := batcher.CreateBAF(crypto.ECDSASigner(*oldSK), 1, 1, dig123, 1, 1, 0, 0, nil)
+	require.NoError(t, err)
+	reqs := [][]byte{(&state.ControlEvent{BAF: staleBAF}).Bytes()}
+
+	_, err = c.VerifyRequest(reqs[0])
+	require.Error(t, err)
+
+	mBytes, err := proto.Marshal(&smartbftprotos.ViewMetadata{LatestSequence: 0})
+	require.NoError(t, err)
+	proposal := c.AssembleProposal(mBytes, reqs)
+
+	reqInfos, err := c.VerifyProposal(proposal)
+	require.NoError(t, err)
+	require.Equal(t, []smartbft_types.RequestInfo{c.RequestID(reqs[0])}, reqInfos)
+
+	hdr := &state.Header{}
+	require.NoError(t, hdr.Deserialize(proposal.Header))
+	require.Len(t, hdr.State.StaleConfigBAFs, 1)
 }
 
 // TestVerifyProposalRejectsMalformedRequest checks that a proposal carrying a request that does not
