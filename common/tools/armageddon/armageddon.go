@@ -17,7 +17,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +31,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/tools/configtxgen"
+	"github.com/hyperledger/fabric-x-orderer/common/metadata"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	genconfig "github.com/hyperledger/fabric-x-orderer/config/generate"
@@ -439,12 +439,7 @@ func showtemplate() {
 }
 
 func printVersion() {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		fmt.Println(fmt.Errorf("failed to read build info"))
-	}
-
-	fmt.Printf("Armageddon version is: %+v\n", bi.Main.Version)
+	fmt.Printf("Armageddon version is: %s\nCommit SHA: %s\n", metadata.Version, metadata.CommitSHA)
 }
 
 func ReadUserConfig(userConfigFile **os.File) (*UserConfig, error) {
