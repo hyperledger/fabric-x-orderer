@@ -55,6 +55,7 @@ sed -E -f - "$profile" > "$filtered" <<'EOF'
 /\/(mocks?|fakes?)\//d
 /\/test\/utils\//d
 /\/testutil\//d
+/\/node\/comm\/tlsgen\//d
 EOF
 mv "$filtered" "$profile"
 
