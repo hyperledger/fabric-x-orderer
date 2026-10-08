@@ -218,7 +218,7 @@ For example, slow assembler fetches may indicate missing or slow batcher data, w
 The role-specific documents contain deeper operational and implementation details. Start with this architecture document for the overall flow, then use the links below to inspect startup behavior, APIs, metrics, and failure handling for each service.
 
 - Router details: [`node/router`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/router)
-- Batcher details: [`node/batcher`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/batcher)
+- Batcher details: [`docs/batcher.md`](batcher.md) and [`node/batcher`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/batcher)
 - Consenter details: [`docs/consensus.md`](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/consensus.md) and [`node/consensus`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus)
 - Assembler details: [`docs/assembler.md`](assembler.md) and [`node/assembler`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/assembler)
 - Deployment guide: [../deployment/README.md](https://github.com/hyperledger/fabric-x-orderer/blob/main/deployment/README.md)
