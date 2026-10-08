@@ -56,11 +56,16 @@ every complaint, it is the node that decides when a shard's primary batcher must
 enough complaints, or on proof that a primary equivocated — and it enacts that ruling as part of
 the same ordered stream, so all parties rotate the primary at the same point in the order.
 
-<!-- Figure 1 placeholder -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/consensus-context-dark.svg">
+  <img alt="The consenter's inputs and output" src="figures/consensus-context.svg">
+</picture>
+
 *Figure 1: The consenter's inputs and output — batch attestation fragments and complaints from the
 batchers of every party, configuration requests from the router of its own party, SmartBFT messages
 exchanged with the consenters of the other parties, and the ordered decision stream served to the
-assembler, batchers, and routers. (Diagram to be added.)*
+batchers, router, and assembler of its own party. The nodes shown are part of a network of 4 parties
+and 2 shards; C1, R1, A1 and the B1 batchers belong to party 1.*
 
 ### 1.1 Units and Terms
 
@@ -211,11 +216,6 @@ is between configurations, `ReconfigAbort` releases anything blocked on a reconf
 node stops, and `MainExitChan` signals process exit. Inbound RPC handlers reject requests while the
 node is soft-stopped.
 
-<!-- Figure 2 placeholder -->
-*Figure 2: The consenter's units — the SmartBFT engine, the state machine, the BADB, the consensus
-ledger, the synchronizer, and the communication and Deliver services — and how they are wired.
-(Diagram to be added.)*
-
 ### 3.2 The Deterministic State Machine
 
 The state machine's core is a single pure function that takes the current state, the configuration
@@ -311,10 +311,15 @@ signatures into the decision block, and appends that block to the consensus ledg
 becomes as many BA blocks as it committed, carried in the decision's own order; the ordering information
 is what lets an assembler reassemble these blocks into the single global order across decisions.
 
-<!-- Figure 3 placeholder -->
-*Figure 3: One decision becoming blocks — the header and state snapshot, one common block per batch
-attestation with the batch digest as its data hash, and the ordering information written into each
-block. (Diagram to be added.)*
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/consensus-decision-dark.svg">
+  <img alt="One decision and the blocks it carries" src="figures/consensus-decision.svg">
+</picture>
+
+*Figure 2: One decision becoming blocks — the decision's header carries the state snapshot and one
+pre-built common block per batch attestation, with the batch digest as its data hash and empty data,
+and the ordering information written into each block's metadata. The blocks are chained by previous
+hash, and a configuration block, if one was decided, comes last.*
 
 ### 3.6 SmartBFT as the Engine
 
@@ -329,6 +334,18 @@ are built), to verify a proposal or a peer's signature, to sign, and — the com
 a decided proposal, which indexes the batch digests, appends the block, and tells the engine about any
 membership change the decision carried. The engine's own configuration (its timeouts, batch sizing, and
 pool limits) comes from shared configuration, described next.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/consensus-smartbft-dark.svg">
+  <img alt="The SmartBFT callbacks on a leader and a follower" src="figures/consensus-smartbft.svg">
+</picture>
+
+*Figure 3: The callbacks SmartBFT makes into the consenter as one decision is agreed, left to right in
+time, on the leader C1 and a follower C2. Each consenter verifies an incoming event and submits it to
+its engine, and a follower forwards a request the leader has not proposed in time. The leader
+assembles the proposal and sends it in a pre-prepare; the follower verifies it. After the prepares,
+each consenter signs the proposal and sends its signature in a commit, and verifies the signatures it
+receives. Once a quorum has committed, each consenter delivers the decision to its ledger.*
 
 ### 3.7 Code Map
 

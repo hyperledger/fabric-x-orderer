@@ -1,0 +1,59 @@
+<!--
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500" width="1000" height="500">
+  <!-- theme -->
+  <defs>
+    <marker id="arrow-digests" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="m-digests" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="arrow-blocks" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="m-blocks" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <!-- One decision, field by field; the header's fields are tinted, the rest is what SmartBFT agreed on and signed -->
+  <text class="group-label" x="210" y="48">One decision</text>
+  <rect class="group frame" x="40" y="60" width="340" height="310" rx="14"/>
+  <rect class="node consensus" x="55" y="80" width="310" height="45"/>
+  <text class="node-label-small" x="210" y="100">Header</text><text class="note" x="210" y="118">decision number, previous decision's hash</text>
+  <rect class="node consensus" x="55" y="125" width="310" height="45"/>
+  <text class="node-label-small" x="210" y="145">Header: state</text><text class="note" x="210" y="163">shard terms, complaints, pending BAFs</text>
+  <rect class="node consensus" x="55" y="170" width="310" height="45"/>
+  <text class="node-label-small" x="210" y="190">Header: available blocks</text><text class="note" x="210" y="208">one block per BA, and any config block</text>
+  <rect class="node" x="55" y="215" width="310" height="45"/>
+  <text class="node-label-small" x="210" y="235">Payload</text><text class="note" x="210" y="253">the ordered control events</text>
+  <rect class="node" x="55" y="260" width="310" height="45"/>
+  <text class="node-label-small" x="210" y="280">Metadata</text><text class="note" x="210" y="298">SmartBFT view metadata</text>
+  <rect class="node" x="55" y="305" width="310" height="45"/>
+  <text class="node-label-small" x="210" y="325">Signatures</text><text class="note" x="210" y="343">a quorum's composite signatures</text>
+  <text class="note" x="210" y="392">stored as one block of the consensus ledger</text>
+
+  <!-- The available blocks, chained by previous hash -->
+  <text class="group-label" x="720" y="48">Available blocks</text>
+  <rect class="group frame" x="540" y="60" width="360" height="390" rx="14"/>
+
+  <!-- Block h, field by field -->
+  <rect class="node" x="555" y="80" width="330" height="175"/>
+  <text class="node-label-small" x="720" y="104">Block h</text>
+  <rect class="node consensus" x="565" y="115" width="310" height="45"/>
+  <text class="node-label-small" x="720" y="135">Header</text><text class="note" x="720" y="153">number, previous hash, data hash = batch digest</text>
+  <rect class="node" x="565" y="160" width="310" height="45"/>
+  <text class="node-label-small" x="720" y="180">Data</text><text class="note" x="720" y="198">empty; the assembler fills in the batch</text>
+  <rect class="node consensus" x="565" y="205" width="310" height="45"/>
+  <text class="node-label-small" x="720" y="225">Metadata: orderer</text><text class="note" x="720" y="243">batchID and its place in the decision</text>
+
+  <!-- The next blocks; the last one may be a config block -->
+  <rect class="node" x="555" y="290" width="330" height="50"/><text class="node-label-small" x="720" y="321">Block h+1</text>
+  <rect class="node" x="555" y="375" width="330" height="60"/>
+  <text class="node-label-small" x="720" y="400">Block h+2: config block</text><text class="note" x="720" y="420">data: the config request; always last</text>
+
+  <!-- Each block points back to the previous one -->
+  <line class="flow blocks" x1="720" y1="290" x2="720" y2="258" marker-end="url(#arrow-blocks)"/>
+  <text class="flow-label blocks start small" x="730" y="279">previous hash</text>
+  <line class="flow blocks" x1="720" y1="375" x2="720" y2="343" marker-end="url(#arrow-blocks)"/>
+  <text class="flow-label blocks start small" x="730" y="364">previous hash</text>
+
+  <!-- The header's available blocks are these blocks -->
+  <line class="flow digests" x1="365" y1="192" x2="538" y2="192" marker-end="url(#arrow-digests)"/>
+  <text class="flow-label digests small" x="452" y="180">pre-built blocks</text>
+  <text class="note" x="720" y="472">each signed by a quorum, from the decision's signatures</text>
+</svg>
