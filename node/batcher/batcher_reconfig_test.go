@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -320,6 +321,91 @@ func TestBatcherReconfigMempoolPruneDropsInvalidRequests(t *testing.T) {
 	for _, r := range remaining {
 		require.NoError(t, riv.VerifyRequest(r))
 	}
+}
+
+// Scenario: the mempool size metric reflects the memory pool after a live reconfiguration. A live reconfiguration
+// rebuilds the batcher's metrics, so the mempool size gauge starts from zero while the memory pool (retained and
+// pruned) still holds requests.
+//  1. Create 2 parties (one shard) and verify both batchers run at config sequence 0 (term 0, primary party 2).
+//  2. Stop the primary so requests submitted to the secondary (party 1) stay in its memory pool.
+//  3. Submit requests to the secondary.
+//  4. Change the stopped primary's endpoint, which the secondary applies as a live reconfiguration.
+//  5. Verify that once the secondary runs with config sequence 1, the mempool size metric still counts the requests.
+func TestBatcherReconfigMempoolSizeMetricAfterPrune(t *testing.T) {
+	parties := []types.PartyID{1, 2}
+	numOfShards := 1
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
+	require.NotNil(t, netInfo)
+
+	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
+
+	updateFileStorePath(t, dir, parties, numOfShards)
+
+	netInfo.CleanUp()
+	stubConsenters := createStubConsenters(t, dir, parties)
+	batchers, genesisBlock, bundle := createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
+	startBatcherNodes(batchers)
+
+	defer func() {
+		for _, sc := range stubConsenters {
+			sc.StopNet()
+		}
+		for _, b := range batchers {
+			b.Stop()
+		}
+	}()
+
+	// make sure all batchers are running with the initial config sequence 0
+	for j := range parties {
+		require.Eventually(t, func() bool {
+			status := batchers[j].GetStatus()
+			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(0)
+		}, 60*time.Second, 10*time.Millisecond)
+	}
+
+	// the shard primary is batchers[(shardID + term) % N] once sorted by party ID; for shard 1, term 0, N 2 this is
+	// party 2. Stop it so that requests submitted to the secondary are never batched and removed from its pool.
+	secondary := types.PartyID(1)
+	primary := types.PartyID(2)
+	secondaryIdx := indexOfParty(parties, secondary)
+	require.Equal(t, primary, batchers[secondaryIdx].GetPrimaryID())
+	batchers[indexOfParty(parties, primary)].Stop()
+
+	// submit requests to the secondary; they stay in its memory pool
+	const numOfRequests = 5
+	routerCtx := routerContextForParty(t, dir, secondary)
+	for i := range numOfRequests {
+		resp, err := batchers[secondaryIdx].Submit(routerCtx, tx.CreateStructuredRequest([]byte{byte(i)}))
+		require.NoError(t, err)
+		require.Empty(t, resp.Error)
+	}
+
+	// create a config block that changes the stopped primary's endpoint; for the secondary this is a live
+	// reconfiguration that retains and prunes its memory pool
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdatePbData := configUpdateBuilder.UpdateBatcherEndpoint(t, primary, types.ShardID(1), "127.0.0.1", 8080)
+	require.NotNil(t, configUpdatePbData)
+	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
+	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
+	require.NoError(t, err)
+
+	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	stubConsenters[secondaryIdx].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
+
+	require.Eventually(t, func() bool {
+		status := batchers[secondaryIdx].GetStatus()
+		return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(1)
+	}, 60*time.Second, 10*time.Millisecond)
+
+	// the reconfiguration restarted the operations system, so read the metrics from its current address. Batchers in
+	// the same process share the Prometheus registry and the last one to register its metrics replaces the others;
+	// the reconfiguration re-registered the secondary's metrics, so its mempool size is the one exposed. All the
+	// requests passed the pruning, so the metric still counts all of them.
+	re := regexp.MustCompile(fmt.Sprintf(`batcher_mempool_size\{party_id="%d",shard_id="%d"\} \d+`, secondary, types.ShardID(1)))
+	require.Equal(t, numOfRequests, testutil.FetchPrometheusMetricValue(t, re, batchers[secondaryIdx].MonitoringServiceAddress()))
 }
 
 // Scenario: evict the shard primary, then add a new party, verifying the shard keeps ordering txs across both

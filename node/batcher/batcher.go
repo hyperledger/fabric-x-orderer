@@ -442,6 +442,8 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, newBatcher
 	}
 	b.batcher.MemPool.Prune(verifyOnReconfig)
 	b.logger.Infof("Mempool pruning completed: %d transactions were dropped", droppedTxCount.Load())
+	// the batcher's metrics were rebuilt above, so set the mempool size gauge to the retained and pruned pool
+	b.batcher.Metrics.memPoolSize.Set(float64(b.batcher.MemPool.RequestCount()))
 
 	// init batcher again
 	b.logger.Infof("Initialize new batcher")
