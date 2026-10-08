@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/grpclog"
 
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
@@ -131,6 +132,7 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 		RequestMaxBytes:                     1 << 10,
 		ClientSignatureVerificationRequired: false,
 		Bundle:                              bundle,
+		Metrics:                             &operations.Metrics{Provider: "disabled"},
 	}
 
 	verifier := requestfilter.NewRulesVerifier(nil)
@@ -141,7 +143,8 @@ func createTestSetup(t *testing.T, partyID types.PartyID) *TestSetup {
 	batcher := stub.NewStubBatcher(t, ca, partyID, types.ShardID(1))
 
 	// create shard router
-	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier, nil)
+	metrics := router.NewRouterMetrics(conf, logger)
+	shardRouter := router.NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, ckp.Cert, ckp.Key, 10, 20, verifier, nil, metrics)
 
 	// start the batcher
 	batcher.Start()

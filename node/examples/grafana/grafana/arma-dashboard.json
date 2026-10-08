@@ -2795,7 +2795,7 @@
         "kind": "Panel",
         "spec": {
           "id": 6,
-          "title": "Router - Requests / sec",
+          "title": "Router - Requests Arrived vs Forwarded / sec",
           "description": "",
           "links": [],
           "data": {
@@ -2814,12 +2814,33 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "rate(router_requests_completed[1m])",
-                        "legendFormat": "Router {{party_id}}",
+                        "expr": "rate(router_requests_arrived[1m])",
+                        "legendFormat": "Router {{party_id}} - arrived",
                         "range": true
                       }
                     },
                     "refId": "A",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "prometheus",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${DS_PROMETHEUS}"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "expr": "rate(router_requests_forwarded[1m])",
+                        "legendFormat": "Router {{party_id}} - forwarded",
+                        "range": true
+                      }
+                    },
+                    "refId": "B",
                     "hidden": false
                   }
                 }

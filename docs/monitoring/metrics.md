@@ -21,8 +21,12 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 ### Router
 
 - **Namespace**: "router"  
-  **Name**: "requests_completed"  
-  **Help**: "The number of incoming requests that have been completed."
+  **Name**: "requests_arrived"  
+  **Help**: "The number of requests that arrived at the router."
+
+- **Namespace**: "router"  
+  **Name**: "requests_forwarded"  
+  **Help**: "The number of requests that the router forwarded to a batcher or to the consenter."
 
 - **Namespace**: "router"  
   **Name**: "requests_rejected"  
