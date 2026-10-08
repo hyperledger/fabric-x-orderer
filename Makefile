@@ -191,9 +191,9 @@ fully-randomized-failure-test: binary
 
 .PHONY: sample-tests
 sample-tests:
-	set -e
 	(cd examples; bash ./scripts/build_docker.sh)
 	(bash ./examples/scripts/run_sample.sh)
+	(bash ./examples/scripts/clean_sample.sh)
 
 # Build the HLFX Orderer image
 .PHONY: build-image
