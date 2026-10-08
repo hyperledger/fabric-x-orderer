@@ -101,6 +101,7 @@ What the scripts do:
   - 4 Assemblers
   - 4 Batchers
   - 4 Consenters
+- the nodes start in the order consenters → batchers → assemblers → routers; each group starts only after the group before it reports healthy on `/healthz`
 - all communication is done using **127.0.0.1 + ports**
 - no hostname resolution is required
 
