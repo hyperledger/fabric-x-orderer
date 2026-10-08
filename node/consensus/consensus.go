@@ -46,7 +46,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const ConfigAckReceiverTimeout = time.Second * 60 // TODO: expose in local config
+const defaultConfigAckReceiverTimeout = time.Second * 60 // TODO: expose in local config
 
 type Storage interface {
 	Append(block *common.Block)
@@ -137,6 +137,10 @@ type Consensus struct {
 	ConfigRequestValidator configrequest.ConfigRequestValidator
 	ConfigRulesVerifier    verify.OrdererRules
 	ConfigAckReceiver      *configack.Receiver
+	// ConfigAckReceiverTimeout bounds how long ApplyConfig waits for config acks from the party's
+	// router, batchers and assembler before applying a new config anyway. Zero selects
+	// defaultConfigAckReceiverTimeout.
+	ConfigAckReceiverTimeout time.Duration
 }
 
 func (c *Consensus) Start() error {
@@ -1146,7 +1150,11 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 
 	// wait for acks
 	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %d", configSeq)
-	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ConfigAckReceiverTimeout)
+	ackTimeout := c.ConfigAckReceiverTimeout
+	if ackTimeout <= 0 {
+		ackTimeout = defaultConfigAckReceiverTimeout
+	}
+	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ackTimeout)
 	defer cancelFunc()
 	allAcksReceived := c.ConfigAckReceiver.WaitForAllAcks(timeoutCtx, configSeq)
 	if !allAcksReceived {
