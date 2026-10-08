@@ -7,12 +7,20 @@ SPDX-License-Identifier: Apache-2.0
 package signutil
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -123,4 +131,42 @@ func GetMspIDfromDir(mspDir string) (string, error) {
 		return "", fmt.Errorf("failed to extract mspID from path: %s", mspDir)
 	}
 	return matches[2], nil
+}
+
+// NewSelfSignedSigner returns a signer over a freshly generated signing key, together with the
+// self-signed certificate that carries its public key.
+func NewSelfSignedSigner(t *testing.T, mspID string) (*TestSigner, []byte) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	return NewSignerOfKey(t, key, mspID)
+}
+
+// NewSignerOfKey returns a signer over key, together with the self-signed certificate that carries
+// its public key.
+func NewSignerOfKey(t *testing.T, key *ecdsa.PrivateKey, mspID string) (*TestSigner, []byte) {
+	t.Helper()
+
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject:      pkix.Name{CommonName: "arma node"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	require.NotNil(t, certPEM)
+
+	return &TestSigner{
+		ecdsaSigner: crypto.ECDSASigner(*key),
+		creator:     &msp.SerializedIdentity{Mspid: mspID, IdBytes: certPEM},
+	}, certPEM
 }
