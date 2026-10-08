@@ -217,7 +217,7 @@ For example, slow assembler fetches may indicate missing or slow batcher data, w
 
 The role-specific documents contain deeper operational and implementation details. Start with this architecture document for the overall flow, then use the links below to inspect startup behavior, APIs, metrics, and failure handling for each service.
 
-- Router details: [`node/router`](../node/router)
+- Router details: [`docs/router.md`](router.md) and [`node/router`](../node/router)
 - Batcher details: [`docs/batcher.md`](batcher.md) and [`node/batcher`](../node/batcher)
 - Consenter details: [`docs/consensus.md`](consensus.md) and [`node/consensus`](../node/consensus)
 - Assembler details: [`docs/assembler.md`](assembler.md) and [`node/assembler`](../node/assembler)

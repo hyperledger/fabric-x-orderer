@@ -86,6 +86,7 @@ Router:
 * `Broadcast` - the router accepts transactions from submitting clients, performs some validation on the transactions, and dispatch them to batchers.
 In order to submit a TX the submitting client must connect to the router endpoints and try to submit to all the routers, from all parties.
 * `RequestTransmit` - exposed by the router to accept transactions, either as a single request or stream. This is an experimental API, and `Broadcast` is the recommended API.
+For the responses a client receives, and the access control applied to its requests, see [Router](router.md#2-submitting-transactions-the-client-interface).
 
 Batcher:
 * `RequestTransmit` - the batcher receives client requests from routers, batches and processes them, and streams responses back to the router. This applies to both primary and secondary batcher.
