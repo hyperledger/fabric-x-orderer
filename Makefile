@@ -19,6 +19,7 @@
 #   - build-multiplatform-test-node-image: builds the all-in-one test-node image for multiple platforms
 #   - deterministic-failure-test:    runs the deterministic failure test locally (5 min, 1000 tx/s, failure runner enabled)
 #   - fully-randomized-failure-test: runs the fully randomized failure test locally (5 min, 1000 tx/s, failure runner enabled)
+#   - release-bins: cross-compiles arma and armageddon for a single GOOS/GOARCH into release/<GOOS>-<GOARCH>/bin/
 
 # Docker image vars
 DOCKERFILE ?= images/multi-platform/Dockerfile
@@ -53,6 +54,21 @@ binary:
 	mkdir -p ./bin
 	go build -o ./bin/arma ./cmd/arma
 	go build -o ./bin/armageddon ./cmd/armageddon
+
+# Cross-compile both binaries for a single GOOS/GOARCH and place them under
+# $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/.  Called by scripts/create-binary-package.sh.
+#
+# Required vars: GOOS, GOARCH, RELEASE_DIR
+# Optional vars: METADATA_VAR  (space-separated key=value pairs forwarded as -X ldflags)
+RELEASE_DIR ?= release
+LDFLAGS     := $(patsubst %,-X 'github.com/hyperledger/fabric-x-orderer/common/metadata.%',$(METADATA_VAR))
+.PHONY: release-bins
+release-bins:
+	mkdir -p $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin
+	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 \
+	  go build -trimpath -ldflags "$(LDFLAGS)" -o $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/arma ./cmd/arma
+	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 \
+	  go build -trimpath -ldflags "$(LDFLAGS)" -o $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/armageddon ./cmd/armageddon
 
 .PHONY: clean-binary
 clean-binary:
