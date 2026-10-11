@@ -53,6 +53,17 @@ message AssemblerDecisionReport {
   uint64 config_seq = 4;   // the config sequence the report was signed under
 }
 
+message AssemblerHeight {
+  uint32 party = 1;        // the reporting assembler's party
+  uint64 decision_num = 2; // the highest committed decision number it reported
+}
+
+message PrunePoint {
+  uint32 shard = 1;
+  uint32 primary = 2;
+  uint64 seq = 3; // batchers may drop every batch of <shard, primary> with a lower sequence
+}
+
 // ControlEvent represents a control event that can be one of several types
 message ControlEvent {
   oneof event {
@@ -71,4 +82,6 @@ message State {
   repeated Complaint complaints = 4; // Complaints received by consenters from batchers
   bytes app_context = 5; // Auxiliary data that may be served as context to the application
   repeated BatchAttestationFragment stale_config_bafs = 6; // BAFs with stale config, surfaced for one decision so batchers can revive their requests
+  repeated AssemblerHeight assembler_heights = 7; // Highest committed decision reported by each assembler party, sorted by party
+  repeated PrunePoint prune_points = 8; // Agreed prune point per <shard, primary>, sorted by (shard, primary); an absent pair means 0
 }
