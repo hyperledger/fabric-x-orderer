@@ -450,10 +450,10 @@ for the network-wide part.
 A consenter exposes its metrics in Prometheus format on the operations endpoint configured by
 `Operations.ListenAddress` and `Operations.ListenPort`, alongside a health check, a logging-spec
 endpoint, and version information. When `Metrics.MetricsLogInterval` is non-zero the node also writes a
-periodic `CONSENSUS_METRICS` line to its log, with running totals and the decisions and blocks made
-during the last interval — enough to watch progress without a Prometheus deployment.
+periodic `CONSENSUS_METRICS` line to its log, with running totals and the decisions, blocks and decision
+bytes made during the last interval — enough to watch progress without a Prometheus deployment.
 
-Five metrics are the consenter's own, each a counter labelled with the party ID:
+Six metrics are the consenter's own, each a counter labelled with the party ID:
 
 | Metric | What it tells you |
 |--------|-------------------|
@@ -462,6 +462,7 @@ Five metrics are the consenter's own, each a counter labelled with the party ID:
 | `consensus_bafs_count` | How many batch attestation fragments the consenter has received. Compare across parties: a shard whose fragments dry up is a shard whose batchers are struggling. |
 | `consensus_complaints_count` | How many complaints the consenter has received. A rising count is the early signal of a suspect shard primary, ahead of the rotation it may cause. |
 | `consensus_txs_count` | How many transactions the consenter has ordered, across all the blocks it committed. |
+| `consensus_decisions_size_bytes` | How many bytes of decisions the consenter has written to its ledger. Its rate is the bandwidth the consenter writes to disk; dividing it by the rate of `decisions_count` gives the average decision size. Unlike `decisions_count`, it starts from zero when the node restarts. |
 
 The full list of metrics for every role, and how to collect and visualize them, is in the
 [monitoring and metrics guide](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/monitoring/metrics.md).

@@ -185,6 +185,10 @@ What each of these metrics tells you about the consenter is described in [Consen
   **Name:** "txs_count"  
   **Help:** "The total number of transactions ordered by the consenter."
 
+- **Namespace:** "consensus"  
+  **Name:** "decisions_size_bytes"  
+  **Help:** "The total size in bytes of the decisions written to the consensus ledger."
+
 ---
 
 ## Enabling Metrics
