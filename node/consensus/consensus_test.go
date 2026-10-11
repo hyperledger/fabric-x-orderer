@@ -48,6 +48,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -1048,6 +1049,83 @@ func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 	})
 }
 
+// TestVerifyRequestRejectsNonCanonicalBytes checks that verifyCE (reached via the exported VerifyRequest)
+// accepts a control event only in the encoding ControlEvent.Bytes produces. The signature and the request
+// ID cover only the parsed fields, while the raw bytes are what gets pooled, proposed and persisted, so a
+// relay could otherwise pad a validly signed event (e.g. with unknown fields) and, by getting its copy
+// pooled first, have the honest copy rejected as a duplicate.
+func TestVerifyRequestRejectsNonCanonicalBytes(t *testing.T) {
+	logger := testutil.CreateLogger(t, 1)
+
+	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	signer := crypto.ECDSASigner(*sk)
+	verifier := make(crypto.ECDSAVerifier)
+	verifier[arma_types.NewBatcherIdentity(1, 1)] = signer.PublicKey
+	verifier[arma_types.NewAssemblerIdentity(1)] = signer.PublicKey
+
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	const currentConfigSeq = arma_types.ConfigSequence(2)
+	configtxValidator.SequenceReturns(uint64(currentConfigSeq))
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+
+	// The ledger holds the reported decision, so the report is otherwise valid.
+	const reportedDecision = arma_types.DecisionNum(100)
+	c := &node_consensus.Consensus{
+		Logger:      logger,
+		SigVerifier: verifier,
+		Config:      &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
+		Storage:     storageHeight{height: uint64(reportedDecision) + 1},
+	}
+
+	baf, err := batcher.CreateBAF(signer, 1, 1, make([]byte, 32), 1, 1, currentConfigSeq, 0, nil)
+	require.NoError(t, err)
+
+	complaint := &state.Complaint{ShardTerm: state.ShardTerm{Shard: 1}, Signer: 1, Reason: "r", ConfigSeq: currentConfigSeq}
+	complaint.Signature, err = signer.Sign(complaint.ToBeSigned())
+	require.NoError(t, err)
+
+	report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: reportedDecision, ConfigSeq: currentConfigSeq}
+	report.Signature, err = signer.Sign(report.ToBeSigned())
+	require.NoError(t, err)
+
+	withUnknownField := func(req []byte) []byte {
+		padded := append([]byte{}, req...)
+		padded = protowire.AppendTag(padded, 1000, protowire.BytesType)
+		return protowire.AppendBytes(padded, make([]byte, 1024))
+	}
+	// Concatenated protobuf encodings of a message parse as their merge, which for the same message is
+	// the message itself.
+	repeated := func(req []byte) []byte {
+		return append(append([]byte{}, req...), req...)
+	}
+
+	for _, tc := range []struct {
+		name string
+		ce   *state.ControlEvent
+	}{
+		{name: "BAF", ce: &state.ControlEvent{BAF: baf}},
+		{name: "complaint", ce: &state.ControlEvent{Complaint: complaint}},
+		{name: "assembler decision report", ce: &state.ControlEvent{AssemblerReport: report}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			canonical := tc.ce.Bytes()
+
+			info, err := c.VerifyRequest(canonical)
+			require.NoError(t, err)
+
+			for _, nonCanonical := range [][]byte{withUnknownField(canonical), repeated(canonical)} {
+				// The non-canonical encoding decodes to the same event, so it carries the same request ID.
+				require.Equal(t, info, c.RequestID(nonCanonical))
+
+				_, err := c.VerifyRequest(nonCanonical)
+				require.ErrorContains(t, err, "non-canonical encoding")
+			}
+		})
+	}
+}
+
 // TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs covers the VerifyProposal reqInfos loop
 // (consensus.go) during a config bump. A BAF exactly one config behind is still verified and reported
 // in reqInfos, so the follower's reqInfos stay consistent with the leader's while consensus surfaces
@@ -1213,6 +1291,7 @@ func TestVerifyProposalRejectsMalformedRequest(t *testing.T) {
 		{name: "report with zero party", reqs: [][]byte{reportWithParty(0)}},
 		{name: "report with party above uint16", reqs: [][]byte{reportWithParty(math.MaxUint16 + 1)}},
 		{name: "valid BAF followed by garbage bytes", reqs: [][]byte{validReq, garbage}},
+		{name: "BAF in a non-canonical encoding", reqs: [][]byte{append(append([]byte{}, validReq...), validReq...)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// A fresh instance per case, so a panic that leaves c.lock held cannot hang the next case.
