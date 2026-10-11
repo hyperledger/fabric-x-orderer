@@ -51,7 +51,7 @@ consenters decide which batcher is primary, and the secondaries watch it: a seco
 requests ignored, or receives an invalid batch, complains to the consenters, and enough complaints
 replace the primary.
 
-<!-- Figure 1 placeholder: from slide 6 of the batcher tech-transfer deck. -->
+<!-- Figure 1 placeholder -->
 *Figure 1: The batcher's inputs and outputs — transactions from the router of its own party, batches
 pulled by the other batchers of its shard and by the assemblers, BAFs and complaints sent to every
 consenter, and decisions pulled from the consenter of its own party. (Diagram to be added.)*
@@ -112,7 +112,7 @@ them in full.
 - `Deliver`, on the consenter of its own party — to pull the decision stream. A decision carries the
   current term of every shard, which is how the batcher learns who the primary is, and it may carry a
   config block.
-- `Consensus.AckConfig` — to tell the consenter that it has taken a new configuration (see
+- `Consensus.AckConfig` — to tell the consenter that it has received a new config block (see
   [Reconfiguration](#7-reconfiguration)).
 
 ## 3. Design and Internal Architecture
@@ -145,7 +145,7 @@ verifier** checks requests coming from the router, from other batchers, and insi
 **batch ledger array** is written by the batcher role and read by the `Deliver` service. Around these
 run the operations subsystem, the metrics tracker, and a health checker.
 
-<!-- Figure 2 placeholder: from slide 31 of the batcher tech-transfer deck. -->
+<!-- Figure 2 placeholder -->
 *Figure 2: The units of a primary and a secondary batcher, and how batches, BAFs, acks, forwarded
 requests, complaints and term changes flow between them and the consenters. (Diagram to be added.)*
 
@@ -192,7 +192,7 @@ The acks bound how far the primary can run ahead of the secondaries. The primary
 as acked, and a sequence is confirmed once `f+1` batchers have acked it. The primary does not cut a
 new batch while it is `BatchSequenceGap` or more sequences ahead of the last confirmed one.
 
-<!-- Figure 3 placeholder: from slides 7-15 of the batcher tech-transfer deck. -->
+<!-- Figure 3 placeholder -->
 *Figure 3: One batch in a shard of four parties — the primary cuts it from its mempool, stores it, and
 sends a BAF; each secondary pulls, verifies, stores it, sends its own BAF, and acks. (Diagram to be
 added.)*
@@ -239,15 +239,21 @@ leaves one out:
 3. **Term change** — when `f+1` batchers of the shard complain in the same term, the consenters
    increment the term, and the next batcher becomes primary.
 
-A secondary also complains when a batch it pulled fails verification. The consenter side of this is
-described in [The Consenter as System Controller](consensus.md#34-the-consenter-as-system-controller).
+A secondary also complains when a batch it pulled fails verification. Complaints are not the only
+trigger for a term change: the consenters also rotate the primary when they receive BAFs that attest
+different digests for the same ⟨shard, primary, sequence⟩, which prove the primary signed conflicting
+batches. The consenter side of both is described in
+[The Consenter as System Controller](consensus.md#34-the-consenter-as-system-controller).
 
-<!-- Figure 4 placeholder: from slides 23-27 of the batcher tech-transfer deck. -->
+<!-- Figure 4 placeholder -->
 *Figure 4: A primary censoring a request — the secondaries forward it after the first strike, complain
 after the second, and the consenters change the term. (Diagram to be added.)*
 
 The mempool holds at most `MemPoolMaxSize` requests. When it is full, a new request waits up to
-`SubmitTimeout` for space and is then rejected, which pushes back on the router.
+`SubmitTimeout` for space and is then rejected, which pushes back on the router. The mempool also
+rejects a request that is larger than `RequestMaxBytes`, a request it already holds, and every request
+while it is halted, as it is during a soft-stop or a reconfiguration. A "pool halted or closed" error
+therefore does not mean the mempool is full, and raising `MemPoolMaxSize` does not help.
 
 ### 3.5 The Batch Ledger Array
 
@@ -257,7 +263,7 @@ that created it, at its batch sequence. Each ledger is served as its own `Delive
 secondary pulls from the primary's ledger starting at its own height for that party, and an assembler
 pulls from the ledger the batch attestation names.
 
-<!-- Figure 5 placeholder: from slides 16-17 of the batcher tech-transfer deck. -->
+<!-- Figure 5 placeholder -->
 *Figure 5: The batch ledger array of one batcher in a shard of four parties — one ledger per party,
 each holding the batches that party created while it was primary. (Diagram to be added.)*
 
@@ -316,6 +322,7 @@ Batching:
   BatchSize:
     MaxMessageCount: 10000
     AbsoluteMaxBytes: 10485760
+  RequestMaxBytes: 1048576
 ```
 
 | Field | What it controls |
@@ -323,8 +330,9 @@ Batching:
 | `BatchCreationTimeout` | The longest the primary waits for a batch to fill before it cuts a smaller one. |
 | `FirstStrikeThreshold` | How long a secondary holds a request not yet batched before forwarding it to the primary. |
 | `SecondStrikeThreshold` | How long after the first strike a secondary waits before complaining about the primary. |
-| `AutoRemoveTimeout` | How long a request may stay in the mempool after the second strike before it is removed. |
+| `AutoRemoveTimeout` | Meant to bound how long a request may stay in the mempool after the second strike; this is not implemented yet. Today it only sets how long a secondary remembers a request it saw in a batch before receiving it, so that a late copy is dropped. |
 | `MaxMessageCount`, `AbsoluteMaxBytes` | The most requests, and bytes, in one batch. |
+| `RequestMaxBytes` | The largest request the mempool accepts, in bytes. |
 
 Templates can be found under [`config/sample`](../config/sample):
 [`local_config_batcher.yaml`](../config/sample/local_config_batcher.yaml) for this role, and
@@ -379,13 +387,15 @@ The shard tolerates up to `f` faulty batchers out of `N ≥ 3f+1`.
 A new configuration reaches the batcher as a decision whose last block is a config block. The batcher
 adds the block to its config store, **soft-stops**, which pauses the batcher role and the decision
 puller while keeping the mempool, and acknowledges the new configuration sequence to the consenter.
+The ack means only that the batcher has received the config block, not that it has applied it: it is
+sent before the checks below, so a batcher that then enters pending-admin has acked it too.
 
 Some changes cannot be applied by the running node. If the party is evicted, if the batcher's own
-identity changes (its endpoint or certificates), or, in the current version, if the batching
-parameters change, the batcher enters the **pending-admin** state and waits for an administrator.
-Anything else it applies in the running process: it rebuilds its configuration and services against
-the new topology, keeps its mempool but removes the requests that no longer pass verification under
-the new configuration, and starts again.
+identity changes (its endpoint or certificates), or, in the current version, if most of the batching
+parameters change (`BatchCreationTimeout` is applied live), the batcher enters the **pending-admin**
+state and waits for an administrator. Anything else it applies in the running process: it rebuilds its
+configuration and services against the new topology, keeps its mempool but removes the requests that
+no longer pass verification under the new configuration, and starts again.
 
 Batches attested under the previous configuration may not have been ordered. When a decision reports
 such a BAF of this batcher, the batcher returns the batch's requests to its mempool, verifying each
