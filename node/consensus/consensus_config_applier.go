@@ -62,6 +62,12 @@ func (ca *DefaultConfigApplier) ApplyConfigToState(state *state.State, configReq
 		}
 	}
 
+	parties := make([]arma_types.PartyID, 0, len(sharedConfig.PartiesConfig))
+	for _, party := range sharedConfig.PartiesConfig {
+		parties = append(parties, arma_types.PartyID(party.GetPartyID()))
+	}
+	newState.RetainAssemblerHeights(parties)
+
 	return newState, nil
 }
 
