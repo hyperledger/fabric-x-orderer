@@ -201,7 +201,7 @@ func (m *BatcherMetrics) StopMetricsTracker() {
 		m.wg.Wait()
 		m.logger.Infof("Reporting routine is stopping")
 		m.logger.Infof(
-			"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_avg_seconds=%.6f, batch_verify_latency_avg_seconds=%.6f, batch_hashing_latency_avg_seconds=%.6f, batch_ledger_header_hashing_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f",
+			"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_avg_seconds=%.6f, batch_verify_latency_avg_seconds=%.6f, batch_hashing_latency_avg_seconds=%.6f, batch_ledger_header_hashing_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f, batch_ledger_batches_size_bytes_total=%d",
 			m.partyID,
 			m.shardID,
 			m.role(),
@@ -218,6 +218,7 @@ func (m *BatcherMetrics) StopMetricsTracker() {
 			monitoring.GetHistogramAverage(m.batchHashingLatency.(prometheus.Metric), m.logger),
 			monitoring.GetHistogramAverage(m.ledgerMetrics.HeaderHashingLatency.(prometheus.Metric), m.logger),
 			monitoring.GetHistogramAverage(m.ledgerMetrics.AppendLatency.(prometheus.Metric), m.logger),
+			uint64(monitoring.GetMetricValue(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)),
 		)
 	})
 }
@@ -248,7 +249,7 @@ func (m *BatcherMetrics) trackMetrics() {
 			appendSum, appendCount := monitoring.GetHistogramSumAndCount(m.ledgerMetrics.AppendLatency.(prometheus.Metric), m.logger)
 
 			m.logger.Infof(
-				"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resends_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_interval_avg_seconds=%.6f, batch_verify_latency_interval_avg_seconds=%.6f, batch_hashing_latency_interval_avg_seconds=%.6f, batch_ledger_header_hashing_latency_interval_avg_seconds=%.6f, batch_ledger_append_latency_interval_avg_seconds=%.6f",
+				"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resends_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_interval_avg_seconds=%.6f, batch_verify_latency_interval_avg_seconds=%.6f, batch_hashing_latency_interval_avg_seconds=%.6f, batch_ledger_header_hashing_latency_interval_avg_seconds=%.6f, batch_ledger_append_latency_interval_avg_seconds=%.6f, batch_ledger_batches_size_bytes_total=%d",
 				m.partyID,
 				m.shardID,
 				m.role(),
@@ -266,6 +267,7 @@ func (m *BatcherMetrics) trackMetrics() {
 				monitoring.Average(hashingSum-prevHashingSum, hashingCount-prevHashingCount),
 				monitoring.Average(headerHashingSum-prevHeaderHashingSum, headerHashingCount-prevHeaderHashingCount),
 				monitoring.Average(appendSum-prevAppendSum, appendCount-prevAppendCount),
+				uint64(monitoring.GetMetricValue(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)),
 			)
 			prevC, prevP, prevR = created, pulled, resends
 			prevMempoolSum, prevMempoolCount = mempoolSum, mempoolCount
