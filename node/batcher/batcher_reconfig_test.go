@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 	"github.com/hyperledger/fabric-x-orderer/request"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -323,14 +324,15 @@ func TestBatcherReconfigMempoolPruneDropsInvalidRequests(t *testing.T) {
 	}
 }
 
-// Scenario: the mempool size metric reflects the memory pool after a live reconfiguration. A live reconfiguration
-// rebuilds the batcher's metrics, so the mempool size gauge starts from zero while the memory pool (retained and
-// pruned) still holds requests.
+// Scenario: the mempool size metric reflects the pruned memory pool after a live reconfiguration. A live
+// reconfiguration rebuilds the batcher's metrics, so the mempool size gauge starts from zero while the memory pool
+// (retained and pruned) still holds requests.
 //  1. Create 2 parties (one shard) and verify both batchers run at config sequence 0 (term 0, primary party 2).
 //  2. Stop the primary so requests submitted to the secondary (party 1) stay in its memory pool.
-//  3. Submit requests to the secondary.
+//  3. Submit valid requests and requests that fail verification (empty payload) to the secondary.
 //  4. Change the stopped primary's endpoint, which the secondary applies as a live reconfiguration.
-//  5. Verify that once the secondary runs with config sequence 1, the mempool size metric still counts the requests.
+//  5. Verify that once the secondary runs with config sequence 1, the mempool size metric counts only the requests
+//     that survived the pruning.
 func TestBatcherReconfigMempoolSizeMetricAfterPrune(t *testing.T) {
 	parties := []types.PartyID{1, 2}
 	numOfShards := 1
@@ -374,11 +376,21 @@ func TestBatcherReconfigMempoolSizeMetricAfterPrune(t *testing.T) {
 	require.Equal(t, primary, batchers[secondaryIdx].GetPrimaryID())
 	batchers[indexOfParty(parties, primary)].Stop()
 
-	// submit requests to the secondary; they stay in its memory pool
-	const numOfRequests = 5
+	// submit requests to the secondary; they stay in its memory pool. The batcher trusts its router and does not
+	// verify a request's content on submit, so the requests with an empty payload enter the pool too, and the
+	// pruning drops them since they fail the PayloadNotEmpty rule. Their distinct signatures give them distinct
+	// request IDs.
+	const numOfValidRequests = 3
 	routerCtx := routerContextForParty(t, dir, secondary)
-	for i := range numOfRequests {
-		resp, err := batchers[secondaryIdx].Submit(routerCtx, tx.CreateStructuredRequest([]byte{byte(i)}))
+	reqs := []*protos.Request{
+		{Signature: []byte("sig-a")},
+		{Signature: []byte("sig-b")},
+	}
+	for i := range numOfValidRequests {
+		reqs = append(reqs, tx.CreateStructuredRequest([]byte{byte(i)}))
+	}
+	for _, req := range reqs {
+		resp, err := batchers[secondaryIdx].Submit(routerCtx, req)
 		require.NoError(t, err)
 		require.Empty(t, resp.Error)
 	}
@@ -389,7 +401,9 @@ func TestBatcherReconfigMempoolSizeMetricAfterPrune(t *testing.T) {
 	configUpdatePbData := configUpdateBuilder.UpdateBatcherEndpoint(t, primary, types.ShardID(1), "127.0.0.1", 8080)
 	require.NotNil(t, configUpdatePbData)
 	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
-	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
+	configBlock, err := cfgutil.CreateConsensusConfigBlock(
+		bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0,
+	)
 	require.NoError(t, err)
 
 	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
@@ -402,10 +416,14 @@ func TestBatcherReconfigMempoolSizeMetricAfterPrune(t *testing.T) {
 
 	// the reconfiguration restarted the operations system, so read the metrics from its current address. Batchers in
 	// the same process share the Prometheus registry and the last one to register its metrics replaces the others;
-	// the reconfiguration re-registered the secondary's metrics, so its mempool size is the one exposed. All the
-	// requests passed the pruning, so the metric still counts all of them.
-	re := regexp.MustCompile(fmt.Sprintf(`batcher_mempool_size\{party_id="%d",shard_id="%d"\} \d+`, secondary, types.ShardID(1)))
-	require.Equal(t, numOfRequests, testutil.FetchPrometheusMetricValue(t, re, batchers[secondaryIdx].MonitoringServiceAddress()))
+	// the reconfiguration re-registered the secondary's metrics, so its mempool size is the one exposed. The regex
+	// matches only the secondary's series, so exposing another batcher's metrics fails the test rather than passing
+	// it. The metric counts only the requests that passed the pruning, not the ones it dropped.
+	re := regexp.MustCompile(
+		fmt.Sprintf(`batcher_mempool_size\{party_id="%d",shard_id="%d"\} \d+`, secondary, types.ShardID(1)),
+	)
+	require.Equal(t, numOfValidRequests,
+		testutil.FetchPrometheusMetricValue(t, re, batchers[secondaryIdx].MonitoringServiceAddress()))
 }
 
 // Scenario: evict the shard primary, then add a new party, verifying the shard keeps ordering txs across both
