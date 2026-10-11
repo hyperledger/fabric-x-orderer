@@ -373,10 +373,10 @@ An assembler exposes its metrics in Prometheus format on the operations endpoint
 `Operations.ListenAddress` and `Operations.ListenPort`, alongside a health check, a logging-spec
 endpoint and version information. When `Metrics.MetricsLogInterval` is non-zero the node also writes a
 periodic `ASSEMBLER_METRICS` line to its log, with the totals so far, and the transactions and blocks
-committed and the average of each of the three latency histograms during the last interval — enough to
-see how a node is doing without a Prometheus deployment.
+committed, their average sizes, and the average of each of the three latency histograms during the last
+interval — enough to see how a node is doing without a Prometheus deployment.
 
-Five metrics are the assembler's own, each labelled with the party ID:
+Seven metrics are the assembler's own, each labelled with the party ID:
 
 | Metric | What it tells you |
 |--------|-------------------|
@@ -385,9 +385,12 @@ Five metrics are the assembler's own, each labelled with the party ID:
 | `assembler_batch_ledger_append_latency_seconds` | How long appending a block to the ledger takes. It follows the storage, not the network. |
 | `assembler_prefetch_index_size_bytes` | How many bytes the index holds for a shard, summed over its partitions and including batches fetched on demand. With one active primary it tracks that partition's budget; after a primary change it can exceed the budget until the previous primary's batches expire. |
 | `assembler_prefetch_index_cache_evictions_total` | How often a batch had to be evicted to make room for one the collator needs. |
+| `assembler_block_size_avg_bytes` | The average size of the blocks committed during the last `Metrics.MetricsLogInterval`: their bytes divided by their number. Together with the block rate it gives the ledger's write bandwidth. It is 0 for an interval in which nothing was committed, and is only updated while `MetricsLogInterval` is non-zero. |
+| `assembler_tx_size_avg_bytes` | The same for transactions: the bytes of the transactions committed during the last interval divided by their number. |
 
 Beside these, the ledger reports what has been committed —
-`assembler_ledger_transaction_count_total`, `assembler_ledger_blocks_count_total` and
+`assembler_ledger_transaction_count_total`, `assembler_ledger_blocks_count_total`,
+`assembler_ledger_transactions_size_bytes_total` and
 `assembler_ledger_blocks_size_bytes_total` — and the `Deliver` service reports the standard
 `deliver_streams_opened`, `deliver_streams_closed`, `deliver_requests_received`,
 `deliver_requests_completed` and `deliver_blocks_sent`.
