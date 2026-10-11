@@ -40,6 +40,7 @@ theme:
 |-------|-------|
 | `node` | A node box; label it with a `node-label` text, `node-label-main` for the figure's subject, or `node-label-small` for a unit inside a node. |
 | `node batches` | A node filled in the batch colour, for a batch or what it supplies. |
+| `node dashed` | A node with a dashed outline, for one that is present only sometimes. |
 | `node-sub` | A `tspan` subscript in a node label, such as the shard in `B1s1`. |
 | `ledger` | A ledger cylinder. |
 | `group` with `shard-1`, `shard-2`, `shard-3` or `consensus` | A rounded group behind nodes. |

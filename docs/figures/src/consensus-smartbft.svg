@@ -10,13 +10,14 @@ SPDX-License-Identifier: Apache-2.0
     <marker id="arrow-blocks" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="m-blocks" d="M0,0 L10,5 L0,10 z"/></marker>
   </defs>
 
-  <!-- The two consenters; each column is one callback SmartBFT makes into the consenter, left to right in time -->
+  <!-- The two consenters; each column is one step of the decision, left to right in time. The first, Submit, is the
+       consenter's own entry point into the engine; every later column is a callback SmartBFT makes into the consenter -->
   <text class="group-label start" x="150" y="58">C1 (leader)</text>
   <rect class="group frame" x="150" y="70" width="960" height="110" rx="14"/>
   <text class="group-label start" x="150" y="556">C2 (follower)</text>
   <rect class="group frame" x="150" y="420" width="960" height="110" rx="14"/>
 
-  <!-- C1's callbacks -->
+  <!-- C1's steps -->
   <rect class="node" x="165" y="98" width="150" height="56"/>
   <text class="node-label-small" x="240" y="122">Submit</text><text class="note" x="240" y="142">verify the event</text>
   <rect class="node" x="345" y="98" width="150" height="56"/>
@@ -31,7 +32,7 @@ SPDX-License-Identifier: Apache-2.0
   <ellipse class="ledger" cx="1075" cy="108" rx="20" ry="6"/>
   <text class="note" x="1075" y="170">ledger</text>
 
-  <!-- C2's callbacks -->
+  <!-- C2's steps -->
   <rect class="node" x="165" y="446" width="150" height="56"/>
   <text class="node-label-small" x="240" y="470">Submit</text><text class="note" x="240" y="490">verify the event</text>
   <rect class="node" x="345" y="446" width="150" height="56"/>

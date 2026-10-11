@@ -10,11 +10,12 @@ SPDX-License-Identifier: Apache-2.0
     <marker id="arrow-blocks" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="m-blocks" d="M0,0 L10,5 L0,10 z"/></marker>
   </defs>
 
-  <!-- One decision, field by field; the header's fields are tinted, the rest is what SmartBFT agreed on and signed -->
+  <!-- One decision, field by field; the header's fields are tinted. Header, payload and metadata are what SmartBFT agreed
+       on and each consenter signed; the signatures row holds those signatures -->
   <text class="group-label" x="210" y="48">One decision</text>
   <rect class="group frame" x="40" y="60" width="340" height="310" rx="14"/>
   <rect class="node consensus" x="55" y="80" width="310" height="45"/>
-  <text class="node-label-small" x="210" y="100">Header</text><text class="note" x="210" y="118">decision number, previous decision's hash</text>
+  <text class="node-label-small" x="210" y="100">Header</text><text class="note" x="210" y="118">number, previous hash, last config decision</text>
   <rect class="node consensus" x="55" y="125" width="310" height="45"/>
   <text class="node-label-small" x="210" y="145">Header: state</text><text class="note" x="210" y="163">shard terms, complaints, pending BAFs</text>
   <rect class="node consensus" x="55" y="170" width="310" height="45"/>
@@ -43,8 +44,10 @@ SPDX-License-Identifier: Apache-2.0
 
   <!-- The next blocks; the last one may be a config block -->
   <rect class="node" x="555" y="290" width="330" height="50"/><text class="node-label-small" x="720" y="321">Block h+1</text>
-  <rect class="node" x="555" y="375" width="330" height="60"/>
-  <text class="node-label-small" x="720" y="400">Block h+2: config block</text><text class="note" x="720" y="420">data: the config request; always last</text>
+  <rect class="node dashed" x="555" y="375" width="330" height="68"/>
+  <text class="node-label-small" x="720" y="397">Block h+2: config block</text>
+  <text class="note" x="720" y="415">only if decided; always the last block</text>
+  <text class="note" x="720" y="432">data: the config request; data hash = its digest</text>
 
   <!-- Each block points back to the previous one -->
   <line class="flow blocks" x1="720" y1="290" x2="720" y2="258" marker-end="url(#arrow-blocks)"/>

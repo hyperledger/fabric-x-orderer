@@ -61,11 +61,13 @@ the same ordered stream, so all parties rotate the primary at the same point in 
   <img alt="The consenter's inputs and output" src="figures/consensus-context.svg">
 </picture>
 
-*Figure 1: The consenter's inputs and output — batch attestation fragments and complaints from the
-batchers of every party, configuration requests from the router of its own party, SmartBFT messages
-exchanged with the consenters of the other parties, and the ordered decision stream served to the
-batchers, router, and assembler of its own party. The nodes shown are part of a network of 4 parties
-and 2 shards; C1, R1, A1 and the B1 batchers belong to party 1.*
+*Figure 1: The consenter's main inputs and output — batch attestation fragments and complaints from
+the batchers of every party, configuration requests from the router of its own party, SmartBFT
+messages exchanged with the consenters of the other parties, and the ordered decision stream served
+to the batchers, router, and assembler of its own party. Not shown are the configuration
+acknowledgments (`AckConfig`, see [Section 2](#2-interfaces-ingesting-events-and-serving-decisions))
+that the router, batchers, and assembler of its own party send it. The nodes shown are part of a
+network of 4 parties and 2 shards; C1, R1, A1 and the B1 batchers belong to party 1.*
 
 ### 1.1 Units and Terms
 
@@ -333,19 +335,20 @@ and identify a request, to assemble a proposal (which is where the state machine
 are built), to verify a proposal or a peer's signature, to sign, and — the commit callback — to deliver
 a decided proposal, which indexes the batch digests, appends the block, and tells the engine about any
 membership change the decision carried. The engine's own configuration (its timeouts, batch sizing, and
-pool limits) comes from shared configuration, described next.
+pool limits) comes from shared configuration, described in [Configuration](#4-configuration).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/consensus-smartbft-dark.svg">
-  <img alt="The SmartBFT callbacks on a leader and a follower" src="figures/consensus-smartbft.svg">
+  <img alt="Submission and the SmartBFT callbacks on a leader and a follower" src="figures/consensus-smartbft.svg">
 </picture>
 
-*Figure 3: The callbacks SmartBFT makes into the consenter as one decision is agreed, left to right in
-time, on the leader C1 and a follower C2. Each consenter verifies an incoming event and submits it to
-its engine, and a follower forwards a request the leader has not proposed in time. The leader
-assembles the proposal and sends it in a pre-prepare; the follower verifies it. After the prepares,
-each consenter signs the proposal and sends its signature in a commit, and verifies the signatures it
-receives. Once a quorum has committed, each consenter delivers the decision to its ledger.*
+*Figure 3: One decision being agreed, left to right in time, on the leader C1 and a follower C2. Each
+consenter first verifies an incoming event itself and submits it to its engine, and a follower forwards
+a request the leader has not proposed in time. Every later step is a callback SmartBFT makes into the
+consenter: the leader assembles the proposal and sends it in a pre-prepare; the follower verifies it.
+After the prepares, each consenter signs the proposal and sends its signature in a commit, and verifies
+the signatures it receives. Once a quorum has committed, each consenter delivers the decision to its
+ledger.*
 
 ### 3.7 Code Map
 
