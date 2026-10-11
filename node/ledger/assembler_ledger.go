@@ -122,6 +122,14 @@ func (l *AssemblerLedger) estimatedBlockSize(block *common.Block) uint64 {
 	return blockSize + headerSize
 }
 
+func (l *AssemblerLedger) transactionsSize(block *common.Block) uint64 {
+	size := uint64(0)
+	for _, data := range block.GetData().GetData() {
+		size += uint64(len(data))
+	}
+	return size
+}
+
 func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInformation) {
 	t1 := time.Now()
 	defer func() {
@@ -160,6 +168,7 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 
 	l.metrics.TransactionCount.Add(float64(len(batch.Requests())))
 	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(blockToAppend)))
+	l.metrics.TransactionsSize.Add(float64(l.transactionsSize(blockToAppend)))
 	l.metrics.BlocksCount.Add(1)
 }
 
@@ -208,6 +217,7 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 	}
 
 	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(configBlock)))
+	l.metrics.TransactionsSize.Add(float64(l.transactionsSize(configBlock)))
 	l.metrics.BlocksCount.Add(1)
 }
 
@@ -225,6 +235,7 @@ func (l *AssemblerLedger) AppendBlock(block *common.Block) {
 
 	l.metrics.TransactionCount.Add(float64(len(block.GetData().GetData())))
 	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(block)))
+	l.metrics.TransactionsSize.Add(float64(l.transactionsSize(block)))
 	l.metrics.BlocksCount.Add(1)
 }
 

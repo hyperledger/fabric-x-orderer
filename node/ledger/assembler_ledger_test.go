@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -98,6 +99,42 @@ func TestAssemblerLedger_Append(t *testing.T) {
 		assert.Equal(t, uint64(3), al.GetTxCount())
 		assert.Equal(t, uint64(2), al.Ledger.Height())
 	})
+}
+
+// Scenario:
+// 1. create an assembler ledger and append the genesis config block
+// 2. check the transactions size equals the size of the genesis block's single TX
+// 3. append three batches, one at a time
+// 4. after each batch, check the transactions size grew by exactly the bytes of that batch's requests
+func TestAssemblerLedger_TransactionsSize(t *testing.T) {
+	tmpDir := t.TempDir()
+	logger := flogging.MustGetLogger("arma-assembler")
+
+	al := createAssemblerLedger(t, tmpDir, logger)
+	defer al.Close()
+
+	transactionsSize := func() uint64 {
+		return uint64(monitoring.GetMetricValue(al.Metrics().TransactionsSize.(prometheus.Counter), logger))
+	}
+
+	genesisBlock := utils.EmptyGenesisBlock("arma")
+	al.AppendConfig(&state.OrderingInformation{
+		CommonBlock: genesisBlock,
+		DecisionNum: 0,
+		BatchIndex:  0,
+		BatchCount:  1,
+	})
+	expectedSize := uint64(len(genesisBlock.Data.Data[0]))
+	assert.Equal(t, expectedSize, transactionsSize())
+
+	batches, ordInfos := createBatchesAndOrdInfo(t, 3)
+	for i := range batches {
+		al.Append(batches[i], ordInfos[i])
+		for _, req := range batches[i].Requests() {
+			expectedSize += uint64(len(req))
+		}
+		assert.Equal(t, expectedSize, transactionsSize())
+	}
 }
 
 func TestAssemblerLedger_Append_SignaturesMetadataValue(t *testing.T) {
@@ -634,6 +671,7 @@ func TestAssemblerLedger_AppendBlock(t *testing.T) {
 
 		initialTxCount := al.GetTxCount()
 		initialHeight := al.Ledger.Height()
+		initialTxsSize := uint64(monitoring.GetMetricValue(al.Metrics().TransactionsSize.(prometheus.Counter), logger))
 
 		// Append a block with 3 transactions
 		block := &common.Block{
@@ -658,6 +696,8 @@ func TestAssemblerLedger_AppendBlock(t *testing.T) {
 		assert.Equal(t, initialTxCount+3, al.GetTxCount())
 		// Verify ledger height increased by 1
 		assert.Equal(t, initialHeight+1, al.Ledger.Height())
+		// Verify metrics - transactions size should increase by 9 bytes ("tx1", "tx2" and "tx3" are 3 bytes each)
+		assert.Equal(t, initialTxsSize+9, uint64(monitoring.GetMetricValue(al.Metrics().TransactionsSize.(prometheus.Counter), logger)))
 	})
 }
 
