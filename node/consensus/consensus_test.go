@@ -2305,47 +2305,9 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 }
 
 func TestConsensusSoftStop(t *testing.T) {
-	dir := t.TempDir()
-
-	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	assert.NoError(t, err)
-
-	verifier := make(crypto.ECDSAVerifier)
-
-	initialAppContext := &common.BlockHeader{
-		Number:       1,
-		PreviousHash: nil,
-		DataHash:     nil,
-	}
-
-	initialState := &state.State{
-		N:          1,
-		Shards:     []state.ShardTerm{{Shard: 1}},
-		Threshold:  1,
-		Quorum:     1,
-		AppContext: protoutil.MarshalOrPanic(initialAppContext),
-	}
-
-	nodeIDs := []uint64{1}
-
-	commitEvent := new(sync.WaitGroup)
-	onCommit := func() {
-		commitEvent.Done()
-	}
-
-	network := make(map[uint64]*node_consensus.Consensus)
-
-	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, nodeIDs, verifier, dir)
-	defer cleanup()
-
-	listener := &storageListener{c: make(chan *common.Block, 100), f: onCommit}
-	c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listener)
-
-	err = c.Start()
-	assert.NoError(t, err)
+	c, sk, listener := startSingleConsensusNode(t)
 
 	// submit request and verify block is committed
-	commitEvent.Add(1)
 	dig := make([]byte, 32-3)
 	dig123 := append([]byte{1, 2, 3}, dig...)
 	baf123id1p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig123, 1, 1, 0, 0, nil)
@@ -2354,7 +2316,6 @@ func TestConsensusSoftStop(t *testing.T) {
 	ce1 := &state.ControlEvent{BAF: baf123id1p1s1}
 	err = c.SubmitRequest(ce1.Bytes())
 	assert.NoError(t, err)
-	commitEvent.Wait()
 
 	b := <-listener.c
 	assert.Equal(t, uint64(1), b.Header.Number)
@@ -2383,12 +2344,36 @@ func TestConsensusSoftStop(t *testing.T) {
 // TestOnSubmitDropsInvalidRequest checks that OnSubmit does not return an error for an invalid
 // forwarded request, since an error makes the ClusterService close the forwarder's stream.
 func TestOnSubmitDropsInvalidRequest(t *testing.T) {
-	dir := t.TempDir()
+	c, sk, listener := startSingleConsensusNode(t)
 
+	// invalid requests are dropped without an error
+	require.NoError(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{Payload: &common.Envelope{Payload: []byte{1, 2, 3}}}))
+	require.NoError(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{}))
+
+	// a valid request is still ordered, alone in its block
+	dig := append([]byte{1, 2, 3}, make([]byte, 32-3)...)
+	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig, 1, 1, 0, 0, nil)
+	require.NoError(t, err)
+	ce := &state.ControlEvent{BAF: baf}
+	require.NoError(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{Payload: &common.Envelope{Payload: ce.Bytes()}}))
+
+	b := <-listener.c
+	require.Equal(t, uint64(1), b.Header.Number)
+	proposal, err := state.BytesToProposal(b.Data.Data[0])
+	require.NoError(t, err)
+	brs := arma_types.BatchedRequests{ce.Bytes()}
+	require.Equal(t, brs.Serialize(), proposal.Payload)
+
+	// a soft-stopped node still returns an error
+	c.SoftStop()
+	require.Error(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{Payload: &common.Envelope{Payload: ce.Bytes()}}))
+}
+
+// startSingleConsensusNode starts a single-node consensus with one shard, and returns it together
+// with the key that signs both its consenter messages and the BAFs, and a listener on its ledger.
+func startSingleConsensusNode(t *testing.T) (*node_consensus.Consensus, *ecdsa.PrivateKey, *storageListener) {
 	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-
-	verifier := make(crypto.ECDSAVerifier)
 
 	initialState := &state.State{
 		N:          1,
@@ -2398,34 +2383,13 @@ func TestOnSubmitDropsInvalidRequest(t *testing.T) {
 		AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 1}),
 	}
 
-	commitEvent := new(sync.WaitGroup)
 	network := make(map[uint64]*node_consensus.Consensus)
+	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, []uint64{1}, make(crypto.ECDSAVerifier), t.TempDir())
+	t.Cleanup(cleanup)
 
-	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, []uint64{1}, verifier, dir)
-	defer cleanup()
-
-	listener := &storageListener{c: make(chan *common.Block, 100), f: commitEvent.Done}
+	listener := &storageListener{c: make(chan *common.Block, 100)}
 	c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listener)
 
 	require.NoError(t, c.Start())
-
-	// invalid requests are dropped without an error
-	require.NoError(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{Payload: &common.Envelope{Payload: []byte{1, 2, 3}}}))
-	require.NoError(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{}))
-
-	// a valid request is still ordered
-	commitEvent.Add(1)
-	dig := append([]byte{1, 2, 3}, make([]byte, 32-3)...)
-	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig, 1, 1, 0, 0, nil)
-	require.NoError(t, err)
-	ce := &state.ControlEvent{BAF: baf}
-	require.NoError(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{Payload: &common.Envelope{Payload: ce.Bytes()}}))
-	commitEvent.Wait()
-
-	b := <-listener.c
-	require.Equal(t, uint64(1), b.Header.Number)
-
-	// a soft-stopped node still returns an error
-	c.SoftStop()
-	require.Error(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{Payload: &common.Envelope{Payload: ce.Bytes()}}))
+	return c, sk, listener
 }

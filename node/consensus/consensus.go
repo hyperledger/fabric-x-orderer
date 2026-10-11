@@ -587,6 +587,10 @@ func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, 
 // (from SmartBFT API)
 func (c *Consensus) VerifyRequest(req []byte) (smartbft_types.RequestInfo, error) {
 	reqID, _, err := c.verifyCE(req)
+	if err != nil && reqID.ID != "" {
+		// SmartBFT logs only the error of an invalid request it drops, so the error carries the request ID.
+		err = errors.Wrapf(err, "request %s", reqID.String())
+	}
 	return reqID, err
 }
 
