@@ -26,14 +26,23 @@ var (
 		LabelNames: []string{"party_id", "shard_id"},
 		Buckets:    []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}, // TODO: adjust buckets after reviewing Grafana
 	}
+
+	batchesSizeOpts = metrics.CounterOpts{
+		Namespace:  "batch_ledger",
+		Name:       "batches_size_bytes_total",
+		Help:       "The total size in bytes of batches appended to the ledger.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
 )
 
 type BatchLedgerMetrics struct {
 	HeaderHashingLatency metrics.Histogram
 	AppendLatency        metrics.Histogram
+	BatchesSize          metrics.Counter
 }
 
 func (bl *BatchLedgerMetrics) NewBatchLedgerMetrics(p metrics.Provider, partyID, shardID string) {
 	bl.HeaderHashingLatency = p.NewHistogram(headerHashingLatencyOpts).With([]string{partyID, shardID}...)
 	bl.AppendLatency = p.NewHistogram(appendLatencyOpts).With([]string{partyID, shardID}...)
+	bl.BatchesSize = p.NewCounter(batchesSizeOpts).With([]string{partyID, shardID}...)
 }

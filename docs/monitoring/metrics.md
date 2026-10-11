@@ -159,6 +159,10 @@ What each of these metrics tells you about the batcher is described in [Batcher]
   **Name:** "append_latency_seconds"  
   **Help:** "The latency to append a batch to the ledger."
 
+- **Namespace:** "batch_ledger"  
+  **Name:** "batches_size_bytes_total"  
+  **Help:** "The total size in bytes of batches appended to the ledger."
+
 ---
 
 ### Consenter

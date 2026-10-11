@@ -13,12 +13,15 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blkstorage"
+	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics/disabled"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestBatchLedgerPart(t *testing.T) {
@@ -120,6 +123,37 @@ func TestBatchLedgerPart_Iterator(t *testing.T) {
 	require.Equal(t, uint64(5), block.GetHeader().GetNumber())
 	block, _ = it.Next()
 	require.Equal(t, uint64(6), block.GetHeader().GetNumber())
+}
+
+// Scenario:
+// 1. create a batch ledger part with metrics whose values can be read
+// 2. check the batches size is zero before any batch is appended
+// 3. append three batches of different sizes, one at a time
+// 4. after each batch, check the batches size grew by exactly the size of the block stored on disk
+func TestBatchLedgerPart_BatchesSizeMetric(t *testing.T) {
+	logger := flogging.MustGetLogger("test")
+	metrics := &BatchLedgerMetrics{}
+	metrics.NewBatchLedgerMetrics(monitoring.NewProvider("prometheus", logger), "1", "5")
+
+	provider, err := blkstorage.NewProvider(blkstorage.NewConf(t.TempDir(), -1), &disabled.Provider{})
+	require.NoError(t, err)
+	part, err := newBatchLedgerPart(provider, 5, 1, 2, "test-channel", logger, metrics)
+	require.NoError(t, err)
+
+	batchesSize := func() uint64 {
+		return uint64(monitoring.GetMetricValue(metrics.BatchesSize.(prometheus.Counter), logger))
+	}
+	require.Equal(t, uint64(0), batchesSize())
+
+	expectedSize := uint64(0)
+	for seq := uint64(0); seq < 3; seq++ {
+		batchedRequests := types.BatchedRequests{bytes.Repeat([]byte{1}, int(seq+1)*100)}
+		part.Append(types.BatchSequence(seq), 0, batchedRequests, batchedRequests.Digest(), []byte("sig"))
+		block, err := part.ledger.RetrieveBlockByNumber(seq)
+		require.NoError(t, err)
+		expectedSize += uint64(proto.Size(block))
+		require.Equal(t, expectedSize, batchesSize())
+	}
 }
 
 func newTestBatchLedgerMetrics() *BatchLedgerMetrics {
