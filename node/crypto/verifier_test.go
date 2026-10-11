@@ -10,10 +10,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
+	"math/big"
 	"testing"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/utils"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
@@ -280,4 +283,34 @@ func TestVerifySignatureRole(t *testing.T) {
 	verifier.AddPublicKeyToVerifier(consenterPEM, types.NewConsenterIdentity(partyID), logger)
 	require.Len(t, verifier, 2)
 	require.NoError(t, verifier.VerifySignature(types.NewAssemblerIdentity(partyID), msg, sig))
+}
+
+// TestVerifySignatureRequiresLowS checks that a signature is accepted only in its low-S form. For any
+// valid ECDSA signature (r, s), (r, N-s) is also valid, so without this check a relay could re-encode a
+// signed message with a different signature that still verifies. Honest signers always produce low-S.
+func TestVerifySignatureRequiresLowS(t *testing.T) {
+	logger := flogging.MustGetLogger("test")
+	id := types.NewAssemblerIdentity(types.PartyID(1))
+
+	pubKeyPEM, privateKey, publicKey := generateTestECDSAKeyPair(t)
+
+	verifier := make(crypto.ECDSAVerifier)
+	verifier.AddPublicKeyToVerifier(pubKeyPEM, id, logger)
+
+	msg := []byte("a signed message")
+	signer := crypto.ECDSASigner(*privateKey)
+	lowSSig, err := signer.Sign(msg)
+	require.NoError(t, err)
+
+	r, s, err := utils.UnmarshalECDSASignature(lowSSig)
+	require.NoError(t, err)
+	highSSig, err := utils.MarshalECDSASignature(r, new(big.Int).Sub(publicKey.Params().N, s))
+	require.NoError(t, err)
+
+	// The high-S form is a valid signature of the same message.
+	digest := sha256.Sum256(msg)
+	require.True(t, ecdsa.VerifyASN1(publicKey, digest[:], highSSig))
+
+	require.NoError(t, verifier.VerifySignature(id, msg, lowSSig))
+	require.ErrorContains(t, verifier.VerifySignature(id, msg, highSSig), "not in low-S form")
 }
