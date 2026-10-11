@@ -1073,7 +1073,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 		}
 	}
 
-	c.updateMetricsOnDeliver(hdr)
+	c.updateMetricsOnDeliver(hdr, block)
 	c.lock.Unlock()
 
 	// If this decision carried a new config block, block here until the reconfiguration
@@ -1224,8 +1224,9 @@ func (c *Consensus) stopAndReconfigure(newConfig *config.Configuration, lastBloc
 	c.Logger.Infof("Consensus started with new config sequence %d, listening on %s", newConfigSeq, c.Address())
 }
 
-func (c *Consensus) updateMetricsOnDeliver(hdr *state.Header) {
+func (c *Consensus) updateMetricsOnDeliver(hdr *state.Header, block *common.Block) {
 	c.Metrics.decisionsCount.Add(1)
+	c.Metrics.decisionsBytes.Add(float64(proto.Size(block)))
 	c.Metrics.blocksCount.Add(float64(len(hdr.AvailableCommonBlocks)))
 	txCount := c.getLastTxCountFromHeader(hdr)
 	if txCount > 0 {
@@ -1531,7 +1532,7 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 		}
 	}
 
-	c.updateMetricsOnDeliver(hdr)
+	c.updateMetricsOnDeliver(hdr, block)
 
 	return smartbft_types.Reconfig{
 		CurrentNodes:     currentNodes,
