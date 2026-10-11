@@ -334,13 +334,10 @@ func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitR
 	if c.isSoftStopped() {
 		return errors.New("consensus is soft-stopped")
 	}
-	rawCE := req.Payload.Payload
-	ri, _, err := c.verifyCE(rawCE)
-	if err != nil {
-		c.Logger.Errorf("Failed verifying control event %v: %v", ri, err)
-		return errors.Wrap(err, "failed verifying control event")
-	}
-	c.BFT.HandleRequest(sender, rawCE)
+	// No need to verify the request here: SmartBFT's HandleRequest verifies it (via VerifyRequest)
+	// anyway, and logs and drops it if it is invalid. Returning an error here would make the
+	// ClusterService close the forwarder's stream and lose the requests queued behind this one.
+	c.BFT.HandleRequest(sender, req.GetPayload().GetPayload())
 	return nil
 }
 

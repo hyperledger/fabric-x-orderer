@@ -24,6 +24,7 @@ import (
 	"github.com/hyperledger/SmartBFT/pkg/wal"
 	"github.com/hyperledger/SmartBFT/smartbftprotos"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
@@ -2377,4 +2378,54 @@ func TestConsensusSoftStop(t *testing.T) {
 	ce2 := &state.ControlEvent{BAF: baf124id1p1s1}
 	err = c.SubmitRequest(ce2.Bytes())
 	assert.Error(t, err)
+}
+
+// TestOnSubmitDropsInvalidRequest checks that OnSubmit does not return an error for an invalid
+// forwarded request, since an error makes the ClusterService close the forwarder's stream.
+func TestOnSubmitDropsInvalidRequest(t *testing.T) {
+	dir := t.TempDir()
+
+	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	verifier := make(crypto.ECDSAVerifier)
+
+	initialState := &state.State{
+		N:          1,
+		Shards:     []state.ShardTerm{{Shard: 1}},
+		Threshold:  1,
+		Quorum:     1,
+		AppContext: protoutil.MarshalOrPanic(&common.BlockHeader{Number: 1}),
+	}
+
+	commitEvent := new(sync.WaitGroup)
+	network := make(map[uint64]*node_consensus.Consensus)
+
+	c, cleanup := makeConsensusNode(t, sk, arma_types.PartyID(1), network, initialState, []uint64{1}, verifier, dir)
+	defer cleanup()
+
+	listener := &storageListener{c: make(chan *common.Block, 100), f: commitEvent.Done}
+	c.Storage.(*ledger.ConsensusLedger).RegisterAppendListener(listener)
+
+	require.NoError(t, c.Start())
+
+	// invalid requests are dropped without an error
+	require.NoError(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{Payload: &common.Envelope{Payload: []byte{1, 2, 3}}}))
+	require.NoError(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{}))
+
+	// a valid request is still ordered
+	commitEvent.Add(1)
+	dig := append([]byte{1, 2, 3}, make([]byte, 32-3)...)
+	baf, err := batcher.CreateBAF(crypto.ECDSASigner(*sk), 1, 1, dig, 1, 1, 0, 0, nil)
+	require.NoError(t, err)
+	ce := &state.ControlEvent{BAF: baf}
+	require.NoError(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{Payload: &common.Envelope{Payload: ce.Bytes()}}))
+	commitEvent.Wait()
+
+	b := <-listener.c
+	require.Equal(t, uint64(1), b.Header.Number)
+
+	// a soft-stopped node still returns an error
+	c.SoftStop()
+	require.Error(t, c.OnSubmit("arma", 2, &orderer.SubmitRequest{Payload: &common.Envelope{Payload: ce.Bytes()}}))
 }
