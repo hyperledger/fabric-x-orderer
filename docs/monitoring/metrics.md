@@ -83,6 +83,8 @@ What each of these metrics tells you about the assembler is described in [Assemb
 
 ### Batcher
 
+What each of these metrics tells you about the batcher is described in [Batcher](../batcher.md#5-metrics-and-monitoring).
+
 - **Namespace:** "batcher"  
   **Name:** "current_role"  
   **Help:** "The current role of the batcher: 1 = primary, 2 = secondary."
