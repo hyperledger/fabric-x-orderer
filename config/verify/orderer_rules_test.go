@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -296,6 +297,30 @@ func TestValidateNewConfig_CertificateExpiration(t *testing.T) {
 	payload.Data = protoutil.MarshalOrPanic(cfgEnv)
 	env.Payload = protoutil.MarshalOrPanic(payload)
 	require.NoError(t, or.ValidateNewConfig(env, bccsp, types.PartyID(1)))
+}
+
+func TestValidateNewConfig_InvalidMaxPartyID(t *testing.T) {
+	_, env, _, _, _, _, _ := setupOrdererRulesTest(t, 1)
+
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+	cfgEnv := &common.ConfigEnvelope{}
+	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+
+	shared := configutil.GetSharedConfig(t, cfgEnv)
+	shared.MaxPartyID = math.MaxUint16 + 1
+
+	consensusType := &orderer.ConsensusType{}
+	ordererValues := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values
+	require.NoError(t, proto.Unmarshal(ordererValues["ConsensusType"].Value, consensusType))
+	consensusType.Metadata = protoutil.MarshalOrPanic(shared)
+	ordererValues["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
+
+	payload.Data = protoutil.MarshalOrPanic(cfgEnv)
+	env.Payload = protoutil.MarshalOrPanic(payload)
+
+	err = (&verify.DefaultOrdererRules{}).ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
+	require.EqualError(t, err, fmt.Sprintf("MaxPartyID %d exceeds uint16 maximum %d", math.MaxUint16+1, math.MaxUint16))
 }
 
 func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {

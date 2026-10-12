@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package verify
 
 import (
+	"math"
 	"slices"
 	"time"
 
@@ -57,6 +58,7 @@ type DefaultOrdererRules struct{}
 //  9. BlockValidationPolicy must be consistent with the current consenters.
 //  10. Party certificates must be valid, with expiration enforced for genesis
 //     configs and ignored for later config updates.
+//  11. Party IDs, shard IDs, and MaxPartyID must be within their valid ranges.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
@@ -161,6 +163,14 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 		if err := validatePartyCertificates(party, ignoreExpiration); err != nil {
 			return errors.Wrapf(err, "certificate validation failed for party ID %d", party.PartyID)
 		}
+	}
+
+	// 11.
+	if sharedConfig.MaxPartyID > math.MaxUint16 {
+		return errors.Errorf("MaxPartyID %d exceeds uint16 maximum %d", sharedConfig.MaxPartyID, math.MaxUint16)
+	}
+	if err := validatePartyAndShardIDs(sharedConfig.PartiesConfig); err != nil {
+		return errors.Wrap(err, "invalid party or shard ID in shared config")
 	}
 
 	return nil
@@ -663,6 +673,28 @@ func certificateSetsEqual(sharedConfigCerts, orgCerts [][]byte) error {
 	for _, cert := range sharedConfigCerts {
 		if _, exists := orgCertSet[string(cert)]; !exists {
 			return errors.Errorf("certificate exists in shared config but is missing from orderer organization MSP: %q", string(cert))
+		}
+	}
+
+	return nil
+}
+
+func validatePartyAndShardIDs(parties []*ordererpb.PartyConfig) error {
+	for _, party := range parties {
+		if party == nil {
+			return errors.New("party config is nil")
+		}
+		if party.PartyID == 0 || party.PartyID > math.MaxUint16 {
+			return errors.Errorf("party ID %d out of range [1, %d]", party.PartyID, math.MaxUint16)
+		}
+
+		for _, batcher := range party.BatchersConfig {
+			if batcher == nil {
+				return errors.Errorf("nil batcher config for party %d", party.PartyID)
+			}
+			if batcher.ShardID == 0 || batcher.ShardID >= uint32(arma_types.ShardIDConsensus) {
+				return errors.Errorf("shard ID %d of party %d out of range [1, %d]", batcher.ShardID, party.PartyID, arma_types.ShardIDConsensus-1)
+			}
 		}
 	}
 
