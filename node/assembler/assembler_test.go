@@ -16,6 +16,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	commonsync "github.com/hyperledger/fabric-x-orderer/common/synchronizer"
@@ -180,7 +181,7 @@ func (at *assemblerTest) StartAssembler() {
 	})
 
 	batchBringerFactoryMock := &assembler_mocks.FakeBatchBringerFactory{}
-	batchBringerFactoryMock.CreateCalls(func(m map[types.ShardID]map[types.PartyID]types.BatchSequence, anc *config.AssemblerNodeConfig, l *flogging.FabricLogger) assembler.BatchBringer {
+	batchBringerFactoryMock.CreateCalls(func(m map[types.ShardID]map[types.PartyID]types.BatchSequence, anc *config.AssemblerNodeConfig, s identity.SignerSerializer, l *flogging.FabricLogger) assembler.BatchBringer {
 		return at.batchBringerMock
 	})
 	for _, shardId := range at.shards {

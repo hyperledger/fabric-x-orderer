@@ -29,11 +29,12 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
-	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/pinning"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 )
@@ -55,6 +56,9 @@ type node struct {
 	TLSKey  []byte
 	sk      *ecdsa.PrivateKey
 	pk      node_config.RawBytes
+	// signer signs the requests of the node with the key of signCert.
+	signer   *signutil.TestSigner
+	signCert []byte
 }
 
 func createNodes(t *testing.T, ca tlsgen.CA, num int) []*node {
@@ -81,7 +85,11 @@ func createNodes(t *testing.T, ca tlsgen.CA, num int) []*node {
 		srv, err := newGRPCServer(net.JoinHostPort(localhost, port), ca, kp)
 		require.NoError(t, err)
 
-		result = append(result, &node{GRPCServer: srv, TLSKey: kp.Key, TLSCert: kp.Cert, pk: pks[i], sk: sks[i]})
+		signer, signCert := signutil.NewSignerOfKey(t, sks[i], "org")
+
+		result = append(result, &node{
+			GRPCServer: srv, TLSKey: kp.Key, TLSCert: kp.Cert, pk: pks[i], sk: sks[i], signer: signer, signCert: signCert,
+		})
 	}
 	return result
 }
@@ -142,12 +150,14 @@ func createBatchersWithConfigNumber(t *testing.T, num int, shardID types.ShardID
 
 		key, err := x509.MarshalPKCS8PrivateKey(batcherNodes[i].sk)
 		require.NoError(t, err)
-		signer := crypto.ECDSASigner(*batcherNodes[i].sk)
+		signer := batcherNodes[i].signer
 
 		bundle := &configMocks.FakeConfigResources{}
 		configtxValidator := &policyMocks.FakeConfigtxValidator{}
 		configtxValidator.ChannelIDReturns("arma")
 		bundle.ConfigtxValidatorReturns(configtxValidator)
+		// A batcher serves only the batchers of the shard, so a batcher that pulls must sign.
+		configutil.AdmitSigners(bundle, signCertsOf(batcherNodes[:num])...)
 
 		dir := t.TempDir()
 		configStorePath := path.Join(dir, "configstore")
@@ -221,10 +231,12 @@ func createConsenterStubs(t *testing.T, consenterNodes []*node, num int) ([]*stu
 
 func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *flogging.FabricLogger, conf *node_config.BatcherNodeConfig, routerKeyPairs []*tlsgen.CertKeyPair, batcherNode *node, sc *stubConsenter) *batcher.Batcher {
 	newBatcherNode := &node{
-		TLSCert: batcherNode.TLSCert,
-		TLSKey:  batcherNode.TLSKey,
-		sk:      batcherNode.sk,
-		pk:      batcherNode.pk,
+		signer:   batcherNode.signer,
+		signCert: batcherNode.signCert,
+		TLSCert:  batcherNode.TLSCert,
+		TLSKey:   batcherNode.TLSKey,
+		sk:       batcherNode.sk,
+		pk:       batcherNode.pk,
 	}
 	var err error
 	newBatcherNode.GRPCServer, err = newGRPCServer(batcherNode.Address(), ca, &tlsgen.CertKeyPair{
@@ -233,7 +245,7 @@ func recoverBatcher(t *testing.T, ca tlsgen.CA, logger *flogging.FabricLogger, c
 	})
 	require.NoError(t, err)
 
-	signer := crypto.ECDSASigner(*newBatcherNode.sk)
+	signer := newBatcherNode.signer
 
 	batcher := batcher.CreateBatcher(conf, pinning.ConfigurationWithRouters(conf.PartyId, routerKeyPairs), logger, make(chan struct{}), sc, &batcher.ConsenterControlEventSenderFactory{}, signer)
 	batcher.Net = newBatcherNode
@@ -279,4 +291,13 @@ func newGRPCServer(addr string, ca tlsgen.CA, kp *tlsgen.CertKeyPair) (*comm.GRP
 			ServerRootCAs:     [][]byte{ca.CertBytes()},
 		},
 	})
+}
+
+// signCertsOf returns the signing certificate of each node.
+func signCertsOf(nodes []*node) [][]byte {
+	signCerts := make([][]byte, 0, len(nodes))
+	for _, n := range nodes {
+		signCerts = append(signCerts, n.signCert)
+	}
+	return signCerts
 }
