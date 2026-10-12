@@ -6,7 +6,7 @@ require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/cockroachdb/errors v1.14.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
-	github.com/hyperledger/SmartBFT v1.0.2
+	github.com/hyperledger/SmartBFT v1.0.3-0.20261010195840-f44fcdf9f24f
 	github.com/hyperledger/fabric-config v0.3.0
 	github.com/hyperledger/fabric-lib-go v1.1.5-0.20260708100132-163bcc919208
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
@@ -20,7 +20,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/tedsuo/ifrit v0.0.0-20260418191334-846868129986
 	go.uber.org/zap v1.28.0
-	golang.org/x/sync v0.23.0
+	golang.org/x/sync v0.24.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
