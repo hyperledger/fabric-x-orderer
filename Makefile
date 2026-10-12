@@ -154,6 +154,32 @@ integration-reconfig-params:
 integration-reconfig-configtx:
 	go test -race -timeout 15m ./test/reconfig/configtx/...
 
+COVERAGE_TARGETS = \
+    unit-tests-other \
+    unit-tests-consensus \
+    unit-tests-consensus-full-replacement \
+    unit-tests-batcher \
+    integration-basic \
+    integration-faulttolerance \
+    integration-reconfig-membership \
+    integration-reconfig-membership-full-parties-replacement \
+    integration-reconfig-membership-rejoin-single-party \
+    integration-reconfig-identity \
+    integration-reconfig-endpoints \
+    integration-reconfig-params \
+    integration-reconfig-configtx
+
+.PHONY: test-cover
+test-cover: $(addprefix coverage-,$(COVERAGE_TARGETS))
+	@$(MAKE) cover-report
+
+coverage-%:
+	@./scripts/test_coverage.sh run $* coverdata/$*
+
+.PHONY: cover-report
+cover-report:
+	@./scripts/test_coverage.sh report coverdata coverage.profile
+
 DURATION_MINUTES          ?= 5
 TX_RATE                   ?= 1000
 TX_SIZE                   ?= 300
