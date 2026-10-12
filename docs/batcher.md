@@ -51,10 +51,15 @@ consenters decide which batcher is primary, and the secondaries watch it: a seco
 requests ignored, or receives an invalid batch, complains to the consenters, and enough complaints
 replace the primary.
 
-<!-- Figure 1 placeholder -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/batcher-context-dark.svg">
+  <img alt="The batcher's inputs and outputs" src="figures/batcher-context.svg">
+</picture>
+
 *Figure 1: The batcher's inputs and outputs — transactions from the router of its own party, batches
 pulled by the other batchers of its shard and by the assemblers, BAFs and complaints sent to every
-consenter, and decisions pulled from the consenter of its own party. (Diagram to be added.)*
+consenter, and decisions pulled from the consenter of its own party. The config acks it sends to its
+own consenter are left out.*
 
 ### 1.1 Units and Terms
 
@@ -145,9 +150,15 @@ verifier** checks requests coming from the router, from other batchers, and insi
 **batch ledger array** is written by the batcher role and read by the `Deliver` service. Around these
 run the operations subsystem, the metrics tracker, and a health checker.
 
-<!-- Figure 2 placeholder -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/batcher-units-dark.svg">
+  <img alt="The units of a primary and a secondary batcher" src="figures/batcher-units.svg">
+</picture>
+
 *Figure 2: The units of a primary and a secondary batcher, and how batches, BAFs, acks, forwarded
-requests, complaints and term changes flow between them and the consenters. (Diagram to be added.)*
+requests, complaints and term changes flow between them and the consenters. Each batcher pulls
+decisions from the consenter of its own party. The request verifier, the config store, and the
+`Deliver` service that serves the batch ledger array are left out.*
 
 ### 3.2 Primary and Secondaries
 
@@ -192,10 +203,13 @@ The acks bound how far the primary can run ahead of the secondaries. The primary
 as acked, and a sequence is confirmed once `f+1` batchers have acked it. The primary does not cut a
 new batch while it is `BatchSequenceGap` or more sequences ahead of the last confirmed one.
 
-<!-- Figure 3 placeholder -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/batcher-batch-dark.svg">
+  <img alt="One batch being created, replicated and attested in a shard of four parties" src="figures/batcher-batch.svg">
+</picture>
+
 *Figure 3: One batch in a shard of four parties — the primary cuts it from its mempool, stores it, and
-sends a BAF; each secondary pulls, verifies, stores it, sends its own BAF, and acks. (Diagram to be
-added.)*
+sends a BAF; each secondary pulls, verifies, stores it, sends its own BAF, and acks.*
 
 ### 3.3 Selecting the Primary
 
@@ -245,9 +259,13 @@ different digests for the same ⟨shard, primary, sequence⟩, which prove the p
 batches. The consenter side of both is described in
 [The Consenter as System Controller](consensus.md#34-the-consenter-as-system-controller).
 
-<!-- Figure 4 placeholder -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/batcher-censorship-dark.svg">
+  <img alt="A primary censoring a request, and the secondaries replacing it" src="figures/batcher-censorship.svg">
+</picture>
+
 *Figure 4: A primary censoring a request — the secondaries forward it after the first strike, complain
-after the second, and the consenters change the term. (Diagram to be added.)*
+after the second, and the consenters change the term, which makes B2 the primary.*
 
 The mempool holds at most `MemPoolMaxSize` requests. When it is full, a new request waits up to
 `SubmitTimeout` for space and is then rejected, which pushes back on the router. The mempool also
@@ -263,9 +281,13 @@ that created it, at its batch sequence. Each ledger is served as its own `Delive
 secondary pulls from the primary's ledger starting at its own height for that party, and an assembler
 pulls from the ledger the batch attestation names.
 
-<!-- Figure 5 placeholder -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/batcher-ledger-array-dark.svg">
+  <img alt="The batch ledger array of one batcher, with one ledger per party" src="figures/batcher-ledger-array.svg">
+</picture>
+
 *Figure 5: The batch ledger array of one batcher in a shard of four parties — one ledger per party,
-each holding the batches that party created while it was primary. (Diagram to be added.)*
+each holding the batches that party created while it was primary.*
 
 ### 3.6 Code Map
 
