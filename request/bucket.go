@@ -82,11 +82,18 @@ func (b *bucket) tryInsert(reqID string, request []byte) error {
 		return errBucketSealed
 	}
 
-	if _, existed := b.reqID2Bucket.LoadOrStore(reqID, b); existed {
+	// The payload and size are stored before the id is published, so a concurrent delete that finds
+	// the id also finds the payload. If the id is already known, the insert is rolled back.
+	if _, existed := b.requests.LoadOrStore(reqID, request); existed {
 		return errors.Errorf("request %s already inserted", reqID)
 	}
-	b.requests.Store(reqID, request)
 	atomic.AddUint32(&b.size, 1)
+
+	if _, existed := b.reqID2Bucket.LoadOrStore(reqID, b); existed {
+		b.requests.Delete(reqID)
+		atomic.AddUint32(&b.size, ^uint32(0))
+		return errors.Errorf("request %s already inserted", reqID)
+	}
 
 	return nil
 }
