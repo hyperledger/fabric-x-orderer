@@ -200,6 +200,10 @@ func TestConsensusWithConsenterSyncAfterMissingConfigTx(t *testing.T) {
 		recoveredConsensusNodes, recoveredServers, _ := createConsensusNodesAndGRPCServers(t, dir, []types.PartyID{2})
 		startConsensusNodesAndRegisterGRPCServers(t, []types.PartyID{2}, recoveredConsensusNodes, recoveredServers)
 
+		// send ack to the recovered consenter on the config it is about to sync, so it does not wait for the
+		// full config ack timeout before applying it, which would exceed the wait below and make the test flaky
+		sendConfigAcks(t, recoveredConsensusNodes, configSeq)
+
 		// Update the consensus nodes list
 		consensusNodes[stoppedConsenterIndex] = recoveredConsensusNodes[0]
 
