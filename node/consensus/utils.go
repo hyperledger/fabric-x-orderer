@@ -32,14 +32,6 @@ func duplicateBAFSetSigner(baf arma_types.BatchAttestationFragment, signer arma_
 	return arma_types.NewSimpleBatchAttestationFragment(baf.Shard(), baf.Primary(), baf.Seq(), baf.Digest(), signer, baf.ConfigSequence(), baf.TXCount(), baf.PrimarySignature())
 }
 
-func printEvent(event []byte) string {
-	var ce state.ControlEvent
-	if err := ce.FromBytes(event); err != nil {
-		return fmt.Sprintf("error: %v", err)
-	}
-	return ce.String()
-}
-
 func CreateDataCommonBlock(blockNum uint64, prevHash []byte, batchID arma_types.BatchID, txCount uint64, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, lastConfigBlockNum uint64) (*common.Block, error) {
 	block := protoutil.NewBlock(blockNum, prevHash)
 	block.Header.DataHash = batchID.Digest()

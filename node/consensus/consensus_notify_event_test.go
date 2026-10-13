@@ -127,7 +127,7 @@ func TestNotifyEventValidatesSender(t *testing.T) {
 	}
 	configRequest := (&state.ControlEvent{ConfigRequest: &state.ConfigRequest{Envelope: &common.Envelope{Payload: []byte{1}}}}).Bytes()
 
-	const notTheCreator = "the event does not come from the node that created it"
+	const notTheCreator = "access denied; the client is not the"
 
 	for _, tst := range []struct {
 		name         string
@@ -178,7 +178,7 @@ func TestNotifyEventValidatesSender(t *testing.T) {
 			name:      "rejects a BAF of a party with no batcher in the shard",
 			ctx:       ctxOf(t, batcher1Shard1),
 			events:    [][]byte{bafOf(t, 3, 3, 1)},
-			expectErr: "no batcher of party 3 in shard 1",
+			expectErr: "no batcher configured for shard 1 and party 3",
 		},
 		{
 			name:      "rejects a complaint from the batcher of another party",
@@ -202,7 +202,7 @@ func TestNotifyEventValidatesSender(t *testing.T) {
 			name:      "rejects a report of a party with no assembler",
 			ctx:       ctxOf(t, assembler1),
 			events:    [][]byte{reportOf(3)},
-			expectErr: "no assembler of party 3",
+			expectErr: "no assembler configured for party 3",
 		},
 		{
 			name:      "rejects a config request",
