@@ -359,10 +359,77 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 
 		c.Logger.Debugf("Received event %s", printEvent(event.GetPayload()))
 
+		// A stream carries the events of a single node, so an event that does not come from the node that
+		// created it means the peer is misbehaving (or still uses a TLS certificate that a reconfiguration
+		// replaced), and the stream is closed.
+		if err := c.validateEventSender(stream.Context(), event.GetPayload()); err != nil {
+			c.Logger.Warnf("Closing the event stream: %v", err)
+			return err
+		}
+
 		if err := c.SubmitRequest(event.GetPayload()); err != nil {
 			c.Logger.Warnf("Failed submitting request: %v", err)
 		}
 	}
+}
+
+// validateEventSender checks that the event arrived over the TLS connection of the node that created it:
+// the batcher that signed a BAF or a complaint, or the assembler that signed a decision report. The event's
+// signature alone does not show who is sending it, so without this check any node could submit, or replay,
+// another node's events.
+func (c *Consensus) validateEventSender(ctx context.Context, rawCE []byte) error {
+	ce := &state.ControlEvent{}
+	if err := ce.FromBytes(rawCE); err != nil {
+		return errors.Wrap(err, "malformed event")
+	}
+
+	c.lock.RLock()
+	cfg := c.Config
+	c.lock.RUnlock()
+
+	var expectedCert []byte
+	var err error
+	switch {
+	case ce.BAF != nil:
+		expectedCert, err = batcherTLSCert(cfg.Shards, ce.BAF.Signer(), ce.BAF.Shard())
+	case ce.Complaint != nil:
+		expectedCert, err = batcherTLSCert(cfg.Shards, ce.Complaint.Signer, ce.Complaint.Shard)
+	case ce.AssemblerReport != nil:
+		expectedCert, err = assemblerTLSCert(cfg.Assemblers, ce.AssemblerReport.Party)
+	default:
+		err = errors.New("only BAFs, complaints and assembler decision reports can be submitted as events")
+	}
+	if err != nil {
+		return errors.Wrap(err, "access denied")
+	}
+
+	if err := utils.ValidateClientCertFromContext(ctx, expectedCert); err != nil {
+		return errors.Wrap(err, "access denied; the event does not come from the node that created it")
+	}
+	return nil
+}
+
+func batcherTLSCert(shards []node_config.ShardInfo, party arma_types.PartyID, shardID arma_types.ShardID) ([]byte, error) {
+	for _, shard := range shards {
+		if shard.ShardId != shardID {
+			continue
+		}
+		for _, batcher := range shard.Batchers {
+			if batcher.PartyID == party {
+				return batcher.TLSCert, nil
+			}
+		}
+	}
+	return nil, errors.Errorf("no batcher of party %d in shard %d", party, shardID)
+}
+
+func assemblerTLSCert(assemblers []node_config.AssemblerInfo, party arma_types.PartyID) ([]byte, error) {
+	for _, assembler := range assemblers {
+		if assembler.PartyID == party {
+			return assembler.TLSCert, nil
+		}
+	}
+	return nil, errors.Errorf("no assembler of party %d", party)
 }
 
 // SubmitConfig is used to submit a config request from the router in the consenter's party.
