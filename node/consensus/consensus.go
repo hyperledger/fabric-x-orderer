@@ -463,7 +463,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	// The requests are verified before the state transition is simulated, because the payload comes from
 	// the leader: a request that does not decode would otherwise panic in SimulateStateTransition, and an
 	// unverified request would otherwise be processed into the computed state.
-	reqInfos, err := c.verifyProposalRequests(requests, verificationSeq)
+	reqInfos, err := c.verifyProposalRequests(requests, verificationSeq, hdr.Num)
 	if err != nil {
 		return nil, err
 	}
@@ -557,9 +557,9 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	return reqInfos, nil
 }
 
-// verifyProposalRequests decodes every request in the proposal payload, verifies the ones that affect
-// the computed state at verificationSeq, and returns the info of all of them.
-func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, verificationSeq uint64) ([]smartbft_types.RequestInfo, error) {
+// verifyProposalRequests decodes every request in the proposal payload of decision proposalNum, verifies
+// the ones that affect the computed state at verificationSeq, and returns the info of all of them.
+func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, verificationSeq uint64, proposalNum arma_types.DecisionNum) ([]smartbft_types.RequestInfo, error) {
 	reqInfos := make([]smartbft_types.RequestInfo, 0, len(requests))
 	for _, rawReq := range requests {
 		configSeq, isBAF, err := c.getReqConfigSeq(rawReq)
@@ -573,7 +573,7 @@ func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, 
 		// reqInfos so SmartBFT removes it from its request pool; a request's ID embeds its config sequence,
 		// so reporting a stale one removes exactly it and never a legitimate request at the current sequence.
 		if configSeq == verificationSeq || (isBAF && configSeq < verificationSeq) {
-			reqID, err := c.VerifyRequest(rawReq)
+			reqID, _, err := c.verifyProposalCE(rawReq, proposalNum)
 			if err != nil {
 				return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
 			}
@@ -1302,7 +1302,22 @@ func (c *Consensus) getReqConfigSeq(req []byte) (uint64, bool, error) {
 // signature is at most 72 bytes for P-256 (and 139 for P-521), so this leaves ample headroom.
 const maxAssemblerReportSignatureSize = 256
 
+// verifyCE verifies a control event submitted to this node, before it enters the request pool.
 func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
+	return c.verifyControlEvent(req, 0)
+}
+
+// verifyProposalCE verifies a control event carried in the proposal of decision proposalNum. An assembler
+// decision report is bounded by the proposal's decision number rather than by this node's ledger height,
+// so every validator of the proposal reaches the same verdict.
+func (c *Consensus) verifyProposalCE(req []byte, proposalNum arma_types.DecisionNum) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
+	return c.verifyControlEvent(req, proposalNum)
+}
+
+// verifyControlEvent verifies a control event. proposalNum is the decision number of the proposal carrying
+// it, or 0 when it is not verified as part of a proposal; decision 0 is the genesis block, which is never
+// proposed.
+func (c *Consensus) verifyControlEvent(req []byte, proposalNum arma_types.DecisionNum) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
 	ce := &state.ControlEvent{}
 	if err := ce.FromBytes(req); err != nil {
 		return smartbft_types.RequestInfo{}, nil, err
@@ -1374,6 +1389,9 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if len(report.Signature) == 0 {
 			return reqID, ce, errors.New("missing assembler decision report signature")
 		}
+		if err := c.verifyReportDecisionNum(report, proposalNum); err != nil {
+			return reqID, ce, err
+		}
 		// Bound the signature before verifying it, so an oversized junk signature is not copied into
 		// the verification error and logged.
 		if len(report.Signature) > maxAssemblerReportSignatureSize {
@@ -1391,6 +1409,30 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 	} else {
 		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")
 	}
+}
+
+// verifyReportDecisionNum rejects an assembler decision report of a decision that is not committed yet: an
+// assembler can only have committed a decision after consensus committed it. Inside the proposal of decision
+// proposalNum the last committed decision is proposalNum-1; otherwise it is the last decision in this node's
+// ledger. The ledger height is read only here, so other control events do not pay for it.
+func (c *Consensus) verifyReportDecisionNum(report *state.AssemblerDecisionReport, proposalNum arma_types.DecisionNum) error {
+	if proposalNum == 0 {
+		height := c.Storage.Height()
+		if height == 0 {
+			return errors.Errorf("assembler decision report of decision %d received before any decision is committed",
+				report.DecisionNum)
+		}
+		if lastCommitted := arma_types.DecisionNum(height - 1); report.DecisionNum > lastCommitted {
+			return errors.Errorf("assembler decision report of decision %d is ahead of the last committed decision %d",
+				report.DecisionNum, lastCommitted)
+		}
+		return nil
+	}
+	if report.DecisionNum >= proposalNum {
+		return errors.Errorf("assembler decision report of decision %d is not below the proposed decision %d",
+			report.DecisionNum, proposalNum)
+	}
+	return nil
 }
 
 func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
