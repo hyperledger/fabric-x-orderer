@@ -9,6 +9,7 @@ package router
 import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
@@ -19,7 +20,7 @@ type DecisionPuller interface {
 	Stop()
 }
 
-func CreateConsensusDecisionReplicator(config *node_config.RouterNodeConfig, seekInfo *orderer.SeekInfo, logger *flogging.FabricLogger) DecisionPuller {
+func CreateConsensusDecisionReplicator(config *node_config.RouterNodeConfig, seekInfo *orderer.SeekInfo, signer identity.SignerSerializer, logger *flogging.FabricLogger) DecisionPuller {
 	channelID := config.Bundle.ConfigtxValidator().ChannelID()
-	return delivery.NewConsensusDecisionReplicator(channelID, config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, logger, seekInfo)
+	return delivery.NewConsensusDecisionReplicator(channelID, config.Consenter.TLSCACerts, config.TLSPrivateKeyFile, config.TLSCertificateFile, config.Consenter.Endpoint, signer, logger, seekInfo)
 }

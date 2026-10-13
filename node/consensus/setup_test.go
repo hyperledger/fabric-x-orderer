@@ -36,6 +36,7 @@ import (
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	configMocks "github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
@@ -171,7 +172,7 @@ func setupConsensusTest(t *testing.T, ca tlsgen.CA, numParties int, genesisBlock
 		conf := makeConf(t, dir, consenterNodes[i], partyID, consentersInfo, batchersInfo)
 		configs = append(configs, conf)
 
-		signer := buildSigner(conf, logger)
+		signer, _ := signutil.NewSignerOfKey(t, consenterNodes[i].sk, "org")
 
 		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
@@ -273,7 +274,7 @@ func recoverNode(t *testing.T, setup consensusTestSetup, nodeIndex int, ca tlsge
 	})
 	require.NoError(t, err)
 
-	signer := crypto.ECDSASigner(*newConsenterNode.sk)
+	signer, _ := signutil.NewSignerOfKey(t, newConsenterNode.sk, "org")
 
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
@@ -325,18 +326,4 @@ func createContextForSubmitConfig(cert *x509.Certificate) (context.Context, erro
 	p := &peer.Peer{AuthInfo: tlsInfo}
 	ctx := peer.NewContext(context.Background(), p)
 	return ctx, nil
-}
-
-func buildSigner(conf *nodeconfig.ConsenterNodeConfig, logger *flogging.FabricLogger) consensus.Signer {
-	privateKey, _ := pem.Decode(conf.SigningPrivateKey)
-	if privateKey == nil || privateKey.Bytes == nil {
-		logger.Panicf("Failed decoding private key PEM")
-	}
-
-	priv, err := x509.ParsePKCS8PrivateKey(privateKey.Bytes)
-	if err != nil {
-		logger.Panicf("Failed parsing private key DER: %v", err)
-	}
-
-	return crypto.ECDSASigner(*priv.(*ecdsa.PrivateKey))
 }

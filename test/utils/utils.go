@@ -286,7 +286,7 @@ func CreateConsenters(t *testing.T, num int, consenterNodes []*node, consenterIn
 		configs = append(configs, conf)
 
 		net := consenterNodes[i].GRPCServer
-		signer := crypto.ECDSASigner(*consenterNodes[i].sk)
+		signer, _ := signutil.NewSignerOfKey(t, consenterNodes[i].sk, "org")
 
 		mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 		mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
@@ -513,7 +513,7 @@ func RecoverConsenter(t *testing.T, ca tlsgen.CA, conf *node_config.ConsenterNod
 
 	newConsenterNode.GRPCServer, err = newGRPCServer(consenterNode.Address(), ca, kp)
 	require.NoError(t, err)
-	signer := crypto.ECDSASigner(*newConsenterNode.sk)
+	signer, _ := signutil.NewSignerOfKey(t, newConsenterNode.sk, "org")
 
 	mockConfigUpdateProposer := &policyMocks.FakeConfigUpdateProposer{}
 	mockConfigUpdateProposer.ProposeConfigUpdateReturns(nil, nil)
