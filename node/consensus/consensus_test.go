@@ -360,7 +360,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		Metrics:           node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), 1, l),
 		MainExitChan:      make(chan struct{}),
 		ReconfigAbort:     make(chan struct{}),
-		ConfigAckReceiver: configack.NewReceiver(l, []arma_types.ShardID{1, 2}),
+		ConfigAckReceiver: configack.NewReceiver(l, []arma_types.ShardID{1, 2}, 0),
 	}
 	c.InitOperationSystem()
 

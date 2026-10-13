@@ -362,9 +362,9 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	}
 	newBatcherConfig := newConfig.ExtractBatcherConfig(lastBlock)
 
-	// send ack to the consensus node
+	// send ack to the consensus node, and wait for its response before applying the new config
 	if err := b.configAcker.SubmitConfigAck(configSeq); err != nil {
-		b.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
+		b.logger.Warnf("did not receive the consenter's response to the ConfigAck for config sequence %d, proceeding with the new config: %v", configSeq, err)
 	}
 
 	// check if batching params changed

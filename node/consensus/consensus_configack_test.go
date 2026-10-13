@@ -28,7 +28,8 @@ import (
 )
 
 // TestConsensusConfigAck verifies that a consenter applies a new config only after it has received
-// valid config acks, through its AckConfig handler, from all the members of its own party.
+// valid config acks, through its AckConfig handler, from all the members of its own party, and that
+// it responds to the valid acks only then, so the party members wait for it before applying the config.
 //
 // Scenario:
 //  1. Start a 4-party, single-shard consensus network.
@@ -36,10 +37,14 @@ import (
 //     it and soft stopped, waiting in ApplyConfig for config acks.
 //  3. Send each consenter AckConfig requests it must reject: a nil request, a request without a client
 //     certificate, an unsupported node type, an ack from another party's router, acks whose certificate
-//     does not match the claimed role, and an ack from a batcher of an unknown shard. Then send valid
-//     acks from the party's router and batcher, and verify a repeated ack is rejected.
-//  4. Verify every consenter stays soft stopped: neither the partial acks nor the rejected ones release the wait.
-//  5. Send the assembler's ack and verify every consenter applies the new config on sequence 1.
+//     does not match the claimed role, and an ack from a batcher of an unknown shard. Each is answered at once.
+//  4. Send valid acks from the party's router and batcher, and a repeated router ack, and verify every
+//     consenter stays soft stopped and responds to none of them: neither the partial acks nor the rejected
+//     ones release the wait.
+//  5. Send the assembler's ack and verify every consenter responds to all the valid acks and applies the new
+//     config on sequence 1.
+//  6. Send the router's ack on sequence 1 again and verify it is answered at once, since the consenter has
+//     already applied that config.
 func TestConsensusConfigAck(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
@@ -66,6 +71,9 @@ func TestConsensusConfigAck(t *testing.T) {
 	unknownShardAck := &protos.ConfigAck{NodeType: protos.NodeType_BATCHER, Shard: uint32(numOfShards + 1), ConfigSeq: configSeq}
 	unknownTypeAck := &protos.ConfigAck{NodeType: protos.NodeType(3), ConfigSeq: configSeq}
 
+	const validAcksPerParty = 3 // router, batcher and repeated router acks
+	pendingAcks := make(chan error, validAcksPerParty*len(parties))
+
 	for i, node := range consensusNodes {
 		party := parties[i]
 		routerCtx := nodeTLSContext(t, dir, party, "router")
@@ -73,8 +81,7 @@ func TestConsensusConfigAck(t *testing.T) {
 		assemblerCtx := nodeTLSContext(t, dir, party, "assembler")
 		otherPartyRouterCtx := nodeTLSContext(t, dir, parties[(i+1)%len(parties)], "router")
 
-		// the requests are sent in order; an empty expectedErr means the ack is accepted.
-		requests := []struct {
+		rejected := []struct {
 			name        string
 			ctx         context.Context
 			req         *protos.ConfigAck
@@ -87,43 +94,53 @@ func TestConsensusConfigAck(t *testing.T) {
 			{name: "router posing as the assembler", ctx: routerCtx, req: assemblerAck, expectedErr: "only the assembler of the consenter's own party is served"},
 			{name: "assembler posing as a batcher", ctx: assemblerCtx, req: batcherAck, expectedErr: "the client certificate does not match the expected certificate"},
 			{name: "batcher of an unknown shard", ctx: batcherCtx, req: unknownShardAck, expectedErr: "no batcher configured for shard 2"},
-			{name: "router", ctx: routerCtx, req: routerAck},
-			{name: "batcher", ctx: batcherCtx, req: batcherAck},
-			{name: "repeated router ack", ctx: routerCtx, req: routerAck, expectedErr: "the last acknowledged sequence is 1"},
 		}
 
-		for _, r := range requests {
+		for _, r := range rejected {
 			// AckConfig reports a rejected ack in the response, not as an RPC error.
 			resp, err := node.AckConfig(r.ctx, r.req)
 			require.NoError(t, err, "party %d: %s", party, r.name)
 			require.NotNil(t, resp, "party %d: %s", party, r.name)
-			if r.expectedErr == "" {
-				require.Empty(t, resp.GetError(), "party %d: %s", party, r.name)
-			} else {
-				require.Contains(t, resp.GetError(), r.expectedErr, "party %d: %s", party, r.name)
-			}
+			require.Contains(t, resp.GetError(), r.expectedErr, "party %d: %s", party, r.name)
 		}
+
+		sendConfigAckAsync(routerCtx, node, routerAck, pendingAcks)
+		sendConfigAckAsync(batcherCtx, node, batcherAck, pendingAcks)
+		sendConfigAckAsync(routerCtx, node, routerAck, pendingAcks)
 	}
 
-	// every consenter is still waiting for the ack of its assembler.
+	// every consenter is still waiting for the ack of its assembler, and responds to none of the valid acks.
 	require.Never(t, func() bool {
+		if len(pendingAcks) > 0 {
+			return true
+		}
 		for _, node := range consensusNodes {
 			if node.GetStatus().State != node_utils.StateSoftStopped {
 				return true
 			}
 		}
 		return false
-	}, 3*time.Second, 100*time.Millisecond, "a consenter applied the new config without an ack from its assembler")
+	}, 3*time.Second, 100*time.Millisecond, "a consenter responded to an ack or applied the new config without an ack from its assembler")
 
-	// the assembler's ack completes the set, and every consenter applies the new config.
+	// the assembler's ack completes the set: every consenter responds to all the valid acks and applies the new config.
 	for i, node := range consensusNodes {
 		resp, err := node.AckConfig(nodeTLSContext(t, dir, parties[i], "assembler"), assemblerAck)
 		require.NoError(t, err)
 		require.Empty(t, resp.GetError())
 	}
+	requireConfigAcksAnswered(t, pendingAcks, validAcksPerParty*len(parties), 30*time.Second)
 	for i, node := range consensusNodes {
 		waitForRunningState(t, node, configSeq)
 		waitForConsensusServing(t, dir, parties[i], node)
+	}
+
+	// the consenter has already applied config sequence 1, so a late ack on it is answered at once.
+	for i, node := range consensusNodes {
+		ctx, cancel := context.WithTimeout(nodeTLSContext(t, dir, parties[i], "router"), 5*time.Second)
+		resp, err := node.AckConfig(ctx, routerAck)
+		cancel()
+		require.NoError(t, err)
+		require.Empty(t, resp.GetError())
 	}
 
 	for _, node := range consensusNodes {
@@ -132,15 +149,16 @@ func TestConsensusConfigAck(t *testing.T) {
 }
 
 // TestConsensusConfigAckTimeout verifies that a consenter that does not receive config acks from all the
-// members of its own party waits until the config ack timeout expires, and then applies the new config anyway.
+// members of its own party waits until the config ack timeout expires, and then responds to the acks it
+// did receive and applies the new config anyway.
 //
 // Scenario:
 //  1. Start a 4-party, single-shard consensus network with a short config ack timeout.
 //  2. Submit a config update that is applied dynamically, and wait until every consenter has decided
 //     it and soft stopped, waiting in ApplyConfig for config acks.
 //  3. Send valid acks from the party's router and batcher only; the assembler never acks.
-//  4. Verify every consenter stays soft stopped before the timeout expires.
-//  5. Verify every consenter applies the new config on sequence 1 once the timeout expires.
+//  4. Verify every consenter stays soft stopped and responds to none of the acks before the timeout expires.
+//  5. Verify every consenter responds to the acks and applies the new config on sequence 1 once the timeout expires.
 func TestConsensusConfigAckTimeout(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
@@ -175,26 +193,28 @@ func TestConsensusConfigAckTimeout(t *testing.T) {
 
 	// only the router and the batcher ack the new config; the assembler's ack never arrives.
 	const configSeq = uint64(1)
+	const acksPerParty = 2 // router and batcher acks
+	pendingAcks := make(chan error, acksPerParty*len(parties))
 	for i, node := range consensusNodes {
-		resp, err := node.AckConfig(routerCtxs[i], &protos.ConfigAck{NodeType: protos.NodeType_ROUTER, ConfigSeq: configSeq})
-		require.NoError(t, err)
-		require.Empty(t, resp.GetError())
-		resp, err = node.AckConfig(batcherCtxs[i], &protos.ConfigAck{NodeType: protos.NodeType_BATCHER, Shard: 1, ConfigSeq: configSeq})
-		require.NoError(t, err)
-		require.Empty(t, resp.GetError())
+		sendConfigAckAsync(routerCtxs[i], node, &protos.ConfigAck{NodeType: protos.NodeType_ROUTER, ConfigSeq: configSeq}, pendingAcks)
+		sendConfigAckAsync(batcherCtxs[i], node, &protos.ConfigAck{NodeType: protos.NodeType_BATCHER, Shard: 1, ConfigSeq: configSeq}, pendingAcks)
 	}
 
-	// every consenter keeps waiting for the missing ack.
+	// every consenter keeps waiting for the missing ack, and responds to none of the acks.
 	require.Never(t, func() bool {
+		if len(pendingAcks) > 0 {
+			return true
+		}
 		for _, node := range consensusNodes {
 			if node.GetStatus().State != node_utils.StateSoftStopped {
 				return true
 			}
 		}
 		return false
-	}, 2*time.Second, 100*time.Millisecond, "a consenter applied the new config before the config ack timeout expired")
+	}, 2*time.Second, 100*time.Millisecond, "a consenter responded to an ack or applied the new config before the config ack timeout expired")
 
-	// once the timeout expires, every consenter applies the new config without the assembler's ack.
+	// once the timeout expires, every consenter responds to the acks and applies the new config without the assembler's ack.
+	requireConfigAcksAnswered(t, pendingAcks, acksPerParty*len(parties), ackTimeout+20*time.Second)
 	for i, node := range consensusNodes {
 		require.Eventually(t, func() bool {
 			status := node.GetStatus()
@@ -225,6 +245,33 @@ func submitDynamicConfigUpdate(t *testing.T, dir string, parties []types.PartyID
 
 	for _, node := range consensusNodes {
 		waitForSoftStoppedState(t, node)
+	}
+}
+
+// sendConfigAckAsync sends a config ack to the consenter on its own goroutine, since the consenter responds to a
+// valid ack only once it is no longer waiting for acks, and reports the outcome on results: nil if the ack was
+// answered without an error.
+func sendConfigAckAsync(ctx context.Context, node *consensus_node.Consensus, req *protos.ConfigAck, results chan<- error) {
+	go func() {
+		resp, err := node.AckConfig(ctx, req)
+		if err == nil && resp.GetError() != "" {
+			err = fmt.Errorf("config ack rejected: %s", resp.GetError())
+		}
+		results <- err
+	}()
+}
+
+// requireConfigAcksAnswered waits for count acks sent with sendConfigAckAsync to be answered, and requires
+// that each was answered without an error.
+func requireConfigAcksAnswered(t *testing.T, results <-chan error, count int, timeout time.Duration) {
+	deadline := time.After(timeout)
+	for range count {
+		select {
+		case err := <-results:
+			require.NoError(t, err)
+		case <-deadline:
+			t.Fatalf("a consenter did not respond to a config ack within %s", timeout)
+		}
 	}
 }
 
