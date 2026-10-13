@@ -43,6 +43,8 @@ import (
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 
 	"github.com/pkg/errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -1594,6 +1596,10 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 }
 
 // AckConfig handles ConfigAck RPC calls from party members (router, batchers, assembler).
+// A rejected ack is answered at once with an error in the response. An accepted ack is answered only once the
+// consenter is no longer waiting for acks on its config sequence, either because all the party members acked
+// it or because the consenter's wait for acks timed out; the party member applies the new config after that.
+// If the consenter stops first, the ack is answered with an Unavailable error, which the party member retries.
 func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
 	if req == nil {
 		return &protos.ConfigAckResponse{Error: "nil ConfigAck request"}, nil
@@ -1604,9 +1610,17 @@ func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*prot
 		return &protos.ConfigAckResponse{Error: err.Error()}, nil
 	}
 
-	err := c.ConfigAckReceiver.AddAck(req)
+	c.lock.RLock()
+	receiver := c.ConfigAckReceiver
+	c.lock.RUnlock()
+
+	err := receiver.AddAck(req)
 	if err != nil {
 		return &protos.ConfigAckResponse{Error: err.Error()}, nil
+	}
+
+	if err := receiver.WaitForRelease(ctx, req.ConfigSeq); err != nil {
+		return nil, status.Errorf(codes.Unavailable, "consenter did not respond to the config ack on sequence %d: %v", req.ConfigSeq, err)
 	}
 	return &protos.ConfigAckResponse{}, nil
 }

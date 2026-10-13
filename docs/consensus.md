@@ -145,7 +145,8 @@ service Consensus {
   is the party's router (by its TLS certificate), validates and re-derives the configuration update,
   and, if it is well-formed, submits it as a configuration-request control event.
 - `AckConfig` collects acknowledgments that a router, batcher, or assembler has taken a given
-  configuration sequence. These gate reconfiguration (see [Reconfiguration](#7-reconfiguration)).
+  configuration sequence, and answers each only once the consenter stops waiting for them. These gate
+  the reconfiguration of the whole party (see [Reconfiguration](#7-reconfiguration)).
 
 **Consensus among the parties** flows over Fabric's cluster service (`ClusterNodeService`): its
 streaming `Step` RPC carries the SmartBFT protocol messages exchanged between the consenters of
@@ -520,8 +521,14 @@ one the node is running, the node applies it.
 Applying begins with a **soft stop**, which pauses the parts of the node that depend on the current
 configuration while the reconfiguration is worked out. The node first waits, up to a timeout, for the
 router, batchers, and assembler of its party to acknowledge the new configuration sequence — this is
-what the `AckConfig` path collects — so that consensus can tell which nodes have taken the new
-configuration; it proceeds even if not all acknowledgments arrive.
+what the `AckConfig` path collects; it proceeds even if not all acknowledgments arrive. The consenter
+answers each acknowledgment only when this wait ends, and the acknowledging node applies the new
+configuration only after it gets the answer, so each party moves to the new configuration after its
+slowest node has received it or a timeout has reached. In particular, the assembler acknowledges only 
+after it has appended the configuration block, and so every batch ordered before it; 
+until then, the batchers of its party keep serving batches under the previous configuration.
+The barrier holds only within a party, and only up to the consenter's timeout. A node that gets no
+answer before its own, longer timeout applies the new configuration anyway, with a warning.
 
 Not every change can be applied by the node itself. If the new configuration evicts the consenter's own
 party, or changes this node's own identity — its endpoint, its TLS certificate, or its signing

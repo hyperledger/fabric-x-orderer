@@ -162,6 +162,60 @@ func TestAssemblerSendsConfigAckEvenWhenEvicted(t *testing.T) {
 	require.EqualValues(t, 1, acks[0].ConfigSeq)
 }
 
+// Scenario:
+//  1. Start an assembler, stub batcher, and stub consenter with the initial config.
+//  2. Define an AckConfigHandler that holds back the consenter's response.
+//  3. Deliver a config update (batching timeout change) through the consenter path, and wait for
+//     the assembler's ConfigAck.
+//  4. Verify the assembler does not apply the new config while it waits for the consenter's response.
+//  5. Let the consenter respond, and verify the assembler then advances to config sequence 1.
+func TestAssemblerConfigAckWaitsForConsenterResponse(t *testing.T) {
+	partyId := types.PartyID(1)
+	parties := []types.PartyID{partyId}
+
+	dir := t.TempDir()
+	testSetup := createReconfigTestSetup(t, dir, partyId)
+
+	acked := make(chan struct{}, 1)
+	respond := make(chan struct{})
+	testSetup.stubConsenter.AckConfigHandler = func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		select {
+		case acked <- struct{}{}:
+		default:
+		}
+		<-respond
+		return &protos.ConfigAckResponse{}, nil
+	}
+
+	testSetup.Start()
+	defer testSetup.Stop()
+
+	require.Eventually(t, func() bool {
+		status := testSetup.assemblerNode.GetStatus()
+		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
+	}, 20*time.Second, 100*time.Millisecond)
+
+	testSetup.SendConfigUpdate(t, autoRemoveTimeoutConfigUpdate(t, dir), parties, dir, 1)
+
+	select {
+	case <-acked:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the assembler did not send a ConfigAck")
+	}
+
+	require.Never(t, func() bool {
+		return testSetup.assemblerNode.GetStatus().ConfigSequenceNumber == 1
+	}, 2*time.Second, 100*time.Millisecond, "the assembler applied the new config before the consenter responded to its ack")
+
+	close(respond)
+
+	require.Eventually(t, func() bool {
+		status := testSetup.assemblerNode.GetStatus()
+		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 1
+	}, 20*time.Second, 100*time.Millisecond)
+	requireAssemblerServing(t, testSetup)
+}
+
 // configAckRecorder captures the ConfigAck requests the assembler sends to the
 // stub consenter. AckConfig is served on the consenter's gRPC goroutine, so all
 // access is guarded by a mutex.

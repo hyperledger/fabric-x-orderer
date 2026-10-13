@@ -144,7 +144,7 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	for _, shardInfo := range c.Config.Shards {
 		shards = append(shards, shardInfo.ShardId)
 	}
-	c.ConfigAckReceiver = configack.NewReceiver(c.Logger, shards)
+	c.ConfigAckReceiver = configack.NewReceiver(c.Logger, shards, nodeConfig.Bundle.ConfigtxValidator().Sequence())
 
 	if createNewBFT {
 		c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)

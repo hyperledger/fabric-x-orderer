@@ -15,10 +15,16 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
 
-const defaultSubmitConfigAckTimeout = 60 * time.Second // TODO: expose in local config
+// defaultSubmitConfigAckTimeout is longer than the consenter's wait for acks, so that normally the
+// consenter's response (sent at the latest when its own wait times out) arrives before the sender gives up.
+const defaultSubmitConfigAckTimeout = 90 * time.Second // TODO: expose in local config
+
+// errConfigAckRejected marks a ConfigAck the consenter rejected; retrying it does not change the outcome.
+var errConfigAckRejected = errors.New("config ack rejected by consenter")
 
 type Sender interface {
 	Stop()
@@ -85,30 +91,33 @@ func NewSender(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *sender 
 	return s
 }
 
-// SubmitConfigAck attempts to deliver a ConfigAck for the given configSeq to the consenter.
+// SubmitConfigAck attempts to deliver a ConfigAck for the given configSeq to the consenter,
+// and waits for the consenter's response. The consenter responds once it is no longer waiting
+// for acks on configSeq, either because all the members of the party acked it or because its
+// own wait for acks timed out.
 //
 // The whole delivery process is bounded by a single timeout context derived from ca.ctx.
-// This timeout covers all retry attempts together. Therefore, once the timeout expires,
-// SubmitConfigAck stops retrying and returns an error.
+// This timeout covers all retry attempts together, including the wait for the response.
+// Therefore, once the timeout expires, SubmitConfigAck stops retrying and returns an error.
 //
 // Each retry attempt consists of:
 //   - connect to the consenter
-//   - send the ConfigAck
+//   - send the ConfigAck and wait for the response
 //
 // If either the connection or the send fails, the function waits before retrying the
 // entire flow again. The wait interval uses exponential backoff, starting from
 // minRetryInterval and doubling after each failed attempt, up to maxRetryInterval.
 //
-// The function returns nil once the ConfigAck is successfully sent. It returns an error
-// if the total timeout expires or if ca.ctx is cancelled, for example when the
-// sender is stopped.
+// The function returns nil once the consenter responds to the ConfigAck. It returns an error
+// without retrying if the consenter rejects the ConfigAck, and it returns an error if the total
+// timeout expires or if ca.ctx is cancelled, for example when the sender is stopped.
 func (s *sender) SubmitConfigAck(configSeq uint64) error {
 	ctx, cancel := context.WithTimeout(s.ctx, s.submitConfigAckTimeout)
 	defer cancel()
 
 	err := s.submitWithRetry(ctx, configSeq)
-	if err == nil {
-		return nil
+	if err == nil || errors.Is(err, errConfigAckRejected) {
+		return err
 	}
 
 	interval := s.minRetryInterval
@@ -124,6 +133,9 @@ func (s *sender) SubmitConfigAck(configSeq uint64) error {
 			numOfRetries++
 
 			err := s.submitWithRetry(ctx, configSeq)
+			if errors.Is(err, errConfigAckRejected) {
+				return err
+			}
 			if err != nil {
 				interval = min(interval*2, s.maxRetryInterval)
 				s.logger.Warningf("Sending config ack to consensus on sequence %d failed: %v, trying again in: %s", configSeq, err, interval)
@@ -180,10 +192,8 @@ func (s *sender) connectToConsenter() (*grpc.ClientConn, error) {
 
 // sendConfigAckToConsensus sends a single ConfigAck RPC attempt over the given connection.
 // The RPC is bounded by a timeout derived from ca.ctx. If ca.ctx is cancelled, the RPC returns with an error.
-// If the consenter returns an error in the ConfigAckResponse, it is logged for
-// visibility. The response error is not returned to the caller because the client
-// does not take any recovery action based on this response; only the RPC error is
-// used to decide whether the ConfigAck should be retried.
+// An RPC error is retried by the caller. If the consenter returns an error in the ConfigAckResponse, the
+// ConfigAck was rejected, and an errConfigAckRejected error is returned, which the caller does not retry.
 func (s *sender) sendConfigAckToConsensus(ctx context.Context, conn *grpc.ClientConn, configSeq uint64) error {
 	client := protos.NewConsensusClient(conn)
 
@@ -195,8 +205,12 @@ func (s *sender) sendConfigAckToConsensus(ctx context.Context, conn *grpc.Client
 
 	s.logger.Infof("Sending ConfigAck for config sequence %d to consenter", configSeq)
 	resp, err := client.AckConfig(ctx, configAckReq)
-	if resp != nil && resp.GetError() != "" {
-		s.logger.Warnf("Received bad response from consensus on config ack on config sequence %d: %s", configSeq, resp.GetError())
+	if err != nil {
+		return err
 	}
-	return err
+	if resp.GetError() != "" {
+		s.logger.Warnf("Received bad response from consensus on config ack on config sequence %d: %s", configSeq, resp.GetError())
+		return errors.Wrapf(errConfigAckRejected, "config sequence %d: %s", configSeq, resp.GetError())
+	}
+	return nil
 }

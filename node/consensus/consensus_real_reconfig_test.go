@@ -38,6 +38,8 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // TestConsensusWithRealConfigUpdate tests the consensus behavior when a real config update happens. It covers the following scenarios:
@@ -640,6 +642,9 @@ func waitForSoftStoppedState(t *testing.T, consenter *consensus_node.Consensus) 
 // can complete. Without that abort branch, bft.Stop() would wait forever on the parked Deliver
 // goroutine, since ConfigAckReceiver.Stop() (which would unblock the ack wait) only runs later in
 // Stop(), after bft.Stop().
+//
+// A router ack that is waiting for the consenter's response when it stops is answered with an
+// Unavailable error, so the router retries it rather than treating the stop as a release.
 func TestConsensusStopDuringReconfigAckWait(t *testing.T) {
 	parties := []types.PartyID{1, 2, 3, 4}
 	numOfShards := 1
@@ -685,6 +690,12 @@ func TestConsensusStopDuringReconfigAckWait(t *testing.T) {
 		waitForSoftStoppedState(t, node)
 	}
 
+	// only the router acks, so its ack waits for a response until the consenter stops.
+	pendingAcks := make(chan error, len(parties))
+	for i, node := range consensusNodes {
+		sendConfigAckAsync(nodeTLSContext(t, dir, parties[i], "router"), node, &protos.ConfigAck{NodeType: protos.NodeType_ROUTER, ConfigSeq: 1}, pendingAcks)
+	}
+
 	// Stopping each node must return promptly despite the parked Deliver; a hang here means the
 	// abort branch is broken and bft.Stop() is deadlocked on the parked goroutine.
 	for i, node := range consensusNodes {
@@ -697,6 +708,16 @@ func TestConsensusStopDuringReconfigAckWait(t *testing.T) {
 		case <-done:
 		case <-time.After(60 * time.Second):
 			t.Fatalf("Stop() for consensus node %d did not return; Deliver is likely deadlocked waiting on reconfig", parties[i])
+		}
+	}
+
+	// the stopped consenter answers the waiting router ack with an error the router retries.
+	for range parties {
+		select {
+		case err := <-pendingAcks:
+			require.Equal(t, codes.Unavailable, status.Code(err), "unexpected response to a waiting ack: %v", err)
+		case <-time.After(10 * time.Second):
+			t.Fatal("a stopped consenter did not respond to a waiting config ack")
 		}
 	}
 
