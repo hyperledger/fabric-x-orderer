@@ -12,6 +12,7 @@ TX_SIZE=${TX_SIZE:-300}
 DURATION_SECONDS=${DURATION_SECONDS:-300}
 OPEN_BROWSER=${OPEN_BROWSER:-auto}
 DOCKER_CMD=${DOCKER_CMD:-docker}
+THROTTLE_RATE=${THROTTLE_RATE:-0}
 
 SAMPLE_DIR=/tmp/arma-sample
 OPERATIONS_PORT=8080
@@ -38,6 +39,20 @@ for config in "${SAMPLE_DIR}"/config/party*/local_config_*.yaml; do
   ' "${config}" > "${config}.new"
   mv "${config}.new" "${config}"
 done
+
+# Optionally throttle party 1's router, so the router throttling panels have data to show.
+if [ "${THROTTLE_RATE}" -gt 0 ]; then
+  config="${SAMPLE_DIR}/config/party1/local_config_router.yaml"
+  awk -v rate="${THROTTLE_RATE}" '
+    /Policy: disabled/ {
+      print "        Policy: global"
+      print "        Rate: " rate
+      next
+    }
+    { print }
+  ' "${config}" > "${config}.new"
+  mv "${config}.new" "${config}"
+fi
 
 hosts=$(grep -oE '"[a-z0-9.]+:[0-9]+"' "${DEPLOYMENT}" | tr -d '"' | cut -d: -f1)
 
