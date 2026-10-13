@@ -46,10 +46,20 @@ if [ ! -f "${BASE}/config/party1/user_config.yaml" ]; then
   exit 1
 fi
 
-echo "Waiting for the routers to be healthy..."
-for port in 8022 8122 8222 8322; do
-  docker exec ${CONTAINER_ID} curl -sf --retry 100 --retry-delay 1 --retry-connrefused http://127.0.0.1:${port}/healthz > /dev/null
+echo "Waiting for the network to be healthy..."
+for i in {1..120}; do
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' ${CONTAINER_ID})" = "healthy" ]; then
+    echo "Network healthy"
+    break
+  fi
+  sleep 1
 done
+
+if [ "$(docker inspect -f '{{.State.Health.Status}}' ${CONTAINER_ID})" != "healthy" ]; then
+  echo "ERROR: network not healthy"
+  docker logs ${CONTAINER_ID}
+  exit 1
+fi
 
 echo "---- PORT STATUS ----"
 for port in 6022 6023 6024 6025 6122 6123 6124 6125 6222 6223 6224 6225 6322 6323 6324 6325; do

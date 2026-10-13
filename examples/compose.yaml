@@ -14,9 +14,6 @@ x-base: &base
     retries: 20
     start_period: 10s
 
-x-consenter: &consenter
-  <<: *base
-
 x-batcher: &batcher
   <<: *base
   depends_on:
@@ -29,39 +26,33 @@ x-batcher: &batcher
     consenter.p4:
       condition: service_healthy
 
-x-assembler: &assembler
-  <<: *base
-
-x-router: &router
-  <<: *base
-
 services:
 
   ## consenters ....
 
   consenter.p1:
-    <<: *consenter
+    <<: *base
     command: consensus --config=tmp/arma-sample/config/party1/local_config_consenter.yaml
     hostname: consensus.p1
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   consenter.p2:
-    <<: *consenter
+    <<: *base
     command: consensus --config=tmp/arma-sample/config/party2/local_config_consenter.yaml
     hostname: consensus.p2
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   consenter.p3:
-    <<: *consenter
+    <<: *base
     command: consensus --config=tmp/arma-sample/config/party3/local_config_consenter.yaml
     hostname: consensus.p3
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   consenter.p4:
-    <<: *consenter
+    <<: *base
     command: consensus --config=tmp/arma-sample/config/party4/local_config_consenter.yaml
     hostname: consensus.p4
     volumes:
@@ -128,7 +119,7 @@ services:
   ## assemblers ....
 
   assembler.p1:
-    <<: *assembler
+    <<: *base
     command: assembler --config=tmp/arma-sample/config/party1/local_config_assembler.yaml
     depends_on:
       batcher1.p1:
@@ -139,7 +130,7 @@ services:
       - /tmp/arma-sample:/tmp/arma-sample
 
   assembler.p2:
-    <<: *assembler
+    <<: *base
     command: assembler --config=tmp/arma-sample/config/party2/local_config_assembler.yaml
     depends_on:
       batcher1.p2:
@@ -150,7 +141,7 @@ services:
       - /tmp/arma-sample:/tmp/arma-sample
 
   assembler.p3:
-    <<: *assembler
+    <<: *base
     command: assembler --config=tmp/arma-sample/config/party3/local_config_assembler.yaml
     depends_on:
       batcher1.p3:
@@ -161,7 +152,7 @@ services:
       - /tmp/arma-sample:/tmp/arma-sample
 
   assembler.p4:
-    <<: *assembler
+    <<: *base
     command: assembler --config=tmp/arma-sample/config/party4/local_config_assembler.yaml
     depends_on:
       batcher1.p4:
@@ -174,7 +165,7 @@ services:
   ## routers ....
 
   router.p1:
-    <<: *router
+    <<: *base
     command: router --config=tmp/arma-sample/config/party1/local_config_router.yaml
     depends_on:
       assembler.p1:
@@ -183,7 +174,7 @@ services:
       - /tmp/arma-sample:/tmp/arma-sample
 
   router.p2:
-    <<: *router
+    <<: *base
     command: router --config=tmp/arma-sample/config/party2/local_config_router.yaml
     depends_on:
       assembler.p2:
@@ -192,7 +183,7 @@ services:
       - /tmp/arma-sample:/tmp/arma-sample
 
   router.p3:
-    <<: *router
+    <<: *base
     command: router --config=tmp/arma-sample/config/party3/local_config_router.yaml
     depends_on:
       assembler.p3:
@@ -201,7 +192,7 @@ services:
       - /tmp/arma-sample:/tmp/arma-sample
 
   router.p4:
-    <<: *router
+    <<: *base
     command: router --config=tmp/arma-sample/config/party4/local_config_router.yaml
     depends_on:
       assembler.p4:

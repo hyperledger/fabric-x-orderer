@@ -14,17 +14,10 @@ make binary
 
 ./bin/armageddon generate --config="${EXAMPLE_DIR}/config/example-deployment.yaml" --output="/tmp/arma-sample"
 
-# Expose a fixed operations port so the compose healthcheck can reach /healthz.
+# Fix the operations port so the compose healthcheck can reach /healthz.
 for config in /tmp/arma-sample/config/party*/local_config_*.yaml; do
-  awk '
-    /ListenAddress: 127.0.0.1/ {
-      print "    ListenAddress: 0.0.0.0"
-      print "    ListenPort: 8080"
-      next
-    }
-    { print }
-  ' "${config}" > "${config}.new"
-  mv "${config}.new" "${config}"
+  sed -i "/^Operations:/,/^Metrics:/ {/^[[:space:]]*ListenPort:/d;}" "${config}"
+  sed -i "/^Operations:/ a\\    ListenPort: 8080" "${config}"
 done
 
 cd "${EXAMPLE_DIR}" && docker compose up -d --wait
