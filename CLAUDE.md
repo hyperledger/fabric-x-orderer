@@ -50,7 +50,7 @@ authoritative overview. `docs/api.md` covers the client API.
 
 ```bash
 make binary            # builds ./bin/arma and ./bin/armageddon
-make linter            # golangci-lint (config in .golangci.yml) + dep/help-doc checks
+make linter            # goimports, gofumpt, go vet, staticcheck + dep/help-doc checks
 make protos            # regenerate protobuf artifacts from .proto files
 make basic-checks      # license headers, DCO, imports, protos, linter — run before pushing
 make build-image       # build the Docker image locally (Docker or Podman)
@@ -123,9 +123,13 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
 - Logging is `flogging` (`FabricLogger`), typically named per role/party
   (e.g. `Batcher%dShard%d`).
 - Errors use `github.com/pkg/errors` (wrap with context).
-- The linter set is strict (`.golangci.yml`): `gosec`, `gocritic`, `revive`, `ireturn`, `lll`,
-  `gocognit`, etc. `make linter-extra` runs additional checks against `main` for new changes;
-  `golangci-lint run --fix --new-from-rev=main` fixes the auto-fixable ones.
+- `make linter` (`scripts/golinter.sh`) is the lint gate CI enforces: `goimports`, `gofumpt`,
+  `go vet` and `staticcheck`, installed with `go install` as in `.github/workflows/verify-build.yml`.
+  Fix formatting with `gofumpt -w` and `goimports -w`. It does not use `golangci-lint`.
+- `.golangci.yml` holds a stricter, optional set (`gosec`, `gocritic`, `revive`, `ireturn`, `lll`,
+  `gocognit`, etc.), run only by `make linter-extra` against `main` for new changes;
+  `golangci-lint run --fix --new-from-rev=main` fixes the auto-fixable ones. CI does not run it,
+  and the config is in golangci-lint v1 format, so it needs a v1 binary.
 - CLI help text is checked against docs (`make check-help-docs` / `scripts/help_docs.sh`); if you
   change a command's flags/help, regenerate the docs.
 
