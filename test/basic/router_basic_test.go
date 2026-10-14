@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-x-orderer/common/metadata"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	config "github.com/hyperledger/fabric-x-orderer/config"
-	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	test_utils "github.com/hyperledger/fabric-x-orderer/test/utils"
