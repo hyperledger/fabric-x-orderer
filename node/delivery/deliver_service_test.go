@@ -17,7 +17,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
@@ -25,10 +25,11 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/configutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tlsutil"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
+
+const localhost = "127.0.0.1"
 
 // Scenario:
 //  1. Generate the signing identity of the router, the consenter, the assembler and a batcher of one
@@ -51,7 +52,10 @@ func TestConsensusDeliverServiceServesOnlyAdmittedSigners(t *testing.T) {
 	bundle := &mocks.FakeConfigResources{}
 	configutil.AdmitSigners(bundle, routerCert, batcherCert, consenterCert, assemblerCert)
 
-	endpoint := serveConsensusDeliverService(t, channelID, bundle)
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	endpoint := serveConsensusDeliverService(t, channelID, bundle, ca)
 	channelName := delivery.DecisionChannelName(channelID)
 
 	for _, node := range []struct {
@@ -64,23 +68,67 @@ func TestConsensusDeliverServiceServesOnlyAdmittedSigners(t *testing.T) {
 		{name: "the assembler", signer: assemblerSigner},
 	} {
 		t.Run(node.name, func(t *testing.T) {
-			response, err := pullDecision(t, endpoint, channelName, node.signer)
+			response, err := pullDecision(t, endpoint, channelName, node.signer, tlsutil.NewClient(t, ca))
 			require.NoError(t, err)
 			require.NotNil(t, response.GetBlock())
 		})
 	}
 
 	t.Run("an identity the policy does not admit", func(t *testing.T) {
-		response, err := pullDecision(t, endpoint, channelName, foreignSigner)
+		response, err := pullDecision(t, endpoint, channelName, foreignSigner, tlsutil.NewClient(t, ca))
 		require.NoError(t, err)
 		require.Equal(t, common.Status_FORBIDDEN, response.GetStatus())
 		require.Nil(t, response.GetBlock())
 	})
 }
 
+// Scenario:
+//  1. Generate the signing identity of the consenter of one party, and let the policy of the
+//     configuration admit it.
+//  2. Serve the consensus deliver service over a decision ledger holding one decision, with the
+//     access control a consenter builds from that configuration.
+//  3. Pull with a request the consenter signed that carries no TLS certificate hash, and expect the
+//     request to be refused with no decision delivered.
+//  4. Pull with a request the consenter signed that carries the TLS certificate hash of another
+//     client, and expect the request to be refused with no decision delivered.
+func TestConsensusDeliverServiceBindsRequestToClientCertificate(t *testing.T) {
+	channelID := "arma"
+
+	consenterSigner, consenterCert := signutil.NewSelfSignedSigner(t, "org")
+
+	bundle := &mocks.FakeConfigResources{}
+	configutil.AdmitSigners(bundle, consenterCert)
+
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	endpoint := serveConsensusDeliverService(t, channelID, bundle, ca)
+	channelName := delivery.DecisionChannelName(channelID)
+
+	t.Run("no TLS certificate hash", func(t *testing.T) {
+		client := tlsutil.NewClient(t, ca)
+		client.TLSCertHash = nil
+
+		response, err := pullDecision(t, endpoint, channelName, consenterSigner, client)
+		require.NoError(t, err)
+		require.Equal(t, common.Status_BAD_REQUEST, response.GetStatus())
+		require.Nil(t, response.GetBlock())
+	})
+
+	t.Run("the TLS certificate hash of another client", func(t *testing.T) {
+		client := tlsutil.NewClient(t, ca)
+		client.TLSCertHash = tlsutil.NewClient(t, ca).TLSCertHash
+
+		response, err := pullDecision(t, endpoint, channelName, consenterSigner, client)
+		require.NoError(t, err)
+		require.Equal(t, common.Status_BAD_REQUEST, response.GetStatus())
+		require.Nil(t, response.GetBlock())
+	})
+}
+
 // serveConsensusDeliverService serves a consensus deliver service over a ledger holding a single
 // decision, and returns the endpoint it listens on.
-func serveConsensusDeliverService(t *testing.T, channelID string, bundle channelconfig.Resources) string {
+func serveConsensusDeliverService(t *testing.T, channelID string, bundle channelconfig.Resources, ca tlsgen.CA) string {
 	logger := testutil.CreateLogger(t, 1)
 
 	consensusLedger, err := node_ledger.NewConsensusLedger(t.TempDir())
@@ -93,7 +141,10 @@ func serveConsensusDeliverService(t *testing.T, channelID string, bundle channel
 	deliverService, err := delivery.NewDeliverService(channelID, consensusLedger, bundle)
 	require.NoError(t, err)
 
-	server, err := comm.NewGRPCServer(testutil.AllocateLocalhostAddress(t), comm.ServerConfig{})
+	serverKeyPair, err := ca.NewServerCertKeyPair(localhost)
+	require.NoError(t, err)
+
+	server, err := tlsutil.NewMutualTLSServer(testutil.AllocateLocalhostAddress(t), ca, serverKeyPair)
 	require.NoError(t, err)
 
 	orderer.RegisterAtomicBroadcastServer(server.Server(), deliverService)
@@ -108,10 +159,9 @@ func serveConsensusDeliverService(t *testing.T, channelID string, bundle channel
 	return server.Address()
 }
 
-// pullDecision asks the deliver service at endpoint for the decisions of a channel, and returns the
-// first response of the stream.
-func pullDecision(t *testing.T, endpoint string, channelName string, signer identity.SignerSerializer) (*orderer.DeliverResponse, error) {
-	connection, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+// pullDecision pulls decisions over the mutual TLS connection of client, and returns the first response.
+func pullDecision(t *testing.T, endpoint string, channelName string, signer identity.SignerSerializer, client *tlsutil.Client) (*orderer.DeliverResponse, error) {
+	connection, err := client.Dial(endpoint)
 	require.NoError(t, err)
 	t.Cleanup(func() { connection.Close() })
 
@@ -128,7 +178,7 @@ func pullDecision(t *testing.T, endpoint string, channelName string, signer iden
 		delivery.SingleSpecifiedSeekInfo(0),
 		int32(0),
 		uint64(0),
-		nil,
+		client.TLSCertHash,
 	)
 	require.NoError(t, err)
 	require.NoError(t, stream.Send(request))

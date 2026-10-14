@@ -54,9 +54,16 @@ type ConsensusBAReplicator struct {
 	logger        *flogging.FabricLogger
 	cancelCtx     context.Context
 	ctxCancelFunc context.CancelFunc
+	// tlsCertHash binds a deliver request to the TLS connection it is sent over.
+	tlsCertHash []byte
 }
 
 func NewConsensusBAReplicator(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, assemblerLedger ledger.AssemblerLedgerReaderWriter, signer identity.SignerSerializer, logger *flogging.FabricLogger) *ConsensusBAReplicator {
+	tlsCertHash, err := protoutil.HashTLSCertificate(tlsCert)
+	if err != nil {
+		logger.Panicf("Failed hashing the TLS certificate: %s", err)
+	}
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	baReplicator := &ConsensusBAReplicator{
 		channelID:       channelID,
@@ -64,6 +71,7 @@ func NewConsensusBAReplicator(channelID string, tlsCACerts []config.RawBytes, tl
 		cc:              clientConfig(tlsCACerts, tlsKey, tlsCert),
 		endpoint:        endpoint,
 		signer:          signer,
+		tlsCertHash:     tlsCertHash,
 		logger:          logger,
 		tlsKey:          tlsKey,
 		tlsCert:         tlsCert,
@@ -93,7 +101,7 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 			NextSeekInfo(uint64(position.DecisionNum)),
 			int32(0),
 			uint64(0),
-			nil,
+			cr.tlsCertHash,
 		)
 		if err != nil {
 			cr.logger.Panicf("Failed creating signed envelope: %v", err)

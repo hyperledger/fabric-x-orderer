@@ -35,9 +35,16 @@ type ConsensusDecisionReplicator struct {
 	cancelCtx     context.Context
 	ctxCancelFunc context.CancelFunc
 	seekInfo      *orderer.SeekInfo
+	// tlsCertHash binds a deliver request to the TLS connection it is sent over.
+	tlsCertHash []byte
 }
 
 func NewConsensusDecisionReplicator(channelID string, tlsCACerts []config.RawBytes, tlsKey config.RawBytes, tlsCert config.RawBytes, endpoint string, signer identity.SignerSerializer, logger *flogging.FabricLogger, seekInfo *orderer.SeekInfo) *ConsensusDecisionReplicator {
+	tlsCertHash, err := protoutil.HashTLSCertificate(tlsCert)
+	if err != nil {
+		logger.Panicf("Failed hashing the TLS certificate: %s", err)
+	}
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	decisionReplicator := &ConsensusDecisionReplicator{
 		channelID:     channelID,
@@ -46,6 +53,7 @@ func NewConsensusDecisionReplicator(channelID string, tlsCACerts []config.RawByt
 		endpoint:      endpoint,
 		cc:            clientConfig(tlsCACerts, tlsKey, tlsCert),
 		signer:        signer,
+		tlsCertHash:   tlsCertHash,
 		logger:        logger,
 		cancelCtx:     ctx,
 		ctxCancelFunc: cancelFunc,
@@ -67,7 +75,7 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 			cr.seekInfo,
 			int32(0),
 			uint64(0),
-			nil,
+			cr.tlsCertHash,
 		)
 		if err != nil {
 			cr.logger.Panicf("Failed creating signed envelope: %v", err)
