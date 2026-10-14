@@ -398,7 +398,8 @@ func (r *Router) Broadcast(stream orderer.AtomicBroadcast_BroadcastServer) error
 		close(exit)
 	}()
 
-	feedback := newClientFeedback(clientFeedbackBufferSize)
+	feedback := newClientFeedback(clientFeedbackBufferSize, clientAddr, stream.Context().Done(), r.drainChan, r.metrics, r.logger)
+	defer r.reportDroppedResponses(feedback)
 	go r.sendFeedbackOnBroadcastStream(stream, exit, feedback)
 
 	for {
@@ -459,7 +460,9 @@ func (r *Router) SubmitStream(stream protos.RequestTransmit_SubmitStreamServer) 
 		close(exit)
 	}()
 
-	feedback := newClientFeedback(clientFeedbackBufferSize)
+	clientAddr, _ := utils.ExtractClientAddressFromContext(stream.Context())
+	feedback := newClientFeedback(clientFeedbackBufferSize, clientAddr, stream.Context().Done(), r.drainChan, r.metrics, r.logger)
+	defer r.reportDroppedResponses(feedback)
 	go r.sendFeedbackOnSubmitStream(stream, exit, feedback)
 
 	for {
@@ -533,7 +536,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 
 	trace := createTraceID(nil)
 
-	feedback := newClientFeedback(1)
+	feedback := newClientFeedback(1, "", ctx.Done(), r.drainChan, r.metrics, r.logger)
 
 	tr := &TrackedRequest{request: request, feedback: feedback, reqID: reqID, trace: trace}
 	tr.request.ConfigSeq = r.configSeq
@@ -601,6 +604,14 @@ func (r *Router) sendFeedbackOnBroadcastStream(stream orderer.AtomicBroadcast_Br
 				return
 			}
 		}
+	}
+}
+
+// reportDroppedResponses logs how many responses a client lost while connected,
+// once its stream closes.
+func (r *Router) reportDroppedResponses(feedback *clientFeedback) {
+	if n := feedback.dropped.Load(); n > 0 {
+		r.logger.Warnf("client %s closed its stream after %d dropped responses", feedback.clientAddr, n)
 	}
 }
 

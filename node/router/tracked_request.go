@@ -27,13 +27,6 @@ type TrackedRequest struct {
 	trace    []byte          // used to trace the request in the router. If nil, the request is untraced, and a response is sent no later than after forwarding to the batcher.
 }
 
-// CreateTrackedRequest creates a tracked request whose responses are queued on
-// the given channel. It is only used for testing, to submit a request without a
-// live client stream.
-func CreateTrackedRequest(request *protos.Request, responses chan Response, reqID []byte, trace []byte) *TrackedRequest {
-	return &TrackedRequest{request: request, feedback: &clientFeedback{responses: responses}, reqID: reqID, trace: trace}
-}
-
 type Response struct {
 	err   error
 	reqID []byte
