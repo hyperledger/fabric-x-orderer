@@ -43,6 +43,10 @@ GOARCH="${BASH_REMATCH[2]}"
 # Trim the leading 'v' from the tag.
 VERSION="${RELEASE#v}"
 
+# Fix the archive timestamp to the tagged commit so rebuilds are byte-identical.
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git show -s --format=%ct "${RELEASE}")}"
+export SOURCE_DATE_EPOCH
+
 # Cross-compile via the Makefile, stamping version/commit into the binaries.
 RELEASE_DIR="release/${TARGET}"
 echo "Building ${TARGET} binaries for ${RELEASE} (${REVISION})..."
@@ -53,7 +57,11 @@ make release-bins GOOS="${GOOS}" GOARCH="${GOARCH}" RELEASE_DIR=release \
 cp LICENSE "${RELEASE_DIR}/"
 
 # -C changes into RELEASE_DIR first, so the archive holds relative paths (bin/, LICENSE).
+# Normalize ordering, mtime, owner, group and permissions so the tarball is
+# reproducible (same bytes for the same tag). gzip -n drops its own timestamp.
 ARCHIVE="fabric-x-orderer-${TARGET}-${VERSION}.tar.gz"
-tar -czf "${RELEASE_DIR}/${ARCHIVE}" -C "${RELEASE_DIR}" bin LICENSE
+tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 \
+  --numeric-owner --mode=go-w -C "${RELEASE_DIR}" -cf - bin LICENSE \
+  | gzip -n > "${RELEASE_DIR}/${ARCHIVE}"
 
 echo "${RELEASE_DIR}/${ARCHIVE}"
