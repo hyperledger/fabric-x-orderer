@@ -14,6 +14,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -37,6 +38,9 @@ func (vc *DefaultValidateConfigRequest) ValidateConfigRequest(envelope *common.E
 	if err != nil {
 		return err
 	}
+	if err = verifyPayloadTxID(payload); err != nil {
+		return errors.Wrap(err, "config envelope")
+	}
 
 	configEnvelope := &common.ConfigEnvelope{}
 	if err = proto.Unmarshal(payload.Data, configEnvelope); err != nil {
@@ -45,6 +49,14 @@ func (vc *DefaultValidateConfigRequest) ValidateConfigRequest(envelope *common.E
 
 	if configEnvelope.LastUpdate == nil || configEnvelope.Config == nil {
 		return errors.New("invalid config envelope")
+	}
+
+	lastUpdatePayload, err := protoutil.UnmarshalPayload(configEnvelope.LastUpdate.Payload)
+	if err != nil {
+		return errors.Wrap(err, "failed to unmarshal last update payload")
+	}
+	if err = verifyPayloadTxID(lastUpdatePayload); err != nil {
+		return errors.Wrap(err, "last update")
 	}
 
 	var expectedConfigEnvelope *common.ConfigEnvelope
@@ -58,4 +70,20 @@ func (vc *DefaultValidateConfigRequest) ValidateConfigRequest(envelope *common.E
 	}
 
 	return nil
+}
+
+// verifyPayloadTxID checks that the payload's channel header carries the TxId derived from its signature header.
+func verifyPayloadTxID(payload *common.Payload) error {
+	if payload.GetHeader() == nil {
+		return errors.New("missing header in payload")
+	}
+	chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+	if err != nil {
+		return err
+	}
+	shdr, err := protoutil.UnmarshalSignatureHeader(payload.Header.SignatureHeader)
+	if err != nil {
+		return err
+	}
+	return requestfilter.VerifyTxID(chdr, shdr)
 }
