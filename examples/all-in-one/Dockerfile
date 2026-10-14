@@ -46,6 +46,7 @@ COPY --from=builder /src/bin/armageddon /usr/local/bin/armageddon
 # scripts
 COPY --chmod=755 examples/all-in-one/entrypoint.sh /entrypoint.sh
 COPY --chmod=755 examples/all-in-one/run_all.sh /run_all.sh
+COPY --chmod=755 examples/all-in-one/healthcheck.sh /healthcheck.sh
 
 # network topology, so the image runs standalone without a /config mount
 COPY examples/all-in-one/config /config
@@ -60,5 +61,8 @@ LABEL org.opencontainers.image.created="${CREATED}" \
     org.opencontainers.image.title="fabric-x-orderer-test-node" \
     org.opencontainers.image.url="https://github.com/hyperledger/fabric-x-orderer" \
     org.opencontainers.image.version="${VERSION}"
+
+HEALTHCHECK --interval=5s --timeout=3s --retries=20 --start-period=10s \
+    CMD /healthcheck.sh local_config_consenter.yaml local_config_batcher1.yaml local_config_assembler.yaml local_config_router.yaml
 
 ENTRYPOINT ["/entrypoint.sh"]

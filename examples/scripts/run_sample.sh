@@ -13,7 +13,13 @@ cd "${EXAMPLE_DIR}/.."
 make binary
 
 ./bin/armageddon generate --config="${EXAMPLE_DIR}/config/example-deployment.yaml" --output="/tmp/arma-sample"
-cd "${EXAMPLE_DIR}" && docker compose up -d
-sleep 10
+
+# Fix the operations port so the compose healthcheck can reach /healthz.
+for config in /tmp/arma-sample/config/party*/local_config_*.yaml; do
+  sed -i "/^Operations:/,/^Metrics:/ {/^[[:space:]]*ListenPort:/d;}" "${config}"
+  sed -i "/^Operations:/ a\\    ListenPort: 8080" "${config}"
+done
+
+cd "${EXAMPLE_DIR}" && docker compose up -d --wait
 
 docker run --name arma-config-vol -t --mount type=bind,source=/tmp/arma-sample/config,target=/config --mount type=bind,source=/tmp/arma-sample/crypto,target=/tmp/arma-sample/crypto --entrypoint /usr/local/bin/armageddon --network examples_default arma submit --config /config/party1/user_config.yaml --transactions 1000 --rate 500 --txSize 64

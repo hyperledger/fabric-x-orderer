@@ -7,71 +7,56 @@ name: examples
 
 x-base: &base
   image: "arma"
-
-x-stage: &stage
-  image: "alpine"
-  command: sh -c "echo stage completed"
-
-x-consenter: &consenter
-  <<: *base
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+    interval: 5s
+    timeout: 3s
+    retries: 20
+    start_period: 10s
 
 x-batcher: &batcher
   <<: *base
   depends_on:
-    consenter_stage:
-      condition: service_completed_successfully
-
-x-assembler: &assembler
-  <<: *base
-  depends_on:
-    batcher_stage:
-      condition: service_completed_successfully
-
-x-router: &router
-  <<: *base
-  depends_on:
-    assembler_stage:
-      condition: service_completed_successfully
+    consenter.p1:
+      condition: service_healthy
+    consenter.p2:
+      condition: service_healthy
+    consenter.p3:
+      condition: service_healthy
+    consenter.p4:
+      condition: service_healthy
 
 services:
 
   ## consenters ....
 
   consenter.p1:
-    <<: *consenter
+    <<: *base
     command: consensus --config=tmp/arma-sample/config/party1/local_config_consenter.yaml
     hostname: consensus.p1
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   consenter.p2:
-    <<: *consenter
+    <<: *base
     command: consensus --config=tmp/arma-sample/config/party2/local_config_consenter.yaml
     hostname: consensus.p2
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   consenter.p3:
-    <<: *consenter
+    <<: *base
     command: consensus --config=tmp/arma-sample/config/party3/local_config_consenter.yaml
     hostname: consensus.p3
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   consenter.p4:
-    <<: *consenter
+    <<: *base
     command: consensus --config=tmp/arma-sample/config/party4/local_config_consenter.yaml
     hostname: consensus.p4
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
-
-  consenter_stage:
-    <<: *stage
-    depends_on:
-      - consenter.p1
-      - consenter.p2
-      - consenter.p3
-      - consenter.p4
 
   ## batchers ....
 
@@ -131,74 +116,86 @@ services:
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
-  batcher_stage:
-    <<: *stage
-    depends_on:
-      - batcher1.p1
-      - batcher2.p1
-      - batcher1.p2
-      - batcher2.p2
-      - batcher1.p3
-      - batcher2.p3
-      - batcher1.p4
-      - batcher2.p4
-
   ## assemblers ....
 
   assembler.p1:
-    <<: *assembler
+    <<: *base
     command: assembler --config=tmp/arma-sample/config/party1/local_config_assembler.yaml
+    depends_on:
+      batcher1.p1:
+        condition: service_healthy
+      batcher2.p1:
+        condition: service_healthy
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   assembler.p2:
-    <<: *assembler
+    <<: *base
     command: assembler --config=tmp/arma-sample/config/party2/local_config_assembler.yaml
+    depends_on:
+      batcher1.p2:
+        condition: service_healthy
+      batcher2.p2:
+        condition: service_healthy
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   assembler.p3:
-    <<: *assembler
+    <<: *base
     command: assembler --config=tmp/arma-sample/config/party3/local_config_assembler.yaml
+    depends_on:
+      batcher1.p3:
+        condition: service_healthy
+      batcher2.p3:
+        condition: service_healthy
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   assembler.p4:
-    <<: *assembler
+    <<: *base
     command: assembler --config=tmp/arma-sample/config/party4/local_config_assembler.yaml
+    depends_on:
+      batcher1.p4:
+        condition: service_healthy
+      batcher2.p4:
+        condition: service_healthy
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
-
-  assembler_stage:
-    <<: *stage
-    depends_on:
-      - assembler.p1
-      - assembler.p2
-      - assembler.p3
-      - assembler.p4
 
   ## routers ....
 
   router.p1:
-    <<: *router
+    <<: *base
     command: router --config=tmp/arma-sample/config/party1/local_config_router.yaml
+    depends_on:
+      assembler.p1:
+        condition: service_healthy
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   router.p2:
-    <<: *router
+    <<: *base
     command: router --config=tmp/arma-sample/config/party2/local_config_router.yaml
+    depends_on:
+      assembler.p2:
+        condition: service_healthy
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   router.p3:
-    <<: *router
+    <<: *base
     command: router --config=tmp/arma-sample/config/party3/local_config_router.yaml
+    depends_on:
+      assembler.p3:
+        condition: service_healthy
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
 
   router.p4:
-    <<: *router
+    <<: *base
     command: router --config=tmp/arma-sample/config/party4/local_config_router.yaml
+    depends_on:
+      assembler.p4:
+        condition: service_healthy
     volumes:
       - /tmp/arma-sample:/tmp/arma-sample
