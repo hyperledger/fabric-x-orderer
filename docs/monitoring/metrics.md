@@ -46,6 +46,14 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
   **Help**: "The number of responses that could not be delivered to the submitting client, by the reason nothing was reading them."  
   **Labels**: "reason" is "client_gone", "client_behind" or "router_draining".
 
+- **Namespace**: "router"  
+  **Name**: "batcher_reconnects"  
+  **Help**: "The number of times the router's connection to a batcher was restored after being fully disconnected, identified by its shard id."
+
+- **Namespace**: "router"  
+  **Name**: "batcher_connected"  
+  **Help**: "Whether the router currently has at least one healthy stream to a batcher, identified by its shard id: 1 = connected, 0 = disconnected."
+
 ---
 
 ### Assembler

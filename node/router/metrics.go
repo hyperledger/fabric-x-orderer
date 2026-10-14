@@ -64,6 +64,20 @@ var (
 		Help:       "The number of responses that could not be delivered to the submitting client, by the reason nothing was reading them.",
 		LabelNames: []string{"reason", "party_id"},
 	}
+
+	batcherReconnectsOpts = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "batcher_reconnects",
+		Help:       "The number of times the router's connection to a batcher was restored after being fully disconnected, identified by its shard id.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	batcherConnectedOpts = metrics.GaugeOpts{
+		Namespace:  "router",
+		Name:       "batcher_connected",
+		Help:       "Whether the router currently has at least one healthy stream to a batcher, identified by its shard id: 1 = connected, 0 = disconnected.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
 )
 
 type RouterMetrics struct {
@@ -74,6 +88,8 @@ type RouterMetrics struct {
 	activeBroadcastStreams metrics.Gauge
 	activeSubmitStreams    metrics.Gauge
 	submitInvocations      metrics.Counter
+	batcherReconnects      metrics.Counter
+	batcherConnected       metrics.Gauge
 	// Bound per reason here so that counting a drop costs no allocation.
 	droppedRespClientGone     metrics.Counter
 	droppedRespClientBehind   metrics.Counter
@@ -109,6 +125,8 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		activeBroadcastStreams: activeStreams.With([]string{partyID, "broadcast"}...),
 		activeSubmitStreams:    activeStreams.With([]string{partyID, "submit_stream"}...),
 		submitInvocations:      provider.NewCounter(submitInvocationsOpts).With([]string{partyID}...),
+		batcherReconnects:      provider.NewCounter(batcherReconnectsOpts),
+		batcherConnected:       provider.NewGauge(batcherConnectedOpts),
 
 		droppedRespClientGone:     droppedResponses.With([]string{"client_gone", partyID}...),
 		droppedRespClientBehind:   droppedResponses.With([]string{"client_behind", partyID}...),
@@ -116,6 +134,12 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 
 		partyID: routerNodeConfig.PartyID,
 	}
+}
+
+func (m *RouterMetrics) shardMetrics(shardID arma_types.ShardID) (metrics.Counter, metrics.Gauge) {
+	partyID := fmt.Sprintf("%d", m.partyID)
+	shard := fmt.Sprintf("%d", shardID)
+	return m.batcherReconnects.With(partyID, shard), m.batcherConnected.With(partyID, shard)
 }
 
 func (m *RouterMetrics) StopMetricsTracker() {
