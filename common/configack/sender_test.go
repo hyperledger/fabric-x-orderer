@@ -113,6 +113,7 @@ func TestSubmitConfigAck_StopCancelsRetries(t *testing.T) {
 	case err := <-done:
 		require.Error(t, err)
 		require.ErrorContains(t, err, "sending config ack to consensus aborted")
+		require.ErrorIs(t, err, ErrSenderStopped)
 	case <-time.After(5 * time.Second):
 		t.Fatal("SubmitConfigAck did not return after Stop was called")
 	}
@@ -222,5 +223,47 @@ func TestSubmitConfigAck_ReturnsErrorWhenConsenterDoesNotRespond(t *testing.T) {
 	err := configAcker.SubmitConfigAck(1)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "sending config ack to consensus aborted")
+	// a timeout is not a stop: the caller proceeds with the new config only on a timeout.
+	require.NotErrorIs(t, err, ErrSenderStopped)
 	configAcker.Stop()
+}
+
+// TestSubmitConfigAck_StopWhileWaitingForResponse verifies that stopping the sender while it waits for the
+// consenter's response returns ErrSenderStopped, so the caller can tell its node is stopping from a consenter
+// that did not respond in time, and abort the new config rather than apply it.
+func TestSubmitConfigAck_StopWhileWaitingForResponse(t *testing.T) {
+	stubConsenter, configAcker := createTestSetupForConfigAcker(t, protos.NodeType_ROUTER, 0)
+
+	acked := make(chan struct{}, 1)
+	respond := make(chan struct{})
+	stubConsenter.AckConfigHandler = func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		select {
+		case acked <- struct{}{}:
+		default:
+		}
+		<-respond
+		return &protos.ConfigAckResponse{}, nil
+	}
+
+	stubConsenter.Start()
+	defer stubConsenter.Stop()
+	defer close(respond) // release the blocked handler before the stub consenter stops
+
+	done := make(chan error, 1)
+	go func() { done <- configAcker.SubmitConfigAck(1) }()
+
+	select {
+	case <-acked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the sender did not send the ConfigAck")
+	}
+
+	configAcker.Stop()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, ErrSenderStopped)
+	case <-time.After(10 * time.Second):
+		t.Fatal("SubmitConfigAck did not return after Stop was called")
+	}
 }

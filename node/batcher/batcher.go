@@ -364,6 +364,11 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 
 	// send ack to the consensus node, and wait for its response before applying the new config
 	if err := b.configAcker.SubmitConfigAck(configSeq); err != nil {
+		// the batcher is being stopped; applying the new config would reopen its network and ledger.
+		if errors.Is(err, configack.ErrSenderStopped) {
+			b.logger.Infof("batcher is stopping, aborting reconfiguration on config sequence %d", configSeq)
+			return false, nil
+		}
 		b.logger.Warnf("did not receive the consenter's response to the ConfigAck for config sequence %d, proceeding with the new config: %v", configSeq, err)
 	}
 

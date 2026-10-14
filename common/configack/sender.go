@@ -26,6 +26,10 @@ const defaultSubmitConfigAckTimeout = 90 * time.Second // TODO: expose in local 
 // errConfigAckRejected marks a ConfigAck the consenter rejected; retrying it does not change the outcome.
 var errConfigAckRejected = errors.New("config ack rejected by consenter")
 
+// ErrSenderStopped is returned by SubmitConfigAck when the sender is stopped, i.e., its node is stopping.
+// Unlike a consenter that did not respond in time, it means the node should not apply the new config.
+var ErrSenderStopped = errors.New("config ack sender is stopped")
+
 type Sender interface {
 	Stop()
 	SubmitConfigAck(configSeq uint64) error
@@ -110,7 +114,7 @@ func NewSender(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *sender 
 //
 // The function returns nil once the consenter responds to the ConfigAck. It returns an error
 // without retrying if the consenter rejects the ConfigAck, and it returns an error if the total
-// timeout expires or if ca.ctx is cancelled, for example when the sender is stopped.
+// timeout expires. It returns ErrSenderStopped if ca.ctx is cancelled, i.e., the sender is stopped.
 func (s *sender) SubmitConfigAck(configSeq uint64) error {
 	ctx, cancel := context.WithTimeout(s.ctx, s.submitConfigAckTimeout)
 	defer cancel()
@@ -127,6 +131,9 @@ func (s *sender) SubmitConfigAck(configSeq uint64) error {
 	for {
 		select {
 		case <-ctx.Done():
+			if s.ctx.Err() != nil {
+				return errors.Wrap(ErrSenderStopped, "sending config ack to consensus aborted")
+			}
 			return fmt.Errorf("sending config ack to consensus aborted: %w", ctx.Err())
 		case <-time.After(interval):
 			s.logger.Debugf("Retry attempt #%d", numOfRetries)
