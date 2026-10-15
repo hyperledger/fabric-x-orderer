@@ -49,7 +49,11 @@ echo "Building ${TARGET} binaries for ${RELEASE} (${REVISION})..."
 make release-bins GOOS="${GOOS}" GOARCH="${GOARCH}" RELEASE_DIR=release \
   METADATA_VAR="Version=${VERSION} CommitSHA=${REVISION}"
 
-# Ship the license alongside the binaries.
+# Collect third-party license notices required by vendored dependencies.
+echo "Generating third-party notices..."
+./scripts/generate-third-party-notices.sh "${RELEASE_DIR}/THIRD-PARTY-NOTICES"
+
+# Ship the project license alongside the binaries.
 cp LICENSE "${RELEASE_DIR}/"
 
 # -C changes into RELEASE_DIR first, so the archive holds relative paths (bin/, LICENSE).
