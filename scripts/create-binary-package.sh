@@ -53,15 +53,20 @@ echo "Building ${TARGET} binaries for ${RELEASE} (${REVISION})..."
 make release-bins GOOS="${GOOS}" GOARCH="${GOARCH}" RELEASE_DIR=release \
   METADATA_VAR="Version=${VERSION} CommitSHA=${REVISION}"
 
-# Ship the license alongside the binaries.
+# Collect third-party license notices required by vendored dependencies.
+echo "Generating third-party notices..."
+./scripts/generate-third-party-notices.sh "${RELEASE_DIR}/THIRD-PARTY-NOTICES"
+
+# Ship the project license alongside the binaries.
 cp LICENSE "${RELEASE_DIR}/"
 
-# -C changes into RELEASE_DIR first, so the archive holds relative paths (bin/, LICENSE).
+# -C changes into RELEASE_DIR first, so the archive holds relative paths
+# (bin/, LICENSE, THIRD-PARTY-NOTICES).
 # Normalize ordering, mtime, owner, group and permissions so the tarball is
 # reproducible (same bytes for the same tag). gzip -n drops its own timestamp.
 ARCHIVE="fabric-x-orderer-${TARGET}-${VERSION}.tar.gz"
 tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 \
-  --numeric-owner --mode=go-w -C "${RELEASE_DIR}" -cf - bin LICENSE \
+  --numeric-owner --mode=go-w -C "${RELEASE_DIR}" -cf - bin LICENSE THIRD-PARTY-NOTICES \
   | gzip -n > "${RELEASE_DIR}/${ARCHIVE}"
 
 echo "${RELEASE_DIR}/${ARCHIVE}"

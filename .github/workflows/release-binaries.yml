@@ -16,6 +16,10 @@ on:
         description: "Tag to release (e.g. v1.0.0). Re-runs an existing release."
         required: true
 
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -25,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.extract.outputs.tag }}
+      make_latest: ${{ steps.extract.outputs.make_latest }}
     steps:
       - name: Extract and validate version from tag
         id: extract
@@ -37,6 +42,35 @@ jobs:
           else
             echo "❌ Invalid tag format: ${RAW_TAG}. Expected format: v<semver>"
             exit 1
+          fi
+
+          # Compute make_latest: true only when this tag's MAJOR.MINOR is the
+          # highest across all existing vX.Y.* tags (backports stay false).
+          THIS_MINOR="${RAW_TAG%%.*}.${RAW_TAG#*.}"   # vX.Y
+          THIS_MINOR="${THIS_MINOR%%.*}.${THIS_MINOR#*.}"
+          THIS_MINOR="${RAW_TAG#v}"                   # X.Y.Z…
+          THIS_MAJOR="${THIS_MINOR%%.*}"              # X
+          THIS_MINOR="${THIS_MINOR#*.}"               # Y.Z…
+          THIS_MINOR="${THIS_MINOR%%.*}"              # Y
+
+          HIGHEST=$(git ls-remote --tags origin 'refs/tags/v*' \
+            | awk -F'/' '{print $NF}' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sed 's/^v//' \
+            | sort -t. -k1,1n -k2,2n -k3,3n \
+            | tail -1)
+
+          if [[ -n "${HIGHEST}" ]]; then
+            HIGH_MAJOR="${HIGHEST%%.*}"
+            HIGH_MINOR="${HIGHEST#*.}"; HIGH_MINOR="${HIGH_MINOR%%.*}"
+            if (( THIS_MAJOR > HIGH_MAJOR )) || \
+               (( THIS_MAJOR == HIGH_MAJOR && THIS_MINOR >= HIGH_MINOR )); then
+              echo "make_latest=true"  >> "$GITHUB_OUTPUT"
+            else
+              echo "make_latest=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -67,6 +101,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Build and package binaries
         env:
@@ -101,10 +136,11 @@ jobs:
         run: sha256sum *.tar.gz > checksums.txt
 
       - name: Publish release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           prerelease: ${{ contains(needs.prepare.outputs.tag, '-') }}
+          make_latest: ${{ needs.prepare.outputs.make_latest }}
           files: |
             dist/*.tar.gz
             dist/checksums.txt
