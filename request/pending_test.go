@@ -610,3 +610,35 @@ func TestPendingStoreOnDeleteOncePerRequest(t *testing.T) {
 		require.False(t, ps.Contains(requestInspector.RequestID(req)))
 	})
 }
+
+func TestPendingStoreSubmitRacingRemove(t *testing.T) {
+	requestInspector := &reqInspector{}
+	ps := newTestPendingStore(t, func(key string) {})
+
+	// A removal that runs concurrently with the Submit of the same request must not leave it pooled,
+	// whichever of the two wins.
+	trials := 20000
+	for i := 0; i < trials; i++ {
+		req := make([]byte, 8)
+		binary.BigEndian.PutUint64(req, uint64(i))
+		reqID := requestInspector.RequestID(req)
+
+		var start, done sync.WaitGroup
+		start.Add(1)
+		done.Add(2)
+		go func() {
+			defer done.Done()
+			start.Wait()
+			_ = ps.Submit(req)
+		}()
+		go func() {
+			defer done.Done()
+			start.Wait()
+			ps.RemoveRequests(reqID)
+		}()
+		start.Done()
+		done.Wait()
+
+		require.False(t, ps.Contains(reqID), "trial %d: removed request is still pooled", i)
+	}
+}
