@@ -372,9 +372,9 @@ for the network-wide part.
 An assembler exposes its metrics in Prometheus format on the operations endpoint configured by
 `Operations.ListenAddress` and `Operations.ListenPort`, alongside a health check, a logging-spec
 endpoint and version information. When `Metrics.MetricsLogInterval` is non-zero the node also writes a
-periodic `ASSEMBLER_METRICS` line to its log, with the totals so far, the transactions and blocks
-committed during the last interval, and the averages of the three latency histograms — enough to see
-how a node is doing without a Prometheus deployment.
+periodic `ASSEMBLER_METRICS` line to its log, with the totals so far, and the transactions and blocks
+committed and the average of each of the three latency histograms during the last interval — enough to
+see how a node is doing without a Prometheus deployment.
 
 Five metrics are the assembler's own, each labelled with the party ID:
 
