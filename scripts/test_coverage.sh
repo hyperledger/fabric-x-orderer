@@ -59,7 +59,24 @@ sed -E -f - "$profile" > "$filtered" <<'EOF'
 EOF
 mv "$filtered" "$profile"
 
-total=$(go tool cover -func="$profile" | awk '/^total:/ { print $3 }')
+lines=$(awk '
+NR == 1 { print; next }
+{
+    split($1, location, ":")
+    split(location[2], range, "[.,]")
+    for (line = range[1] + 0; line <= range[3] + 0; line++) {
+        key = location[1] ":" line
+        covered[key] = covered[key] || $3 > 0
+    }
+}
+END {
+    for (key in covered) {
+        print key, 1, covered[key]
+    }
+}
+' "$profile")
+
+total=$(awk 'NR > 1 { n++; c += $3 } END { printf "%.2f%%", n ? 100 * c / n : 0 }' <<< "$lines")
 
 report() {
     echo "## Test coverage"
@@ -85,7 +102,7 @@ report() {
             printf "%s\t%.1f%%\n", pkg, 100 * covered[pkg] / total[pkg]
         }
     }
-    ' "$profile" |
+    ' <<< "$lines" |
         sort |
         awk -F'\t' -v module="${MODULE}/" '
         {
