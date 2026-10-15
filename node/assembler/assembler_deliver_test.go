@@ -8,7 +8,14 @@ package assembler_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,14 +26,17 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	"github.com/hyperledger/fabric-x-common/tools/cryptogen"
 	"github.com/hyperledger/fabric-x-orderer/common/tools/armageddon"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/delivery"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/signutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
@@ -408,6 +418,66 @@ func TestAssemblerDeliver_ChannelReadersPolicy(t *testing.T) {
 	})
 }
 
+// Scenario:
+//  1. Generate the crypto material and config block of a two party network, and start an
+//     assembler that authorizes deliver requests against the MSPs that config block carries.
+//  2. Commit one block, so the assembler has something to deliver.
+//  3. Pull with the identity of a user of a party, whose certificate the CA of that party issued
+//     and is still valid, and expect the block.
+//  4. Pull with the identity of a user of a party, whose certificate the CA of that party issued
+//     and has expired, and expect the request to be forbidden.
+func TestAssemblerDeliverServiceRefusesAnExpiredCertificate(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	numParties := 2
+	partyID := types.PartyID(1)
+
+	dir, bundle := generateChannelConfig(t, numParties)
+
+	batchersStub, batcherInfos, cleanup := createStubBatchersAndInfos(t, numParties, types.ShardID(0), ca)
+	defer cleanup()
+
+	shards := []config.ShardInfo{{ShardId: types.ShardID(0), Batchers: batcherInfos}}
+
+	consenterStub := NewStubConsenter(t, partyID, ca)
+	defer consenterStub.Stop()
+
+	assembler, assemblerEndpoint := newAssemblerTestWithBundle(t, partyID, ca, shards,
+		consenterStub.consenterInfo, time.Second, false, nil, bundle)
+	defer assembler.Stop()
+
+	// wait for genesis block
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 1
+	}, 3*time.Second, 100*time.Millisecond)
+
+	obaCreator, _ := NewOrderedBatchAttestationCreator()
+	batch := types.NewSimpleBatch(0, 2, types.BatchSequence(0), types.BatchedRequests{[]byte{1}}, 0, nil)
+	batchersStub[0].SetNextBatch(batch)
+	consenterStub.SetNextDecision(obaCreator.Append(batch, types.DecisionNum(1), 0, 1))
+	<-consenterStub.decisionSentCh
+	require.Eventually(t, func() bool {
+		return assembler.GetTxCount() == 2
+	}, 10*time.Second, 100*time.Millisecond)
+
+	assemblerRootCAs := [][]byte{ca.CertBytes()}
+
+	t.Run("a valid certificate", func(t *testing.T) {
+		signer := signerIssuedByPartyCA(t, dir, "org1", time.Now().Add(time.Hour))
+
+		resp := deliverFirstResponse(t, assemblerEndpoint, assemblerRootCAs, ca, signer)
+		require.NotNil(t, resp.GetBlock())
+	})
+
+	t.Run("an expired certificate", func(t *testing.T) {
+		signer := signerIssuedByPartyCA(t, dir, "org1", time.Now().Add(-time.Minute))
+
+		resp := deliverFirstResponse(t, assemblerEndpoint, assemblerRootCAs, ca, signer)
+		require.Equal(t, common.Status_FORBIDDEN, resp.GetStatus())
+	})
+}
+
 // generateChannelConfig generates the crypto material and config block of a numParties network,
 // and returns the directory holding them along with a bundle over that config block. The bundle
 // carries the MSP of every party, so policy evaluation against it accepts exactly the identities
@@ -448,6 +518,50 @@ func testSignerWithMSPID(t *testing.T, dir string, mspID string, claimedMSPID st
 		filepath.Join(userMSPDir, "signcerts", clientName+"-cert.pem"),
 		claimedMSPID,
 	)
+	require.NoError(t, err)
+	return signer
+}
+
+// signerIssuedByPartyCA returns a signer over a fresh key, with a client certificate that the CA of
+// org issued, valid from the start of the CA until notAfter.
+func signerIssuedByPartyCA(t *testing.T, dir string, org string, notAfter time.Time) identity.SignerSerializer {
+	t.Helper()
+
+	caDir := filepath.Join(dir, "crypto", "ordererOrganizations", org, "ca")
+	caCertPEM, err := os.ReadFile(filepath.Join(caDir, fmt.Sprintf("%s-CA-cert.pem", org)))
+	require.NoError(t, err)
+	caCert, err := utils.Parsex509Cert(caCertPEM)
+	require.NoError(t, err)
+	caKeyPEM, err := os.ReadFile(filepath.Join(caDir, "priv_sk"))
+	require.NoError(t, err)
+	caKey, err := tx.CreateECDSAPrivateKey(caKeyPEM)
+	require.NoError(t, err)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject:      pkix.Name{CommonName: fmt.Sprintf("client@%s", org), OrganizationalUnit: []string{cryptogen.ClientOU}},
+		NotBefore:    caCert.NotBefore,
+		NotAfter:     notAfter,
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, caCert, &key.PublicKey, caKey)
+	require.NoError(t, err)
+
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	require.NoError(t, err)
+
+	signerDir := t.TempDir()
+	certPath := filepath.Join(signerDir, "cert.pem")
+	keyPath := filepath.Join(signerDir, "key.pem")
+	require.NoError(t, os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600))
+	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), 0o600))
+
+	signer, err := signutil.NewTestSigner(keyPath, certPath, org)
 	require.NoError(t, err)
 	return signer
 }

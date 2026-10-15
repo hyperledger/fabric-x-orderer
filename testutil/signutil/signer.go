@@ -149,14 +149,31 @@ func NewSelfSignedSigner(t *testing.T, mspID string) (*TestSigner, []byte) {
 func NewSignerOfKey(t *testing.T, key *ecdsa.PrivateKey, mspID string) (*TestSigner, []byte) {
 	t.Helper()
 
+	return newSignerOfKey(t, key, mspID, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+}
+
+// NewExpiredSigner returns a signer over a freshly generated signing key, together with the
+// self-signed certificate that carries its public key and expired an hour ago.
+func NewExpiredSigner(t *testing.T, mspID string) (*TestSigner, []byte) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	return newSignerOfKey(t, key, mspID, time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour))
+}
+
+func newSignerOfKey(t *testing.T, key *ecdsa.PrivateKey, mspID string, notBefore, notAfter time.Time) (*TestSigner, []byte) {
+	t.Helper()
+
 	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	require.NoError(t, err)
 
 	template := &x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject:      pkix.Name{CommonName: "arma node"},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
+		NotBefore:    notBefore,
+		NotAfter:     notAfter,
 	}
 
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
