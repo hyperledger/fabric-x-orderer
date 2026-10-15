@@ -26,7 +26,8 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 
 - **Namespace**: "router"  
   **Name**: "requests_forwarded"  
-  **Help**: "The number of requests that the router forwarded to a batcher or to the consenter."
+  **Help**: "The number of requests that the router forwarded to a batcher or to the consenter."  
+  **Labels**: "shard_id" is the shard of the batcher the request was forwarded to, or "consensus" for a config request forwarded to the consenter.
 
 - **Namespace**: "router"  
   **Name**: "requests_rejected"  
