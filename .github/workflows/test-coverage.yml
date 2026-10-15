@@ -5,7 +5,6 @@
 name: Test Coverage
 
 on:
-  pull_request:
   schedule:
     - cron: '0 4 * * *'
   workflow_dispatch:
