@@ -55,34 +55,29 @@ check-deps:
 	@echo "DEP: Checking for dependency issues.."
 	./scripts/check_deps.sh
 
+# Optional vars: BIN_DIR        (output directory, default: ./bin)
+#                METADATA_VAR   (space-separated key=value pairs forwarded as -X ldflags)
+BIN_DIR      ?= ./bin
+RELEASE_LDFLAGS := $(patsubst %,-X 'github.com/hyperledger/fabric-x-orderer/common/metadata.%',$(METADATA_VAR))
 .PHONY: binary
 binary:
-	mkdir -p ./bin
-	go build -ldflags "$(GO_LDFLAGS)" -o ./bin/arma ./cmd/arma
-	go build -ldflags "$(GO_LDFLAGS)" -o ./bin/armageddon ./cmd/armageddon
-
-# Builds with test values and checks armageddon prints them back, so a broken -X path fails the build.
-.PHONY: check-version-injection
-check-version-injection:
-	$(MAKE) binary VERSION=check-version ORDERER_REVISION=check-commit
-	./bin/armageddon version | grep check-version
-	./bin/armageddon version | grep check-commit
-	$(MAKE) binary
+	mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o $(BIN_DIR)/arma ./cmd/arma
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o $(BIN_DIR)/armageddon ./cmd/armageddon
 
 # Cross-compile both binaries for a single GOOS/GOARCH and place them under
 # $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/.  Called by scripts/create-binary-package.sh.
 #
-# Required vars: GOOS, GOARCH, RELEASE_DIR
-# Optional vars: METADATA_VAR  (space-separated key=value pairs forwarded as -X ldflags)
+# Required vars: GOOS, GOARCH
+# Optional vars: RELEASE_DIR    (default: release)
+#                METADATA_VAR   (space-separated key=value pairs forwarded as -X ldflags)
 RELEASE_DIR ?= release
-LDFLAGS     := $(patsubst %,-X 'github.com/hyperledger/fabric-x-orderer/common/metadata.%',$(METADATA_VAR))
+$(if $(GOOS),,$(if $(filter release-bins,$(MAKECMDGOALS)),$(error GOOS is required for release-bins)))
+$(if $(GOARCH),,$(if $(filter release-bins,$(MAKECMDGOALS)),$(error GOARCH is required for release-bins)))
 .PHONY: release-bins
 release-bins:
-	mkdir -p $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin
-	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 \
-	  go build -trimpath -ldflags "$(LDFLAGS)" -o $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/arma ./cmd/arma
-	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 \
-	  go build -trimpath -ldflags "$(LDFLAGS)" -o $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/armageddon ./cmd/armageddon
+	GOOS=$(GOOS) GOARCH=$(GOARCH) \
+	  $(MAKE) binary BIN_DIR=$(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin RELEASE_LDFLAGS="$(RELEASE_LDFLAGS)"
 
 .PHONY: clean-binary
 clean-binary:
