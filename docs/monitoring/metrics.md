@@ -21,8 +21,12 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 ### Router
 
 - **Namespace**: "router"  
-  **Name**: "requests_completed"  
-  **Help**: "The number of incoming requests that have been completed."
+  **Name**: "requests_arrived"  
+  **Help**: "The number of requests that arrived at the router."
+
+- **Namespace**: "router"  
+  **Name**: "requests_forwarded"  
+  **Help**: "The number of requests that the router forwarded to a batcher or to the consenter."
 
 - **Namespace**: "router"  
   **Name**: "requests_rejected"  
@@ -40,6 +44,19 @@ It queries Prometheus for metric data and displays it as dashboards, graphs, and
 - **Namespace**: "router"  
   **Name**: "submit_invocations"  
   **Help**: "The number of times the Submit RPC was invoked."
+
+- **Namespace**: "router"  
+  **Name**: "responses_dropped"  
+  **Help**: "The number of responses that could not be delivered to the submitting client, by the reason nothing was reading them."  
+  **Labels**: "reason" is "client_gone", "client_behind" or "router_draining".
+
+- **Namespace**: "router"  
+  **Name**: "batcher_reconnects"  
+  **Help**: "The number of times the router's connection to a batcher was restored after being fully disconnected, identified by its shard id."
+
+- **Namespace**: "router"  
+  **Name**: "batcher_connected"  
+  **Help**: "Whether the router currently has at least one healthy stream to a batcher, identified by its shard id: 1 = connected, 0 = disconnected."
 
 ---
 
@@ -82,6 +99,8 @@ What each of these metrics tells you about the assembler is described in [Assemb
 ---
 
 ### Batcher
+
+What each of these metrics tells you about the batcher is described in [Batcher](../batcher.md#5-metrics-and-monitoring).
 
 - **Namespace:** "batcher"  
   **Name:** "current_role"  

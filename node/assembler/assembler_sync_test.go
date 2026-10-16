@@ -8,6 +8,7 @@ package assembler_test
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -233,7 +234,7 @@ func newSyncTestSetup(t *testing.T, numParties int) *syncTestSetup {
 	require.NoError(t, err)
 
 	shardID := types.ShardID(1)
-	batchersStub, batcherInfos, batcherCleanup := createStubBatchersAndInfos(t, numParties, shardID, ca)
+	batchersStub, batcherInfos, batcherCleanup := createStubBatchersAndInfos(t, numParties, shardID, ca, tlsCACertsOfNetwork(t, dir)...)
 	t.Cleanup(batcherCleanup)
 	shards := []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}}
 
@@ -383,7 +384,13 @@ func (s *syncTestSetup) prepareJoining(partyID types.PartyID) ([]config.ShardInf
 		allParties[i] = types.PartyID(i + 1)
 	}
 
-	joiningBatcher := NewStubBatcher(t, s.shardID, partyID, allParties, s.ca)
+	// The joining party has a TLS CA of its own, which the stub batchers trust from now on.
+	tlsCACerts := tlsCACertsOfNetwork(t, s.dir)
+	for _, existingBatcher := range s.batchersStub {
+		existingBatcher.TrustClientCAs(t, tlsCACerts...)
+	}
+
+	joiningBatcher := NewStubBatcher(t, s.shardID, partyID, allParties, s.ca, tlsCACerts...)
 	t.Cleanup(joiningBatcher.Stop)
 
 	joiningShards := []config.ShardInfo{{ShardId: s.shardID, Batchers: append(s.batcherInfos, joiningBatcher.batcherInfo)}}
@@ -681,4 +688,22 @@ func bundleFromBlock(t *testing.T, configBlock *cb.Block) channelconfig.Resource
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, factory.GetDefault())
 	require.NoError(t, err)
 	return bundle
+}
+
+// tlsCACertsOfNetwork returns the TLS CA certificate of every party of the network generated in dir.
+func tlsCACertsOfNetwork(t *testing.T, dir string) [][]byte {
+	t.Helper()
+
+	paths, err := filepath.Glob(filepath.Join(dir, "crypto", "ordererOrganizations", "*", "msp", "tlscacerts", "*"))
+	require.NoError(t, err)
+	require.NotEmpty(t, paths)
+
+	certs := make([][]byte, 0, len(paths))
+	for _, path := range paths {
+		cert, err := os.ReadFile(path)
+		require.NoError(t, err)
+		certs = append(certs, cert)
+	}
+
+	return certs
 }

@@ -68,6 +68,7 @@ def style(theme, c):
         (".shard-3", "fill:%s" % c["shard-3"]),
         (".consensus", "fill:%s" % c["consensus"]),
         (".node.batches", "fill:%s" % c["batches-fill"]),
+        (".node.dashed", "stroke-dasharray:6 5"),
         (".primary", "fill:%s" % c["primary"]),
         (".flow", "fill:none;stroke-width:2.5"),
         (".flow.dashed", "stroke-dasharray:8 6"),

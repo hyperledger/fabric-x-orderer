@@ -592,6 +592,33 @@ func TestPruneAfterClose(t *testing.T) {
 	})
 }
 
+// TestRequestCountAfterClose asserts that a closed pool reports no requests. Close drops the stores, so a size left
+// from before Close would be reported for a pool that holds nothing (e.g. by a batcher's mempool size gauge when
+// Batcher.Stop races a reconfiguration).
+func TestRequestCountAfterClose(t *testing.T) {
+	sugaredLogger := testutil.CreateLogger(t, 0)
+	insp := &testRequestInspector{}
+	pool := NewPool(sugaredLogger, insp.RequestID, PoolOptions{
+		FirstStrikeThreshold:  time.Second * 5,
+		SecondStrikeThreshold: time.Minute / 2,
+		BatchMaxSize:          10,
+		BatchMaxSizeBytes:     1000,
+		MaxSize:               5,
+		RequestMaxBytes:       100 * 1024,
+		AutoRemoveTimeout:     time.Second * 10,
+		SubmitTimeout:         time.Second,
+	}, &striker{})
+
+	pool.Restart(true)
+	for i := 0; i < 3; i++ {
+		require.NoError(t, pool.Submit(makeTestRequest(fmt.Sprintf("%d", i), "foo")))
+	}
+	require.Equal(t, int64(3), pool.RequestCount())
+
+	pool.Close()
+	require.Equal(t, int64(0), pool.RequestCount())
+}
+
 // requireMatchingIDs asserts that NextRequests returned exactly one id per
 // request, and that each id is the RequestID of the request at the same index.
 func requireMatchingIDs(t *testing.T, requestID func([]byte) string, requests [][]byte, ids []string) {

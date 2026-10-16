@@ -1,0 +1,201 @@
+# Copyright IBM Corp. All Rights Reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+name: examples
+
+x-base: &base
+  image: "arma"
+  healthcheck:
+    test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+    interval: 5s
+    timeout: 3s
+    retries: 20
+    start_period: 10s
+
+x-batcher: &batcher
+  <<: *base
+  depends_on:
+    consenter.p1:
+      condition: service_healthy
+    consenter.p2:
+      condition: service_healthy
+    consenter.p3:
+      condition: service_healthy
+    consenter.p4:
+      condition: service_healthy
+
+services:
+
+  ## consenters ....
+
+  consenter.p1:
+    <<: *base
+    command: consensus --config=tmp/arma-sample/config/party1/local_config_consenter.yaml
+    hostname: consensus.p1
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  consenter.p2:
+    <<: *base
+    command: consensus --config=tmp/arma-sample/config/party2/local_config_consenter.yaml
+    hostname: consensus.p2
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  consenter.p3:
+    <<: *base
+    command: consensus --config=tmp/arma-sample/config/party3/local_config_consenter.yaml
+    hostname: consensus.p3
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  consenter.p4:
+    <<: *base
+    command: consensus --config=tmp/arma-sample/config/party4/local_config_consenter.yaml
+    hostname: consensus.p4
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  ## batchers ....
+
+  batcher1.p1:
+    <<: *batcher
+    command: batcher --config=tmp/arma-sample/config/party1/local_config_batcher1.yaml
+    hostname: batcher1.p1
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  batcher2.p1:
+    <<: *batcher
+    command: batcher --config=tmp/arma-sample/config/party1/local_config_batcher2.yaml
+    hostname: batcher2.p1
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  batcher1.p2:
+    <<: *batcher
+    command: batcher --config=tmp/arma-sample/config/party2/local_config_batcher1.yaml
+    hostname: batcher1.p2
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  batcher2.p2:
+    <<: *batcher
+    command: batcher --config=tmp/arma-sample/config/party2/local_config_batcher2.yaml
+    hostname: batcher2.p2
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  batcher1.p3:
+    <<: *batcher
+    command: batcher --config=tmp/arma-sample/config/party3/local_config_batcher1.yaml
+    hostname: batcher1.p3
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  batcher2.p3:
+    <<: *batcher
+    command: batcher --config=tmp/arma-sample/config/party3/local_config_batcher2.yaml
+    hostname: batcher2.p3
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  batcher1.p4:
+    <<: *batcher
+    command: batcher --config=tmp/arma-sample/config/party4/local_config_batcher1.yaml
+    hostname: batcher1.p4
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  batcher2.p4:
+    <<: *batcher
+    command: batcher --config=tmp/arma-sample/config/party4/local_config_batcher2.yaml
+    hostname: batcher2.p4
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  ## assemblers ....
+
+  assembler.p1:
+    <<: *base
+    command: assembler --config=tmp/arma-sample/config/party1/local_config_assembler.yaml
+    depends_on:
+      batcher1.p1:
+        condition: service_healthy
+      batcher2.p1:
+        condition: service_healthy
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  assembler.p2:
+    <<: *base
+    command: assembler --config=tmp/arma-sample/config/party2/local_config_assembler.yaml
+    depends_on:
+      batcher1.p2:
+        condition: service_healthy
+      batcher2.p2:
+        condition: service_healthy
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  assembler.p3:
+    <<: *base
+    command: assembler --config=tmp/arma-sample/config/party3/local_config_assembler.yaml
+    depends_on:
+      batcher1.p3:
+        condition: service_healthy
+      batcher2.p3:
+        condition: service_healthy
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  assembler.p4:
+    <<: *base
+    command: assembler --config=tmp/arma-sample/config/party4/local_config_assembler.yaml
+    depends_on:
+      batcher1.p4:
+        condition: service_healthy
+      batcher2.p4:
+        condition: service_healthy
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  ## routers ....
+
+  router.p1:
+    <<: *base
+    command: router --config=tmp/arma-sample/config/party1/local_config_router.yaml
+    depends_on:
+      assembler.p1:
+        condition: service_healthy
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  router.p2:
+    <<: *base
+    command: router --config=tmp/arma-sample/config/party2/local_config_router.yaml
+    depends_on:
+      assembler.p2:
+        condition: service_healthy
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  router.p3:
+    <<: *base
+    command: router --config=tmp/arma-sample/config/party3/local_config_router.yaml
+    depends_on:
+      assembler.p3:
+        condition: service_healthy
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample
+
+  router.p4:
+    <<: *base
+    command: router --config=tmp/arma-sample/config/party4/local_config_router.yaml
+    depends_on:
+      assembler.p4:
+        condition: service_healthy
+    volumes:
+      - /tmp/arma-sample:/tmp/arma-sample

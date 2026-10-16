@@ -8,6 +8,7 @@
 #   - check-deps: check go.mod/go.sum are tidy and vendor/ is in sync
 #   - linter: runs all code checks
 #   - binary: compiles arma and tools (armageddon) into ./bin directory
+#   - check-version-injection: checks that make binary writes the version and commit hash into the binaries
 #   - clean-binary: removes all contents of the ./bin directory
 #   - protos: generate all protobuf artifacts based on .proto files
 #   - linter-extra: runs extra lint checks on new changes since 'main'
@@ -23,16 +24,21 @@
 
 # Docker image vars
 DOCKERFILE ?= images/multi-platform/Dockerfile
-TEST_NODE_DOCKERFILE ?= node/examples/all-in-one/Dockerfile
+TEST_NODE_DOCKERFILE ?= examples/all-in-one/Dockerfile
 IMAGE_NAMESPACE = docker.io/hyperledger
 IMAGE_NAME = fabric-x-orderer
 TEST_NODE_IMAGE_NAME = fabric-x-orderer-test-node
 VERSION = latest
-ORDERER_REVISION = $(shell git rev-parse HEAD)
-ORDERER_CREATED = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+ORDERER_REVISION := $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+ORDERER_CREATED := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# Write the version and commit hash into the binaries at build time; /version and the version metric show them.
+# VERSION defaults to "latest"; for a real release pass it in, e.g. make binary VERSION=1.0.6
+METADATA_PKG = github.com/hyperledger/fabric-x-orderer/common/metadata
+GO_LDFLAGS = -X $(METADATA_PKG).Version=$(VERSION) -X $(METADATA_PKG).CommitSHA=$(ORDERER_REVISION)
 
 .PHONY: basic-checks
-basic-checks: check-license check-dco check-imports check-protos linter
+basic-checks: check-license check-dco check-imports check-protos linter check-version-injection
 
 .PHONY: linter
 linter: check-deps check-help-docs
@@ -72,6 +78,17 @@ $(if $(GOARCH),,$(if $(filter release-bins,$(MAKECMDGOALS)),$(error GOARCH is re
 release-bins:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) \
 	  $(MAKE) binary BIN_DIR=$(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin RELEASE_LDFLAGS="$(RELEASE_LDFLAGS)"
+	mkdir -p ./bin
+	go build -ldflags "$(GO_LDFLAGS)" -o ./bin/arma ./cmd/arma
+	go build -ldflags "$(GO_LDFLAGS)" -o ./bin/armageddon ./cmd/armageddon
+
+# Builds with test values and checks armageddon prints them back, so a broken -X path fails the build.
+.PHONY: check-version-injection
+check-version-injection:
+	$(MAKE) binary VERSION=check-version ORDERER_REVISION=check-commit
+	./bin/armageddon version | grep check-version
+	./bin/armageddon version | grep check-commit
+	$(MAKE) binary
 
 .PHONY: clean-binary
 clean-binary:
@@ -173,6 +190,32 @@ integration-reconfig-params:
 integration-reconfig-configtx:
 	go test -race -timeout 15m ./test/reconfig/configtx/...
 
+COVERAGE_TARGETS = \
+    unit-tests-other \
+    unit-tests-consensus \
+    unit-tests-consensus-full-replacement \
+    unit-tests-batcher \
+    integration-basic \
+    integration-faulttolerance \
+    integration-reconfig-membership \
+    integration-reconfig-membership-full-parties-replacement \
+    integration-reconfig-membership-rejoin-single-party \
+    integration-reconfig-identity \
+    integration-reconfig-endpoints \
+    integration-reconfig-params \
+    integration-reconfig-configtx
+
+.PHONY: test-cover
+test-cover: $(addprefix coverage-,$(COVERAGE_TARGETS))
+	@$(MAKE) cover-report
+
+coverage-%:
+	@./scripts/test_coverage.sh run $* coverdata/$*
+
+.PHONY: cover-report
+cover-report:
+	@./scripts/test_coverage.sh report coverdata coverage.profile
+
 DURATION_MINUTES          ?= 5
 TX_RATE                   ?= 1000
 TX_SIZE                   ?= 300
@@ -210,30 +253,30 @@ fully-randomized-failure-test: binary
 
 .PHONY: sample-tests
 sample-tests:
-	set -e
-	(cd node/examples; bash ./scripts/build_docker.sh)
-	(bash ./node/examples/scripts/run_sample.sh)
+	(cd examples; bash ./scripts/build_docker.sh)
+	(bash ./examples/scripts/run_sample.sh)
+	(bash ./examples/scripts/clean_sample.sh)
 
 # Build the HLFX Orderer image
 .PHONY: build-image
 build-image:
 	@echo "Building the image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --build-arg VERSION=${VERSION} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
 
 # Build the HLFX Orderer multiplatform image
 .PHONY: build-multiplatform-image
 build-multiplatform-image:
 	@echo "Building the multiplatform image ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION} -f ${DOCKERFILE} --multiplatform --build-arg VERSION=${VERSION} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
 
 # Build the all-in-one test-node image
 .PHONY: build-test-node-image
 build-test-node-image:
 	@echo "Building the image ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION} -f ${TEST_NODE_DOCKERFILE} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION} -f ${TEST_NODE_DOCKERFILE} --build-arg VERSION=${VERSION} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
 
 # Build the all-in-one test-node multiplatform image
 .PHONY: build-multiplatform-test-node-image
 build-multiplatform-test-node-image:
 	@echo "Building the multiplatform image ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION}..."
-	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION} -f ${TEST_NODE_DOCKERFILE} --multiplatform --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)
+	@./scripts/build_image.sh -t ${IMAGE_NAMESPACE}/${TEST_NODE_IMAGE_NAME}:${VERSION} -f ${TEST_NODE_DOCKERFILE} --multiplatform --build-arg VERSION=${VERSION} --build-arg REVISION=$(ORDERER_REVISION) --build-arg CREATED=$(ORDERER_CREATED)

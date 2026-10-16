@@ -22,7 +22,6 @@ import (
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/configack"
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
@@ -108,9 +107,11 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	}
 
 	channelID := nodeConfig.Bundle.ConfigtxValidator().ChannelID()
-	decisionChannelName := delivery.DecisionChannelName(channelID)
-	// TODO we don't need a map here
-	c.DeliverService = delivery.DeliverService(map[string]blockledger.Reader{decisionChannelName: consLedger})
+	deliverService, err := delivery.NewDeliverService(channelID, consLedger, nodeConfig.Bundle)
+	if err != nil {
+		c.Logger.Panicf("Failed creating the consensus deliver service: %v", err)
+	}
+	c.DeliverService = deliverService
 	c.Config = nodeConfig
 	c.Arma = &Consenter{
 		DB:     badb,

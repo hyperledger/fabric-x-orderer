@@ -307,6 +307,8 @@ func (rp *Pool) Close() {
 	}
 	rp.pending = nil
 	rp.batchStore = nil
+	// the stores and their requests are gone, so RequestCount must not report the size from before Close
+	atomic.StoreInt64(&rp.size, 0)
 }
 
 func (rp *Pool) isClosed() bool {

@@ -23,6 +23,7 @@ import (
 	commonsyncmocks "github.com/hyperledger/fabric-x-orderer/common/synchronizer/mocks"
 	"github.com/hyperledger/fabric-x-orderer/config"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/synchronizer/mocks"
 	"github.com/pkg/errors"
@@ -401,7 +402,7 @@ func TestBFTSynchronizer(t *testing.T) {
 				return types.Reconfig{}
 			},
 			Support:             fakeCS,
-			ClusterDialer:       &comm.PredicateDialer{Config: comm.ClientConfig{}},
+			ClusterDialer:       &comm.PredicateDialer{Config: clusterClientConfig(t)},
 			LocalConfigCluster:  config.Cluster{},
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
@@ -878,6 +879,7 @@ func TestBFTSynchronizer(t *testing.T) {
 			},
 		}
 
+		clientConfig := clusterClientConfig(t)
 		bftSynchronizer := &synchronizer.BFTSynchronizer{
 			LatestConfig: func() (types.Configuration, []uint64) {
 				return types.Configuration{
@@ -901,7 +903,7 @@ func TestBFTSynchronizer(t *testing.T) {
 				return types.Reconfig{}
 			},
 			Support:             fakeCS,
-			ClusterDialer:       &comm.PredicateDialer{Config: comm.ClientConfig{}},
+			ClusterDialer:       &comm.PredicateDialer{Config: clientConfig},
 			LocalConfigCluster:  config.Cluster{},
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
@@ -935,6 +937,12 @@ func TestBFTSynchronizer(t *testing.T) {
 		require.Equal(t, 102, len(ledger))
 		require.Equal(t, 1, fakeCS.WriteBlockSyncCallCount())
 		require.Equal(t, 1, fakeCS.WriteConfigBlockCallCount())
+
+		expectedTLSCertHash, err := protoutil.HashTLSCertificate(clientConfig.SecOpts.Certificate)
+		require.NoError(t, err)
+		_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, tlsCertHash := fakeBFTDelivererFactory.CreateBFTDelivererArgsForCall(0)
+		require.Equal(t, expectedTLSCertHash, tlsCertHash)
+
 		wg.Wait()
 
 		require.NotPanics(t, bftSynchronizer.Stop)
@@ -1054,7 +1062,7 @@ func TestBFTSynchronizer(t *testing.T) {
 				return types.Reconfig{}
 			},
 			Support:             fakeCS,
-			ClusterDialer:       &comm.PredicateDialer{Config: comm.ClientConfig{}},
+			ClusterDialer:       &comm.PredicateDialer{Config: clusterClientConfig(t)},
 			LocalConfigCluster:  config.Cluster{},
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
@@ -1218,7 +1226,7 @@ func TestBFTSynchronizer(t *testing.T) {
 				}
 			},
 			Support:             fakeCS,
-			ClusterDialer:       &comm.PredicateDialer{Config: comm.ClientConfig{}},
+			ClusterDialer:       &comm.PredicateDialer{Config: clusterClientConfig(t)},
 			LocalConfigCluster:  config.Cluster{},
 			BlockPullerFactory:  bpf,
 			VerifierFactory:     fakeVerifierFactory,
@@ -1359,4 +1367,22 @@ func TestBFTSynchronizer_Stop(t *testing.T) {
 		require.NotNil(t, bftSynchronizer)
 		require.NotPanics(t, bftSynchronizer.Stop)
 	})
+}
+
+// clusterClientConfig carries the TLS certificate the synchronizer presents to the consenters.
+func clusterClientConfig(t *testing.T) comm.ClientConfig {
+	t.Helper()
+
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	certKeyPair, err := ca.NewClientCertKeyPair()
+	require.NoError(t, err)
+
+	return comm.ClientConfig{
+		SecOpts: comm.SecureOptions{
+			Key:         certKeyPair.Key,
+			Certificate: certKeyPair.Cert,
+		},
+	}
 }

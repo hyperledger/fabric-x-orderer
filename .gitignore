@@ -11,6 +11,10 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Test coverage output
+coverdata/
+coverage.profile
+
 # Goland project settings
 /.idea/*
 

@@ -240,12 +240,12 @@ func (a *Assembler) initFromConfig(
 	a.logger.Infof("Starting with BatchFrontier: %s", node_ledger.BatchFrontierToString(batchFrontier))
 
 	index := prefetchIndexFactory.Create(shardIds, partyIds, a.logger, nodeConfig.PrefetchEvictionTtl, nodeConfig.PrefetchBufferMemoryBytes, nodeConfig.BatchRequestsChannelSize, &DefaultTimerFactory{}, &DefaultBatchCacheFactory{}, &DefaultPartitionPrefetchIndexerFactory{}, nodeConfig.PopWaitMonitorTimeout, a.metrics)
-	br := batchBringerFactory.Create(batchFrontier, nodeConfig, a.logger)
+	br := batchBringerFactory.Create(batchFrontier, nodeConfig, a.signer, a.logger)
 
 	a.prefetcher = prefetcherFactory.Create(shardIds, partyIds, index, br, a.metrics, a.logger)
 
 	channelID := nodeConfig.Bundle.ConfigtxValidator().ChannelID()
-	baReplicator := consensusBringerFactory.Create(channelID, nodeConfig.Consenter.TLSCACerts, nodeConfig.TLSPrivateKeyFile, nodeConfig.TLSCertificateFile, nodeConfig.Consenter.Endpoint, a.ledger, a.logger)
+	baReplicator := consensusBringerFactory.Create(channelID, nodeConfig.Consenter.TLSCACerts, nodeConfig.TLSPrivateKeyFile, nodeConfig.TLSCertificateFile, nodeConfig.Consenter.Endpoint, a.ledger, a.signer, a.logger)
 	a.collator = Collator{
 		Shards:                            shardIds,
 		OrderedBatchAttestationReplicator: baReplicator,

@@ -40,6 +40,7 @@ type stream struct {
 	verifier                 *requestfilter.RulesVerifier
 	configSubmitter          ConfigurationSubmitter
 	reconnectBackoffInterval time.Duration
+	metrics                  *RouterMetrics
 }
 
 // readResponses listens for responses from the batcher.
@@ -92,8 +93,9 @@ func (s *stream) sendRequests() {
 			if reqType == common.HeaderType_CONFIG_UPDATE {
 				s.logger.Infof("received request with type %s, forwarding to consenter", reqType)
 				// The consenter answers this request, not the batcher, so drop its registration.
-				if tr.trace != nil {
-					s.unregisterReply(tr.trace)
+				// If it is already gone, a stream error has answered it, so it is not submitted.
+				if tr.trace != nil && !s.unregisterReply(tr.trace) {
+					continue
 				}
 				// forward to consenter. configSubmitter will handle sending response to client.
 				s.configSubmitter.Forward(tr)
@@ -110,6 +112,8 @@ func (s *stream) sendRequests() {
 					s.cancelOnServerError(false)
 					return
 				}
+
+				s.metrics.forwardedTxs.Add(1)
 
 				// send fast response to client for untraced requests.
 				// traced requests get their response from readResponses goroutine.
@@ -283,11 +287,15 @@ func (s *stream) registerReply(tr *TrackedRequest) {
 	s.requestsByTraceID[string(tr.trace)] = tr
 }
 
-func (s *stream) unregisterReply(traceID []byte) {
+// unregisterReply removes a registration, and reports whether it was there.
+func (s *stream) unregisterReply(traceID []byte) bool {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	_, exists := s.requestsByTraceID[string(traceID)]
 	delete(s.requestsByTraceID, string(traceID))
+
+	return exists
 }
 
 // renewStream creates a new stream that inherits the map and the requests channel
@@ -337,6 +345,7 @@ CopyChannelLoop:
 		verifier:                          s.verifier,
 		configSubmitter:                   s.configSubmitter,
 		reconnectBackoffInterval:          s.reconnectBackoffInterval,
+		metrics:                           s.metrics,
 	}
 	s.lock.Unlock()
 

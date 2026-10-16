@@ -177,7 +177,7 @@ github.com/google/pprof/profile
 # github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 ## explicit; go 1.14
 github.com/grpc-ecosystem/go-grpc-middleware
-# github.com/hyperledger/SmartBFT v1.0.2
+# github.com/hyperledger/SmartBFT v1.0.3-0.20261010195840-f44fcdf9f24f
 ## explicit; go 1.26.3
 github.com/hyperledger/SmartBFT/internal/bft
 github.com/hyperledger/SmartBFT/pkg/api
@@ -451,7 +451,7 @@ golang.org/x/net/internal/httpcommon
 golang.org/x/net/internal/httpsfv
 golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
-# golang.org/x/sync v0.23.0
+# golang.org/x/sync v0.24.0
 ## explicit; go 1.26.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore

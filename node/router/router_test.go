@@ -173,12 +173,117 @@ func TestSubmitToStubBatchersGetMetrics(t *testing.T) {
 	bRes := submitBroadcast(t, testSetup.clientConn, 1000, 0)
 	require.Equal(t, 1000, bRes.success)
 
-	pattern := fmt.Sprintf(`router_requests_completed\{party_id="%d"\} \d+`, types.PartyID(1))
+	pattern := fmt.Sprintf(`router_requests_arrived\{party_id="%d"\} \d+`, types.PartyID(1))
 	re := regexp.MustCompile(pattern)
 
 	require.Eventually(t, func() bool {
 		return testutil.FetchPrometheusMetricValue(t, re, URL) == 2000
 	}, 30*time.Second, 100*time.Millisecond)
+
+	// with a healthy batcher every request that arrived was also forwarded to it
+	forwardedRE := regexp.MustCompile(fmt.Sprintf(`router_requests_forwarded\{party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, forwardedRE, URL) == 2000
+	}, 10*time.Second, 500*time.Millisecond)
+	require.Equal(t, uint32(2000), testSetup.batchers[0].ReceivedMessageCount())
+}
+
+// Scenario:
+// 1. start a client, router and 1 stub batcher (1 shard)
+// 2. check both counters are zero before any traffic
+// 3. stop the batcher and wait until the router reports its connections are down
+// 4. submit 20 requests with SubmitStream, all of which fail
+// 5. check the arrived counter counted all 20 while the forwarded counter stayed at zero
+func TestRouterForwardedMetricWhenBatcherIsDown(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	defer testSetup.Close()
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+
+	URL := testSetup.router.MonitoringServiceAddress()
+	require.NotEmpty(t, URL, "monitoring service address should not be empty")
+
+	arrivedRE := regexp.MustCompile(fmt.Sprintf(`router_requests_arrived\{party_id="%d"\} \d+`, types.PartyID(1)))
+	forwardedRE := regexp.MustCompile(fmt.Sprintf(`router_requests_forwarded\{party_id="%d"\} \d+`, types.PartyID(1)))
+
+	// both series exist at zero before any traffic
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, arrivedRE, URL) == 0
+	}, 10*time.Second, 500*time.Millisecond)
+	require.Equal(t, 0, testutil.FetchPrometheusMetricValue(t, forwardedRE, URL))
+
+	testSetup.batchers[0].Stop()
+
+	require.Eventually(t, func() bool {
+		return testSetup.isDisconnectedFromBatcher()
+	}, 10*time.Second, 200*time.Millisecond)
+
+	const numOfRequests = 20
+	res := submitStreamRequests(testSetup.clientConn, numOfRequests)
+	require.Equal(t, 0, res.successRequests)
+
+	// the requests arrived at the router but never reached a batcher
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, arrivedRE, URL) == numOfRequests
+	}, 10*time.Second, 500*time.Millisecond)
+	require.Equal(t, 0, testutil.FetchPrometheusMetricValue(t, forwardedRE, URL))
+	require.Equal(t, uint32(0), testSetup.batchers[0].ReceivedMessageCount())
+}
+
+// Scenario:
+// 1. start a client, router and 2 stub batchers (2 shards)
+// 2. check both shards report no reconnects and a connected batcher
+// 3. stop the batcher of shard 1 and check only its gauge drops to zero
+// 4. restart it and wait until the router reconnects
+// 5. check shard 1 counted a reconnect and is connected again, and shard 2 was never affected
+func TestRouterBatcherConnectivityMetrics(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 2, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+
+	URL := testSetup.router.MonitoringServiceAddress()
+	require.NotEmpty(t, URL, "monitoring service address should not be empty")
+
+	reconnects := func(shardID types.ShardID) int {
+		re := regexp.MustCompile(fmt.Sprintf(`router_batcher_reconnects\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), shardID))
+		return testutil.FetchPrometheusMetricValue(t, re, URL)
+	}
+
+	connected := func(shardID types.ShardID) int {
+		re := regexp.MustCompile(fmt.Sprintf(`router_batcher_connected\{party_id="%d",shard_id="%d"\} \d+`, types.PartyID(1), shardID))
+		return testutil.FetchPrometheusMetricValue(t, re, URL)
+	}
+
+	requireConnected := func(shardID types.ShardID, expected int) {
+		require.Eventually(t, func() bool {
+			return connected(shardID) == expected
+		}, 10*time.Second, 500*time.Millisecond, "shard %d connected should reach %d", shardID, expected)
+	}
+
+	// both series exist at zero before any reconnect happened, and both shards start connected
+	require.Equal(t, 0, reconnects(types.ShardID(1)))
+	require.Equal(t, 0, reconnects(types.ShardID(2)))
+	requireConnected(types.ShardID(1), 1)
+	requireConnected(types.ShardID(2), 1)
+
+	// stop the batcher of shard 1, only shard 1 should be affected
+	testSetup.batchers[0].Stop()
+	requireConnected(types.ShardID(1), 0)
+	require.Equal(t, 1, connected(types.ShardID(2)))
+
+	testSetup.batchers[0].Restart()
+
+	require.Eventually(t, func() bool {
+		return testSetup.isReconnectComplete()
+	}, 10*time.Second, 10*time.Millisecond)
+
+	requireConnected(types.ShardID(1), 1)
+	require.Equal(t, 1, reconnects(types.ShardID(1)))
+	require.Equal(t, 0, reconnects(types.ShardID(2)))
+	require.Equal(t, 1, connected(types.ShardID(2)))
 }
 
 // Scenario:
@@ -606,6 +711,15 @@ func TestConfigSubmitter(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return testSetup.consenter.ReceivedMessageCount() == uint32(1)
 	}, 10*time.Second, 10*time.Millisecond)
+
+	// a config request goes to the consenter, and is counted as forwarded like any other request
+	URL := testSetup.router.MonitoringServiceAddress()
+	require.NotEmpty(t, URL, "monitoring service address should not be empty")
+	forwardedRE := regexp.MustCompile(fmt.Sprintf(`router_requests_forwarded\{party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, forwardedRE, URL) == 1
+	}, 10*time.Second, 500*time.Millisecond)
+	require.Equal(t, uint32(0), testSetup.batchers[0].ReceivedMessageCount())
 }
 
 func TestConfigSubmitterConsenterDown(t *testing.T) {

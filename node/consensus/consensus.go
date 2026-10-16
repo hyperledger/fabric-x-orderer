@@ -46,7 +46,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const ConfigAckReceiverTimeout = time.Second * 60 // TODO: expose in local config
+const defaultConfigAckReceiverTimeout = time.Second * 60 // TODO: expose in local config
 
 type Storage interface {
 	Append(block *common.Block)
@@ -91,7 +91,7 @@ type BFT interface {
 }
 
 type Consensus struct {
-	delivery.DeliverService
+	DeliverService *delivery.DeliverService
 	*comm.ClusterService
 	Egress       *comm.Egress
 	Logger       *flogging.FabricLogger
@@ -137,6 +137,10 @@ type Consensus struct {
 	ConfigRequestValidator configrequest.ConfigRequestValidator
 	ConfigRulesVerifier    verify.OrdererRules
 	ConfigAckReceiver      *configack.Receiver
+	// ConfigAckReceiverTimeout bounds how long ApplyConfig waits for config acks from the party's
+	// router, batchers and assembler before applying a new config anyway. Zero selects
+	// defaultConfigAckReceiverTimeout.
+	ConfigAckReceiverTimeout time.Duration
 }
 
 func (c *Consensus) Start() error {
@@ -330,13 +334,10 @@ func (c *Consensus) OnSubmit(channel string, sender uint64, req *orderer.SubmitR
 	if c.isSoftStopped() {
 		return errors.New("consensus is soft-stopped")
 	}
-	rawCE := req.Payload.Payload
-	ri, _, err := c.verifyCE(rawCE)
-	if err != nil {
-		c.Logger.Errorf("Failed verifying control event %v: %v", ri, err)
-		return errors.Wrap(err, "failed verifying control event")
-	}
-	c.BFT.HandleRequest(sender, rawCE)
+	// No need to verify the request here: SmartBFT's HandleRequest verifies it (via VerifyRequest)
+	// anyway, and logs and drops it if it is invalid. Returning an error here would make the
+	// ClusterService close the forwarder's stream and lose the requests queued behind this one.
+	c.BFT.HandleRequest(sender, req.GetPayload().GetPayload())
 	return nil
 }
 
@@ -586,6 +587,10 @@ func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, 
 // (from SmartBFT API)
 func (c *Consensus) VerifyRequest(req []byte) (smartbft_types.RequestInfo, error) {
 	reqID, _, err := c.verifyCE(req)
+	if err != nil && reqID.ID != "" {
+		// SmartBFT logs only the error of an invalid request it drops, so the error carries the request ID.
+		err = errors.Wrapf(err, "request %s", reqID.String())
+	}
 	return reqID, err
 }
 
@@ -1146,7 +1151,11 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 
 	// wait for acks
 	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %d", configSeq)
-	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ConfigAckReceiverTimeout)
+	ackTimeout := c.ConfigAckReceiverTimeout
+	if ackTimeout <= 0 {
+		ackTimeout = defaultConfigAckReceiverTimeout
+	}
+	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ackTimeout)
 	defer cancelFunc()
 	allAcksReceived := c.ConfigAckReceiver.WaitForAllAcks(timeoutCtx, configSeq)
 	if !allAcksReceived {

@@ -15,18 +15,18 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
+	"github.com/hyperledger/fabric-x-orderer/common/metadata"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
-	"github.com/hyperledger/fabric-x-orderer/internal/cryptogen/metadata"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
-	incomingTxs = metrics.CounterOpts{
+	arrivedTxs = metrics.CounterOpts{
 		Namespace:  "router",
-		Name:       "requests_completed",
-		Help:       "The number of incomming requests that have been completed.",
+		Name:       "requests_arrived",
+		Help:       "The number of requests that arrived at the router.",
 		LabelNames: []string{"party_id"},
 	}
 
@@ -44,6 +44,13 @@ var (
 		LabelNames: []string{"party_id"},
 	}
 
+	forwardedTxs = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "requests_forwarded",
+		Help:       "The number of requests that the router forwarded to a batcher or to the consenter.",
+		LabelNames: []string{"party_id"},
+	}
+
 	activeStreamsOpts = metrics.GaugeOpts{
 		Namespace:  "router",
 		Name:       "active_streams",
@@ -57,23 +64,51 @@ var (
 		Help:       "The number of times the Submit RPC was invoked.",
 		LabelNames: []string{"party_id"},
 	}
+
+	droppedResponses = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "responses_dropped",
+		Help:       "The number of responses that could not be delivered to the submitting client, by the reason nothing was reading them.",
+		LabelNames: []string{"reason", "party_id"},
+	}
+
+	batcherReconnectsOpts = metrics.CounterOpts{
+		Namespace:  "router",
+		Name:       "batcher_reconnects",
+		Help:       "The number of times the router's connection to a batcher was restored after being fully disconnected, identified by its shard id.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
+
+	batcherConnectedOpts = metrics.GaugeOpts{
+		Namespace:  "router",
+		Name:       "batcher_connected",
+		Help:       "Whether the router currently has at least one healthy stream to a batcher, identified by its shard id: 1 = connected, 0 = disconnected.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
 )
 
 type RouterMetrics struct {
-	incomingTxs            metrics.Counter
+	arrivedTxs             metrics.Counter
 	rejectedTxsWithCode400 metrics.Counter
 	rejectedTxsWithCode500 metrics.Counter
 	throttledTxs           metrics.Counter
+	forwardedTxs           metrics.Counter
 	activeBroadcastStreams metrics.Gauge
 	activeSubmitStreams    metrics.Gauge
 	submitInvocations      metrics.Counter
-	incomingTxsLastValue   uint64
-	logger                 *flogging.FabricLogger
-	interval               time.Duration
-	stopChan               chan struct{}
-	stopOnce               sync.Once
-	startOnce              sync.Once
-	partyID                arma_types.PartyID
+	batcherReconnects      metrics.Counter
+	batcherConnected       metrics.Gauge
+	// Bound per reason here so that counting a drop costs no allocation.
+	droppedRespClientGone     metrics.Counter
+	droppedRespClientBehind   metrics.Counter
+	droppedRespRouterDraining metrics.Counter
+	arrivedTxsLastValue       uint64
+	logger                    *flogging.FabricLogger
+	interval                  time.Duration
+	stopChan                  chan struct{}
+	stopOnce                  sync.Once
+	startOnce                 sync.Once
+	partyID                   arma_types.PartyID
 }
 
 // NewRouterMetrics creates the Metrics
@@ -83,6 +118,7 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 
 	rejectedTxs := provider.NewCounter(rejectedTxs)
 	activeStreams := provider.NewGauge(activeStreamsOpts)
+	droppedResponses := provider.NewCounter(droppedResponses)
 	versionGauge := monitoring.VersionGauge(provider)
 	versionGauge.With(metadata.Version).Set(1)
 
@@ -90,15 +126,29 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		interval:               routerNodeConfig.Metrics.MetricsLogInterval,
 		logger:                 logger,
 		stopChan:               make(chan struct{}),
-		incomingTxs:            provider.NewCounter(incomingTxs).With([]string{partyID}...),
+		arrivedTxs:             provider.NewCounter(arrivedTxs).With([]string{partyID}...),
 		rejectedTxsWithCode400: rejectedTxs.With([]string{"400", partyID}...),
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
 		throttledTxs:           provider.NewCounter(throttledTxs).With([]string{partyID}...),
+		forwardedTxs:           provider.NewCounter(forwardedTxs).With([]string{partyID}...),
 		activeBroadcastStreams: activeStreams.With([]string{partyID, "broadcast"}...),
 		activeSubmitStreams:    activeStreams.With([]string{partyID, "submit_stream"}...),
 		submitInvocations:      provider.NewCounter(submitInvocationsOpts).With([]string{partyID}...),
-		partyID:                routerNodeConfig.PartyID,
+		batcherReconnects:      provider.NewCounter(batcherReconnectsOpts),
+		batcherConnected:       provider.NewGauge(batcherConnectedOpts),
+
+		droppedRespClientGone:     droppedResponses.With([]string{"client_gone", partyID}...),
+		droppedRespClientBehind:   droppedResponses.With([]string{"client_behind", partyID}...),
+		droppedRespRouterDraining: droppedResponses.With([]string{"router_draining", partyID}...),
+
+		partyID: routerNodeConfig.PartyID,
 	}
+}
+
+func (m *RouterMetrics) shardMetrics(shardID arma_types.ShardID) (metrics.Counter, metrics.Gauge) {
+	partyID := fmt.Sprintf("%d", m.partyID)
+	shard := fmt.Sprintf("%d", shardID)
+	return m.batcherReconnects.With(partyID, shard), m.batcherConnected.With(partyID, shard)
 }
 
 func (m *RouterMetrics) StopMetricsTracker() {
@@ -133,18 +183,19 @@ func (m *RouterMetrics) trackMetrics() {
 }
 
 func (m *RouterMetrics) reportMetrics() {
-	txCount := monitoring.GetMetricValue(m.incomingTxs.(prometheus.Metric), m.logger)
+	txCount := monitoring.GetMetricValue(m.arrivedTxs.(prometheus.Metric), m.logger)
 	txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
 	txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
 	txThrottled := monitoring.GetMetricValue(m.throttledTxs.(prometheus.Metric), m.logger)
+	txForwarded := monitoring.GetMetricValue(m.forwardedTxs.(prometheus.Metric), m.logger)
 	activeBroadcastStreams := monitoring.GetMetricValue(m.activeBroadcastStreams.(prometheus.Metric), m.logger)
 	activeSubmitStreams := monitoring.GetMetricValue(m.activeSubmitStreams.(prometheus.Metric), m.logger)
 	submitInvocations := monitoring.GetMetricValue(m.submitInvocations.(prometheus.Metric), m.logger)
-	incomingTxsLastValue := atomic.LoadUint64(&m.incomingTxsLastValue)
-	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, transactions_received_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d, active_broadcast_streams=%d, active_submit_streams=%d, submit_invocations=%d",
-		m.partyID, int(txCount), float64(txCount-float64(incomingTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled), int(activeBroadcastStreams), int(activeSubmitStreams), int(submitInvocations))
+	arrivedTxsLastValue := atomic.LoadUint64(&m.arrivedTxsLastValue)
+	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_arrived=%d, transactions_arrived_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d, transactions_forwarded=%d, active_broadcast_streams=%d, active_submit_streams=%d, submit_invocations=%d",
+		m.partyID, int(txCount), float64(txCount-float64(arrivedTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled), int(txForwarded), int(activeBroadcastStreams), int(activeSubmitStreams), int(submitInvocations))
 
-	atomic.StoreUint64(&m.incomingTxsLastValue, uint64(txCount))
+	atomic.StoreUint64(&m.arrivedTxsLastValue, uint64(txCount))
 }
 
 func (m *RouterMetrics) increaseErrorCount(err error) {

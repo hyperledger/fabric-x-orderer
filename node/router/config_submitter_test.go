@@ -13,6 +13,7 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity/mocks"
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	ordererRulesMocks "github.com/hyperledger/fabric-x-orderer/config/verify/mocks"
@@ -71,9 +72,10 @@ func createConfigSubmitTestSetup(t *testing.T) configSubmitTestSetup {
 		Bundle:             bundle,
 		PartyID:            types.PartyID(1),
 		BCCSP:              factory.GetDefault(),
+		Metrics:            &operations.Metrics{Provider: "disabled"},
 	}
 
-	configSubmitter := NewConfigSubmitter(conf, logger, verifier, fakeSigner, mockConfigUpdateProposer, mockConfigRulesVerifier)
+	configSubmitter := NewConfigSubmitter(conf, logger, verifier, fakeSigner, mockConfigUpdateProposer, mockConfigRulesVerifier, NewRouterMetrics(conf, logger))
 
 	return configSubmitTestSetup{configSubmitter: configSubmitter, stubConsenter: &stubConsenter}
 }
@@ -181,4 +183,33 @@ func TestConfigSubmitterReconnectionAbort(t *testing.T) {
 
 	err := <-errChan
 	require.EqualError(t, err, fmt.Sprintf("reconnection to consensus %s aborted, because context is done and configSubmitter stopped", configSubmitter.consensusEndpoint))
+}
+
+// Scenario:
+//  1. Create a config submitter with a queue of one and do not start it, so that
+//     nothing drains the queue.
+//  2. Forward a request, filling the queue, and expect no response.
+//  3. Forward a second request and expect it to be rejected within a timeout,
+//     rather than blocking.
+func TestConfigSubmitterForwardRejectsWhenQueueIsFull(t *testing.T) {
+	cs := &configSubmitter{
+		logger:                testutil.CreateLogger(t, 0),
+		configRequestsChannel: make(chan *TrackedRequest, 1),
+	}
+
+	feedbackChan := make(chan Response, 2)
+	req := tx.CreateStructuredRequest([]byte("config"))
+
+	cs.Forward(CreateTrackedRequest(req, feedbackChan, []byte("req1"), nil))
+	require.Empty(t, feedbackChan)
+
+	go cs.Forward(CreateTrackedRequest(req, feedbackChan, []byte("req2"), nil))
+
+	select {
+	case resp := <-feedbackChan:
+		require.ErrorContains(t, resp.GetResponseError(), "config request queue is full")
+		require.Equal(t, []byte("req2"), resp.reqID)
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "Forward did not reject a config request when the queue was full")
+	}
 }

@@ -50,16 +50,14 @@ func (a AssemblerDeliverService) Broadcast(_ orderer.AtomicBroadcast_BroadcastSe
 func (a AssemblerDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) error {
 	a.logger.Infof("Received new deliver request from client %s", util.ExtractRemoteAddress(stream.Context()))
 
-	handler := &deliver.Handler{
-		ChainManager:     &assemblerChainManager{ledger: a.blockledger, bundle: a.bundle},
-		BindingInspector: deliver.InspectorFunc(deliver.NewBindingInspector(a.mutualTLS, deliver.ExtractChannelHeaderCertHash)),
-		TimeWindow:       time.Hour,
-		Metrics:          a.deliverMetrics,
-		ExpirationCheckFunc: func(identityBytes []byte) time.Time {
-			return time.Now().Add(time.Hour * 365 * 24)
-		},
-		ConfigBlockOps: &utils.CommonConfigBlockOperations{},
-	}
+	handler := deliver.NewHandler(
+		&assemblerChainManager{ledger: a.blockledger, bundle: a.bundle},
+		time.Hour,
+		a.mutualTLS,
+		a.deliverMetrics,
+		false, // expirationCheckDisabled
+		&utils.CommonConfigBlockOperations{},
+	)
 
 	policyChecker := func(env *common.Envelope, channelID string) error {
 		asf := NewAssemblerSigFilter(a.bundle)

@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -33,22 +34,25 @@ type BatchBringer interface {
 
 //go:generate counterfeiter -o ./mocks/batch_fetcher_factory.go . BatchBringerFactory
 type BatchBringerFactory interface {
-	Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger *flogging.FabricLogger) BatchBringer
+	Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, signer identity.SignerSerializer, logger *flogging.FabricLogger) BatchBringer
 }
 
 type DefaultBatchBringerFactory struct{}
 
-func (f *DefaultBatchBringerFactory) Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger *flogging.FabricLogger) BatchBringer {
-	return NewBatchFetcher(initialBatchFrontier, config, logger)
+func (f *DefaultBatchBringerFactory) Create(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, signer identity.SignerSerializer, logger *flogging.FabricLogger) BatchBringer {
+	return NewBatchFetcher(initialBatchFrontier, config, signer, logger)
 }
 
 type BatchFetcher struct {
 	initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence
 	config               *config.AssemblerNodeConfig
+	signer               identity.SignerSerializer
 	clientConfig         comm.ClientConfig
 	logger               *flogging.FabricLogger
 	cancelCtx            context.Context
 	cancelCtxFunc        context.CancelFunc
+	// tlsCertHash binds a deliver request to the TLS connection it is sent over.
+	tlsCertHash []byte
 }
 
 func fetcherClientConfig(config *config.AssemblerNodeConfig) comm.ClientConfig {
@@ -79,13 +83,21 @@ func fetcherClientConfig(config *config.AssemblerNodeConfig) comm.ClientConfig {
 	return cc
 }
 
-func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, logger *flogging.FabricLogger) *BatchFetcher {
+func NewBatchFetcher(initialBatchFrontier map[types.ShardID]map[types.PartyID]types.BatchSequence, config *config.AssemblerNodeConfig, signer identity.SignerSerializer, logger *flogging.FabricLogger) *BatchFetcher {
 	logger.Infof("Creating new Batch Fetcher using batch frontier with assembler: endpoint %s partyID %d ", config.ListenAddress, config.PartyId)
+	clientConfig := fetcherClientConfig(config)
+	tlsCertHash, err := protoutil.HashTLSCertificate(clientConfig.SecOpts.Certificate)
+	if err != nil {
+		logger.Panicf("Failed hashing the TLS certificate: %s", err)
+	}
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	return &BatchFetcher{
 		initialBatchFrontier: initialBatchFrontier,
 		config:               config,
-		clientConfig:         fetcherClientConfig(config),
+		signer:               signer,
+		clientConfig:         clientConfig,
+		tlsCertHash:          tlsCertHash,
 		logger:               logger,
 		cancelCtx:            ctx,
 		cancelCtxFunc:        cancelFunc,
@@ -137,11 +149,11 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			channelName,
-			nil,
+			br.signer,
 			delivery.NextSeekInfo(uint64(seq)),
 			int32(0),
 			uint64(0),
-			nil,
+			br.tlsCertHash,
 		)
 		if err != nil {
 			br.logger.Panicf("Failed creating signed envelope: %v", err)
@@ -258,11 +270,11 @@ func (br *BatchFetcher) pullSingleBatch(ctx context.Context, batcherToPullFrom c
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			channelName,
-			nil,
+			br.signer,
 			delivery.SingleSpecifiedSeekInfo(uint64(batchID.Seq())),
 			int32(0),
 			uint64(0),
-			nil,
+			br.tlsCertHash,
 		)
 		if err != nil {
 			br.logger.Panicf("Failed creating signed envelope: %s", err)

@@ -8,13 +8,12 @@ package batcher
 
 import (
 	"context"
-	"math"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
-	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -35,18 +34,28 @@ type BatchPuller struct {
 	ledger     BatchLedger
 	logger     *flogging.FabricLogger
 	config     *config.BatcherNodeConfig
+	signer     identity.SignerSerializer
 	tlsKey     []byte
 	tlsCert    []byte
 	stopPuller context.CancelFunc
+	// tlsCertHash binds a deliver request to the TLS connection it is sent over.
+	tlsCertHash []byte
 }
 
-func NewBatchPuller(config *config.BatcherNodeConfig, ledger BatchLedger, logger *flogging.FabricLogger) *BatchPuller {
+func NewBatchPuller(config *config.BatcherNodeConfig, ledger BatchLedger, signer identity.SignerSerializer, logger *flogging.FabricLogger) *BatchPuller {
+	tlsCertHash, err := protoutil.HashTLSCertificate(config.TLSCertificateFile)
+	if err != nil {
+		logger.Panicf("Failed hashing the TLS certificate: %s", err)
+	}
+
 	puller := &BatchPuller{
-		ledger:  ledger,
-		logger:  logger,
-		config:  config,
-		tlsKey:  config.TLSPrivateKeyFile,
-		tlsCert: config.TLSCertificateFile,
+		ledger:      ledger,
+		logger:      logger,
+		config:      config,
+		signer:      signer,
+		tlsKey:      config.TLSPrivateKeyFile,
+		tlsCert:     config.TLSCertificateFile,
+		tlsCertHash: tlsCertHash,
 	}
 	return puller
 }
@@ -66,11 +75,11 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			channelName,
-			nil,
-			nextSeekInfo(seq),
+			bp.signer,
+			delivery.NextSeekInfo(seq),
 			int32(0),
 			uint64(0),
-			nil,
+			bp.tlsCertHash,
 		)
 		if err != nil {
 			bp.logger.Panicf("Failed creating seek envelope: %v", err)
@@ -149,13 +158,4 @@ func (bp *BatchPuller) findPrimary(shardID types.ShardID, primary types.PartyID)
 
 	bp.logger.Panicf("Failed finding shard ID %d within %v", shardID, bp.config.Shards)
 	return config.BatcherInfo{}
-}
-
-func nextSeekInfo(startSeq uint64) *orderer.SeekInfo {
-	return &orderer.SeekInfo{
-		Start:         &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{Number: startSeq}}},
-		Stop:          &orderer.SeekPosition{Type: &orderer.SeekPosition_Specified{Specified: &orderer.SeekSpecified{Number: math.MaxUint64}}},
-		Behavior:      orderer.SeekInfo_BLOCK_UNTIL_READY,
-		ErrorResponse: orderer.SeekInfo_BEST_EFFORT,
-	}
 }

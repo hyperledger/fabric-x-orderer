@@ -1,0 +1,65 @@
+<!--
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 510" width="1000" height="510">
+  <!-- theme -->
+  <defs>
+    <marker id="arrow-digests" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="m-digests" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="arrow-control" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="m-control" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <!-- Shard columns, side by side; labels sit right of the decision paths that drop into B1 -->
+  <text class="group-label start" x="103" y="130">Shard 1</text>
+  <rect class="group shard-1" x="40" y="140" width="110" height="266" rx="14"/>
+  <text class="group-label start" x="253" y="130">Shard 2</text>
+  <rect class="group shard-2" x="190" y="140" width="110" height="266" rx="14"/>
+
+  <!-- Batchers: Bp in shard s -->
+  <rect class="node" x="55" y="160" width="80" height="40"/><text class="node-label" x="95" y="188">B1<tspan class="node-sub">s1</tspan></text>
+  <rect class="node" x="55" y="222" width="80" height="40"/><text class="node-label" x="95" y="250">B2<tspan class="node-sub">s1</tspan></text>
+  <rect class="node" x="55" y="284" width="80" height="40"/><text class="node-label" x="95" y="312">B3<tspan class="node-sub">s1</tspan></text>
+  <rect class="node" x="55" y="346" width="80" height="40"/><text class="node-label" x="95" y="374">B4<tspan class="node-sub">s1</tspan></text>
+  <rect class="node" x="205" y="160" width="80" height="40"/><text class="node-label" x="245" y="188">B1<tspan class="node-sub">s2</tspan></text>
+  <rect class="node" x="205" y="222" width="80" height="40"/><text class="node-label" x="245" y="250">B2<tspan class="node-sub">s2</tspan></text>
+  <rect class="node" x="205" y="284" width="80" height="40"/><text class="node-label" x="245" y="312">B3<tspan class="node-sub">s2</tspan></text>
+  <rect class="node" x="205" y="346" width="80" height="40"/><text class="node-label" x="245" y="374">B4<tspan class="node-sub">s2</tspan></text>
+
+  <!-- Consensus: C1 and the consenters of the other parties -->
+  <text class="group-label" x="700" y="148">Consensus</text>
+  <rect class="group consensus" x="450" y="160" width="350" height="200" rx="14"/>
+  <rect class="node" x="470" y="180" width="140" height="160"/><text class="node-label-main" x="540" y="268">C1</text>
+  <rect class="node" x="700" y="180" width="80" height="40"/><text class="node-label" x="740" y="208">C2</text>
+  <rect class="node" x="700" y="240" width="80" height="40"/><text class="node-label" x="740" y="268">C3</text>
+  <rect class="node" x="700" y="300" width="80" height="40"/><text class="node-label" x="740" y="328">C4</text>
+
+  <!-- Party 1's router and assembler -->
+  <rect class="node" x="540" y="448" width="80" height="44"/><text class="node-label" x="580" y="478">R1</text>
+  <rect class="node" x="850" y="388" width="80" height="44"/><text class="node-label" x="890" y="418">A1</text>
+
+  <!-- SmartBFT messages: C1 <-> the other consenters -->
+  <line class="flow digests" x1="612" y1="200" x2="698" y2="200" marker-start="url(#arrow-digests)" marker-end="url(#arrow-digests)"/>
+  <line class="flow digests" x1="612" y1="260" x2="698" y2="260" marker-start="url(#arrow-digests)" marker-end="url(#arrow-digests)"/>
+  <line class="flow digests" x1="612" y1="320" x2="698" y2="320" marker-start="url(#arrow-digests)" marker-end="url(#arrow-digests)"/>
+  <text class="flow-label digests small" x="655" y="176">SmartBFT</text>
+
+  <!-- BAFs and complaints: every batcher of every shard -> C1 -->
+  <path class="flow digests" d="M95,406 V470 H380 V300 H468" marker-end="url(#arrow-digests)"/>
+  <path class="flow digests" d="M245,406 V470"/>
+  <text class="flow-label digests" x="240" y="494">BAFs, complaints from every batcher</text>
+
+  <!-- Decisions: C1 -> the batchers of its own party -->
+  <path class="flow digests" d="M490,180 V100 H95 V158" marker-end="url(#arrow-digests)"/>
+  <path class="flow digests" d="M245,100 V158" marker-end="url(#arrow-digests)"/>
+  <text class="flow-label digests" x="370" y="88">decisions</text>
+
+  <!-- Config requests: R1 -> C1 -->
+  <line class="flow control" x1="555" y1="446" x2="555" y2="342" marker-end="url(#arrow-control)"/>
+  <text class="flow-label control end small" x="547" y="400">config requests</text>
+
+  <!-- Decisions: C1 -> its own party's router and assembler -->
+  <path class="flow digests" d="M590,342 V410 H848" marker-end="url(#arrow-digests)"/>
+  <path class="flow digests" d="M590,410 V446" marker-end="url(#arrow-digests)"/>
+  <text class="flow-label digests" x="730" y="400">decisions</text>
+</svg>

@@ -18,8 +18,11 @@ import (
 	"github.com/hyperledger/SmartBFT/pkg/wal"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/protoutil/identity"
 	"github.com/hyperledger/fabric-x-orderer/common/configack"
 	"github.com/hyperledger/fabric-x-orderer/common/configstore"
+	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/config"
@@ -32,7 +35,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/request"
 )
 
-func CreateBatcher(nodeConfig *node_config.BatcherNodeConfig, fullConfig *config.Configuration, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer Signer) *Batcher {
+func CreateBatcher(nodeConfig *node_config.BatcherNodeConfig, fullConfig *config.Configuration, logger *flogging.FabricLogger, mainExitChan chan struct{}, cdrc ConsensusDecisionReplicatorCreator, senderCreator ConsenterControlEventSenderCreator, signer identity.SignerSerializer) *Batcher {
 	configStore, err := configstore.NewStore(nodeConfig.ConfigStorePath)
 	if err != nil {
 		logger.Panicf("Failed creating batcher config store: %s", err.Error())
@@ -83,14 +86,20 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 		b.logger.Panicf("Failed creating BatchLedgerArray: %s", err.Error())
 	}
 
-	deliverService := &BatcherDeliverService{
-		LedgerArray: ledgerArray,
-		Logger:      b.logger,
+	accessControl, err := deliver.NewAccessControl(b.config.Bundle, policies.ChannelOrdererReaders)
+	if err != nil {
+		b.logger.Panicf("Failed creating the access control of the batcher deliver service: %s", err)
 	}
 
-	batchPuller := NewBatchPuller(b.config, ledgerArray, b.logger)
+	deliverService := &BatcherDeliverService{
+		LedgerArray:   ledgerArray,
+		AccessControl: accessControl,
+		Logger:        b.logger,
+	}
 
-	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, b.logger, lastKnownDecisionNum)
+	batchPuller := NewBatchPuller(b.config, ledgerArray, b.signer, b.logger)
+
+	dr := b.consensusDecisionReplicatorCreator.CreateDecisionConsensusReplicator(b.config, b.signer, b.logger, lastKnownDecisionNum)
 
 	if memPool == nil {
 		memPool = createMemPool(b, b.config, DefaultRequestID)

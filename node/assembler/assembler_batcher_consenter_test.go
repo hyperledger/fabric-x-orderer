@@ -346,7 +346,7 @@ func newAssemblerTestWithBundle(t *testing.T, partyID types.PartyID, ca tlsgen.C
 	return a, a.Address()
 }
 
-func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.ShardID, ca tlsgen.CA) ([]*stubBatcher, []config.BatcherInfo, func()) {
+func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.ShardID, ca tlsgen.CA, clientCAs ...[]byte) ([]*stubBatcher, []config.BatcherInfo, func()) {
 	var batchers []*stubBatcher
 	var batcherInfos []config.BatcherInfo
 
@@ -356,7 +356,7 @@ func createStubBatchersAndInfos(t *testing.T, numParties int, shardID types.Shar
 	}
 
 	for i := 1; i <= numParties; i++ {
-		b := NewStubBatcher(t, shardID, types.PartyID(i), parties, ca)
+		b := NewStubBatcher(t, shardID, types.PartyID(i), parties, ca, clientCAs...)
 		batchers = append(batchers, b)
 		batcherInfos = append(batcherInfos, b.batcherInfo)
 	}

@@ -50,9 +50,10 @@ type configSubmitter struct {
 	configRulesVerifier   verify.OrdererRules
 	partyID               types.PartyID
 	bccsp                 bccsp.BCCSP
+	metrics               *RouterMetrics
 }
 
-func NewConfigSubmitter(conf *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules) *configSubmitter {
+func NewConfigSubmitter(conf *nodeconfig.RouterNodeConfig, logger *flogging.FabricLogger, verifier *requestfilter.RulesVerifier, signer identity.SignerSerializer, configUpdateProposer policy.ConfigUpdateProposer, configRulesVerifier verify.OrdererRules, metrics *RouterMetrics) *configSubmitter {
 	var tlsCAsOfConsenter [][]byte
 	for _, rawTLSCA := range conf.Consenter.TLSCACerts {
 		tlsCAsOfConsenter = append(tlsCAsOfConsenter, rawTLSCA)
@@ -72,6 +73,7 @@ func NewConfigSubmitter(conf *nodeconfig.RouterNodeConfig, logger *flogging.Fabr
 		configRulesVerifier:   configRulesVerifier,
 		partyID:               conf.PartyID,
 		bccsp:                 conf.BCCSP,
+		metrics:               metrics,
 	}
 	return cs
 }
@@ -107,9 +109,19 @@ func (cs *configSubmitter) readConfigRequests() {
 	}
 }
 
-// Forward forwards the config request from the shard router to the config submitter requests channel
+// Forward forwards the config request from the shard router to the config submitter
+// requests channel. A full queue means the path to the consenter is stuck; the
+// request is rejected rather than blocking the submitting client indefinitely.
 func (cs *configSubmitter) Forward(tr *TrackedRequest) {
-	cs.configRequestsChannel <- tr
+	select {
+	case cs.configRequestsChannel <- tr:
+	default:
+		cs.logger.Warnf("config requests channel is full, rejecting config request %x", tr.reqID)
+		tr.feedback.reply(Response{
+			err:   errors.New("server error: config request queue is full, try again later"),
+			reqID: tr.reqID,
+		})
+	}
 }
 
 // forwardRequest forwards the config request from the config submitter to the consensus
@@ -118,7 +130,7 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 		return fmt.Errorf("received nil tracked request")
 	}
 
-	feedback := Response{}
+	feedback := Response{reqID: tr.reqID}
 	var err error
 
 	configRequest, err := cs.configUpdateProposer.ProposeConfigUpdate(tr.request, cs.bundle, cs.signer, cs.verifier, cs.bccsp)
@@ -143,10 +155,15 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 
 	var resp *protos.SubmitResponse
 	resp, err = cs.submitConfigRequestToConsensus(tr.request)
+	if resp != nil {
+		// The consenter does not know the router's reqID, which stream clients correlate by.
+		resp.ReqID = tr.reqID
+	}
 	feedback.SubmitResponse = resp
 	if err != nil {
 		feedback.err = fmt.Errorf("error forwarding config request to consenter: %v", err)
 	} else {
+		cs.metrics.forwardedTxs.Add(1)
 		feedback.SubmitResponse = resp
 		if resp.Error != "" {
 			feedback.err = errors.New(resp.Error)
