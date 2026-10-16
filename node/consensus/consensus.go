@@ -357,9 +357,29 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 			return err
 		}
 
-		c.Logger.Debugf("Received event %s", printEvent(event.GetPayload()))
+		ce := &state.ControlEvent{}
+		if err := ce.FromBytes(event.GetPayload()); err != nil {
+			c.Logger.Warnf("Closing the event stream: malformed event: %v", err)
+			return errors.Wrap(err, "malformed event")
+		}
 
-		if err := c.SubmitRequest(event.GetPayload()); err != nil {
+		// ce is formatted only when debug logging is enabled.
+		c.Logger.Debugf("Received event %s", ce)
+
+		// The sender check and the verification of the event use the same snapshot, so a reconfiguration
+		// in between cannot check them against different configs.
+		snap := c.snapshotVerification()
+
+		// A stream carries the events of a single node, so an event that does not come from the node that
+		// created it means the peer is misbehaving (or still uses a TLS certificate that a reconfiguration
+		// replaced), and the stream is closed. A stale BAF rejected here never reaches State.StaleConfigBAFs, so
+		// its signer does not revive the batch's requests; only the other batchers that signed the batch do.
+		if err := validateEventSender(stream.Context(), ce, snap.cfg); err != nil {
+			c.Logger.Warnf("Closing the event stream: %v", err)
+			return err
+		}
+
+		if err := c.submitControlEvent(event.GetPayload(), ce, snap); err != nil {
 			c.Logger.Warnf("Failed submitting request: %v", err)
 		}
 	}
@@ -372,6 +392,7 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 	}
 
 	if err := c.validateRouterFromContext(ctx); err != nil {
+		c.Logger.Warnf("Rejected config request: %v", err)
 		return nil, errors.Wrap(err, "failed to validate router from context")
 	}
 
@@ -402,12 +423,21 @@ func (c *Consensus) SubmitConfig(ctx context.Context, request *protos.Request) (
 }
 
 func (c *Consensus) SubmitRequest(req []byte) error {
+	ce := &state.ControlEvent{}
+	if err := ce.FromBytes(req); err != nil {
+		c.Logger.Warnf("Received bad request: %v", err)
+		return err
+	}
+	return c.submitControlEvent(req, ce, c.snapshotVerification())
+}
+
+// submitControlEvent verifies ce, the decoded req, against snap and submits req to the BFT.
+func (c *Consensus) submitControlEvent(req []byte, ce *state.ControlEvent, snap verificationSnapshot) error {
 	if c.isSoftStopped() {
 		return errors.New("consensus is soft-stopped")
 	}
 
-	_, ce, err := c.verifyCE(req)
-	if err != nil {
+	if _, err := c.verifyDecodedCE(ce, snap); err != nil {
 		c.Logger.Warnf("Received bad request: %v", err)
 		return err
 	}
@@ -812,7 +842,10 @@ func (c *Consensus) RequestID(req []byte) smartbft_types.RequestInfo {
 	if err := ce.FromBytes(req); err != nil {
 		return smartbft_types.RequestInfo{}
 	}
+	return c.requestInfo(&ce)
+}
 
+func (c *Consensus) requestInfo(ce *state.ControlEvent) smartbft_types.RequestInfo {
 	if ce.Complaint == nil && ce.BAF == nil && ce.ConfigRequest == nil && ce.AssemblerReport == nil {
 		c.Logger.Warnf("Empty control event")
 		return smartbft_types.RequestInfo{}
@@ -1308,77 +1341,103 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 	if err := ce.FromBytes(req); err != nil {
 		return smartbft_types.RequestInfo{}, nil, err
 	}
+	reqID, err := c.verifyDecodedCE(ce, c.snapshotVerification())
+	return reqID, ce, err
+}
 
-	reqID := c.RequestID(req)
+// verificationSnapshot holds the fields that a dynamic reconfiguration replaces under c.lock
+// (configureConsensus) while requests are verified concurrently.
+type verificationSnapshot struct {
+	configSeq              arma_types.ConfigSequence
+	cfg                    *node_config.ConsenterNodeConfig
+	sigVerifier            SigVerifier
+	configRequestValidator configrequest.ConfigRequestValidator
+	configRulesVerifier    verify.OrdererRules
+}
 
-	// A dynamic reconfiguration replaces these fields under c.lock (configureConsensus) while requests are
-	// verified concurrently, so take a consistent snapshot of them and verify against it. The verification
-	// itself runs outside the lock.
+// snapshotVerification takes a consistent snapshot of the fields a request is verified against, so that
+// the verification itself runs outside the lock.
+func (c *Consensus) snapshotVerification() verificationSnapshot {
 	c.lock.RLock()
-	configSeq := arma_types.ConfigSequence(c.verificationSequence())
-	cfg := c.Config
-	sigVerifier := c.SigVerifier
-	configRequestValidator := c.ConfigRequestValidator
-	configRulesVerifier := c.ConfigRulesVerifier
-	c.lock.RUnlock()
+	defer c.lock.RUnlock()
+	return verificationSnapshot{
+		configSeq:              arma_types.ConfigSequence(c.verificationSequence()),
+		cfg:                    c.Config,
+		sigVerifier:            c.SigVerifier,
+		configRequestValidator: c.ConfigRequestValidator,
+		configRulesVerifier:    c.ConfigRulesVerifier,
+	}
+}
+
+// verifyDecodedCE verifies the decoded control event ce against snap.
+func (c *Consensus) verifyDecodedCE(
+	ce *state.ControlEvent, snap verificationSnapshot,
+) (smartbft_types.RequestInfo, error) {
+	reqID := c.requestInfo(ce)
+	configSeq := snap.configSeq
+	cfg := snap.cfg
+	sigVerifier := snap.sigVerifier
+	configRequestValidator := snap.configRequestValidator
+	configRulesVerifier := snap.configRulesVerifier
 
 	if ce.Complaint != nil {
 		if ce.Complaint.ConfigSeq != configSeq {
-			return reqID, ce, errors.Errorf("mismatch config sequence; the complaint's config seq is %d while the config seq should be %d", ce.Complaint.ConfigSeq, configSeq)
+			return reqID, errors.Errorf("mismatch config sequence; the complaint's config seq is %d while the config seq should be %d", ce.Complaint.ConfigSeq, configSeq)
 		}
-		return reqID, ce, sigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.Complaint.Signer, ce.Complaint.Shard), ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
+		return reqID, sigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.Complaint.Signer, ce.Complaint.Shard), ce.Complaint.ToBeSigned(), ce.Complaint.Signature)
 	} else if ce.BAF != nil {
 		// Accept a BAF whose config sequence is behind, in addition to the current one, so
 		// that the BAFs from a batcher which fell behind a config change are not silently dropped: consensus surfaces it
 		// in State.StaleConfigBAFs for one decision and the batcher revives the batch's requests. Its
 		// signature is still verified below.
 		if ce.BAF.ConfigSequence() > configSeq {
-			return reqID, ce, errors.Errorf("config sequence ahead; the BAF's config seq is %d while it should be at most %d", ce.BAF.ConfigSequence(), configSeq)
+			return reqID, errors.Errorf("config sequence ahead; the BAF's config seq is %d while it should be at most %d", ce.BAF.ConfigSequence(), configSeq)
 		}
 		if ce.BAF.Primary() != ce.BAF.Signer() {
 			if len(ce.BAF.PrimarySignature()) == 0 {
-				return reqID, ce, errors.New("missing primary signature")
+				return reqID, errors.New("missing primary signature")
 			}
 			dupBAF := duplicateBAFSetSigner(ce.BAF, ce.BAF.Primary())
 			if err := sigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.BAF.Primary(), ce.BAF.Shard()), toBeSignedBAF(dupBAF), ce.BAF.PrimarySignature()); err != nil {
-				return reqID, ce, errors.Wrap(err, "failed to verify primary signature")
+				return reqID, errors.Wrap(err, "failed to verify primary signature")
 			}
 		}
-		return reqID, ce, sigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.BAF.Signer(), ce.BAF.Shard()), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
+		return reqID, sigVerifier.VerifySignature(arma_types.NewBatcherIdentity(ce.BAF.Signer(), ce.BAF.Shard()), toBeSignedBAF(ce.BAF), ce.BAF.Signature())
 	} else if ce.ConfigRequest != nil {
 		reqConfigSeq, err := ce.ConfigRequest.ConfigSequence()
 		if err != nil {
-			return reqID, ce, errors.Wrap(err, "failed getting config request's config seq")
+			return reqID, errors.Wrap(err, "failed getting config request's config seq")
 		}
 		if reqConfigSeq != configSeq+1 {
-			return reqID, ce, errors.Errorf("mismatch config sequence; the config request's config seq is %d while the config seq should be %d", reqConfigSeq, configSeq+1)
+			return reqID, errors.Errorf("mismatch config sequence; the config request's config seq is %d while the config seq should be %d", reqConfigSeq, configSeq+1)
 		}
 		err = configRequestValidator.ValidateConfigRequest(ce.ConfigRequest.Envelope)
 		if err != nil {
-			return reqID, ce, errors.Wrapf(err, "failed to verify and classify request")
+			return reqID, errors.Wrapf(err, "failed to verify and classify request")
 		}
 		if err := configRulesVerifier.ValidateNewConfig(ce.ConfigRequest.Envelope, cfg.BCCSP, c.PartyID); err != nil {
-			return reqID, ce, errors.Wrap(err, "failed to validate rules in new config")
+			return reqID, errors.Wrap(err, "failed to validate rules in new config")
 		}
 		if err := configRulesVerifier.ValidateTransition(cfg.Bundle, ce.ConfigRequest.Envelope, cfg.BCCSP); err != nil {
-			return reqID, ce, errors.Wrap(err, "failed to validate config transition rules")
+			return reqID, errors.Wrap(err, "failed to validate config transition rules")
 		}
 		// TODO: revisit this return
-		return reqID, ce, nil
+		return reqID, nil
 	} else if ce.AssemblerReport != nil {
 		report := ce.AssemblerReport
 		if report.ConfigSeq != configSeq {
-			return reqID, ce, errors.Errorf(
+			return reqID, errors.Errorf(
 				"mismatch config sequence; the assembler decision report's config seq is %d while the config seq should be %d",
-				report.ConfigSeq, configSeq)
+				report.ConfigSeq, configSeq,
+			)
 		}
 		if len(report.Signature) == 0 {
-			return reqID, ce, errors.New("missing assembler decision report signature")
+			return reqID, errors.New("missing assembler decision report signature")
 		}
 		// Bound the signature before verifying it, so an oversized junk signature is not copied into
 		// the verification error and logged.
 		if len(report.Signature) > maxAssemblerReportSignatureSize {
-			return reqID, ce, errors.Errorf("assembler decision report signature too large (%d > %d bytes)",
+			return reqID, errors.Errorf("assembler decision report signature too large (%d > %d bytes)",
 				len(report.Signature), maxAssemblerReportSignatureSize)
 		}
 		// Verify the signature against the reporting party's assembler identity. An unknown party has
@@ -1386,49 +1445,69 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		// known party.
 		reporter := arma_types.NewAssemblerIdentity(report.Party)
 		if err := sigVerifier.VerifySignature(reporter, report.ToBeSigned(), report.Signature); err != nil {
-			return reqID, ce, errors.Wrap(err, "invalid assembler decision report signature")
+			return reqID, errors.Wrap(err, "invalid assembler decision report signature")
 		}
-		return reqID, ce, nil
+		return reqID, nil
 	} else {
-		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")
+		return smartbft_types.RequestInfo{}, fmt.Errorf("empty control event")
 	}
 }
 
 func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
-	return validateClientFromContext(ctx, c.Config.Router.TLSCert, "router", c.Logger)
+	return validateClientFromContext(ctx, c.Config.Router.TLSCert, fmt.Sprintf("router of party %d", c.Config.PartyId))
 }
 
-func (c *Consensus) validateAssemblerFromContext(ctx context.Context) error {
-	// TODO: maybe add to consenter config the assembler of its own party and take from there instead of fullConfig.sharedConfig
-	for _, party := range c.fullConfig.SharedConfig.PartiesConfig {
-		if arma_types.PartyID(party.PartyID) == c.PartyID {
-			return validateClientFromContext(ctx, party.AssemblerConfig.GetTlsCert(), "assembler", c.Logger)
+// validateEventSender checks that the event arrived over the TLS connection of the node that created it:
+// the batcher that signed a BAF or a complaint, or the assembler that signed a decision report. The event's
+// signature alone does not show who is sending it, so without this check any node could submit, or replay,
+// another node's events.
+func validateEventSender(ctx context.Context, ce *state.ControlEvent, cfg *node_config.ConsenterNodeConfig) error {
+	switch {
+	case ce.BAF != nil:
+		return validateBatcherFromContext(ctx, cfg, ce.BAF.Signer(), ce.BAF.Shard())
+	case ce.Complaint != nil:
+		return validateBatcherFromContext(ctx, cfg, ce.Complaint.Signer, ce.Complaint.Shard)
+	case ce.AssemblerReport != nil:
+		return validateAssemblerFromContext(ctx, cfg, ce.AssemblerReport.Party)
+	default:
+		return errors.New("access denied; only BAFs, complaints and assembler decision reports can be submitted as events")
+	}
+}
+
+func validateAssemblerFromContext(
+	ctx context.Context, cfg *node_config.ConsenterNodeConfig, party arma_types.PartyID,
+) error {
+	for _, assembler := range cfg.Assemblers {
+		if assembler.PartyID == party {
+			return validateClientFromContext(ctx, assembler.TLSCert, fmt.Sprintf("assembler of party %d", party))
 		}
 	}
-	return fmt.Errorf("no assembler config found for party %d", c.PartyID)
+	return fmt.Errorf("access denied; no assembler configured for party %d", party)
 }
 
-func (c *Consensus) validateBatcherFromContext(ctx context.Context, shardID arma_types.ShardID) error {
-	for _, shardInfo := range c.Config.Shards {
+func validateBatcherFromContext(
+	ctx context.Context, cfg *node_config.ConsenterNodeConfig, party arma_types.PartyID, shardID arma_types.ShardID,
+) error {
+	for _, shardInfo := range cfg.Shards {
 		if shardInfo.ShardId == shardID {
 			for _, batcherInShard := range shardInfo.Batchers {
-				if batcherInShard.PartyID == c.Config.PartyId {
-					return validateClientFromContext(ctx, batcherInShard.TLSCert, "batcher", c.Logger)
+				if batcherInShard.PartyID == party {
+					name := fmt.Sprintf("batcher of party %d in shard %d", party, shardID)
+					return validateClientFromContext(ctx, batcherInShard.TLSCert, name)
 				}
 			}
 		}
 	}
 
-	return fmt.Errorf("no batcher configured for shard %d", shardID)
+	return fmt.Errorf("access denied; no batcher configured for shard %d and party %d", shardID, party)
 }
 
 // validateClientFromContext validates that the client certificate extracted from the context matches the expected
-// certificate from the configuration. expectedRawCert is the TLS cert from ConsenterNodeConfig.
-func validateClientFromContext(ctx context.Context, expectedRawCert []byte, name string, logger *flogging.FabricLogger) error {
+// certificate from the configuration. expectedRawCert is the TLS cert from ConsenterNodeConfig, and name describes
+// the node it belongs to.
+func validateClientFromContext(ctx context.Context, expectedRawCert []byte, name string) error {
 	if err := utils.ValidateClientCertFromContext(ctx, expectedRawCert); err != nil {
-		err = errors.Wrapf(err, "access denied; only the %s of the consenter's own party is served", name)
-		logger.Errorf("Rejecting a request from a %s: %s", name, err)
-		return err
+		return errors.Wrapf(err, "access denied; the client is not the %s", name)
 	}
 	return nil
 }
@@ -1560,15 +1639,19 @@ func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*prot
 }
 
 func (c *Consensus) validateConfigAckClient(ctx context.Context, req *protos.ConfigAck) error {
+	c.lock.RLock()
+	cfg := c.Config
+	c.lock.RUnlock()
+
 	switch req.NodeType {
 	case protos.NodeType_ROUTER:
 		return c.validateRouterFromContext(ctx)
 
 	case protos.NodeType_BATCHER:
-		return c.validateBatcherFromContext(ctx, arma_types.ShardID(req.Shard))
+		return validateBatcherFromContext(ctx, cfg, cfg.PartyId, arma_types.ShardID(req.Shard))
 
 	case protos.NodeType_ASSEMBLER:
-		return c.validateAssemblerFromContext(ctx)
+		return validateAssemblerFromContext(ctx, cfg, cfg.PartyId)
 
 	default:
 		return fmt.Errorf("access denied: unsupported config ack node type %v", req.NodeType)
