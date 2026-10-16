@@ -78,6 +78,23 @@ $(if $(GOARCH),,$(if $(filter release-bins,$(MAKECMDGOALS)),$(error GOARCH is re
 release-bins:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) \
 	  $(MAKE) binary BIN_DIR=$(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin RELEASE_LDFLAGS="$(RELEASE_LDFLAGS)"
+	mkdir -p ./bin
+	go build -ldflags "$(GO_LDFLAGS)" -o ./bin/arma ./cmd/arma
+	go build -ldflags "$(GO_LDFLAGS)" -o ./bin/armageddon ./cmd/armageddon
+
+# Cross-compile both binaries for a single GOOS/GOARCH and place them under
+# $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/.  Called by scripts/create-binary-package.sh.
+#
+# Required vars: GOOS, GOARCH
+# Optional vars: RELEASE_DIR    (default: release)
+#                METADATA_VAR   (space-separated key=value pairs forwarded as -X ldflags)
+RELEASE_DIR ?= release
+$(if $(GOOS),,$(if $(filter release-bins,$(MAKECMDGOALS)),$(error GOOS is required for release-bins)))
+$(if $(GOARCH),,$(if $(filter release-bins,$(MAKECMDGOALS)),$(error GOARCH is required for release-bins)))
+.PHONY: release-bins
+release-bins:
+	GOOS=$(GOOS) GOARCH=$(GOARCH) \
+	  $(MAKE) binary BIN_DIR=$(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin RELEASE_LDFLAGS="$(RELEASE_LDFLAGS)"
 
 .PHONY: clean-binary
 clean-binary:
