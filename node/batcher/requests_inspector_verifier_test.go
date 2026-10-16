@@ -36,8 +36,8 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 		ShardId:         1,
 		Shards:          []config.ShardInfo{{ShardId: types.ShardID(1)}, {ShardId: types.ShardID(2)}},
 		BatchMaxSize:    3,
-		BatchMaxBytes:   180,
-		RequestMaxBytes: 60,
+		BatchMaxBytes:   400,
+		RequestMaxBytes: 130,
 		Bundle:          bundle,
 	}
 	verifier := batcher.NewRequestsInspectorVerifier(logger, config, nil, batcher.DefaultRequestID, &fakeRequestPool{})
@@ -178,7 +178,7 @@ func TestVerifyBatchedRequestsSkipsPooledRequests(t *testing.T) {
 		ShardId:         1,
 		Shards:          []config.ShardInfo{{ShardId: 1}}, // single shard: skip shard mapping
 		BatchMaxSize:    500,
-		BatchMaxBytes:   10000,
+		BatchMaxBytes:   20000,
 		RequestMaxBytes: 1000,
 		Bundle:          bundle,
 	}
@@ -240,7 +240,7 @@ func TestRequestVerificationStopEarly(t *testing.T) {
 		ShardId:         1,
 		Shards:          []config.ShardInfo{{ShardId: 1}, {ShardId: 2}},
 		BatchMaxSize:    500,
-		BatchMaxBytes:   10000,
+		BatchMaxBytes:   20000,
 		RequestMaxBytes: 1000,
 		Bundle:          bundle,
 	}

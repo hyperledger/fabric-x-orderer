@@ -86,9 +86,16 @@ The sections below explain how to configure the security aspects of an Arma depl
 
 ### Transaction verification
 
-Currently, transactions are not verified by Arma, and do not need to be signed by the submitting client. Transactions
-pass as is to the scalable committer which is in charge of verifying their validity in terms of structure, semantics, and
-signatures.
+Arma checks the structure of every transaction it receives: the envelope must carry a payload with a channel header
+and a signature header, the signature header must carry a creator identity and a non-empty nonce, and the channel
+header's TxID must be the one derived from them, `TxID = hex(SHA256(nonce || creator))` (see
+`protoutil.ComputeTxID`). A transaction that fails these checks is rejected.
+
+Whether Arma also verifies the client's signature on a data transaction is controlled by the
+`ClientSignatureVerificationRequired` setting in the node's local config. When it is off, data transactions need not be
+signed by the submitting client, and the scalable committer, which is in charge of verifying their validity in terms of
+semantics and signatures, verifies them downstream. Config update transactions are always verified, signature
+included.
 
 ## Run
 
