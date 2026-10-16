@@ -48,7 +48,7 @@ var (
 		Namespace:  "router",
 		Name:       "requests_forwarded",
 		Help:       "The number of requests that the router forwarded to a batcher or to the consenter.",
-		LabelNames: []string{"party_id"},
+		LabelNames: []string{"party_id", "shard_id"},
 	}
 
 	activeStreamsOpts = metrics.GaugeOpts{
@@ -93,6 +93,8 @@ type RouterMetrics struct {
 	rejectedTxsWithCode500 metrics.Counter
 	throttledTxs           metrics.Counter
 	forwardedTxs           metrics.Counter
+	forwardedToConsenter   metrics.Counter
+	shardIDs               []arma_types.ShardID
 	activeBroadcastStreams metrics.Gauge
 	activeSubmitStreams    metrics.Gauge
 	submitInvocations      metrics.Counter
@@ -119,6 +121,11 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 	rejectedTxs := provider.NewCounter(rejectedTxs)
 	activeStreams := provider.NewGauge(activeStreamsOpts)
 	droppedResponses := provider.NewCounter(droppedResponses)
+	forwardedTxs := provider.NewCounter(forwardedTxs)
+	var shardIDs []arma_types.ShardID
+	for _, shard := range routerNodeConfig.Shards {
+		shardIDs = append(shardIDs, shard.ShardId)
+	}
 	versionGauge := monitoring.VersionGauge(provider)
 	versionGauge.With(metadata.Version).Set(1)
 
@@ -130,7 +137,9 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		rejectedTxsWithCode400: rejectedTxs.With([]string{"400", partyID}...),
 		rejectedTxsWithCode500: rejectedTxs.With([]string{"500", partyID}...),
 		throttledTxs:           provider.NewCounter(throttledTxs).With([]string{partyID}...),
-		forwardedTxs:           provider.NewCounter(forwardedTxs).With([]string{partyID}...),
+		forwardedTxs:           forwardedTxs,
+		forwardedToConsenter:   forwardedTxs.With([]string{partyID, "consensus"}...),
+		shardIDs:               shardIDs,
 		activeBroadcastStreams: activeStreams.With([]string{partyID, "broadcast"}...),
 		activeSubmitStreams:    activeStreams.With([]string{partyID, "submit_stream"}...),
 		submitInvocations:      provider.NewCounter(submitInvocationsOpts).With([]string{partyID}...),
@@ -149,6 +158,10 @@ func (m *RouterMetrics) shardMetrics(shardID arma_types.ShardID) (metrics.Counte
 	partyID := fmt.Sprintf("%d", m.partyID)
 	shard := fmt.Sprintf("%d", shardID)
 	return m.batcherReconnects.With(partyID, shard), m.batcherConnected.With(partyID, shard)
+}
+
+func (m *RouterMetrics) forwardedToShard(shardID arma_types.ShardID) metrics.Counter {
+	return m.forwardedTxs.With(fmt.Sprintf("%d", m.partyID), fmt.Sprintf("%d", shardID))
 }
 
 func (m *RouterMetrics) StopMetricsTracker() {
@@ -187,7 +200,10 @@ func (m *RouterMetrics) reportMetrics() {
 	txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
 	txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
 	txThrottled := monitoring.GetMetricValue(m.throttledTxs.(prometheus.Metric), m.logger)
-	txForwarded := monitoring.GetMetricValue(m.forwardedTxs.(prometheus.Metric), m.logger)
+	txForwarded := monitoring.GetMetricValue(m.forwardedToConsenter.(prometheus.Metric), m.logger)
+	for _, shardID := range m.shardIDs {
+		txForwarded += monitoring.GetMetricValue(m.forwardedToShard(shardID).(prometheus.Metric), m.logger)
+	}
 	activeBroadcastStreams := monitoring.GetMetricValue(m.activeBroadcastStreams.(prometheus.Metric), m.logger)
 	activeSubmitStreams := monitoring.GetMetricValue(m.activeSubmitStreams.(prometheus.Metric), m.logger)
 	submitInvocations := monitoring.GetMetricValue(m.submitInvocations.(prometheus.Metric), m.logger)

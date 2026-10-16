@@ -163,7 +163,7 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 	if err != nil {
 		feedback.err = fmt.Errorf("error forwarding config request to consenter: %v", err)
 	} else {
-		cs.metrics.forwardedTxs.Add(1)
+		cs.metrics.forwardedToConsenter.Add(1)
 		feedback.SubmitResponse = resp
 		if resp.Error != "" {
 			feedback.err = errors.New(resp.Error)

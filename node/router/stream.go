@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
@@ -40,7 +41,7 @@ type stream struct {
 	verifier                 *requestfilter.RulesVerifier
 	configSubmitter          ConfigurationSubmitter
 	reconnectBackoffInterval time.Duration
-	metrics                  *RouterMetrics
+	forwarded                metrics.Counter
 }
 
 // readResponses listens for responses from the batcher.
@@ -113,7 +114,7 @@ func (s *stream) sendRequests() {
 					return
 				}
 
-				s.metrics.forwardedTxs.Add(1)
+				s.forwarded.Add(1)
 
 				// send fast response to client for untraced requests.
 				// traced requests get their response from readResponses goroutine.
@@ -345,7 +346,7 @@ CopyChannelLoop:
 		verifier:                          s.verifier,
 		configSubmitter:                   s.configSubmitter,
 		reconnectBackoffInterval:          s.reconnectBackoffInterval,
-		metrics:                           s.metrics,
+		forwarded:                         s.forwarded,
 	}
 	s.lock.Unlock()
 
