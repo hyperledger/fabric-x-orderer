@@ -187,7 +187,9 @@ func (p *pruneMgr) pruneBlockfile(fileNum int, from, to, firstAvailable uint64) 
 
 // sweepOrphans unlinks the block files below the lowest one the info records. A prune that recorded a file
 // as gone and then failed to unlink it leaves it behind the bound, where counting would never reach it
-// again. It lists the directory rather than probing from zero, and syncs it once at the end.
+// again. It runs when the ledger opens, which collects what a crash left, and at the start of every prune,
+// which also collects what a failed unlink left without one. It lists the directory rather than probing from
+// zero, and syncs it once at the end.
 //
 // It leaves the index alone: entries such a prune did not get to delete stay behind, unreachable (see
 // pruneBlockfile).

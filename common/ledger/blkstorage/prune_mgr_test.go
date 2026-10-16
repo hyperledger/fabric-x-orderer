@@ -486,8 +486,8 @@ func TestOpenPrunedLedgerWithBoundInsideTheLowestFile(t *testing.T) {
 //     publishing prune info and removing the blocks below it leaves behind.
 //  3. Rewind the index savepoint to block 45 and close the store.
 //  4. Expect reopening to succeed and blocks 20..49 to be served from the rebuilt tail.
-//  5. Expect block 19 to fail with ErrPruned even though its bytes are still on disk.
-//  6. Expect the block files below the recorded first one to be left for the next prune to remove.
+//  5. Expect block 19 to fail with ErrPruned.
+//  6. Expect the open to have removed the block files below the recorded first one.
 func TestOpenPrunedLedgerWithOrphanBlockFiles(t *testing.T) {
 	path := t.TempDir()
 	const firstAvailableFile = 2
@@ -517,9 +517,7 @@ func TestOpenPrunedLedgerWithOrphanBlockFiles(t *testing.T) {
 	_, err = store.RetrieveBlockByNumber(firstAvailable - 1)
 	require.ErrorIs(t, err, ErrPruned)
 
-	for f := 0; f < firstAvailableFile; f++ {
-		require.FileExists(t, deriveBlockfilePath(rootDir, f))
-	}
+	require.Equal(t, []int{2, 3, 4}, blockfileNums(t, rootDir))
 }
 
 // Scenario:
@@ -1048,6 +1046,94 @@ func TestPruneBeforeSweepsFilesLeftBehindByACrash(t *testing.T) {
 	require.Equal(t, uint64(20), mgr.pruner.firstReadableBlockNum())
 	require.Equal(t, 2, mgr.pruner.firstStoredBlockfileNum())
 	requireBlocksPruned(t, mgr, blocks, 20)
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files and prune below block 20, leaving block files 2 through 4.
+//  2. Close the store and write block files 0 and 1 back, the state a prune that crashed before unlinking
+//     them leaves: recorded as gone, still on disk.
+//  3. Reopen the store.
+//  4. Expect the two files to be gone without any further prune, and the prune info to be unchanged.
+func TestOpenSweepsFilesLeftBehindByACrash(t *testing.T) {
+	path := t.TempDir()
+	env, w, blocks := newPrunableTestLedger(t, path, 50)
+	rootDir := w.blockfileMgr.rootDir
+	require.NoError(t, w.blockfileMgr.pruneBefore(20))
+	env.provider.Close()
+
+	for _, fileNum := range []int{0, 1} {
+		require.NoError(t, os.WriteFile(deriveBlockfilePath(rootDir, fileNum), []byte("orphan"), 0o600))
+	}
+	require.Equal(t, []int{0, 1, 2, 3, 4}, blockfileNums(t, rootDir))
+
+	reopened := newTestEnv(t, NewConf(path, 0))
+	defer reopened.Cleanup()
+	store, err := reopened.provider.Open("testLedger")
+	require.NoError(t, err)
+
+	require.Equal(t, []int{2, 3, 4}, blockfileNums(t, rootDir))
+	require.Equal(t, uint64(20), store.fileMgr.pruner.firstReadableBlockNum())
+	require.Equal(t, 2, store.fileMgr.pruner.firstStoredBlockfileNum())
+	requireBlocksPruned(t, store.fileMgr, blocks, 20)
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files and prune below block 20, leaving block files 2 through 4.
+//  2. Rewind the index savepoint to block 45, so the open has a tail to rebuild and checks the block files.
+//  3. Close the store, write block files 0 and 1 back as orphans, and delete block file 2, so the prune info
+//     and the block files disagree.
+//  4. Reopen the store and expect the open to fail on the missing file.
+//  5. Expect the orphans to be on disk still, since an open that fails deletes nothing.
+func TestOpenThatFailsLeavesOrphansInPlace(t *testing.T) {
+	path := t.TempDir()
+	env, w, blocks := newPrunableTestLedger(t, path, 50)
+	rootDir := w.blockfileMgr.rootDir
+	require.NoError(t, w.blockfileMgr.pruneBefore(20))
+	rewindIndexSavepoint(t, w.blockfileMgr, uint64(len(blocks)-5))
+	env.provider.Close()
+
+	for _, fileNum := range []int{0, 1} {
+		require.NoError(t, os.WriteFile(deriveBlockfilePath(rootDir, fileNum), []byte("orphan"), 0o600))
+	}
+	require.NoError(t, os.Remove(deriveBlockfilePath(rootDir, 2)))
+
+	reopened := newTestEnv(t, NewConf(path, 0))
+	defer reopened.Cleanup()
+	_, err := reopened.provider.Open("testLedger")
+	require.ErrorContains(t, err, "block file [2] is missing")
+
+	require.Equal(t, []int{0, 1, 3, 4}, blockfileNums(t, rootDir))
+}
+
+// Scenario:
+//  1. Store 50 blocks across 5 block files and prune below block 20, leaving block files 2 through 4.
+//  2. Close the store, write block files 0 and 1 back as orphans, and make the ledger's root directory
+//     read-only, so unlinking them fails.
+//  3. Reopen the store and expect the open to succeed, with the orphans still on disk.
+//  4. Restore the directory's permissions, call pruneBefore(20), and expect the orphans to be swept.
+func TestOpenSucceedsWhenSweepingOrphansFails(t *testing.T) {
+	path := t.TempDir()
+	env, w, blocks := newPrunableTestLedger(t, path, 50)
+	rootDir := w.blockfileMgr.rootDir
+	require.NoError(t, w.blockfileMgr.pruneBefore(20))
+	env.provider.Close()
+
+	for _, fileNum := range []int{0, 1} {
+		require.NoError(t, os.WriteFile(deriveBlockfilePath(rootDir, fileNum), []byte("orphan"), 0o600))
+	}
+
+	require.NoError(t, os.Chmod(rootDir, 0o500))
+	reopened := newTestEnv(t, NewConf(path, 0))
+	defer reopened.Cleanup()
+	store, err := reopened.provider.Open("testLedger")
+	require.NoError(t, os.Chmod(rootDir, 0o700))
+	require.NoError(t, err)
+	require.Equal(t, []int{0, 1, 2, 3, 4}, blockfileNums(t, rootDir))
+
+	require.NoError(t, store.fileMgr.pruneBefore(20))
+
+	require.Equal(t, []int{2, 3, 4}, blockfileNums(t, rootDir))
+	requireBlocksPruned(t, store.fileMgr, blocks, 20)
 }
 
 // A real prune deletes index entries, so a reopen after one has to rebuild a tail that starts above the
