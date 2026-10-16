@@ -22,7 +22,7 @@ import sys
 
 FIGURES = pathlib.Path(__file__).resolve().parent.parent / "docs" / "figures"
 SOURCES = FIGURES / "src"
-FLOWS = ("txs", "digests", "batches", "blocks", "control", "requests")
+FLOWS = ("txs", "digests", "batches", "blocks", "control", "requests", "responses")
 
 HEADER = """<!--
 Copyright IBM Corp. All Rights Reserved.
@@ -70,6 +70,8 @@ def style(theme, c):
         (".node.batches", "fill:%s" % c["batches-fill"]),
         (".node.dashed", "stroke-dasharray:6 5"),
         (".primary", "fill:%s" % c["primary"]),
+        (".envelope", "fill:%s;stroke:%s;stroke-width:1.5" % (c["node-fill"], c["txs"])),
+        (".envelope path", "fill:none"),
         (".flow", "fill:none;stroke-width:2.5"),
         (".flow.dashed", "stroke-dasharray:8 6"),
         (".flow-label", "font-size:%dpx;font-style:italic" % s["flow-label"]),
