@@ -1311,6 +1311,14 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 
 	reqID := c.RequestID(req)
 
+	// The signature and the request ID cover only the decoded fields, but req itself is what gets pooled,
+	// proposed and persisted. Accept only the encoding honest nodes produce (ControlEvent.Bytes), so a relay
+	// cannot pad a validly signed event (e.g. with unknown fields) and have its copy pooled in place of the
+	// honest one, which the pool would then reject as a duplicate.
+	if !bytes.Equal(req, ce.Bytes()) {
+		return reqID, ce, errors.New("control event has a non-canonical encoding")
+	}
+
 	// A dynamic reconfiguration replaces these fields under c.lock (configureConsensus) while requests are
 	// verified concurrently, so take a consistent snapshot of them and verify against it. The verification
 	// itself runs outside the lock.
