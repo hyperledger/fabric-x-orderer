@@ -127,7 +127,7 @@ func newBlockfileMgr(id string, conf *Conf, indexStore *leveldbhelper.DBHandle) 
 
 	// Construct the pruner before syncIndex, since a pruned ledger's block files no longer start at
 	// blockfile_000000 and the index rebuild has to know where they do start.
-	if mgr.pruner, err = newPruneMgr(rootDir, mgr.index); err != nil {
+	if mgr.pruner, err = newPruneMgr(rootDir, mgr.index, mgr.retrieveBlockByNumber); err != nil {
 		return nil, err
 	}
 
@@ -455,6 +455,23 @@ func (mgr *blockfileMgr) retrieveBlockByNumber(blockNum uint64) (*common.Block, 
 	return block, nil
 }
 
+// retrieveConfigBlockByNumber is retrieveBlockByNumber with one block more below the bound: the config block
+// pruning kept a copy of, without which a node resuming from this ledger could not read its own configuration.
+func (mgr *blockfileMgr) retrieveConfigBlockByNumber(blockNum uint64) (*common.Block, error) {
+	block, err := mgr.retrieveBlockByNumber(blockNum)
+	if !errors.Is(err, ErrPruned) {
+		return block, err
+	}
+	retained, retainedErr := mgr.pruner.retainedConfigBlock(blockNum)
+	if retainedErr != nil {
+		return nil, retainedErr
+	}
+	if retained != nil {
+		return retained, nil
+	}
+	return nil, err
+}
+
 func (mgr *blockfileMgr) retrieveBlockHeaderByNumber(blockNum uint64) (*common.BlockHeader, error) {
 	logger.Debugf("retrieveBlockHeaderByNumber() - blockNum = [%d]", blockNum)
 	if err := mgr.checkBlockAvailable(blockNum); err != nil {
@@ -529,8 +546,8 @@ func (mgr *blockfileMgr) saveBlkfilesInfo(i *blockfilesInfo, sync bool) error {
 
 // pruneBefore reads the tail pointer and hands the work to the pruner. The read happens here because the
 // lock that guards blockfilesInfo lives here, and it is released before any file I/O.
-func (mgr *blockfileMgr) pruneBefore(blockNum uint64) error {
-	return mgr.pruner.pruneBefore(blockNum, mgr.currentBlockfilesInfo())
+func (mgr *blockfileMgr) pruneBefore(blockNum uint64, locateLastConfig LastConfigBlockLocator) error {
+	return mgr.pruner.pruneBefore(blockNum, mgr.currentBlockfilesInfo(), locateLastConfig)
 }
 
 // currentBlockfilesInfo returns a copy of the tail pointer, so that a caller can reason about a stable view

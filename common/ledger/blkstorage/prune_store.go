@@ -8,10 +8,12 @@ package blkstorage
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/hyperledger/fabric-x-orderer/common/filerepo"
 
@@ -26,7 +28,11 @@ const (
 	// pruneInfoPrefix makes the prune info's first file prune/info-00000000000000000001.prune. The sequence
 	// number is zero padded so that the directory reads in order.
 	pruneInfoPrefix = "info-"
-	seqFormat       = "%020d"
+	// pruneConfigPrefix makes a retained config block's file prune/config-00000000000000000042.prune. Its
+	// sequence number is the block's own number rather than a counter, so the file the prune info names can
+	// be read straight back without searching, and superseded ones sort below it.
+	pruneConfigPrefix = "config-"
+	seqFormat         = "%020d"
 )
 
 // pruneStore keeps the state that has to outlive the blocks pruning removes. It sits beside the block files,
@@ -35,7 +41,10 @@ const (
 // way, since pruning removes whole block files and the readable bound may fall inside the oldest surviving
 // one.
 //
-// It is not safe for concurrent use; the prune operation above it serializes access.
+// Its entry points take its own mutex, because reading the retained config block happens on the read path
+// rather than under the prune operation's lock, and would otherwise race a prune opening the directory or
+// superseding a file. The mutex covers only the store's own state and its file I/O; nothing above it is
+// called while it is held.
 type pruneStore struct {
 	rootDir string
 	// repo is nil until the store's directory is opened, which the first save does if it is absent.
@@ -43,6 +52,8 @@ type pruneStore struct {
 
 	// infoSeq is the sequence number of the file holding the durable prune info, or 0 if there is none.
 	infoSeq uint64
+
+	mutex sync.Mutex
 }
 
 // newPruneStore prepares the store without touching the disk, so that a ledger that is never pruned never
@@ -54,6 +65,9 @@ func newPruneStore(rootDir string) *pruneStore {
 // getInfo reads the prune info from its latest file. A ledger that has never been pruned has no file, which
 // yields a zero-valued pruneInfo rather than nil so that callers never have to nil-check.
 func (s *pruneStore) getInfo() (*pruneInfo, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	exists, err := s.dirExists()
 	if err != nil {
 		return nil, err
@@ -97,6 +111,9 @@ func (s *pruneStore) getInfo() (*pruneInfo, error) {
 // saveInfo persists the prune info as the next file, and returns once both the content and the directory
 // entry are on disk. The file it supersedes is removed afterwards.
 func (s *pruneStore) saveInfo(info *pruneInfo) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	if err := s.open(); err != nil {
 		return err
 	}
@@ -117,8 +134,77 @@ func (s *pruneStore) saveInfo(info *pruneInfo) error {
 	return nil
 }
 
+// saveConfigBlock stores one config block's bytes under its own block number, and returns once they are on
+// disk. It is called before the prune info that names the block, so that the info never points at bytes that
+// are not there.
+//
+// A file already under that name is left alone rather than treated as a conflict: base names are written
+// once, and this one is derived from the block, so an existing file is the same block's bytes written by a
+// prune that did not get as far as recording them. Retrying that prune must not fail on its own progress.
+func (s *pruneStore) saveConfigBlock(blockNum uint64, blockBytes []byte) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if err := s.open(); err != nil {
+		return err
+	}
+
+	name := baseName(pruneConfigPrefix, blockNum)
+	if err := s.repo.Save(name, blockBytes); err != nil && !errors.Is(err, os.ErrExist) {
+		return errors.WithMessagef(err, "error saving retained config block [%s]", name)
+	}
+	return nil
+}
+
+// getConfigBlock reads back the bytes of the retained config block with the given number. The caller has the
+// number from the prune info, so a missing file is a broken store rather than an ordinary absence.
+func (s *pruneStore) getConfigBlock(blockNum uint64) ([]byte, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if err := s.open(); err != nil {
+		return nil, err
+	}
+
+	name := baseName(pruneConfigPrefix, blockNum)
+	b, err := s.repo.Read(name)
+	if err != nil {
+		return nil, errors.WithMessagef(err, "error reading retained config block [%s]", name)
+	}
+	return b, nil
+}
+
+// dropConfigBlocksBelow removes the config blocks a newer retained one has superseded. Like drop, it only
+// tidies up, and it must run after the prune info naming the survivor is durable: until then the info still
+// names one of the files it would remove. Nothing is below block 0, so a ledger retaining no config block at
+// all -- a batcher's, whose blocks are batches -- has nothing here to supersede either.
+func (s *pruneStore) dropConfigBlocksBelow(blockNum uint64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if s.repo == nil {
+		return
+	}
+
+	seqs, err := s.seqs(pruneConfigPrefix)
+	if err != nil {
+		logger.Warnf("Could not list the retained config blocks to supersede: %s", err)
+		return
+	}
+
+	superseded := make([]uint64, 0, len(seqs))
+	for _, seq := range seqs {
+		if seq >= blockNum {
+			break // ascending, so nothing lower remains
+		}
+		superseded = append(superseded, seq)
+	}
+	s.drop(pruneConfigPrefix, superseded)
+}
+
 // open opens the store's directory, creating it if absent, and clears any transient file left mid-save. It
-// is idempotent, so every entry point that needs the directory can call it.
+// is idempotent, so every entry point that needs the directory can call it. Like the other helpers below, it
+// runs under the caller's lock and takes none of its own.
 func (s *pruneStore) open() error {
 	if s.repo != nil {
 		return nil
