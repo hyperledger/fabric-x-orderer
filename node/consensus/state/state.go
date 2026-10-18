@@ -18,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	stateprotos "github.com/hyperledger/fabric-x-orderer/node/protos/state"
+	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -85,6 +86,13 @@ type State struct {
 	// batcher which fell behind a config change can detect its own BAF here and revive the batch's
 	// requests, rather than having them silently dropped. It is never used to extract a Batch Attestation.
 	StaleConfigBAFs []types.BatchAttestationFragment
+	// AssemblerHeights holds, per assembler party, the highest committed decision number it reported,
+	// sorted by party with at most one entry per party. It is the input from which prune points are
+	// computed.
+	AssemblerHeights []AssemblerHeight
+	// PrunePoints holds the agreed prune point of each <shard, primary>, sorted by (shard, primary) with
+	// at most one entry per pair. A pair with no entry has prune point 0.
+	PrunePoints []PrunePoint
 }
 
 func (s *State) String() string {
@@ -118,8 +126,9 @@ func (s *State) String() string {
 		}
 	}
 
-	return fmt.Sprintf("State{N: %d, Quorum: %d, Threshold: %d, ShardCount: %d, \nPending: %s, \nComplaints: %s}",
-		s.N, s.Quorum, s.Threshold, len(s.Shards), pendingStr, complaintsStr)
+	return fmt.Sprintf("State{N: %d, Quorum: %d, Threshold: %d, ShardCount: %d, AssemblerHeights: %d, PrunePoints: %d, "+
+		"\nPending: %s, \nComplaints: %s}",
+		s.N, s.Quorum, s.Threshold, len(s.Shards), len(s.AssemblerHeights), len(s.PrunePoints), pendingStr, complaintsStr)
 }
 
 func (s *State) Serialize() []byte {
@@ -162,13 +171,25 @@ func (s *State) Serialize() []byte {
 		protoStaleConfigBAFs[i] = simpleBAF.ToProto()
 	}
 
+	protoAssemblerHeights := make([]*stateprotos.AssemblerHeight, len(s.AssemblerHeights))
+	for i := range s.AssemblerHeights {
+		protoAssemblerHeights[i] = s.AssemblerHeights[i].toProto()
+	}
+
+	protoPrunePoints := make([]*stateprotos.PrunePoint, len(s.PrunePoints))
+	for i := range s.PrunePoints {
+		protoPrunePoints[i] = s.PrunePoints[i].toProto()
+	}
+
 	protoState := &stateprotos.State{
-		NumberOfParties: uint32(s.N),
-		Shards:          protoShards,
-		Pending:         protoPending,
-		Complaints:      protoComplaints,
-		AppContext:      s.AppContext,
-		StaleConfigBafs: protoStaleConfigBAFs,
+		NumberOfParties:  uint32(s.N),
+		Shards:           protoShards,
+		Pending:          protoPending,
+		Complaints:       protoComplaints,
+		AppContext:       s.AppContext,
+		StaleConfigBafs:  protoStaleConfigBAFs,
+		AssemblerHeights: protoAssemblerHeights,
+		PrunePoints:      protoPrunePoints,
 	}
 
 	buff, err := proto.MarshalOptions{Deterministic: true}.Marshal(protoState)
@@ -201,6 +222,8 @@ func (s *State) Deserialize(rawBytes []byte) error {
 	s.Pending = nil
 	s.Complaints = nil
 	s.StaleConfigBAFs = nil
+	s.AssemblerHeights = nil
+	s.PrunePoints = nil
 
 	// Load shards
 	if len(ps.Shards) > 0 {
@@ -250,6 +273,26 @@ func (s *State) Deserialize(rawBytes []byte) error {
 		}
 	}
 
+	// Load assembler heights
+	if len(ps.AssemblerHeights) > 0 {
+		s.AssemblerHeights = make([]AssemblerHeight, len(ps.AssemblerHeights))
+		for i, protoHeight := range ps.AssemblerHeights {
+			if err := s.AssemblerHeights[i].fromProto(protoHeight); err != nil {
+				return errors.Wrapf(err, "failed loading assembler height at index %d", i)
+			}
+		}
+	}
+
+	// Load prune points
+	if len(ps.PrunePoints) > 0 {
+		s.PrunePoints = make([]PrunePoint, len(ps.PrunePoints))
+		for i, protoPrunePoint := range ps.PrunePoints {
+			if err := s.PrunePoints[i].fromProto(protoPrunePoint); err != nil {
+				return errors.Wrapf(err, "failed loading prune point at index %d", i)
+			}
+		}
+	}
+
 	// Load app context - ensure it's never nil, always []byte{} at minimum
 	s.AppContext = []byte{}
 	if ps.AppContext != nil {
@@ -272,12 +315,14 @@ func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence
 
 	nextState.FilterPendingEventsWithDiffConfigSeq(configSeq, l)
 	nextState.CollectAndDeduplicateEvents(l, filteredCEs...)
+	nextState.CollectAssemblerReports(l, filteredCEs...)
 	nextState.DetectEquivocation(l)
 	nextState.PrimaryRotateDueToComplaints(l)
 	nextState.CleanupOldComplaints(l)
 
 	// After applying the rules above, extract all batch attestations for which enough fragments have been collected.
 	extracted := ExtractBatchAttestationsFromPending(nextState, l)
+	nextState.UpdatePrunePoints()
 	configRequests := ExtractConfigRequests(filteredCEs)
 	return nextState, extracted, configRequests
 }
@@ -292,6 +337,10 @@ func (s *State) Clone() *State {
 	copy(s2.Pending, s.Pending)
 	copy(s2.Complaints, s.Complaints)
 	copy(s2.StaleConfigBAFs, s.StaleConfigBAFs)
+	s2.AssemblerHeights = make([]AssemblerHeight, len(s.AssemblerHeights))
+	s2.PrunePoints = make([]PrunePoint, len(s.PrunePoints))
+	copy(s2.AssemblerHeights, s.AssemblerHeights)
+	copy(s2.PrunePoints, s.PrunePoints)
 	s2.AppContext = nil
 	if s.AppContext != nil {
 		s2.AppContext = make([]byte, 0, len(s.AppContext))
@@ -446,6 +495,79 @@ func (s *State) CollectAndDeduplicateEvents(l *flogging.FabricLogger, ces ...Con
 			s.Complaints = append(s.Complaints, *ce.Complaint)
 		}
 	}
+}
+
+// CollectAssemblerReports records the assembler decision reports among ces in s.AssemblerHeights,
+// keeping the highest reported decision number per party. A report that does not exceed the party's
+// recorded height is ignored, so a reordered or repeated report never moves a height backwards.
+// s.AssemblerHeights is kept sorted by party, so the serialized state is the same on every node.
+func (s *State) CollectAssemblerReports(l *flogging.FabricLogger, ces ...ControlEvent) {
+	added := false
+	for _, ce := range ces {
+		report := ce.AssemblerReport
+		if report == nil {
+			continue
+		}
+
+		index := -1
+		for i := range s.AssemblerHeights {
+			if s.AssemblerHeights[i].Party == report.Party {
+				index = i
+				break
+			}
+		}
+
+		if index == -1 {
+			height := AssemblerHeight{Party: report.Party, DecisionNum: report.DecisionNum}
+			s.AssemblerHeights = append(s.AssemblerHeights, height)
+			added = true
+			continue
+		}
+
+		recorded := s.AssemblerHeights[index].DecisionNum
+		switch {
+		case report.DecisionNum > recorded:
+			s.AssemblerHeights[index].DecisionNum = report.DecisionNum
+		case report.DecisionNum < recorded:
+			l.Warnf("Ignoring assembler report of party %d with decision %d, lower than its recorded decision %d",
+				report.Party, report.DecisionNum, recorded)
+		default:
+			l.Debugf("Ignoring repeated assembler report of party %d with decision %d", report.Party, report.DecisionNum)
+		}
+	}
+
+	if added {
+		slices.SortFunc(s.AssemblerHeights, func(a, b AssemblerHeight) int {
+			return cmp.Compare(a.Party, b.Party)
+		})
+	}
+}
+
+// UpdatePrunePoints computes the prune points of the next state. The pruning algorithm is not
+// implemented yet, so every prune point stays 0 (absent) and published prune points are carried
+// over unchanged.
+func (s *State) UpdatePrunePoints() {
+	// TODO implement pruning algorithm: compute the agreed prune point for each <shard, primary>
+}
+
+// PrunePoint returns the agreed prune point of <shard, primary>: batchers may drop every batch of
+// that ledger whose sequence is below it. It returns 0 when no prune point was published.
+func (s *State) PrunePoint(shard types.ShardID, primary types.PartyID) types.BatchSequence {
+	for _, p := range s.PrunePoints {
+		if p.Shard == shard && p.Primary == primary {
+			return p.Seq
+		}
+	}
+	return 0
+}
+
+// RetainAssemblerHeights drops the recorded heights of parties not in parties, so that a party removed
+// by a reconfiguration no longer counts toward pruning. Prune points are kept: batchers still hold
+// the removed primary's batches.
+func (s *State) RetainAssemblerHeights(parties []types.PartyID) {
+	s.AssemblerHeights = slices.DeleteFunc(s.AssemblerHeights, func(h AssemblerHeight) bool {
+		return !slices.Contains(parties, h.Party)
+	})
 }
 
 // filterCEsWithDiffConfigSeq keeps only control events whose config sequence matches the current one.

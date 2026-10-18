@@ -1489,8 +1489,9 @@ func TestVerifyProposal(t *testing.T) {
 	require.Equal(t, c.RequestID(brs[1]), infos[1])
 
 	// 1b. a proposal carrying an assembler decision report is verified and the report is returned.
-	// The report is inert in state processing, so it does not affect the computed state / blocks;
-	// it must still be dispatched by getReqConfigSeq and RequestID (not rejected as an empty event).
+	// The report is recorded in the computed state's AssemblerHeights (it does not affect the blocks), so
+	// the proposal's header must carry it; it must also be dispatched by getReqConfigSeq and RequestID
+	// (not rejected as an empty event).
 	t.Log("proposal with assembler decision report")
 	// The assembler has its own key, distinct from party 2's consenter and batcher keys, so a lookup
 	// under the wrong role is caught.
@@ -1512,8 +1513,12 @@ func TestVerifyProposal(t *testing.T) {
 		return payloadWithReportAt(signer, party, 0) // the verification sequence in this test is 0
 	}
 	reqsWithReport, payload := payloadWithReport(assemblerSigner, 2)
+	headerWithReport := header
+	stateWithReport := newState
+	stateWithReport.AssemblerHeights = []state.AssemblerHeight{{Party: 2, DecisionNum: 100}}
+	headerWithReport.State = &stateWithReport
 	infosWithReport, err := c.VerifyProposal(smartbft_types.Proposal{
-		Header:   header.Serialize(),
+		Header:   headerWithReport.Serialize(),
 		Payload:  payload,
 		Metadata: mBytes,
 	})
@@ -1521,6 +1526,9 @@ func TestVerifyProposal(t *testing.T) {
 	require.Len(t, infosWithReport, len(reqsWithReport))
 	require.Equal(t, c.RequestID(reqsWithReport[2]), infosWithReport[2])
 	require.NotEmpty(t, infosWithReport[2].ID)
+	// A header whose state omits the recorded height does not match the state validators compute.
+	_, err = c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
+	require.ErrorContains(t, err, "isn't equal to computed state")
 
 	// 1c. a proposal carrying a report signed with the party's consenter key (not its assembler key)
 	// is rejected.
@@ -1535,10 +1543,10 @@ func TestVerifyProposal(t *testing.T) {
 	_, err = c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
 	require.ErrorContains(t, err, "invalid assembler decision report signature")
 
-	// 1e. a report from another config sequence is filtered out of the computed state, so it is not
-	// verified: even one signed with the wrong key does not fail the proposal (so a report signed under
-	// an old config, whose key a reconfig rotated, cannot stall consensus). It is still reported in
-	// reqInfos, so SmartBFT removes it from its request pool.
+	// 1e. a report from another config sequence is filtered out of the computed state (so the header
+	// without it matches), and it is not verified: even one signed with the wrong key does not fail the
+	// proposal (so a report signed under an old config, whose key a reconfig rotated, cannot stall
+	// consensus). It is still reported in reqInfos, so SmartBFT removes it from its request pool.
 	t.Log("proposal with assembler decision report from another config sequence")
 	reqsWithStaleReport, payload := payloadWithReportAt(crypto.ECDSASigner(*sks[1]), 2, 1)
 	infosWithStaleReport, err := c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
