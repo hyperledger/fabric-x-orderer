@@ -189,6 +189,10 @@ What each of these metrics tells you about the consenter is described in [Consen
   **Name:** "decisions_size_bytes"  
   **Help:** "The total size in bytes of the decisions written to the consensus ledger."
 
+- **Namespace:** "consensus"  
+  **Name:** "decision_size_avg_bytes"  
+  **Help:** "The average size in bytes of the decisions written to the consensus ledger in the last metrics interval."
+
 ---
 
 ## Enabling Metrics
