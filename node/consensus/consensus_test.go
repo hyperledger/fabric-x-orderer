@@ -1031,6 +1031,7 @@ func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 		for _, decisionNum := range []arma_types.DecisionNum{lastCommitted + 1, math.MaxUint64} {
 			_, err := c.VerifyRequest(reportReq(signedReportOf(t, assemblerSigner, 1, currentConfigSeq, decisionNum)))
 			require.ErrorContains(t, err, "is ahead of the last committed decision")
+			require.ErrorIs(t, err, node_consensus.ErrReportNotCommitted)
 		}
 	})
 
@@ -1043,6 +1044,7 @@ func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 		}
 		_, err := empty.VerifyRequest(reportReq(signedReportOf(t, assemblerSigner, 1, currentConfigSeq, 0)))
 		require.ErrorContains(t, err, "received before any decision is committed")
+		require.ErrorIs(t, err, node_consensus.ErrReportNotCommitted)
 	})
 }
 
@@ -1611,6 +1613,7 @@ func TestVerifyProposal(t *testing.T) {
 		_, payload = payloadWithReportOf(assemblerSigner, 2, 0, decisionNum)
 		_, err = c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
 		require.ErrorContains(t, err, "is not below the proposed decision")
+		require.NotErrorIs(t, err, node_consensus.ErrReportNotCommitted)
 	}
 
 	// 2. nil header

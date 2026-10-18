@@ -360,6 +360,12 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 		c.Logger.Debugf("Received event %s", printEvent(event.GetPayload()))
 
 		if err := c.SubmitRequest(event.GetPayload()); err != nil {
+			// Assemblers broadcast their reports to every consenter, so a consenter that lags behind or is
+			// syncing routinely receives reports of decisions it has not committed yet.
+			if errors.Is(err, ErrReportNotCommitted) {
+				c.Logger.Debugf("Failed submitting request: %v", err)
+				continue
+			}
 			c.Logger.Warnf("Failed submitting request: %v", err)
 		}
 	}
@@ -408,7 +414,6 @@ func (c *Consensus) SubmitRequest(req []byte) error {
 
 	_, ce, err := c.verifyCE(req)
 	if err != nil {
-		c.Logger.Warnf("Received bad request: %v", err)
 		return err
 	}
 
@@ -1303,6 +1308,10 @@ func (c *Consensus) getReqConfigSeq(req []byte) (uint64, bool, error) {
 // signature is at most 72 bytes for P-256 (and 139 for P-521), so this leaves ample headroom.
 const maxAssemblerReportSignatureSize = 256
 
+// ErrReportNotCommitted is wrapped by the rejection of an assembler decision report, submitted to this node, of a
+// decision this node has not committed yet.
+var ErrReportNotCommitted = errors.New("assembler decision report of a decision not committed yet")
+
 // verifyCE verifies a control event submitted to this node, before it enters the request pool.
 func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
 	return c.verifyControlEvent(req, 0)
@@ -1335,6 +1344,7 @@ func (c *Consensus) verifyControlEvent(req []byte, proposalNum arma_types.Decisi
 	sigVerifier := c.SigVerifier
 	configRequestValidator := c.ConfigRequestValidator
 	configRulesVerifier := c.ConfigRulesVerifier
+	storage := c.Storage
 	c.lock.RUnlock()
 
 	if ce.Complaint != nil {
@@ -1390,7 +1400,7 @@ func (c *Consensus) verifyControlEvent(req []byte, proposalNum arma_types.Decisi
 		if len(report.Signature) == 0 {
 			return reqID, ce, errors.New("missing assembler decision report signature")
 		}
-		if err := c.verifyReportDecisionNum(report, proposalNum); err != nil {
+		if err := verifyReportDecisionNum(storage, report, proposalNum); err != nil {
 			return reqID, ce, err
 		}
 		// Bound the signature before verifying it, so an oversized junk signature is not copied into
@@ -1415,16 +1425,16 @@ func (c *Consensus) verifyControlEvent(req []byte, proposalNum arma_types.Decisi
 // verifyReportDecisionNum rejects an assembler decision report of a decision that is not committed yet: an
 // assembler can only have committed a decision after consensus committed it. Inside the proposal of decision
 // proposalNum the last committed decision is proposalNum-1; otherwise it is the last decision in this node's
-// ledger. The ledger height is read only here, so other control events do not pay for it.
-func (c *Consensus) verifyReportDecisionNum(report *state.AssemblerDecisionReport, proposalNum arma_types.DecisionNum) error {
+// ledger, storage. The ledger height is read only here, so other control events do not pay for it.
+func verifyReportDecisionNum(storage Storage, report *state.AssemblerDecisionReport, proposalNum arma_types.DecisionNum) error {
 	if proposalNum == 0 {
-		height := c.Storage.Height()
+		height := storage.Height()
 		if height == 0 {
-			return errors.Errorf("assembler decision report of decision %d received before any decision is committed",
+			return errors.Wrapf(ErrReportNotCommitted, "assembler decision report of decision %d received before any decision is committed",
 				report.DecisionNum)
 		}
 		if lastCommitted := arma_types.DecisionNum(height - 1); report.DecisionNum > lastCommitted {
-			return errors.Errorf("assembler decision report of decision %d is ahead of the last committed decision %d",
+			return errors.Wrapf(ErrReportNotCommitted, "assembler decision report of decision %d is ahead of the last committed decision %d",
 				report.DecisionNum, lastCommitted)
 		}
 		return nil
