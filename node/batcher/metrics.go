@@ -108,6 +108,13 @@ var (
 		LabelNames: []string{"party_id", "shard_id"},
 		Buckets:    []float64{.0001, .001, .002, .003, .004, .005, .01, .03, .05, .1, .3, .5, 1}, // TODO: adjust buckets after reviewing Grafana
 	}
+
+	batchSizeAvgOpts = metrics.GaugeOpts{
+		Namespace:  "batcher",
+		Name:       "batch_size_avg_bytes",
+		Help:       "The average size in bytes of the batches appended to the ledger in the last metrics interval.",
+		LabelNames: []string{"party_id", "shard_id"},
+	}
 )
 
 type BatcherMetrics struct {
@@ -135,6 +142,7 @@ type BatcherMetrics struct {
 	batchMempoolNextRequestsLatency metrics.Histogram
 	batchVerifyLatency              metrics.Histogram
 	batchHashingLatency             metrics.Histogram
+	batchSizeAvg                    metrics.Gauge
 }
 
 func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo []config.BatcherInfo, ledgerMetrics *ledger.BatchLedgerMetrics, ledger BatchLedger, logger *flogging.FabricLogger) *BatcherMetrics {
@@ -184,6 +192,7 @@ func NewBatcherMetrics(batcherNodeConfig *config.BatcherNodeConfig, batchersInfo
 		batchMempoolNextRequestsLatency: provider.NewHistogram(batchMempoolNextRequestsLatencyOpts).With([]string{partyID, shardID}...),
 		batchVerifyLatency:              provider.NewHistogram(batchVerifyLatencyOpts).With([]string{partyID, shardID}...),
 		batchHashingLatency:             provider.NewHistogram(batchHashingLatencyOpts).With([]string{partyID, shardID}...),
+		batchSizeAvg:                    provider.NewGauge(batchSizeAvgOpts).With([]string{partyID, shardID}...),
 	}
 }
 
@@ -201,7 +210,7 @@ func (m *BatcherMetrics) StopMetricsTracker() {
 		m.wg.Wait()
 		m.logger.Infof("Reporting routine is stopping")
 		m.logger.Infof(
-			"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_avg_seconds=%.6f, batch_verify_latency_avg_seconds=%.6f, batch_hashing_latency_avg_seconds=%.6f, batch_ledger_header_hashing_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f, batch_ledger_batches_size_bytes_total=%d",
+			"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, batches_created_total=%d, batches_pulled_total=%d, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_avg_seconds=%.6f, batch_verify_latency_avg_seconds=%.6f, batch_hashing_latency_avg_seconds=%.6f, batch_ledger_header_hashing_latency_avg_seconds=%.6f, batch_ledger_append_latency_avg_seconds=%.6f",
 			m.partyID,
 			m.shardID,
 			m.role(),
@@ -218,7 +227,6 @@ func (m *BatcherMetrics) StopMetricsTracker() {
 			monitoring.GetHistogramAverage(m.batchHashingLatency.(prometheus.Metric), m.logger),
 			monitoring.GetHistogramAverage(m.ledgerMetrics.HeaderHashingLatency.(prometheus.Metric), m.logger),
 			monitoring.GetHistogramAverage(m.ledgerMetrics.AppendLatency.(prometheus.Metric), m.logger),
-			uint64(monitoring.GetMetricValue(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)),
 		)
 	})
 }
@@ -227,6 +235,7 @@ func (m *BatcherMetrics) trackMetrics() {
 	prevC := monitoring.GetMetricValue(m.batchesCreatedTotal.(prometheus.Metric), m.logger)
 	prevP := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
 	prevR := float64(0)
+	prevBytes := monitoring.GetMetricValue(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)
 	prevMempoolSum, prevMempoolCount := monitoring.GetHistogramSumAndCount(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger)
 	prevVerifySum, prevVerifyCount := monitoring.GetHistogramSumAndCount(m.batchVerifyLatency.(prometheus.Metric), m.logger)
 	prevHashingSum, prevHashingCount := monitoring.GetHistogramSumAndCount(m.batchHashingLatency.(prometheus.Metric), m.logger)
@@ -242,14 +251,19 @@ func (m *BatcherMetrics) trackMetrics() {
 			created := monitoring.GetMetricValue(m.batchesCreatedTotal.(prometheus.Metric), m.logger)
 			pulled := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
 			resends := monitoring.GetMetricValue(m.firstResendsTotal.(prometheus.Metric), m.logger)
+			bytes := monitoring.GetMetricValue(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)
 			mempoolSum, mempoolCount := monitoring.GetHistogramSumAndCount(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger)
 			verifySum, verifyCount := monitoring.GetHistogramSumAndCount(m.batchVerifyLatency.(prometheus.Metric), m.logger)
 			hashingSum, hashingCount := monitoring.GetHistogramSumAndCount(m.batchHashingLatency.(prometheus.Metric), m.logger)
 			headerHashingSum, headerHashingCount := monitoring.GetHistogramSumAndCount(m.ledgerMetrics.HeaderHashingLatency.(prometheus.Metric), m.logger)
 			appendSum, appendCount := monitoring.GetHistogramSumAndCount(m.ledgerMetrics.AppendLatency.(prometheus.Metric), m.logger)
 
+			// the average size of the batches appended in this interval only
+			batchSizeAvg := uint64(monitoring.Average(bytes-prevBytes, uint64(created-prevC)))
+			m.batchSizeAvg.Set(float64(batchSizeAvg))
+
 			m.logger.Infof(
-				"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resends_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_interval_avg_seconds=%.6f, batch_verify_latency_interval_avg_seconds=%.6f, batch_hashing_latency_interval_avg_seconds=%.6f, batch_ledger_header_hashing_latency_interval_avg_seconds=%.6f, batch_ledger_append_latency_interval_avg_seconds=%.6f, batch_ledger_batches_size_bytes_total=%d",
+				"BATCHER_METRICS party_id=%d, shard_id=%d, role=%s, interval_s=%.2f, batches_created_interval=%d, batches_created_rate=%.4f, batches_created_total=%d, batches_pulled_interval=%d, batches_pulled_rate=%.4f, batches_pulled_total=%d, first_resends_interval=%d, first_resends_rate=%.4f, first_resends_total=%d, txs_total=%d, mempool_size=%d, router_txs_total=%d, role_changes_total=%d, complaints_total=%d, batch_mempool_next_requests_latency_interval_avg_seconds=%.6f, batch_verify_latency_interval_avg_seconds=%.6f, batch_hashing_latency_interval_avg_seconds=%.6f, batch_ledger_header_hashing_latency_interval_avg_seconds=%.6f, batch_ledger_append_latency_interval_avg_seconds=%.6f, batch_size_interval_avg_bytes=%d",
 				m.partyID,
 				m.shardID,
 				m.role(),
@@ -267,9 +281,9 @@ func (m *BatcherMetrics) trackMetrics() {
 				monitoring.Average(hashingSum-prevHashingSum, hashingCount-prevHashingCount),
 				monitoring.Average(headerHashingSum-prevHeaderHashingSum, headerHashingCount-prevHeaderHashingCount),
 				monitoring.Average(appendSum-prevAppendSum, appendCount-prevAppendCount),
-				uint64(monitoring.GetMetricValue(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)),
+				batchSizeAvg,
 			)
-			prevC, prevP, prevR = created, pulled, resends
+			prevC, prevP, prevR, prevBytes = created, pulled, resends, bytes
 			prevMempoolSum, prevMempoolCount = mempoolSum, mempoolCount
 			prevVerifySum, prevVerifyCount = verifySum, verifyCount
 			prevHashingSum, prevHashingCount = hashingSum, hashingCount
