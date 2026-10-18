@@ -115,6 +115,109 @@ func TestBatcherConfigAckRetriesUntilConsenterAccepts(t *testing.T) {
 	require.EqualValues(t, 1, acks[0].ConfigSeq)
 }
 
+// Scenario:
+//  1. Start a single-party, single-shard batcher with its stub consenter at config sequence 0.
+//  2. Set an AckConfigHandler that holds back the consenter's response.
+//  3. Deliver a config update (an AutoRemoveTimeout change) through the consenter path, and wait for
+//     the batcher's ConfigAck.
+//  4. Verify the batcher stays soft stopped, serving under the current config, and does not move on
+//     to the new config while it waits for the consenter's response.
+//  5. Let the consenter respond, and verify the batcher then moves on (here, to pending admin, because
+//     a batching parameter changed).
+func TestBatcherConfigAckWaitsForConsenterResponse(t *testing.T) {
+	party := types.PartyID(1)
+
+	dir := t.TempDir()
+	setup := createConfigAckTestSetup(t, dir, party)
+
+	acked := make(chan struct{}, 1)
+	respond := make(chan struct{})
+	setup.stubConsenter.SetAckConfigHandler(func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		select {
+		case acked <- struct{}{}:
+		default:
+		}
+		<-respond
+		return &protos.ConfigAckResponse{}, nil
+	})
+
+	startBatcherNodes([]*batcher.Batcher{setup.batcher})
+
+	require.Eventually(t, func() bool {
+		status := setup.batcher.GetStatus()
+		return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(0)
+	}, 60*time.Second, 10*time.Millisecond)
+
+	setup.deliverConfigUpdate(t, dir, autoRemoveTimeoutConfigUpdate(t, dir))
+
+	select {
+	case <-acked:
+	case <-time.After(60 * time.Second):
+		t.Fatal("the batcher did not send a ConfigAck")
+	}
+
+	require.Never(t, func() bool {
+		return setup.batcher.GetStatus().GetState() != node_utils.StateSoftStopped
+	}, 2*time.Second, 100*time.Millisecond, "the batcher moved on to the new config before the consenter responded to its ack")
+
+	close(respond)
+
+	require.Eventually(t, func() bool {
+		return setup.batcher.GetStatus().GetState() == node_utils.StatePendingAdmin
+	}, 60*time.Second, 10*time.Millisecond)
+}
+
+// Scenario:
+//  1. Start a single-party, single-shard batcher with its stub consenter at config sequence 0.
+//  2. Set an AckConfigHandler that holds back the consenter's response.
+//  3. Deliver a config update the batcher applies dynamically (a BatchCreationTimeout change)
+//     through the consenter path, and wait for the batcher's ConfigAck.
+//  4. Stop the batcher while it waits for the consenter's response, and verify it stays stopped:
+//     a stop is not a consenter that did not respond in time, so the batcher must not apply the
+//     new config and reopen its network and ledger.
+func TestBatcherConfigAckStopWhileWaitingForConsenterResponse(t *testing.T) {
+	party := types.PartyID(1)
+
+	dir := t.TempDir()
+	setup := createConfigAckTestSetup(t, dir, party)
+
+	acked := make(chan struct{}, 1)
+	respond := make(chan struct{})
+	t.Cleanup(func() { close(respond) }) // release the blocked handler before the stub consenter stops
+	setup.stubConsenter.SetAckConfigHandler(func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		select {
+		case acked <- struct{}{}:
+		default:
+		}
+		<-respond
+		return &protos.ConfigAckResponse{}, nil
+	})
+
+	startBatcherNodes([]*batcher.Batcher{setup.batcher})
+
+	require.Eventually(t, func() bool {
+		status := setup.batcher.GetStatus()
+		return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(0)
+	}, 60*time.Second, 10*time.Millisecond)
+
+	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
+	configUpdatePbData := configUpdateBuilder.UpdateBatchTimeouts(t, cfgutil.NewBatchTimeoutsConfig(cfgutil.BatchTimeoutsConfigName.BatchCreationTimeout, "2s"))
+	require.NotNil(t, configUpdatePbData)
+	setup.deliverConfigUpdate(t, dir, configUpdatePbData)
+
+	select {
+	case <-acked:
+	case <-time.After(60 * time.Second):
+		t.Fatal("the batcher did not send a ConfigAck")
+	}
+
+	setup.batcher.Stop()
+
+	require.Never(t, func() bool {
+		return setup.batcher.GetStatus().GetState() != node_utils.StateStopped
+	}, 3*time.Second, 100*time.Millisecond, "the batcher applied the new config after it was stopped")
+}
+
 // createConfigAckTestSetup creates the crypto/config material for a single-party,
 // single-shard network and builds one real batcher plus its stub consenter. It
 // returns the batcher, the stub consenter, and the genesis block needed to

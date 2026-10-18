@@ -199,3 +199,107 @@ func TestRouterSendsConfigAckEvenWhenEvicted(t *testing.T) {
 	require.Equal(t, protos.NodeType_ROUTER, acks[0].NodeType)
 	require.EqualValues(t, 1, acks[0].ConfigSeq)
 }
+
+// Scenario:
+//  1. Start a router, stub batcher, and stub consenter with the initial config.
+//  2. Define an AckConfigHandler that holds back the consenter's response.
+//  3. Deliver a config update through the consenter path, and wait for the router's ConfigAck.
+//  4. Verify the router does not apply the new config while it waits for the consenter's response.
+//  5. Let the consenter respond, and verify the router then advances to config sequence 1.
+func TestRouterConfigAck_WaitsForConsenterResponse(t *testing.T) {
+	partyId := types.PartyID(1)
+	parties := []types.PartyID{partyId}
+
+	dir := t.TempDir()
+	testSetup := createReconfigTestSetup(t, dir, partyId)
+
+	acked := make(chan struct{}, 1)
+	respond := make(chan struct{})
+	testSetup.stubConsenter.AckConfigHandler = func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		select {
+		case acked <- struct{}{}:
+		default:
+		}
+		<-respond
+		return &protos.ConfigAckResponse{}, nil
+	}
+
+	testSetup.Start()
+	defer testSetup.Stop()
+
+	require.Eventually(t, func() bool {
+		status := testSetup.routerNode.GetStatus()
+		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
+	}, 20*time.Second, 100*time.Millisecond)
+	waitForRouterServing(t, testSetup)
+
+	testSetup.SendConfigUpdate(t, parties, autoRemoveTimeoutConfigUpdate(t, dir), dir, 1)
+
+	select {
+	case <-acked:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the router did not send a ConfigAck")
+	}
+
+	require.Never(t, func() bool {
+		return testSetup.routerNode.GetStatus().ConfigSequenceNumber == 1
+	}, 2*time.Second, 100*time.Millisecond, "the router applied the new config before the consenter responded to its ack")
+
+	close(respond)
+
+	require.Eventually(t, func() bool {
+		status := testSetup.routerNode.GetStatus()
+		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 1
+	}, 20*time.Second, 100*time.Millisecond)
+	waitForRouterServing(t, testSetup)
+}
+
+// Scenario:
+//  1. Start a router, stub batcher, and stub consenter with the initial config.
+//  2. Define an AckConfigHandler that holds back the consenter's response.
+//  3. Deliver a config update through the consenter path, and wait for the router's ConfigAck.
+//  4. Stop the router while it waits for the consenter's response, and verify it stays stopped:
+//     a stop is not a consenter that did not respond in time, so the router must not apply the
+//     new config and start itself up again.
+func TestRouterConfigAck_StopWhileWaitingForConsenterResponse(t *testing.T) {
+	partyId := types.PartyID(1)
+	parties := []types.PartyID{partyId}
+
+	dir := t.TempDir()
+	testSetup := createReconfigTestSetup(t, dir, partyId)
+
+	acked := make(chan struct{}, 1)
+	respond := make(chan struct{})
+	testSetup.stubConsenter.AckConfigHandler = func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		select {
+		case acked <- struct{}{}:
+		default:
+		}
+		<-respond
+		return &protos.ConfigAckResponse{}, nil
+	}
+
+	testSetup.Start()
+	defer testSetup.Stop()
+	defer close(respond) // release the blocked handler before the stub consenter stops
+
+	require.Eventually(t, func() bool {
+		status := testSetup.routerNode.GetStatus()
+		return status.State == node_utils.StateRunning && status.ConfigSequenceNumber == 0
+	}, 20*time.Second, 100*time.Millisecond)
+	waitForRouterServing(t, testSetup)
+
+	testSetup.SendConfigUpdate(t, parties, autoRemoveTimeoutConfigUpdate(t, dir), dir, 1)
+
+	select {
+	case <-acked:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the router did not send a ConfigAck")
+	}
+
+	testSetup.routerNode.Stop()
+
+	require.Never(t, func() bool {
+		return testSetup.routerNode.GetStatus().State != node_utils.StateStopped
+	}, 3*time.Second, 100*time.Millisecond, "the router applied the new config after it was stopped")
+}

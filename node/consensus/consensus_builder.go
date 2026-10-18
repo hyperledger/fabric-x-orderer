@@ -144,7 +144,12 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	for _, shardInfo := range c.Config.Shards {
 		shards = append(shards, shardInfo.ShardId)
 	}
-	c.ConfigAckReceiver = configack.NewReceiver(c.Logger, shards)
+	// a dynamic reconfiguration replaces the receiver; stop the previous one so that an AckConfig still
+	// waiting on it returns (Unavailable) and the party member retries against the new receiver.
+	if c.ConfigAckReceiver != nil {
+		c.ConfigAckReceiver.Stop()
+	}
+	c.ConfigAckReceiver = configack.NewReceiver(c.Logger, shards, nodeConfig.Bundle.ConfigtxValidator().Sequence())
 
 	if createNewBFT {
 		c.BFT = createBFT(c, metadata, lastProposal, lastSigs, nodeConfig.WALDir)

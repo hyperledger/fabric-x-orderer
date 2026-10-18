@@ -43,10 +43,10 @@ import (
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 
 	"github.com/pkg/errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
-
-const defaultConfigAckReceiverTimeout = time.Second * 60 // TODO: expose in local config
 
 type Storage interface {
 	Append(block *common.Block)
@@ -139,7 +139,8 @@ type Consensus struct {
 	ConfigAckReceiver      *configack.Receiver
 	// ConfigAckReceiverTimeout bounds how long ApplyConfig waits for config acks from the party's
 	// router, batchers and assembler before applying a new config anyway. Zero selects
-	// defaultConfigAckReceiverTimeout.
+	// configack.DefaultReceiverTimeout. It must be shorter than configack.DefaultSubmitConfigAckTimeout,
+	// the members' wait for the consenter's answer, or they may stop waiting before it answers.
 	ConfigAckReceiverTimeout time.Duration
 }
 
@@ -1158,7 +1159,10 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %d", configSeq)
 	ackTimeout := c.ConfigAckReceiverTimeout
 	if ackTimeout <= 0 {
-		ackTimeout = defaultConfigAckReceiverTimeout
+		ackTimeout = configack.DefaultReceiverTimeout
+	}
+	if ackTimeout >= configack.DefaultSubmitConfigAckTimeout {
+		c.Logger.Warnf("config ack timeout (%s) is not shorter than the party members' wait for its answer (%s); they may apply the new config before the consenter answers", ackTimeout, configack.DefaultSubmitConfigAckTimeout)
 	}
 	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ackTimeout)
 	defer cancelFunc()
@@ -1594,6 +1598,10 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 }
 
 // AckConfig handles ConfigAck RPC calls from party members (router, batchers, assembler).
+// A rejected ack is answered at once with an error in the response. An accepted ack is answered only once the
+// consenter is no longer waiting for acks on its config sequence, either because all the party members acked
+// it or because the consenter's wait for acks timed out; the party member applies the new config after that.
+// If the consenter stops first, the ack is answered with an Unavailable error, which the party member retries.
 func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
 	if req == nil {
 		return &protos.ConfigAckResponse{Error: "nil ConfigAck request"}, nil
@@ -1604,9 +1612,17 @@ func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*prot
 		return &protos.ConfigAckResponse{Error: err.Error()}, nil
 	}
 
-	err := c.ConfigAckReceiver.AddAck(req)
+	c.lock.RLock()
+	receiver := c.ConfigAckReceiver
+	c.lock.RUnlock()
+
+	err := receiver.AddAck(req)
 	if err != nil {
 		return &protos.ConfigAckResponse{Error: err.Error()}, nil
+	}
+
+	if err := receiver.WaitForRelease(ctx, req.ConfigSeq); err != nil {
+		return nil, status.Errorf(codes.Unavailable, "consenter did not respond to the config ack on sequence %d: %v", req.ConfigSeq, err)
 	}
 	return &protos.ConfigAckResponse{}, nil
 }
