@@ -283,10 +283,12 @@ func (ps *PendingStore) RemoveRequests(requestIDs ...string) {
 	})
 }
 
-// removeRequest tombstones the request id, so a later Submit of the request is rejected, and deletes
-// the request if it is held. Swapping in the tombstone decides who deletes it: only the caller that
-// swapped out the bucket holding the request does, so concurrent removals of the same id (e.g., a
-// duplicate id in requestIDs, or a Prune) delete it once.
+// removeRequest deletes the request if it is held, and otherwise tombstones its id so that a Submit of
+// the request that arrives later is rejected. Swapping in the tombstone decides who deletes a held
+// request: only the caller that swapped out the bucket holding it does, so concurrent removals of the
+// same id (e.g., a duplicate id in requestIDs, or a Prune) delete it once. A deleted request's id is
+// then erased, so the request can be resubmitted (e.g., when the batcher revives the requests of a
+// pending BAF after a term change).
 func (ps *PendingStore) removeRequest(reqID string, tombstone *bucket) {
 	b, existed := ps.reqID2Bucket.Swap(reqID, tombstone)
 	if !existed {
@@ -299,6 +301,7 @@ func (ps *PendingStore) removeRequest(reqID string, tombstone *bucket) {
 
 	if bucket.delete(reqID) {
 		ps.OnDelete(reqID)
+		ps.reqID2Bucket.CompareAndDelete(reqID, tombstone)
 	}
 }
 
