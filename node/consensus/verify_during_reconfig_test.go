@@ -27,10 +27,20 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// heightStorage is a Storage that only reports its height.
+type heightStorage struct {
+	Storage
+	height uint64
+}
+
+func (s heightStorage) Height() uint64 {
+	return s.height
+}
+
 // TestVerifyCEConcurrentWithReconfig checks that verifyCE and VerificationSequence do not race with a
-// dynamic reconfiguration, which replaces c.Config and c.SigVerifier under c.lock (configureConsensus)
-// while requests are being verified from gRPC handlers and SmartBFT goroutines. The race is reported
-// only under -race.
+// dynamic reconfiguration, which replaces c.Config, c.SigVerifier and c.Storage under c.lock
+// (configureConsensus) while requests are being verified from gRPC handlers and SmartBFT goroutines.
+// The race is reported only under -race.
 func TestVerifyCEConcurrentWithReconfig(t *testing.T) {
 	sk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
@@ -43,6 +53,7 @@ func TestVerifyCEConcurrentWithReconfig(t *testing.T) {
 		bundle.ConfigtxValidatorReturns(configtxValidator)
 		verifier := crypto.ECDSAVerifier{
 			types.NewBatcherIdentity(1, 1): signer.PublicKey,
+			types.NewAssemblerIdentity(1):  signer.PublicKey,
 		}
 		return &nodeconfig.ConsenterNodeConfig{Bundle: bundle}, verifier
 	}
@@ -50,39 +61,63 @@ func TestVerifyCEConcurrentWithReconfig(t *testing.T) {
 	config0, verifier0 := newConfig(0)
 	config1, verifier1 := newConfig(1)
 
+	storage0, storage1 := heightStorage{height: 1}, heightStorage{height: 2}
+
 	c := &Consensus{
 		Logger:      testutil.CreateLogger(t, 1),
 		Config:      config0,
 		SigVerifier: verifier0,
+		Storage:     storage0,
 	}
 
 	// A BAF at config sequence 0 is valid under both configs: current under config0, and one behind
 	// (accepted for revival) under config1.
 	baf, err := batcher.CreateBAF(signer, 1, 1, make([]byte, 32), 1, 1, 0, 0, nil)
 	require.NoError(t, err)
-	req := (&state.ControlEvent{BAF: baf}).Bytes()
+	bafReq := (&state.ControlEvent{BAF: baf}).Bytes()
 
+	// An assembler decision report of the genesis decision is committed in both ledgers, and its config
+	// sequence matches config0 only.
+	report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 0, ConfigSeq: 0}
+	report.Signature, err = signer.Sign(report.ToBeSigned())
+	require.NoError(t, err)
+	reportReq := (&state.ControlEvent{AssemblerReport: report}).Bytes()
+
+	// The reconfigurations keep running until all the verifications are done, so that they interleave.
 	const iterations = 100
+	done := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := range iterations {
+		for i := 0; ; i++ {
+			select {
+			case <-done:
+				return
+			default:
+			}
 			c.lock.Lock()
 			if i%2 == 0 {
-				c.Config, c.SigVerifier = config1, verifier1
+				c.Config, c.SigVerifier, c.Storage = config1, verifier1, storage1
 			} else {
-				c.Config, c.SigVerifier = config0, verifier0
+				c.Config, c.SigVerifier, c.Storage = config0, verifier0, storage0
 			}
 			c.lock.Unlock()
 		}
 	}()
 
 	for range iterations {
-		_, _, err := c.verifyCE(req)
+		_, _, err := c.verifyCE(bafReq)
 		require.NoError(t, err)
+		// Under config0 the report reaches the ledger height check, which reads the snapshot of c.Storage;
+		// under config1 its config sequence mismatches.
+		_, _, err = c.verifyCE(reportReq)
+		if err != nil {
+			require.ErrorContains(t, err, "mismatch config sequence")
+		}
 		require.LessOrEqual(t, c.VerificationSequence(), uint64(1))
 	}
+	close(done)
 	wg.Wait()
 }
 
