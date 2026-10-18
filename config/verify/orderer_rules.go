@@ -62,7 +62,7 @@ type DefaultOrdererRules struct{}
 //  10. Party certificates must be valid, with expiration enforced for genesis
 //     configs and ignored for later config updates.
 //  11. Party IDs, shard IDs, and MaxPartyID must be within their valid ranges.
-//  12. Router and assembler ports in SharedConfig should match the corresponding
+//  12. Router and assembler hosts and ports in SharedConfig should match the corresponding
 //     broadcast and deliver OrdererEndpoints. Mismatches are logged as warnings.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
@@ -718,16 +718,26 @@ func validateRouterAndAssemblerEndpoints(parties []*ordererpb.PartyConfig, party
 			return errors.Errorf("missing orderer organization for party %d", party.PartyID)
 		}
 
+		routerHost := party.GetRouterConfig().GetHost()
 		routerPort := int(party.GetRouterConfig().GetPort())
+		assemblerHost := party.GetAssemblerConfig().GetHost()
 		assemblerPort := int(party.GetAssemblerConfig().GetPort())
 		for _, raw := range org.Endpoints() {
 			ep, err := types.ParseOrdererEndpoint(raw)
 			if err != nil {
 				return err
 			}
+			if slices.Contains(ep.API, types.Broadcast) && ep.Host != routerHost {
+				logger.Warnf("party %d: broadcast endpoint %q has host %s, but SharedConfig RouterConfig.Host is %s",
+					party.PartyID, raw, ep.Host, routerHost)
+			}
 			if slices.Contains(ep.API, types.Broadcast) && ep.Port != routerPort {
 				logger.Warnf("party %d: broadcast endpoint %q has port %d, but SharedConfig RouterConfig.Port is %d",
 					party.PartyID, raw, ep.Port, routerPort)
+			}
+			if slices.Contains(ep.API, types.Deliver) && ep.Host != assemblerHost {
+				logger.Warnf("party %d: deliver endpoint %q has host %s, but SharedConfig AssemblerConfig.Host is %s",
+					party.PartyID, raw, ep.Host, assemblerHost)
 			}
 			if slices.Contains(ep.API, types.Deliver) && ep.Port != assemblerPort {
 				logger.Warnf("party %d: deliver endpoint %q has port %d, but SharedConfig AssemblerConfig.Port is %d",

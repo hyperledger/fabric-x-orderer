@@ -333,8 +333,16 @@ func TestValidateNewConfig_RouterAndAssemblerEndpointsMismatch(t *testing.T) {
 		update func(party *ordererpb.PartyConfig)
 	}{
 		{
+			name:   "router host",
+			update: func(party *ordererpb.PartyConfig) { party.RouterConfig.Host = "router.example.com" },
+		},
+		{
 			name:   "router port",
 			update: func(party *ordererpb.PartyConfig) { party.RouterConfig.Port++ },
+		},
+		{
+			name:   "assembler host",
+			update: func(party *ordererpb.PartyConfig) { party.AssemblerConfig.Host = "assembler.example.com" },
 		},
 		{
 			name:   "assembler port",
@@ -347,7 +355,7 @@ func TestValidateNewConfig_RouterAndAssemblerEndpointsMismatch(t *testing.T) {
 			cfgEnv := &common.ConfigEnvelope{}
 			require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
 
-			// change the port in the shared config without updating the orderer endpoints
+			// change the host or port in the shared config without updating the orderer endpoints
 			shared := configutil.GetSharedConfig(t, cfgEnv)
 			tc.update(shared.PartiesConfig[0])
 
@@ -357,7 +365,7 @@ func TestValidateNewConfig_RouterAndAssemblerEndpointsMismatch(t *testing.T) {
 			cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
 			payload.Data = protoutil.MarshalOrPanic(cfgEnv)
 
-			// a port mismatch only logs a warning and does not fail the validation
+			// a host or port mismatch only logs a warning and does not fail the validation
 			nextEnv := &common.Envelope{Payload: protoutil.MarshalOrPanic(payload), Signature: env.Signature}
 			require.NoError(t, or.ValidateNewConfig(nextEnv, factory.GetDefault(), types.PartyID(1)))
 		})
