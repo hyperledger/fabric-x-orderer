@@ -190,8 +190,8 @@ func (m *Metrics) trackMetrics() {
 			}
 
 			// the average sizes of what was committed in this interval only
-			blockSizeAvg := monitoring.IntervalAverage(lastBlocksSizeCommitted, blocksSizeCommitted, lastBlocksCommitted, blocksCommitted)
-			txSizeAvg := monitoring.IntervalAverage(lastTransactionsSizeCommitted, transactionsSizeCommitted, lastTxCommitted, txCommitted)
+			blockSizeAvg := uint64(monitoring.Average(float64(blocksSizeCommitted-lastBlocksSizeCommitted), newBlocks))
+			txSizeAvg := uint64(monitoring.Average(float64(transactionsSizeCommitted-lastTransactionsSizeCommitted), newTXs))
 			m.blockSizeAvg.Set(float64(blockSizeAvg))
 			m.txSizeAvg.Set(float64(txSizeAvg))
 
