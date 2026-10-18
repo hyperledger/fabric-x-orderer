@@ -186,7 +186,8 @@ func (ps *PendingStore) garbageCollectProcessed(now time.Time) {
 
 		if b.isDummyBucket() {
 			if now.Sub(b.processedTimestamp) > ps.ReqIDLifetime {
-				ps.reqID2Bucket.Delete(k)
+				// A concurrent removal may have replaced the tombstone with a fresh one.
+				ps.reqID2Bucket.CompareAndDelete(k, v)
 			}
 		}
 
@@ -270,25 +271,32 @@ func (ps *PendingStore) rotateBuckets(now time.Time) {
 }
 
 func (ps *PendingStore) RemoveRequests(requestIDs ...string) {
-	now := ps.now()
+	// All ids removed together share one tombstone.
+	tombstone := &bucket{id: 0, processedTimestamp: ps.now()}
 
 	parallelForEachKey(requestIDs, func(reqID string) bool {
 		if ps.isClosed() {
 			return false
 		}
-		ps.removeRequest(reqID, now)
+		ps.removeRequest(reqID, tombstone)
 		return true
 	})
 }
 
-func (ps *PendingStore) removeRequest(reqID string, now time.Time) {
-	b, existed := ps.reqID2Bucket.LoadOrStore(reqID, &bucket{id: 0, processedTimestamp: now})
+// removeRequest tombstones the request id, so a later Submit of the request is rejected, and deletes
+// the request if it is held. Swapping in the tombstone decides who deletes it: only the caller that
+// swapped out the bucket holding the request does, so concurrent removals of the same id (e.g., a
+// duplicate id in requestIDs, or a Prune) delete it once.
+func (ps *PendingStore) removeRequest(reqID string, tombstone *bucket) {
+	b, existed := ps.reqID2Bucket.Swap(reqID, tombstone)
+	if !existed {
+		return
+	}
 	bucket := b.(*bucket)
-	if !existed || bucket.isDummyBucket() {
+	if bucket.isDummyBucket() {
 		return
 	}
 
-	// The request may have been deleted concurrently (e.g., a duplicate id in requestIDs, or a Prune).
 	if bucket.delete(reqID) {
 		ps.OnDelete(reqID)
 	}
@@ -320,7 +328,9 @@ func (ps *PendingStore) Prune(predicate func([]byte) error) {
 		if predicate(request.([]byte)) == nil {
 			return true
 		}
-		if b.delete(reqID) {
+		// The id is erased rather than tombstoned, so the request may be resubmitted. Erasing it only
+		// if it still maps to b leaves a concurrent removal or resubmission of the request intact.
+		if ps.reqID2Bucket.CompareAndDelete(reqID, b) && b.delete(reqID) {
 			ps.OnDelete(reqID)
 		}
 		return true

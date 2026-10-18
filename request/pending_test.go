@@ -613,32 +613,45 @@ func TestPendingStoreOnDeleteOncePerRequest(t *testing.T) {
 
 func TestPendingStoreSubmitRacingRemove(t *testing.T) {
 	requestInspector := &reqInspector{}
-	ps := newTestPendingStore(t, func(key string) {})
+	var deleted atomic.Int64
+	ps := newTestPendingStore(t, func(key string) { deleted.Add(1) })
 
-	// A removal that runs concurrently with the Submit of the same request must not leave it pooled,
-	// whichever of the two wins.
-	trials := 20000
+	// Concurrent submits and removals of the same request, as when a router delivers a request while a
+	// pulled batch containing it is being removed (possibly with the id repeated in the batch). Whichever
+	// wins, the request must not stay pooled, and each accepted submit must be released exactly once.
+	workers := runtime.NumCPU()
+	trials := 2000
 	for i := 0; i < trials; i++ {
 		req := make([]byte, 8)
 		binary.BigEndian.PutUint64(req, uint64(i))
 		reqID := requestInspector.RequestID(req)
 
+		deleted.Store(0)
+		var submitted atomic.Int64
+		require.NoError(t, ps.Submit(req))
+		submitted.Add(1)
+
 		var start, done sync.WaitGroup
 		start.Add(1)
-		done.Add(2)
-		go func() {
-			defer done.Done()
-			start.Wait()
-			_ = ps.Submit(req)
-		}()
-		go func() {
-			defer done.Done()
-			start.Wait()
-			ps.RemoveRequests(reqID)
-		}()
+		for j := 0; j < workers; j++ {
+			done.Add(2)
+			go func() {
+				defer done.Done()
+				start.Wait()
+				if ps.Submit(req) == nil {
+					submitted.Add(1)
+				}
+			}()
+			go func() {
+				defer done.Done()
+				start.Wait()
+				ps.RemoveRequests(reqID)
+			}()
+		}
 		start.Done()
 		done.Wait()
 
 		require.False(t, ps.Contains(reqID), "trial %d: removed request is still pooled", i)
+		require.Equal(t, submitted.Load(), deleted.Load(), "trial %d: accepted submits and deletes differ", i)
 	}
 }

@@ -73,7 +73,13 @@ func (b *bucket) getFirstStrikeTimestamp() time.Time {
 
 // tryInsert inserts the request into the bucket. It returns errBucketSealed if the bucket is sealed,
 // in which case the caller should retry with the new current bucket. It returns an error if the
-// request id is already known to the store, either held or tombstoned, in which case nothing is stored.
+// request id is already known to the store, either held or tombstoned, in which case the request is
+// not inserted.
+//
+// The payload and size are stored before the id is published in reqID2Bucket, so whoever takes the id
+// over from this bucket also finds the payload. If the id turns out to be known already, the payload
+// and size are rolled back; until then they are visible only through this unsealed bucket, never
+// through the id.
 func (b *bucket) tryInsert(reqID string, request []byte) error {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
@@ -82,8 +88,10 @@ func (b *bucket) tryInsert(reqID string, request []byte) error {
 		return errBucketSealed
 	}
 
-	// The payload and size are stored before the id is published, so a concurrent delete that finds
-	// the id also finds the payload. If the id is already known, the insert is rolled back.
+	if _, known := b.reqID2Bucket.Load(reqID); known {
+		return errors.Errorf("request %s already inserted", reqID)
+	}
+
 	if _, existed := b.requests.LoadOrStore(reqID, request); existed {
 		return errors.Errorf("request %s already inserted", reqID)
 	}
@@ -98,13 +106,13 @@ func (b *bucket) tryInsert(reqID string, request []byte) error {
 	return nil
 }
 
+// delete deletes the payload of the request from the bucket. The caller must first take the id over
+// from this bucket in reqID2Bucket, so that only one caller deletes a given request.
 func (b *bucket) delete(reqID string) bool {
 	_, existed := b.requests.LoadAndDelete(reqID)
 	if !existed {
 		return false
 	}
-
-	b.reqID2Bucket.Delete(reqID)
 
 	atomic.AddUint32(&b.size, ^uint32(0))
 	return true
