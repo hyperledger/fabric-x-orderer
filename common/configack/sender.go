@@ -19,9 +19,14 @@ import (
 	"google.golang.org/grpc"
 )
 
-// defaultSubmitConfigAckTimeout is longer than the consenter's wait for acks, so that normally the
-// consenter's response (sent at the latest when its own wait times out) arrives before the sender gives up.
-const defaultSubmitConfigAckTimeout = 90 * time.Second // TODO: expose in local config
+// DefaultReceiverTimeout bounds how long the consenter waits for the acks of its party's members before it
+// applies a new config anyway (and answers the members that did ack).
+const DefaultReceiverTimeout = 60 * time.Second // TODO: expose in local config
+
+// DefaultSubmitConfigAckTimeout bounds how long a party member waits for the consenter's answer. It is derived
+// from DefaultReceiverTimeout and longer than it, so that normally the consenter's answer (sent at the latest
+// when its own wait times out) arrives before the member gives up and applies the new config without it.
+const DefaultSubmitConfigAckTimeout = DefaultReceiverTimeout + 30*time.Second // TODO: expose in local config
 
 // errConfigAckRejected marks a ConfigAck the consenter rejected; retrying it does not change the outcome.
 var errConfigAckRejected = errors.New("config ack rejected by consenter")
@@ -64,7 +69,7 @@ type ConnectionInfo struct {
 	Shard             types.ShardID
 
 	// SubmitConfigAckTimeout bounds the total time a single SubmitConfigAck spends
-	// retrying across all attempts. Zero selects defaultSubmitConfigAckTimeout.
+	// retrying across all attempts. Zero selects DefaultSubmitConfigAckTimeout.
 	SubmitConfigAckTimeout time.Duration
 }
 
@@ -73,7 +78,7 @@ func NewSender(connInfo *ConnectionInfo, logger *flogging.FabricLogger) *sender 
 
 	submitConfigAckTimeout := connInfo.SubmitConfigAckTimeout
 	if submitConfigAckTimeout <= 0 {
-		submitConfigAckTimeout = defaultSubmitConfigAckTimeout
+		submitConfigAckTimeout = DefaultSubmitConfigAckTimeout
 	}
 
 	s := &sender{
@@ -119,16 +124,18 @@ func (s *sender) SubmitConfigAck(configSeq uint64) error {
 	ctx, cancel := context.WithTimeout(s.ctx, s.submitConfigAckTimeout)
 	defer cancel()
 
-	err := s.submitWithRetry(ctx, configSeq)
-	if err == nil || errors.Is(err, errConfigAckRejected) {
-		return err
-	}
-
 	interval := s.minRetryInterval
-	numOfRetries := 1
-	s.logger.Warningf("Sending config ack to consensus on sequence %d failed: %v, trying again in: %s", configSeq, err, interval)
+	for attempt := 1; ; attempt++ {
+		err := s.submitWithRetry(ctx, configSeq)
+		if err == nil {
+			s.logger.Infof("consenter responded to the config ack on config sequence %d", configSeq)
+			return nil
+		}
+		if errors.Is(err, errConfigAckRejected) {
+			return err
+		}
+		s.logger.Warningf("Sending config ack to consensus on sequence %d failed: %v, trying again in: %s", configSeq, err, interval)
 
-	for {
 		select {
 		case <-ctx.Done():
 			if s.ctx.Err() != nil {
@@ -136,21 +143,8 @@ func (s *sender) SubmitConfigAck(configSeq uint64) error {
 			}
 			return fmt.Errorf("sending config ack to consensus aborted: %w", ctx.Err())
 		case <-time.After(interval):
-			s.logger.Debugf("Retry attempt #%d", numOfRetries)
-			numOfRetries++
-
-			err := s.submitWithRetry(ctx, configSeq)
-			if errors.Is(err, errConfigAckRejected) {
-				return err
-			}
-			if err != nil {
-				interval = min(interval*2, s.maxRetryInterval)
-				s.logger.Warningf("Sending config ack to consensus on sequence %d failed: %v, trying again in: %s", configSeq, err, interval)
-				continue
-			}
-
-			s.logger.Infof("config ack was successfully sent to consensus on config sequence %d", configSeq)
-			return nil
+			s.logger.Debugf("Retry attempt #%d", attempt)
+			interval = min(interval*2, s.maxRetryInterval)
 		}
 	}
 }

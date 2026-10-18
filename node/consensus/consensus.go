@@ -48,8 +48,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const defaultConfigAckReceiverTimeout = time.Second * 60 // TODO: expose in local config
-
 type Storage interface {
 	Append(block *common.Block)
 	Height() uint64
@@ -141,7 +139,8 @@ type Consensus struct {
 	ConfigAckReceiver      *configack.Receiver
 	// ConfigAckReceiverTimeout bounds how long ApplyConfig waits for config acks from the party's
 	// router, batchers and assembler before applying a new config anyway. Zero selects
-	// defaultConfigAckReceiverTimeout.
+	// configack.DefaultReceiverTimeout. It must be shorter than configack.DefaultSubmitConfigAckTimeout,
+	// the members' wait for the consenter's answer, or they may stop waiting before it answers.
 	ConfigAckReceiverTimeout time.Duration
 }
 
@@ -1160,7 +1159,10 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %d", configSeq)
 	ackTimeout := c.ConfigAckReceiverTimeout
 	if ackTimeout <= 0 {
-		ackTimeout = defaultConfigAckReceiverTimeout
+		ackTimeout = configack.DefaultReceiverTimeout
+	}
+	if ackTimeout >= configack.DefaultSubmitConfigAckTimeout {
+		c.Logger.Warnf("config ack timeout (%s) is not shorter than the party members' wait for its answer (%s); they may apply the new config before the consenter answers", ackTimeout, configack.DefaultSubmitConfigAckTimeout)
 	}
 	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ackTimeout)
 	defer cancelFunc()
