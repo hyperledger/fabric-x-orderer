@@ -196,12 +196,12 @@ func (m *RouterMetrics) reportMetrics(final bool) {
 	activeSubmitStreams := monitoring.GetMetricValue(m.activeSubmitStreams.(prometheus.Metric), m.logger)
 	submitInvocations := monitoring.GetMetricValue(m.submitInvocations.(prometheus.Metric), m.logger)
 	arrivedTxsLastValue := atomic.LoadUint64(&m.arrivedTxsLastValue)
-	received, elapsed, rateKey := txCount-float64(arrivedTxsLastValue), m.interval, "transactions_received_per_second"
+	received, elapsed, rateKey := txCount-float64(arrivedTxsLastValue), m.interval, "transactions_arrived_per_second"
 
 	if final {
-		received, elapsed, rateKey = txCount, time.Since(m.startTime), "transactions_received_per_second_avg"
+		received, elapsed, rateKey = txCount, time.Since(m.startTime), "transactions_arrived_per_second_avg"
 	}
-	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_received=%d, %s=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d, transactions_forwarded=%d, active_broadcast_streams=%d, active_submit_streams=%d, submit_invocations=%d",
+	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_arrived=%d, %s=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d, transactions_forwarded=%d, active_broadcast_streams=%d, active_submit_streams=%d, submit_invocations=%d",
 		m.partyID, int(txCount), rateKey, received/elapsed.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled), int(txForwarded), int(activeBroadcastStreams), int(activeSubmitStreams), int(submitInvocations))
 	atomic.StoreUint64(&m.arrivedTxsLastValue, uint64(txCount))
 }
