@@ -2814,7 +2814,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "rate(consensus_decisions_size_bytes[1m]) / rate(consensus_decisions_count[1m])",
+                        "expr": "consensus_decision_size_avg_bytes",
                         "legendFormat": "Consenter {{party_id}}",
                         "range": true
                       }
