@@ -151,6 +151,10 @@ What each of these metrics tells you about the batcher is described in [Batcher]
   **Name:** "batch_hashing_latency_seconds"  
   **Help:** "The latency to compute the batch requests digest."
 
+- **Namespace:** "batcher"  
+  **Name:** "batch_size_avg_bytes"  
+  **Help:** "The average size in bytes of the batches appended to the ledger in the last metrics interval."
+
 - **Namespace:** "batch_ledger"  
   **Name:** "header_hashing_latency_seconds"  
   **Help:** "The latency to compute the block header hash."

@@ -2814,7 +2814,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "rate(batch_ledger_batches_size_bytes_total[1m]) / rate(batcher_batches_created_total[1m])",
+                        "expr": "batcher_batch_size_avg_bytes",
                         "legendFormat": "Batcher {{party_id}}-{{shard_id}}",
                         "range": true
                       }
