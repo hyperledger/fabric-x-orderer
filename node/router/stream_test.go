@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
@@ -71,7 +72,7 @@ func TestSendRequests(t *testing.T) {
 		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
-		metrics:                           createTestMetrics(t),
+		forwarded:                         createTestForwardedCounter(t),
 	}
 
 	go s.sendRequests()
@@ -113,7 +114,7 @@ func TestSendRequestsReturnsWithError(t *testing.T) {
 		requestsByTraceID:                 make(map[string]*TrackedRequest),
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
-		metrics:                           createTestMetrics(t),
+		forwarded:                         createTestForwardedCounter(t),
 	}
 
 	go s.sendRequests()
@@ -287,7 +288,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 		requestsByTraceID:                 requestsByTraceID,
 		srReconnectChan:                   make(chan reconnectReq, 20),
 		verifier:                          verifier,
-		metrics:                           createTestMetrics(t),
+		forwarded:                         createTestForwardedCounter(t),
 	}
 
 	faultyStream.cancel()
@@ -330,7 +331,7 @@ func TestRenewStreamSuccess(t *testing.T) {
 	require.NotNil(t, newStream)
 	require.False(t, newStream.faulty())
 	// the renewed stream keeps counting forwarded requests
-	require.Equal(t, faultyStream.metrics, newStream.metrics)
+	require.Equal(t, faultyStream.forwarded, newStream.forwarded)
 
 	assert.Eventually(t, func() bool {
 		reqCond := reqPool.length() == 2 && bytes.Equal(reqPool.getElement(0).TraceId, req1.trace) && bytes.Equal(reqPool.getElement(1).TraceId, req2.trace)
@@ -366,7 +367,7 @@ func TestReconnectRequest(t *testing.T) {
 		connNum:                           connectionNumber,
 		streamNum:                         streamNumber,
 		verifier:                          verifier,
-		metrics:                           createTestMetrics(t),
+		forwarded:                         createTestForwardedCounter(t),
 	}
 
 	go s.sendRequests()
@@ -504,10 +505,11 @@ func (srp *safeReqPool) getElement(i int) *protos.Request {
 	return srp.reqPool[i]
 }
 
-func createTestMetrics(t *testing.T) *RouterMetrics {
-	return NewRouterMetrics(&config.RouterNodeConfig{
+func createTestForwardedCounter(t *testing.T) metrics.Counter {
+	routerMetrics := NewRouterMetrics(&config.RouterNodeConfig{
 		Metrics: &operations.Metrics{Provider: "disabled"},
 	}, testutil.CreateLogger(t, 0))
+	return routerMetrics.forwardedToShard(1)
 }
 
 func createTestBundleAndVerifier() (*configMocks.FakeConfigResources, *requestfilter.RulesVerifier) {

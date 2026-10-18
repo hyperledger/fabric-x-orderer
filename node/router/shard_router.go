@@ -76,7 +76,7 @@ type ShardRouter struct {
 	batcherReconnects            metrics.Counter
 	batcherConnected             metrics.Gauge
 	wasConnected                 bool
-	metrics                      *RouterMetrics
+	forwarded                    metrics.Counter
 }
 
 func NewShardRouter(l *flogging.FabricLogger,
@@ -125,7 +125,7 @@ func NewShardRouter(l *flogging.FabricLogger,
 		batcherReconnects:            batcherReconnects,
 		batcherConnected:             batcherConnected,
 		wasConnected:                 true,
-		metrics:                      routerMetrics,
+		forwarded:                    routerMetrics.forwardedToShard(shardID),
 	}
 
 	return sr
@@ -348,7 +348,7 @@ func (sr *ShardRouter) initStream(i int, j int) error {
 			verifier:                          sr.verifier,
 			configSubmitter:                   sr.configSubmitter,
 			reconnectBackoffInterval:          minRetryInterval,
-			metrics:                           sr.metrics,
+			forwarded:                         sr.forwarded,
 		}
 		go s.sendRequests()
 		go s.readResponses()
