@@ -122,7 +122,9 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
   BCCSP, flogging), `fabric-protos-go-apiv2`, and `hyperledger/SmartBFT` (consensus engine).
 - Logging is `flogging` (`FabricLogger`), typically named per role/party
   (e.g. `Batcher%dShard%d`).
-- Errors use `github.com/pkg/errors` (wrap with context).
+- Some code uses `github.com/pkg/errors` (wrap with context). Avoid using this package with new 
+  code, use the built in `errors` and `fmt` instead. Use `github.com/cockroachdb/errors` if stack 
+  traces and richer diagnostics are required.
 - The linter set is strict (`.golangci.yml`): `gosec`, `gocritic`, `revive`, `ireturn`, `lll`,
   `gocognit`, etc. `make linter-extra` runs additional checks against `main` for new changes;
   `golangci-lint run --fix --new-from-rev=main` fixes the auto-fixable ones.
