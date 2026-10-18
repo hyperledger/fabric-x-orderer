@@ -571,11 +571,9 @@ func (s *State) UpdateDurableWatermark(l *flogging.FabricLogger) {
 	for i, h := range s.AssemblerHeights {
 		decisionNums[i] = h.DecisionNum
 	}
-	slices.SortFunc(decisionNums, func(a, b types.DecisionNum) int {
-		return cmp.Compare(b, a)
-	})
+	slices.Sort(decisionNums)
 
-	if watermark := decisionNums[k-1]; watermark > s.DurableWatermark {
+	if watermark := decisionNums[len(decisionNums)-k]; watermark > s.DurableWatermark {
 		l.Debugf("Durable watermark advanced from decision %d to %d", s.DurableWatermark, watermark)
 		s.DurableWatermark = watermark
 	}
