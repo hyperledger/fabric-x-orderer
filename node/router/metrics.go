@@ -103,11 +103,13 @@ type RouterMetrics struct {
 	droppedRespClientBehind   metrics.Counter
 	droppedRespRouterDraining metrics.Counter
 	arrivedTxsLastValue       uint64
+	startTime                 time.Time
 	logger                    *flogging.FabricLogger
 	interval                  time.Duration
 	stopChan                  chan struct{}
 	stopOnce                  sync.Once
 	startOnce                 sync.Once
+	wg                        sync.WaitGroup
 	partyID                   arma_types.PartyID
 }
 
@@ -141,7 +143,8 @@ func NewRouterMetrics(routerNodeConfig *config.RouterNodeConfig, logger *floggin
 		droppedRespClientBehind:   droppedResponses.With([]string{"client_behind", partyID}...),
 		droppedRespRouterDraining: droppedResponses.With([]string{"router_draining", partyID}...),
 
-		partyID: routerNodeConfig.PartyID,
+		partyID:   routerNodeConfig.PartyID,
+		startTime: time.Now(),
 	}
 }
 
@@ -154,15 +157,16 @@ func (m *RouterMetrics) shardMetrics(shardID arma_types.ShardID) (metrics.Counte
 func (m *RouterMetrics) StopMetricsTracker() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
+		m.wg.Wait()
 		m.logger.Infof("Reporting routine is stopping")
-		m.reportMetrics()
+		m.reportMetrics(true)
 	})
 }
 
 func (m *RouterMetrics) StartMetricsTracker() {
 	m.startOnce.Do(func() {
 		if m.interval > 0 {
-			go m.trackMetrics()
+			m.wg.Go(m.trackMetrics)
 		}
 	})
 }
@@ -177,12 +181,12 @@ func (m *RouterMetrics) trackMetrics() {
 		case <-m.stopChan:
 			return
 		case <-ticker.C:
-			m.reportMetrics()
+			m.reportMetrics(false)
 		}
 	}
 }
 
-func (m *RouterMetrics) reportMetrics() {
+func (m *RouterMetrics) reportMetrics(final bool) {
 	txCount := monitoring.GetMetricValue(m.arrivedTxs.(prometheus.Metric), m.logger)
 	txRejected400 := monitoring.GetMetricValue(m.rejectedTxsWithCode400.(prometheus.Metric), m.logger)
 	txRejected500 := monitoring.GetMetricValue(m.rejectedTxsWithCode500.(prometheus.Metric), m.logger)
@@ -192,9 +196,13 @@ func (m *RouterMetrics) reportMetrics() {
 	activeSubmitStreams := monitoring.GetMetricValue(m.activeSubmitStreams.(prometheus.Metric), m.logger)
 	submitInvocations := monitoring.GetMetricValue(m.submitInvocations.(prometheus.Metric), m.logger)
 	arrivedTxsLastValue := atomic.LoadUint64(&m.arrivedTxsLastValue)
-	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_arrived=%d, transactions_arrived_per_second=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d, transactions_forwarded=%d, active_broadcast_streams=%d, active_submit_streams=%d, submit_invocations=%d",
-		m.partyID, int(txCount), float64(txCount-float64(arrivedTxsLastValue))/m.interval.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled), int(txForwarded), int(activeBroadcastStreams), int(activeSubmitStreams), int(submitInvocations))
+	received, elapsed, rateKey := txCount-float64(arrivedTxsLastValue), m.interval, "transactions_arrived_per_second"
 
+	if final {
+		received, elapsed, rateKey = txCount, time.Since(m.startTime), "transactions_arrived_per_second_avg"
+	}
+	m.logger.Infof("ROUTER_METRICS: party_id=%d, transactions_arrived=%d, %s=%.f, transactions_rejected_with_code_400=%d, transactions_rejected_with_code_500=%d, transactions_throttled=%d, transactions_forwarded=%d, active_broadcast_streams=%d, active_submit_streams=%d, submit_invocations=%d",
+		m.partyID, int(txCount), rateKey, received/elapsed.Seconds(), int(txRejected400), int(txRejected500), int(txThrottled), int(txForwarded), int(activeBroadcastStreams), int(activeSubmitStreams), int(submitInvocations))
 	atomic.StoreUint64(&m.arrivedTxsLastValue, uint64(txCount))
 }
 
