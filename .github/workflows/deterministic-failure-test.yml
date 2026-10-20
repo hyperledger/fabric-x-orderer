@@ -140,6 +140,10 @@ jobs:
           else
             echo "_No summary files were produced._" >> $GITHUB_STEP_SUMMARY
           fi
+          if [ -f test/failure-tests/test-results/summary-kills.txt ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat test/failure-tests/test-results/summary-kills.txt >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload logs
         if: always()
@@ -147,6 +151,15 @@ jobs:
         with:
           name: deterministic-failure-test-logs-${{ github.run_number }}
           path: test/failure-tests/test-results/logs/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload kill report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deterministic-failure-test-kill-report-${{ github.run_number }}
+          path: test/failure-tests/test-results/summary-kills.txt
           retention-days: 30
           if-no-files-found: ignore
 

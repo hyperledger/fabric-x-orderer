@@ -6,7 +6,7 @@ The test passes only if assembler 1 confirms every transaction that was sent.
 
 ## Running
 
-From the repository root (the `make` target builds the binaries first):
+From the repository root, on Linux or macOS (the `make` target builds the binaries first):
 
 ```bash
 make deterministic-failure-test
@@ -51,6 +51,13 @@ The exit code is `0` if every transaction was confirmed, `1` otherwise.
 `all N txs were sent to the routers and received by assembler 1`. Submit has no "failed" line: a lost tx
 makes it wait until the drain deadline stops it, so the missing line is what fails the test.
 
+**Only assembler 1 is verified.** `armageddon submit` pulls blocks from party 1 only (see the
+`TODO: verify all assemblers' height` in `armageddon.go`); the other parties' assemblers are not checked.
+
+**A node that does not come back stops the test.** After every restart the runner waits for the node's
+`/healthz`. If it does not answer within 60s, or a node is found dead before its kill, the run stops
+right away and the summary names the node.
+
 ## Results
 
 ```text
@@ -70,6 +77,7 @@ test/failure-tests/test-results/
 | `../failure-test-lib/arma-network.sh`      | config generation, starting nodes, health checks      |
 | `../failure-test-lib/kill-and-restart.sh`  | killing and restarting one node                       |
 | `../failure-test-lib/progress-monitor.sh`  | status snapshots and the wait for the last txs        |
+| `../failure-test-lib/run-failure-test.sh` | the steps every failure test runs, from starting the network to the report |
 | `../failure-test-lib/test-report.sh`       | the verdict, the results folder and the exit code        |
 
 ## GitHub Actions

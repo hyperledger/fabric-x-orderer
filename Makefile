@@ -254,6 +254,7 @@ fully-randomized-failure-test: binary
 	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
 	SUBMIT_DRAIN_SECONDS=$(SUBMIT_DRAIN_SECONDS) \
 	FAILURE_RUNNER_START_DELAY=$(FAILURE_RUNNER_START_DELAY) \
+	RANDOM_SEED=$(RANDOM_SEED) \
 	test/failure-tests/fully-randomized-failure-test/fully-randomized-failure-test.sh
 
 .PHONY: sample-tests
