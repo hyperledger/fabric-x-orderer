@@ -210,5 +210,5 @@ Batching:
   # RequestMaxBytes is the maximal number of bytes allowed in a request.
   RequestMaxBytes: 1048576
 
-  # MaxPartyID is the maximum PartyID ever used.
-  MaxPartyID: 4
+# MaxPartyID is the maximum PartyID ever used.
+MaxPartyID: 4
