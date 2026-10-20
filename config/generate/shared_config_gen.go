@@ -50,6 +50,7 @@ func ExtendArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalCon
 	sharedConfig.PartiesConfig = append(sharedConfig.PartiesConfig, newSharedConfig.PartiesConfig...)
 	sharedConfig.ConsensusConfig = newSharedConfig.ConsensusConfig
 	sharedConfig.BatchingConfig = newSharedConfig.BatchingConfig
+	sharedConfig.MaxPartyID = max(sharedConfig.MaxPartyID, newSharedConfig.MaxPartyID)
 
 	err = utils.WriteToYAML(&sharedConfig, filepath.Join(outputPath, "shared_config.yaml"))
 	if err != nil {
@@ -59,11 +60,16 @@ func ExtendArmaSharedConfig(network Network, networkLocalConfig *NetworkLocalCon
 }
 
 func createNetworkSharedConfig(network Network, networkLocalConfig *NetworkLocalConfig, cryptoBaseDir string) config.SharedConfigYaml {
+	maxPartyID := network.MaxPartyID
+	for _, party := range network.Parties {
+		maxPartyID = max(maxPartyID, party.ID)
+	}
+
 	sharedConfig := config.SharedConfigYaml{
 		PartiesConfig:   createPartiesConfig(network, networkLocalConfig, cryptoBaseDir),
 		ConsensusConfig: config.ConsensusConfig{BFTConfig: config.DefaultArmaBFTConfig()},
 		BatchingConfig:  createBatchingConfig(),
-		MaxPartyID:      network.MaxPartyID,
+		MaxPartyID:      maxPartyID,
 	}
 	return sharedConfig
 }
