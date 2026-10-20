@@ -13,12 +13,13 @@ watch_until_done() {
   fi
   cat <<EOF
 ==========================================
-Test running for ${DURATION} minutes: $(date -d "@${RUN_START_TIME}" '+%H:%M:%S') → $(date -d "@${RUN_END_TIME}" '+%H:%M:%S')
+Test running for ${DURATION} minutes: $(date '+%H:%M:%S') → $(clock_time "$RUN_END_TIME")
 Status report: ${status_rule}
 At the end: up to ${SUBMIT_DRAIN_SECONDS}s for the last txs to be confirmed
 ==========================================
 EOF
 
+  SUBMIT_END=""
   local now last_snapshot=$RUN_START_TIME
   while true; do
     now=$(date +%s)
@@ -26,8 +27,13 @@ EOF
       print_snapshot "Duration limit reached (${DURATION} minutes)"
       break
     fi
+    if [ -f "${TEST_DIR}/node_failure" ]; then
+      print_snapshot "Stopping early: a node failed (see the reason below)"
+      break
+    fi
     if ! kill -0 "$SUBMIT_PID" 2>/dev/null; then
       print_snapshot "Submit exited before the duration limit"
+      SUBMIT_END=early
       break
     fi
     if [ -f "${TEST_DIR}/snapshot_request" ]; then
@@ -45,21 +51,40 @@ EOF
     echo "The failure runner starts no new kills from now on"
   fi
 
-  # Watchdog: submit waits forever for a lost tx, so stop it after the drain window
-  echo "Waiting up to ${SUBMIT_DRAIN_SECONDS}s for submit to confirm the last txs..."
-  local drain_start submit_rc=0
+  local drain_start waited
   drain_start=$(date +%s)
-  ( sleep "$SUBMIT_DRAIN_SECONDS"; kill "$SUBMIT_PID" 2>/dev/null ) &
-  local watchdog=$!
-  wait "$SUBMIT_PID" || submit_rc=$?
-  kill "$watchdog" 2>/dev/null || true
-
-  local drain_seconds=$(( $(date +%s) - drain_start ))
-  if [ "$drain_seconds" -ge "$SUBMIT_DRAIN_SECONDS" ]; then
-    echo "Submit was stopped by the ${SUBMIT_DRAIN_SECONDS}s deadline (exit code ${submit_rc})"
+  waited=0
+  if [ -f "${TEST_DIR}/node_failure" ]; then
+    echo "Not waiting for submit: a node failed, so the result is already known"
   else
-    echo "Submit exited after ${drain_seconds}s (exit code ${submit_rc})"
+    # Submit waits forever for a lost tx, so give up after SUBMIT_DRAIN_SECONDS
+    echo "Waiting up to ${SUBMIT_DRAIN_SECONDS}s for submit to confirm the last txs..."
+    while kill -0 "$SUBMIT_PID" 2>/dev/null && [ "$waited" -lt "$SUBMIT_DRAIN_SECONDS" ]; do
+      sleep 1
+      waited=$(( $(date +%s) - drain_start ))
+    done
   fi
+  if kill -0 "$SUBMIT_PID" 2>/dev/null; then
+    kill "$SUBMIT_PID" 2>/dev/null || true
+    SUBMIT_END=gave_up
+  elif [ -z "$SUBMIT_END" ]; then
+    SUBMIT_END=exited
+  fi
+  SUBMIT_RC=0
+  wait "$SUBMIT_PID" || SUBMIT_RC=$?
+
+  if [ -f "${TEST_DIR}/node_failure" ]; then
+    echo "Submit stopped (exit code ${SUBMIT_RC})"
+  elif [ "$SUBMIT_END" = gave_up ]; then
+    echo "Gave up after ${SUBMIT_DRAIN_SECONDS}s: some txs were still not confirmed, submit stopped"
+  else
+    echo "Submit exited after ${waited}s (exit code ${SUBMIT_RC})"
+  fi
+}
+
+# Prints an epoch time (seconds) as HH:MM:SS. GNU date uses -d @, macOS date uses -r
+clock_time() {
+  date -d "@$1" '+%H:%M:%S' 2>/dev/null || date -r "$1" '+%H:%M:%S'
 }
 
 # Built first and printed in one write, so failure runner lines never land inside it
@@ -86,8 +111,8 @@ snapshot_text() {
 
   local i sent lost reconnected
   for i in $(seq 1 "$NUM_PARTIES"); do
-    sent=$(grep "BroadcastClientToRouter${i}.*Report" submit.log 2>/dev/null \
-      | grep -oP 'sent \K[0-9]+(?= transactions in the last)' \
+    sent=$(grep "\[BroadcastClientToRouter${i}\].*Report" submit.log 2>/dev/null \
+      | sed -nE 's|.* sent ([0-9]+) transactions in the last.*|\1|p' \
       | awk '{sum+=$1} END {print sum+0}') || true
     echo "  → Router ${i}: ${sent:-0} txs sent"
   done
