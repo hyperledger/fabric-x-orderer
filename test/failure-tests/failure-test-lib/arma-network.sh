@@ -21,9 +21,8 @@ print_test_configuration() {
 
 remove_leftovers_of_previous_run() {
   echo "Removing processes and logs left by a previous run..."
-  pkill -f "/bin/arma " || true
+  stop_all_nodes
   pkill -f "bin/armageddon submit" || true
-  sleep 1
   rm -f submit.log failure_runner.log consenter*.log batcher*.log assembler*.log router*.log
 }
 
@@ -54,10 +53,12 @@ EOF
   local count=0 config_file component party data_dir
   for config_file in "${TEST_DIR}"/config/party*/local_config_*.yaml; do
     component=$(basename "$config_file" .yaml | sed 's/local_config_//')
-    party=$(echo "$config_file" | grep -oP 'party\K[0-9]+')
+    party=$(echo "$config_file" | sed -E 's|.*/party([0-9]+)/.*|\1|')
     data_dir="${TEST_DIR}/data/${component}_party${party}"
     mkdir -p "$data_dir"
-    sed -i "s|Location: /var/dec-trust.*|Location: ${data_dir}|; s|WALDir: /var/dec-trust.*|WALDir: ${data_dir}/wal|" "$config_file"
+    sed "s|Location: /var/dec-trust.*|Location: ${data_dir}|; s|WALDir: /var/dec-trust.*|WALDir: ${data_dir}/wal|" \
+      "$config_file" > "${config_file}.tmp"
+    mv "${config_file}.tmp" "$config_file"
     count=$((count + 1))
   done
   echo "Data paths set for ${count} node configs under ${TEST_DIR}/data"
@@ -92,27 +93,39 @@ launch_node() {
   echo "$NODE_PID" > "$NODE_PID_FILE"
 }
 
+# Waits until the node's /healthz answers OK. Reads its log from byte $3 on, so after a
+# restart only the new health URL is found (the port changes on every start).
 wait_for_healthz() {
-  local log_file=$1 label=$2 url="" i
-  for i in $(seq 1 60); do
-    url=$(grep -oP 'Health check serving on URL:\s+\K(https?://\S+)' "$log_file" 2>/dev/null) || true
+  local log_file=$1 label=$2 from_byte=${3:-0} url="" attempt
+  for attempt in $(seq 1 60); do
+    url=$(tail -c +$((from_byte + 1)) "$log_file" 2>/dev/null \
+      | sed -nE 's|.*Health check serving on URL:[[:space:]]+(https?://[^[:space:]]+).*|\1|p' | tail -1) || true
     if [ -n "$url" ]; then
       break
     fi
     sleep 1
   done
   if [ -z "$url" ]; then
-    startup_failed "${label} failed to start: health check URL never appeared in log within 60s"
+    HEALTH_ERROR="its health URL never appeared in ${log_file} within 60s"
+    return 1
   fi
 
-  for i in $(seq 1 60); do
+  for attempt in $(seq 1 60); do
     if curl -sf "$url" > /dev/null 2>&1; then
       echo "  ${label} healthy at ${url}"
       return 0
     fi
     sleep 1
   done
-  startup_failed "${label} failed to start: /healthz at ${url} did not return HTTP 200 within 60s"
+  HEALTH_ERROR="/healthz at ${url} did not answer OK within 60s"
+  return 1
+}
+
+# Some nodes ignore the first stop request while busy, so force-stop whatever is left after 5s
+stop_all_nodes() {
+  pkill -f "/bin/arma " || true
+  sleep 5
+  pkill -9 -f "/bin/arma " || true
 }
 
 startup_failed() {
@@ -125,23 +138,28 @@ startup_failed() {
 start_arma_network() {
   echo "Starting ARMA network (${NUM_PARTIES} parties, ${NUM_SHARDS} shards)..."
   mkdir -p "${TEST_DIR}/pids"
+  local i j
   for i in $(seq 1 "$NUM_PARTIES"); do
-    launch_node consensus "$i"
-    wait_for_healthz "$NODE_LOG" "Consenter ${i} (PID ${NODE_PID})"
+    start_node_or_fail consensus "$i" "" "Consenter ${i}"
   done
   for i in $(seq 1 "$NUM_PARTIES"); do
     for j in $(seq 1 "$NUM_SHARDS"); do
-      launch_node batcher "$i" "$j"
-      wait_for_healthz "$NODE_LOG" "Batcher ${i}-${j} (PID ${NODE_PID})"
+      start_node_or_fail batcher "$i" "$j" "Batcher ${i}-${j}"
     done
   done
   for i in $(seq 1 "$NUM_PARTIES"); do
-    launch_node assembler "$i"
-    wait_for_healthz "$NODE_LOG" "Assembler ${i} (PID ${NODE_PID})"
+    start_node_or_fail assembler "$i" "" "Assembler ${i}"
   done
   for i in $(seq 1 "$NUM_PARTIES"); do
-    launch_node router "$i"
-    wait_for_healthz "$NODE_LOG" "Router ${i} (PID ${NODE_PID})"
+    start_node_or_fail router "$i" "" "Router ${i}"
   done
   echo "ARMA network started, all nodes healthy"
+}
+
+start_node_or_fail() {
+  local component=$1 party=$2 shard=$3 label=$4
+  launch_node "$component" "$party" "$shard"
+  if ! wait_for_healthz "$NODE_LOG" "${label} (PID ${NODE_PID})"; then
+    startup_failed "${label} failed to start: ${HEALTH_ERROR}"
+  fi
 }

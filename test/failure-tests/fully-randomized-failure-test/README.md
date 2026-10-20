@@ -7,7 +7,7 @@ The test passes only if assembler 1 confirms every transaction that was sent.
 
 ## Running
 
-From the repository root (the `make` target builds the binaries first):
+From the repository root, on Linux or macOS (the `make` target builds the binaries first):
 
 ```bash
 make fully-randomized-failure-test
@@ -40,7 +40,9 @@ The exit code is `0` if every transaction was confirmed, `1` otherwise.
    off each one as it appears in **assembler 1**'s blocks.
 4. Starts the failure runner: it builds a pool of all `NUM_PARTIES × (3 + NUM_SHARDS)` nodes and, again
    and again, picks one at random (`$RANDOM`), kills it, keeps it down for `FAILURE_RUNNER_STOP_DURATION`,
-   restarts it and waits `FAILURE_RUNNER_RESTART_WAIT`. The random seed is printed at the start of the run.
+   restarts it and waits `FAILURE_RUNNER_RESTART_WAIT`. Every run picks in a different random order; the seed
+   is printed at the start and in `summary.txt`, and `make fully-randomized-failure-test RANDOM_SEED=<seed>`
+   repeats the same order of picks (with the same NUM_PARTIES and NUM_SHARDS; the timing still differs).
 5. Prints a status snapshot every `3 + NUM_SHARDS` kills (every 5 minutes without the runner).
 6. When the duration ends, the runner starts no new kills, and the test waits up to `SUBMIT_DRAIN_SECONDS`
    for submit to confirm the last txs. This is a deadline, not a delay: on a healthy run it takes seconds.
@@ -51,6 +53,13 @@ The exit code is `0` if every transaction was confirmed, `1` otherwise.
 **Pass / fail:** the test passes only if `submit.log` contains
 `all N txs were sent to the routers and received by assembler 1`. Submit has no "failed" line: a lost tx
 makes it wait until the drain deadline stops it, so the missing line is what fails the test.
+
+**Only assembler 1 is verified.** `armageddon submit` pulls blocks from party 1 only (see the
+`TODO: verify all assemblers' height` in `armageddon.go`); the other parties' assemblers are not checked.
+
+**A node that does not come back stops the test.** After every restart the runner waits for the node's
+`/healthz`. If it does not answer within 60s, or a node is found dead before its kill, the run stops
+right away and the summary names the node.
 
 ## Results
 
@@ -71,6 +80,7 @@ test/failure-tests/test-results/
 | `../failure-test-lib/arma-network.sh`      | config generation, starting nodes, health checks          |
 | `../failure-test-lib/kill-and-restart.sh`  | killing and restarting one node                           |
 | `../failure-test-lib/progress-monitor.sh`  | status snapshots and the wait for the last txs            |
+| `../failure-test-lib/run-failure-test.sh` | the steps every failure test runs, from starting the network to the report |
 | `../failure-test-lib/test-report.sh`       | the verdict, the results folder and the exit code            |
 
 ## GitHub Actions
