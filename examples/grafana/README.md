@@ -28,6 +28,11 @@ To change the defaults, set `RATE`, `TX_SIZE`, `DURATION_SECONDS` or `OPEN_BROWS
 RATE=500 DURATION_SECONDS=60 ./examples/grafana/scripts/run_dashboard.sh
 ```
 
+To see the router throttling panels, set `THROTTLE_RATE` to throttle party 1's router to that many requests per second, for example:
+```
+THROTTLE_RATE=500 ./examples/grafana/scripts/run_dashboard.sh
+```
+
 ### Clean Up Sample
 To clean up the environment, run the following command from the root directory:
 ```

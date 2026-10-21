@@ -13,6 +13,7 @@ import (
 
 	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
+	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/api/msppb"
@@ -25,6 +26,8 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
+
+var logger = flogging.MustGetLogger("config.verify")
 
 // partyChanges keeps information about membership changes introduced during configuration update.
 type partyChanges struct {
@@ -59,6 +62,8 @@ type DefaultOrdererRules struct{}
 //  10. Party certificates must be valid, with expiration enforced for genesis
 //     configs and ignored for later config updates.
 //  11. Party IDs, shard IDs, and MaxPartyID must be within their valid ranges.
+//  12. Router and assembler hosts and ports in SharedConfig should match the corresponding
+//     broadcast and deliver OrdererEndpoints. Mismatches are logged as warnings.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
@@ -171,6 +176,11 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 	}
 	if err := validatePartyAndShardIDs(sharedConfig.PartiesConfig); err != nil {
 		return errors.Wrap(err, "invalid party or shard ID in shared config")
+	}
+
+	// 12.
+	if err := validateRouterAndAssemblerEndpoints(sharedConfig.PartiesConfig, partyOrgMap); err != nil {
+		return errors.Wrap(err, "failed to verify router and assembler endpoints against shared config")
 	}
 
 	return nil
@@ -694,6 +704,44 @@ func validatePartyAndShardIDs(parties []*ordererpb.PartyConfig) error {
 			}
 			if batcher.ShardID == 0 || batcher.ShardID >= uint32(arma_types.ShardIDConsensus) {
 				return errors.Errorf("shard ID %d of party %d out of range [1, %d]", batcher.ShardID, party.PartyID, arma_types.ShardIDConsensus-1)
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateRouterAndAssemblerEndpoints(parties []*ordererpb.PartyConfig, partyOrgMap map[uint32]channelconfig.OrdererOrg) error {
+	for _, party := range parties {
+		org, exists := partyOrgMap[party.PartyID]
+		if !exists {
+			return errors.Errorf("missing orderer organization for party %d", party.PartyID)
+		}
+
+		routerHost := party.GetRouterConfig().GetHost()
+		routerPort := int(party.GetRouterConfig().GetPort())
+		assemblerHost := party.GetAssemblerConfig().GetHost()
+		assemblerPort := int(party.GetAssemblerConfig().GetPort())
+		for _, raw := range org.Endpoints() {
+			ep, err := types.ParseOrdererEndpoint(raw)
+			if err != nil {
+				return err
+			}
+			if slices.Contains(ep.API, types.Broadcast) && ep.Host != routerHost {
+				logger.Warnf("party %d: broadcast endpoint %q has host %s, but SharedConfig RouterConfig.Host is %s",
+					party.PartyID, raw, ep.Host, routerHost)
+			}
+			if slices.Contains(ep.API, types.Broadcast) && ep.Port != routerPort {
+				logger.Warnf("party %d: broadcast endpoint %q has port %d, but SharedConfig RouterConfig.Port is %d",
+					party.PartyID, raw, ep.Port, routerPort)
+			}
+			if slices.Contains(ep.API, types.Deliver) && ep.Host != assemblerHost {
+				logger.Warnf("party %d: deliver endpoint %q has host %s, but SharedConfig AssemblerConfig.Host is %s",
+					party.PartyID, raw, ep.Host, assemblerHost)
+			}
+			if slices.Contains(ep.API, types.Deliver) && ep.Port != assemblerPort {
+				logger.Warnf("party %d: deliver endpoint %q has port %d, but SharedConfig AssemblerConfig.Port is %d",
+					party.PartyID, raw, ep.Port, assemblerPort)
 			}
 		}
 	}

@@ -41,6 +41,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
+	"github.com/pkg/errors"
 )
 
 type Net interface {
@@ -739,9 +740,14 @@ func (r *Router) ApplyConfig(configBlock *common.Block) (bool, error) {
 		return false, fmt.Errorf("failed to extract new configuration from last config block: %v", err)
 	}
 
-	// send ack to the consensus node
+	// send ack to the consensus node, and wait for its response before applying the new config
 	if err := r.configAcker.SubmitConfigAck(configSeq); err != nil {
-		r.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
+		// the router is being stopped; applying the new config would start it up again.
+		if errors.Is(err, configack.ErrSenderStopped) {
+			r.logger.Infof("router is stopping, aborting reconfiguration on config sequence %d", configSeq)
+			return false, nil
+		}
+		r.logger.Warnf("did not receive the consenter's response to the ConfigAck for config sequence %d, proceeding with the new config: %v", configSeq, err)
 	}
 
 	// first, check if party is evicted in the new configuration. If yes, an admin action is required.

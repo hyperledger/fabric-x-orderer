@@ -43,10 +43,10 @@ import (
 	node_utils "github.com/hyperledger/fabric-x-orderer/node/utils"
 
 	"github.com/pkg/errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
-
-const defaultConfigAckReceiverTimeout = time.Second * 60 // TODO: expose in local config
 
 type Storage interface {
 	Append(block *common.Block)
@@ -139,7 +139,8 @@ type Consensus struct {
 	ConfigAckReceiver      *configack.Receiver
 	// ConfigAckReceiverTimeout bounds how long ApplyConfig waits for config acks from the party's
 	// router, batchers and assembler before applying a new config anyway. Zero selects
-	// defaultConfigAckReceiverTimeout.
+	// configack.DefaultReceiverTimeout. It must be shorter than configack.DefaultSubmitConfigAckTimeout,
+	// the members' wait for the consenter's answer, or they may stop waiting before it answers.
 	ConfigAckReceiverTimeout time.Duration
 }
 
@@ -360,6 +361,12 @@ func (c *Consensus) NotifyEvent(stream protos.Consensus_NotifyEventServer) error
 		c.Logger.Debugf("Received event %s", printEvent(event.GetPayload()))
 
 		if err := c.SubmitRequest(event.GetPayload()); err != nil {
+			// Assemblers broadcast their reports to every consenter, so a consenter that lags behind or is
+			// syncing routinely receives reports of decisions it has not committed yet.
+			if errors.Is(err, ErrReportNotCommitted) {
+				c.Logger.Debugf("Failed submitting request: %v", err)
+				continue
+			}
 			c.Logger.Warnf("Failed submitting request: %v", err)
 		}
 	}
@@ -408,7 +415,6 @@ func (c *Consensus) SubmitRequest(req []byte) error {
 
 	_, ce, err := c.verifyCE(req)
 	if err != nil {
-		c.Logger.Warnf("Received bad request: %v", err)
 		return err
 	}
 
@@ -460,7 +466,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	// The requests are verified before the state transition is simulated, because the payload comes from
 	// the leader: a request that does not decode would otherwise panic in SimulateStateTransition, and an
 	// unverified request would otherwise be processed into the computed state.
-	reqInfos, err := c.verifyProposalRequests(requests, verificationSeq)
+	reqInfos, err := c.verifyProposalRequests(requests, verificationSeq, hdr.Num)
 	if err != nil {
 		return nil, err
 	}
@@ -554,9 +560,9 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	return reqInfos, nil
 }
 
-// verifyProposalRequests decodes every request in the proposal payload, verifies the ones that affect
-// the computed state at verificationSeq, and returns the info of all of them.
-func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, verificationSeq uint64) ([]smartbft_types.RequestInfo, error) {
+// verifyProposalRequests decodes every request in the proposal payload of decision proposalNum, verifies
+// the ones that affect the computed state at verificationSeq, and returns the info of all of them.
+func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, verificationSeq uint64, proposalNum arma_types.DecisionNum) ([]smartbft_types.RequestInfo, error) {
 	reqInfos := make([]smartbft_types.RequestInfo, 0, len(requests))
 	for _, rawReq := range requests {
 		configSeq, isBAF, err := c.getReqConfigSeq(rawReq)
@@ -570,7 +576,7 @@ func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, 
 		// reqInfos so SmartBFT removes it from its request pool; a request's ID embeds its config sequence,
 		// so reporting a stale one removes exactly it and never a legitimate request at the current sequence.
 		if configSeq == verificationSeq || (isBAF && configSeq < verificationSeq) {
-			reqID, err := c.VerifyRequest(rawReq)
+			reqID, _, err := c.verifyProposalCE(rawReq, proposalNum)
 			if err != nil {
 				return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
 			}
@@ -1153,7 +1159,10 @@ func (c *Consensus) ApplyConfig(lastBlock *common.Block) (bool, error) {
 	c.Logger.Infof("waiting for acknowledgement from router, batchers and assembler on the new configuration on sequence %d", configSeq)
 	ackTimeout := c.ConfigAckReceiverTimeout
 	if ackTimeout <= 0 {
-		ackTimeout = defaultConfigAckReceiverTimeout
+		ackTimeout = configack.DefaultReceiverTimeout
+	}
+	if ackTimeout >= configack.DefaultSubmitConfigAckTimeout {
+		c.Logger.Warnf("config ack timeout (%s) is not shorter than the party members' wait for its answer (%s); they may apply the new config before the consenter answers", ackTimeout, configack.DefaultSubmitConfigAckTimeout)
 	}
 	timeoutCtx, cancelFunc := context.WithTimeout(context.Background(), ackTimeout)
 	defer cancelFunc()
@@ -1303,7 +1312,26 @@ func (c *Consensus) getReqConfigSeq(req []byte) (uint64, bool, error) {
 // signature is at most 72 bytes for P-256 (and 139 for P-521), so this leaves ample headroom.
 const maxAssemblerReportSignatureSize = 256
 
+// ErrReportNotCommitted is wrapped by the rejection of an assembler decision report, submitted to this node, of a
+// decision this node has not committed yet.
+var ErrReportNotCommitted = errors.New("assembler decision report of a decision not committed yet")
+
+// verifyCE verifies a control event submitted to this node, before it enters the request pool.
 func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
+	return c.verifyControlEvent(req, 0)
+}
+
+// verifyProposalCE verifies a control event carried in the proposal of decision proposalNum. An assembler
+// decision report is bounded by the proposal's decision number rather than by this node's ledger height,
+// so every validator of the proposal reaches the same verdict.
+func (c *Consensus) verifyProposalCE(req []byte, proposalNum arma_types.DecisionNum) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
+	return c.verifyControlEvent(req, proposalNum)
+}
+
+// verifyControlEvent verifies a control event. proposalNum is the decision number of the proposal carrying
+// it, or 0 when it is not verified as part of a proposal; decision 0 is the genesis block, which is never
+// proposed.
+func (c *Consensus) verifyControlEvent(req []byte, proposalNum arma_types.DecisionNum) (smartbft_types.RequestInfo, *state.ControlEvent, error) {
 	ce := &state.ControlEvent{}
 	if err := ce.FromBytes(req); err != nil {
 		return smartbft_types.RequestInfo{}, nil, err
@@ -1320,6 +1348,7 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 	sigVerifier := c.SigVerifier
 	configRequestValidator := c.ConfigRequestValidator
 	configRulesVerifier := c.ConfigRulesVerifier
+	storage := c.Storage
 	c.lock.RUnlock()
 
 	if ce.Complaint != nil {
@@ -1375,6 +1404,9 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 		if len(report.Signature) == 0 {
 			return reqID, ce, errors.New("missing assembler decision report signature")
 		}
+		if err := verifyReportDecisionNum(storage, report, proposalNum); err != nil {
+			return reqID, ce, err
+		}
 		// Bound the signature before verifying it, so an oversized junk signature is not copied into
 		// the verification error and logged.
 		if len(report.Signature) > maxAssemblerReportSignatureSize {
@@ -1392,6 +1424,30 @@ func (c *Consensus) verifyCE(req []byte) (smartbft_types.RequestInfo, *state.Con
 	} else {
 		return smartbft_types.RequestInfo{}, ce, fmt.Errorf("empty control event")
 	}
+}
+
+// verifyReportDecisionNum rejects an assembler decision report of a decision that is not committed yet: an
+// assembler can only have committed a decision after consensus committed it. Inside the proposal of decision
+// proposalNum the last committed decision is proposalNum-1; otherwise it is the last decision in this node's
+// ledger, storage. The ledger height is read only here, so other control events do not pay for it.
+func verifyReportDecisionNum(storage Storage, report *state.AssemblerDecisionReport, proposalNum arma_types.DecisionNum) error {
+	if proposalNum == 0 {
+		height := storage.Height()
+		if height == 0 {
+			return errors.Wrapf(ErrReportNotCommitted, "assembler decision report of decision %d received before any decision is committed",
+				report.DecisionNum)
+		}
+		if lastCommitted := arma_types.DecisionNum(height - 1); report.DecisionNum > lastCommitted {
+			return errors.Wrapf(ErrReportNotCommitted, "assembler decision report of decision %d is ahead of the last committed decision %d",
+				report.DecisionNum, lastCommitted)
+		}
+		return nil
+	}
+	if report.DecisionNum >= proposalNum {
+		return errors.Errorf("assembler decision report of decision %d is not below the proposed decision %d",
+			report.DecisionNum, proposalNum)
+	}
+	return nil
 }
 
 func (c *Consensus) validateRouterFromContext(ctx context.Context) error {
@@ -1542,6 +1598,10 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 }
 
 // AckConfig handles ConfigAck RPC calls from party members (router, batchers, assembler).
+// A rejected ack is answered at once with an error in the response. An accepted ack is answered only once the
+// consenter is no longer waiting for acks on its config sequence, either because all the party members acked
+// it or because the consenter's wait for acks timed out; the party member applies the new config after that.
+// If the consenter stops first, the ack is answered with an Unavailable error, which the party member retries.
 func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
 	if req == nil {
 		return &protos.ConfigAckResponse{Error: "nil ConfigAck request"}, nil
@@ -1552,9 +1612,17 @@ func (c *Consensus) AckConfig(ctx context.Context, req *protos.ConfigAck) (*prot
 		return &protos.ConfigAckResponse{Error: err.Error()}, nil
 	}
 
-	err := c.ConfigAckReceiver.AddAck(req)
+	c.lock.RLock()
+	receiver := c.ConfigAckReceiver
+	c.lock.RUnlock()
+
+	err := receiver.AddAck(req)
 	if err != nil {
 		return &protos.ConfigAckResponse{Error: err.Error()}, nil
+	}
+
+	if err := receiver.WaitForRelease(ctx, req.ConfigSeq); err != nil {
+		return nil, status.Errorf(codes.Unavailable, "consenter did not respond to the config ack on sequence %d: %v", req.ConfigSeq, err)
 	}
 	return &protos.ConfigAckResponse{}, nil
 }

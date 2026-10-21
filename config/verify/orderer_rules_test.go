@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
@@ -321,6 +322,54 @@ func TestValidateNewConfig_InvalidMaxPartyID(t *testing.T) {
 
 	err = (&verify.DefaultOrdererRules{}).ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
 	require.EqualError(t, err, fmt.Sprintf("MaxPartyID %d exceeds uint16 maximum %d", math.MaxUint16+1, math.MaxUint16))
+}
+
+func TestValidateNewConfig_RouterAndAssemblerEndpointsMismatch(t *testing.T) {
+	_, env, _, _, _, _, _ := setupOrdererRulesTest(t, 1)
+	or := verify.DefaultOrdererRules{}
+
+	for _, tc := range []struct {
+		name   string
+		update func(party *ordererpb.PartyConfig)
+	}{
+		{
+			name:   "router host",
+			update: func(party *ordererpb.PartyConfig) { party.RouterConfig.Host = "router.example.com" },
+		},
+		{
+			name:   "router port",
+			update: func(party *ordererpb.PartyConfig) { party.RouterConfig.Port++ },
+		},
+		{
+			name:   "assembler host",
+			update: func(party *ordererpb.PartyConfig) { party.AssemblerConfig.Host = "assembler.example.com" },
+		},
+		{
+			name:   "assembler port",
+			update: func(party *ordererpb.PartyConfig) { party.AssemblerConfig.Port++ },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload, err := protoutil.UnmarshalPayload(env.Payload)
+			require.NoError(t, err)
+			cfgEnv := &common.ConfigEnvelope{}
+			require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+
+			// change the host or port in the shared config without updating the orderer endpoints
+			shared := configutil.GetSharedConfig(t, cfgEnv)
+			tc.update(shared.PartiesConfig[0])
+
+			consensusType := &orderer.ConsensusType{}
+			require.NoError(t, proto.Unmarshal(cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"].Value, consensusType))
+			consensusType.Metadata = protoutil.MarshalOrPanic(shared)
+			cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
+			payload.Data = protoutil.MarshalOrPanic(cfgEnv)
+
+			// a host or port mismatch only logs a warning and does not fail the validation
+			nextEnv := &common.Envelope{Payload: protoutil.MarshalOrPanic(payload), Signature: env.Signature}
+			require.NoError(t, or.ValidateNewConfig(nextEnv, factory.GetDefault(), types.PartyID(1)))
+		})
+	}
 }
 
 func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {

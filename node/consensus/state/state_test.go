@@ -7,13 +7,16 @@ SPDX-License-Identifier: Apache-2.0
 package state_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	consensus_state "github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	stateprotos "github.com/hyperledger/fabric-x-orderer/node/protos/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -256,6 +259,24 @@ func TestStateSerializeDeserialize(t *testing.T) {
 				AppContext: []byte{255},
 			},
 		},
+		{
+			name: "state with assembler heights and prune points",
+			state: consensus_state.State{
+				N:         4,
+				Threshold: 2,
+				Quorum:    3,
+				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 2}},
+				AssemblerHeights: []consensus_state.AssemblerHeight{
+					{Party: 1, DecisionNum: 7},
+					{Party: 3, DecisionNum: 12},
+				},
+				PrunePoints: []consensus_state.PrunePoint{
+					{Shard: 1, Primary: 2, Seq: 40},
+					{Shard: 2, Primary: 1, Seq: 5},
+				},
+				AppContext: []byte{1},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -302,6 +323,8 @@ func TestStateString(t *testing.T) {
 	assert.Contains(t, str, "Threshold: 2")
 	assert.Contains(t, str, "Quorum: 3")
 	assert.Contains(t, str, "ShardCount: 2")
+	assert.Contains(t, str, "AssemblerHeights: 0")
+	assert.Contains(t, str, "PrunePoints: 0")
 	assert.Contains(t, str, "Pending: none")
 	assert.Contains(t, str, "Complaints: 1")
 	assert.Contains(t, str, "Complaint: Signer: 2")
@@ -887,4 +910,172 @@ func TestExtractBatchAttestationsFromPending_EquivocationDigestLeak(t *testing.T
 
 	extracted2 := consensus_state.ExtractBatchAttestationsFromPending(&state2, logger)
 	assert.Len(t, extracted2, 4, "expected all fragments to be extracted")
+}
+
+func reportCE(
+	party types.PartyID, decisionNum types.DecisionNum, configSeq types.ConfigSequence,
+) consensus_state.ControlEvent {
+	return consensus_state.ControlEvent{AssemblerReport: &consensus_state.AssemblerDecisionReport{
+		Party:       party,
+		DecisionNum: decisionNum,
+		ConfigSeq:   configSeq,
+		Signature:   []byte{9},
+	}}
+}
+
+func TestCollectAssemblerReports(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+
+	tests := []struct {
+		name     string
+		initial  []consensus_state.AssemblerHeight
+		ces      []consensus_state.ControlEvent
+		expected []consensus_state.AssemblerHeight
+	}{
+		{
+			name:     "first report of a party is recorded",
+			ces:      []consensus_state.ControlEvent{reportCE(2, 10, 0)},
+			expected: []consensus_state.AssemblerHeight{{Party: 2, DecisionNum: 10}},
+		},
+		{
+			name:     "higher report replaces the recorded height",
+			initial:  []consensus_state.AssemblerHeight{{Party: 2, DecisionNum: 10}},
+			ces:      []consensus_state.ControlEvent{reportCE(2, 15, 0)},
+			expected: []consensus_state.AssemblerHeight{{Party: 2, DecisionNum: 15}},
+		},
+		{
+			name:     "lower report is ignored",
+			initial:  []consensus_state.AssemblerHeight{{Party: 2, DecisionNum: 10}},
+			ces:      []consensus_state.ControlEvent{reportCE(2, 5, 0)},
+			expected: []consensus_state.AssemblerHeight{{Party: 2, DecisionNum: 10}},
+		},
+		{
+			name:     "equal report is ignored",
+			initial:  []consensus_state.AssemblerHeight{{Party: 2, DecisionNum: 10}},
+			ces:      []consensus_state.ControlEvent{reportCE(2, 10, 0)},
+			expected: []consensus_state.AssemblerHeight{{Party: 2, DecisionNum: 10}},
+		},
+		{
+			name:     "several reports of one party in a round reduce to the max",
+			ces:      []consensus_state.ControlEvent{reportCE(1, 4, 0), reportCE(1, 9, 0), reportCE(1, 6, 0)},
+			expected: []consensus_state.AssemblerHeight{{Party: 1, DecisionNum: 9}},
+		},
+		{
+			name:    "heights are kept sorted by party",
+			initial: []consensus_state.AssemblerHeight{{Party: 2, DecisionNum: 1}},
+			ces:     []consensus_state.ControlEvent{reportCE(4, 3, 0), reportCE(1, 7, 0), reportCE(3, 2, 0)},
+			expected: []consensus_state.AssemblerHeight{
+				{Party: 1, DecisionNum: 7},
+				{Party: 2, DecisionNum: 1},
+				{Party: 3, DecisionNum: 2},
+				{Party: 4, DecisionNum: 3},
+			},
+		},
+		{
+			name:     "non-report events are ignored",
+			ces:      []consensus_state.ControlEvent{bafCE(1, 1, 1, []byte{1}, 2, 0, 0, nil), {Complaint: &complaint}},
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := initialState.Clone()
+			s.AssemblerHeights = tt.initial
+			s.CollectAssemblerReports(logger, tt.ces...)
+			assert.Equal(t, tt.expected, s.AssemblerHeights)
+		})
+	}
+}
+
+// TestProcessRecordsAssemblerReports verifies that Process records reports of the current config
+// sequence, drops reports of any other config sequence, and carries published prune points over to the
+// next state (UpdatePrunePoints never computes a new one yet, so it must not clear existing ones).
+func TestProcessRecordsAssemblerReports(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+	const cur = types.ConfigSequence(3)
+
+	st := initialState.Clone()
+	st.PrunePoints = []consensus_state.PrunePoint{{Shard: 1, Primary: 2, Seq: 8}}
+
+	next, _, _ := st.Process(logger, cur, reportCE(1, 20, cur), reportCE(2, 30, cur-1), reportCE(3, 40, cur+1))
+
+	assert.Equal(t, []consensus_state.AssemblerHeight{{Party: 1, DecisionNum: 20}}, next.AssemblerHeights)
+	assert.Equal(t, []consensus_state.PrunePoint{{Shard: 1, Primary: 2, Seq: 8}}, next.PrunePoints)
+	assert.Empty(t, st.AssemblerHeights, "Process must not modify the receiver")
+}
+
+func TestStateCloneAssemblerHeightsAndPrunePoints(t *testing.T) {
+	st := initialState.Clone()
+	st.AssemblerHeights = []consensus_state.AssemblerHeight{{Party: 1, DecisionNum: 5}}
+	st.PrunePoints = []consensus_state.PrunePoint{{Shard: 1, Primary: 1, Seq: 3}}
+
+	clone := st.Clone()
+	clone.AssemblerHeights[0].DecisionNum = 6
+	clone.PrunePoints[0].Seq = 4
+
+	assert.Equal(t, types.DecisionNum(5), st.AssemblerHeights[0].DecisionNum)
+	assert.Equal(t, types.BatchSequence(3), st.PrunePoints[0].Seq)
+}
+
+func TestStatePrunePoint(t *testing.T) {
+	st := consensus_state.State{
+		PrunePoints: []consensus_state.PrunePoint{
+			{Shard: 1, Primary: 1, Seq: 10},
+			{Shard: 1, Primary: 3, Seq: 30},
+			{Shard: 2, Primary: 1, Seq: 50},
+		},
+	}
+
+	assert.Equal(t, types.BatchSequence(10), st.PrunePoint(1, 1))
+	assert.Equal(t, types.BatchSequence(30), st.PrunePoint(1, 3))
+	assert.Equal(t, types.BatchSequence(50), st.PrunePoint(2, 1))
+	assert.Zero(t, st.PrunePoint(1, 2), "absent primary")
+	assert.Zero(t, st.PrunePoint(3, 1), "absent shard")
+	assert.Zero(t, (&consensus_state.State{}).PrunePoint(1, 1), "no prune points")
+}
+
+func TestStateRetainAssemblerHeights(t *testing.T) {
+	st := initialState.Clone()
+	st.AssemblerHeights = []consensus_state.AssemblerHeight{
+		{Party: 1, DecisionNum: 5},
+		{Party: 2, DecisionNum: 6},
+		{Party: 3, DecisionNum: 7},
+	}
+	st.PrunePoints = []consensus_state.PrunePoint{{Shard: 1, Primary: 2, Seq: 3}}
+
+	st.RetainAssemblerHeights([]types.PartyID{3, 1, 4})
+
+	expected := []consensus_state.AssemblerHeight{{Party: 1, DecisionNum: 5}, {Party: 3, DecisionNum: 7}}
+	assert.Equal(t, expected, st.AssemblerHeights)
+	assert.Equal(t, []consensus_state.PrunePoint{{Shard: 1, Primary: 2, Seq: 3}}, st.PrunePoints, "prune points are kept")
+}
+
+func TestStateDeserializeRejectsOutOfRangePruningFields(t *testing.T) {
+	tests := []struct {
+		name  string
+		state *stateprotos.State
+	}{
+		{
+			name:  "assembler height party",
+			state: &stateprotos.State{AssemblerHeights: []*stateprotos.AssemblerHeight{{Party: math.MaxUint16 + 1}}},
+		},
+		{
+			name:  "prune point shard",
+			state: &stateprotos.State{PrunePoints: []*stateprotos.PrunePoint{{Shard: math.MaxUint16 + 1, Primary: 1}}},
+		},
+		{
+			name:  "prune point primary",
+			state: &stateprotos.State{PrunePoints: []*stateprotos.PrunePoint{{Shard: 1, Primary: math.MaxUint16 + 1}}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, err := proto.Marshal(tt.state)
+			require.NoError(t, err)
+			var s consensus_state.State
+			require.ErrorContains(t, s.Deserialize(raw), "exceeds uint16 maximum")
+		})
+	}
 }

@@ -410,7 +410,12 @@ A new configuration reaches the batcher as a decision whose last block is a conf
 adds the block to its config store, **soft-stops**, which pauses the batcher role and the decision
 puller while keeping the mempool, and acknowledges the new configuration sequence to the consenter.
 The ack means only that the batcher has received the config block, not that it has applied it: it is
-sent before the checks below, so a batcher that then enters pending-admin has acked it too.
+sent before the checks below, so a batcher that then enters pending-admin has acked it too. The
+batcher then waits for the consenter's answer, which comes once the consenter has the acks of every
+node of its party or its wait for them times out. Meanwhile, the soft-stopped batcher keeps serving
+batches under the current configuration, so an assembler that is still behind can pull the batches
+it needs to reach the config block. If no answer arrives before the batcher's own timeout, the
+batcher goes on with a warning.
 
 Some changes cannot be applied by the running node. If the party is evicted, if the batcher's own
 identity changes (its endpoint or certificates), or, in the current version, if most of the batching

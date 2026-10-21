@@ -361,7 +361,7 @@ func makeConsensusNode(t *testing.T, sk *ecdsa.PrivateKey, partyID arma_types.Pa
 		Metrics:           node_consensus.NewConsensusMetrics(&consenterNodeConfig, ledger.Height(), 1, l),
 		MainExitChan:      make(chan struct{}),
 		ReconfigAbort:     make(chan struct{}),
-		ConfigAckReceiver: configack.NewReceiver(l, []arma_types.ShardID{1, 2}),
+		ConfigAckReceiver: configack.NewReceiver(l, []arma_types.ShardID{1, 2}, 0),
 	}
 	c.InitOperationSystem()
 
@@ -896,12 +896,24 @@ func TestVerifyRequestAcceptsStaleConfigSeq(t *testing.T) {
 	require.ErrorContains(t, err, "config sequence ahead")
 }
 
+// storageHeight is a Storage that only reports its height, which bounds the assembler decision reports
+// verified outside a proposal.
+type storageHeight struct {
+	node_consensus.Storage
+	height uint64
+}
+
+func (s storageHeight) Height() uint64 {
+	return s.height
+}
+
 // TestVerifyRequestAssemblerDecisionReport covers the AssemblerDecisionReport branch of verifyCE
 // (reached via the exported VerifyRequest): a report is accepted only when its signature verifies
-// against the reporting party's assembler identity. A report signed by the right assembler passes;
-// a report from another config sequence (stale or ahead), a tampered payload or signature, a report
-// signed with the party's consenter key, a report from a party with no registered assembler key, and
-// an unsigned or oversized-signature report are all rejected.
+// against the reporting party's assembler identity and its decision is committed in this node's ledger.
+// A report signed by the right assembler passes; a report from another config sequence (stale or ahead),
+// a tampered payload or signature, a report signed with the party's consenter key, a report from a party
+// with no registered assembler key, an unsigned or oversized-signature report, and a report of a decision
+// beyond the ledger are all rejected.
 func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 	logger := testutil.CreateLogger(t, 1)
 
@@ -924,22 +936,29 @@ func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 	configtxValidator.SequenceReturns(uint64(currentConfigSeq))
 	bundle.ConfigtxValidatorReturns(configtxValidator)
 
+	// The ledger holds decisions 0..lastCommitted.
+	const lastCommitted = arma_types.DecisionNum(100)
 	c := &node_consensus.Consensus{
 		Logger:      logger,
 		SigVerifier: verifier,
 		Config:      &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
+		Storage:     storageHeight{height: uint64(lastCommitted) + 1},
 	}
 
 	reportReq := func(r *state.AssemblerDecisionReport) []byte {
 		return (&state.ControlEvent{AssemblerReport: r}).Bytes()
 	}
 
-	signedReportAt := func(t *testing.T, signer crypto.ECDSASigner, party arma_types.PartyID, configSeq arma_types.ConfigSequence) *state.AssemblerDecisionReport {
-		report := &state.AssemblerDecisionReport{Party: party, DecisionNum: 100, ConfigSeq: configSeq}
+	signedReportOf := func(t *testing.T, signer crypto.ECDSASigner, party arma_types.PartyID, configSeq arma_types.ConfigSequence, decisionNum arma_types.DecisionNum) *state.AssemblerDecisionReport {
+		report := &state.AssemblerDecisionReport{Party: party, DecisionNum: decisionNum, ConfigSeq: configSeq}
 		sig, err := signer.Sign(report.ToBeSigned())
 		require.NoError(t, err)
 		report.Signature = sig
 		return report
+	}
+
+	signedReportAt := func(t *testing.T, signer crypto.ECDSASigner, party arma_types.PartyID, configSeq arma_types.ConfigSequence) *state.AssemblerDecisionReport {
+		return signedReportOf(t, signer, party, configSeq, lastCommitted)
 	}
 
 	signedReport := func(t *testing.T, signer crypto.ECDSASigner, party arma_types.PartyID) *state.AssemblerDecisionReport {
@@ -965,7 +984,7 @@ func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 
 	t.Run("rejects a report with a tampered payload", func(t *testing.T) {
 		report := signedReport(t, assemblerSigner, 1)
-		report.DecisionNum = 200 // signature no longer matches the signed bytes
+		report.DecisionNum = lastCommitted - 1 // signature no longer matches the signed bytes
 
 		_, err := c.VerifyRequest(reportReq(report))
 		require.ErrorContains(t, err, invalidSig)
@@ -990,17 +1009,42 @@ func TestVerifyRequestAssemblerDecisionReport(t *testing.T) {
 	})
 
 	t.Run("rejects an unsigned report", func(t *testing.T) {
-		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 100, ConfigSeq: currentConfigSeq}
+		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: lastCommitted, ConfigSeq: currentConfigSeq}
 
 		_, err := c.VerifyRequest(reportReq(report))
 		require.ErrorContains(t, err, "missing assembler decision report signature")
 	})
 
 	t.Run("rejects a report with an oversized signature", func(t *testing.T) {
-		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: 100, ConfigSeq: currentConfigSeq, Signature: make([]byte, 1024)}
+		report := &state.AssemblerDecisionReport{Party: 1, DecisionNum: lastCommitted, ConfigSeq: currentConfigSeq, Signature: make([]byte, 1024)}
 
 		_, err := c.VerifyRequest(reportReq(report))
 		require.ErrorContains(t, err, "assembler decision report signature too large")
+	})
+
+	t.Run("accepts a report of the genesis decision", func(t *testing.T) {
+		_, err := c.VerifyRequest(reportReq(signedReportOf(t, assemblerSigner, 1, currentConfigSeq, 0)))
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects a report of a decision beyond the ledger", func(t *testing.T) {
+		for _, decisionNum := range []arma_types.DecisionNum{lastCommitted + 1, math.MaxUint64} {
+			_, err := c.VerifyRequest(reportReq(signedReportOf(t, assemblerSigner, 1, currentConfigSeq, decisionNum)))
+			require.ErrorContains(t, err, "is ahead of the last committed decision")
+			require.ErrorIs(t, err, node_consensus.ErrReportNotCommitted)
+		}
+	})
+
+	t.Run("rejects every report while the ledger is empty", func(t *testing.T) {
+		empty := &node_consensus.Consensus{
+			Logger:      logger,
+			SigVerifier: verifier,
+			Config:      &nodeconfig.ConsenterNodeConfig{Bundle: bundle},
+			Storage:     storageHeight{height: 0},
+		}
+		_, err := empty.VerifyRequest(reportReq(signedReportOf(t, assemblerSigner, 1, currentConfigSeq, 0)))
+		require.ErrorContains(t, err, "received before any decision is committed")
+		require.ErrorIs(t, err, node_consensus.ErrReportNotCommitted)
 	})
 }
 
@@ -1443,8 +1487,12 @@ func TestVerifyProposal(t *testing.T) {
 	}
 	brs := arma_types.BatchedRequests(reqs)
 
+	// The proposed decision number bounds the assembler decision reports in the proposal (1b-1f): a
+	// report of decision proposalNum-1 is the highest one accepted.
+	const proposalNum = arma_types.DecisionNum(101)
+
 	header := state.Header{}
-	header.Num = 0
+	header.Num = proposalNum
 
 	latestBlockHeader := &common.BlockHeader{}
 	latestBlockHeader.Number = initialAppContext.Number + 1
@@ -1456,7 +1504,7 @@ func TestVerifyProposal(t *testing.T) {
 	header.AvailableCommonBlocks = []*common.Block{{Header: latestBlockHeader}}
 
 	protoutil.InitBlockMetadata(header.AvailableCommonBlocks[0])
-	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ab, &state.GenesisOrderingInformation, 1)
+	blockMetadata, err := ledger.AssemblerBlockMetadataToBytes(ab, &state.OrderingInformation{DecisionNum: proposalNum, BatchCount: 1}, 1)
 	require.Nil(t, err)
 	header.AvailableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = blockMetadata
 
@@ -1466,7 +1514,7 @@ func TestVerifyProposal(t *testing.T) {
 	header.State = &newState
 
 	metadata := &smartbftprotos.ViewMetadata{
-		LatestSequence: 0,
+		LatestSequence: uint64(proposalNum),
 	}
 
 	mBytes, err := proto.Marshal(metadata)
@@ -1489,8 +1537,9 @@ func TestVerifyProposal(t *testing.T) {
 	require.Equal(t, c.RequestID(brs[1]), infos[1])
 
 	// 1b. a proposal carrying an assembler decision report is verified and the report is returned.
-	// The report is inert in state processing, so it does not affect the computed state / blocks;
-	// it must still be dispatched by getReqConfigSeq and RequestID (not rejected as an empty event).
+	// The report is recorded in the computed state's AssemblerHeights (it does not affect the blocks), so
+	// the proposal's header must carry it; it must also be dispatched by getReqConfigSeq and RequestID
+	// (not rejected as an empty event).
 	t.Log("proposal with assembler decision report")
 	// The assembler has its own key, distinct from party 2's consenter and batcher keys, so a lookup
 	// under the wrong role is caught.
@@ -1498,8 +1547,8 @@ func TestVerifyProposal(t *testing.T) {
 	require.NoError(t, err)
 	assemblerSigner := crypto.ECDSASigner(*assemblerSK)
 	verifier[arma_types.NewAssemblerIdentity(arma_types.PartyID(2))] = assemblerSigner.PublicKey
-	payloadWithReportAt := func(signer crypto.ECDSASigner, party arma_types.PartyID, configSeq arma_types.ConfigSequence) ([][]byte, []byte) {
-		assemblerReport := &state.AssemblerDecisionReport{Party: party, DecisionNum: 100, ConfigSeq: configSeq}
+	payloadWithReportOf := func(signer crypto.ECDSASigner, party arma_types.PartyID, configSeq arma_types.ConfigSequence, decisionNum arma_types.DecisionNum) ([][]byte, []byte) {
+		assemblerReport := &state.AssemblerDecisionReport{Party: party, DecisionNum: decisionNum, ConfigSeq: configSeq}
 		sig, err := signer.Sign(assemblerReport.ToBeSigned())
 		require.NoError(t, err)
 		assemblerReport.Signature = sig
@@ -1508,12 +1557,19 @@ func TestVerifyProposal(t *testing.T) {
 		brsWithReport := arma_types.BatchedRequests(reqsWithReport)
 		return reqsWithReport, brsWithReport.Serialize()
 	}
+	payloadWithReportAt := func(signer crypto.ECDSASigner, party arma_types.PartyID, configSeq arma_types.ConfigSequence) ([][]byte, []byte) {
+		return payloadWithReportOf(signer, party, configSeq, proposalNum-1)
+	}
 	payloadWithReport := func(signer crypto.ECDSASigner, party arma_types.PartyID) ([][]byte, []byte) {
 		return payloadWithReportAt(signer, party, 0) // the verification sequence in this test is 0
 	}
 	reqsWithReport, payload := payloadWithReport(assemblerSigner, 2)
+	headerWithReport := header
+	stateWithReport := newState
+	stateWithReport.AssemblerHeights = []state.AssemblerHeight{{Party: 2, DecisionNum: 100}}
+	headerWithReport.State = &stateWithReport
 	infosWithReport, err := c.VerifyProposal(smartbft_types.Proposal{
-		Header:   header.Serialize(),
+		Header:   headerWithReport.Serialize(),
 		Payload:  payload,
 		Metadata: mBytes,
 	})
@@ -1521,6 +1577,9 @@ func TestVerifyProposal(t *testing.T) {
 	require.Len(t, infosWithReport, len(reqsWithReport))
 	require.Equal(t, c.RequestID(reqsWithReport[2]), infosWithReport[2])
 	require.NotEmpty(t, infosWithReport[2].ID)
+	// A header whose state omits the recorded height does not match the state validators compute.
+	_, err = c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
+	require.ErrorContains(t, err, "isn't equal to computed state")
 
 	// 1c. a proposal carrying a report signed with the party's consenter key (not its assembler key)
 	// is rejected.
@@ -1535,16 +1594,27 @@ func TestVerifyProposal(t *testing.T) {
 	_, err = c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
 	require.ErrorContains(t, err, "invalid assembler decision report signature")
 
-	// 1e. a report from another config sequence is filtered out of the computed state, so it is not
-	// verified: even one signed with the wrong key does not fail the proposal (so a report signed under
-	// an old config, whose key a reconfig rotated, cannot stall consensus). It is still reported in
-	// reqInfos, so SmartBFT removes it from its request pool.
+	// 1e. a report from another config sequence is filtered out of the computed state (so the header
+	// without it matches), and it is not verified: even one signed with the wrong key does not fail the
+	// proposal (so a report signed under an old config, whose key a reconfig rotated, cannot stall
+	// consensus). It is still reported in reqInfos, so SmartBFT removes it from its request pool.
 	t.Log("proposal with assembler decision report from another config sequence")
 	reqsWithStaleReport, payload := payloadWithReportAt(crypto.ECDSASigner(*sks[1]), 2, 1)
 	infosWithStaleReport, err := c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
 	require.NoError(t, err)
 	require.Len(t, infosWithStaleReport, len(reqsWithStaleReport))
 	require.Equal(t, c.RequestID(reqsWithStaleReport[2]), infosWithStaleReport[2])
+
+	// 1f. a proposal carrying a report of a decision that is not committed yet is rejected: inside the
+	// proposal of decision proposalNum, only decisions up to proposalNum-1 are committed. The bound comes
+	// from the proposal, not from this node's ledger (c has no Storage), so every validator agrees.
+	t.Log("proposal with assembler decision report of an uncommitted decision")
+	for _, decisionNum := range []arma_types.DecisionNum{proposalNum, proposalNum + 1, math.MaxUint64} {
+		_, payload = payloadWithReportOf(assemblerSigner, 2, 0, decisionNum)
+		_, err = c.VerifyProposal(smartbft_types.Proposal{Header: header.Serialize(), Payload: payload, Metadata: mBytes})
+		require.ErrorContains(t, err, "is not below the proposed decision")
+		require.NotErrorIs(t, err, node_consensus.ErrReportNotCommitted)
+	}
 
 	// 2. nil header
 	t.Log("nil header")
@@ -1561,7 +1631,7 @@ func TestVerifyProposal(t *testing.T) {
 	// 5. mismatch metadata latest sequence and header number
 	t.Log("mismatch metadata latest sequence and header number")
 	header1 := header
-	header1.Num = 1
+	header1.Num = proposalNum + 1
 	verifyProposalRequireError(t, c, header1.Serialize(), brs.Serialize(), mBytes)
 
 	// 6. mismatch state config in header

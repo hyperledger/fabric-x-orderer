@@ -113,6 +113,7 @@ func TestSubmitConfigAck_StopCancelsRetries(t *testing.T) {
 	case err := <-done:
 		require.Error(t, err)
 		require.ErrorContains(t, err, "sending config ack to consensus aborted")
+		require.ErrorIs(t, err, ErrSenderStopped)
 	case <-time.After(5 * time.Second):
 		t.Fatal("SubmitConfigAck did not return after Stop was called")
 	}
@@ -145,4 +146,124 @@ func TestSubmitConfigAck_ReturnsErrorOnTimeout(t *testing.T) {
 	// giving up after a single attempt.
 	require.Greater(t, atomic.LoadInt32(&callCount), int32(1))
 	configAcker.Stop()
+}
+
+// TestSubmitConfigAck_ReturnsErrorWhenConsenterRejects verifies that an ack the consenter rejects
+// is reported to the caller without retrying, since retrying a rejected ack does not change the outcome.
+func TestSubmitConfigAck_ReturnsErrorWhenConsenterRejects(t *testing.T) {
+	stubConsenter, configAcker := createTestSetupForConfigAcker(t, protos.NodeType_ROUTER, 0)
+
+	var callCount int32
+	stubConsenter.AckConfigHandler = func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		atomic.AddInt32(&callCount, 1)
+		return &protos.ConfigAckResponse{Error: "access denied"}, nil
+	}
+
+	stubConsenter.Start()
+	defer stubConsenter.Stop()
+
+	err := configAcker.SubmitConfigAck(1)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "access denied")
+	require.EqualValues(t, 1, atomic.LoadInt32(&callCount))
+	configAcker.Stop()
+}
+
+// TestSubmitConfigAck_WaitsForConsenterResponse verifies that SubmitConfigAck returns only once the
+// consenter responds, which it does when it is no longer waiting for acks from the party.
+func TestSubmitConfigAck_WaitsForConsenterResponse(t *testing.T) {
+	stubConsenter, configAcker := createTestSetupForConfigAcker(t, protos.NodeType_ROUTER, 0)
+
+	respond := make(chan struct{})
+	stubConsenter.AckConfigHandler = func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		<-respond
+		return &protos.ConfigAckResponse{}, nil
+	}
+
+	stubConsenter.Start()
+	defer stubConsenter.Stop()
+
+	done := make(chan error, 1)
+	go func() { done <- configAcker.SubmitConfigAck(1) }()
+
+	select {
+	case err := <-done:
+		t.Fatalf("SubmitConfigAck returned (%v) before the consenter responded", err)
+	case <-time.After(time.Second):
+	}
+
+	close(respond)
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("SubmitConfigAck did not return after the consenter responded")
+	}
+	configAcker.Stop()
+}
+
+// TestSubmitConfigAck_ReturnsErrorWhenConsenterDoesNotRespond verifies that SubmitConfigAck gives up
+// waiting for the consenter's response once the submission timeout elapses, so the caller can proceed.
+func TestSubmitConfigAck_ReturnsErrorWhenConsenterDoesNotRespond(t *testing.T) {
+	stubConsenter, configAcker := createTestSetupForConfigAcker(t, protos.NodeType_ROUTER, 0)
+
+	configAcker.submitConfigAckTimeout = 500 * time.Millisecond
+
+	respond := make(chan struct{})
+	stubConsenter.AckConfigHandler = func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		<-respond
+		return &protos.ConfigAckResponse{}, nil
+	}
+
+	stubConsenter.Start()
+	defer stubConsenter.Stop()
+	defer close(respond) // release the blocked handler before the stub consenter stops
+
+	err := configAcker.SubmitConfigAck(1)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "sending config ack to consensus aborted")
+	// a timeout is not a stop: the caller proceeds with the new config only on a timeout.
+	require.NotErrorIs(t, err, ErrSenderStopped)
+	configAcker.Stop()
+}
+
+// TestSubmitConfigAck_StopWhileWaitingForResponse verifies that stopping the sender while it waits for the
+// consenter's response returns ErrSenderStopped, so the caller can tell its node is stopping from a consenter
+// that did not respond in time, and abort the new config rather than apply it.
+func TestSubmitConfigAck_StopWhileWaitingForResponse(t *testing.T) {
+	stubConsenter, configAcker := createTestSetupForConfigAcker(t, protos.NodeType_ROUTER, 0)
+
+	acked := make(chan struct{}, 1)
+	respond := make(chan struct{})
+	stubConsenter.AckConfigHandler = func(req *protos.ConfigAck) (*protos.ConfigAckResponse, error) {
+		select {
+		case acked <- struct{}{}:
+		default:
+		}
+		<-respond
+		return &protos.ConfigAckResponse{}, nil
+	}
+
+	stubConsenter.Start()
+	defer stubConsenter.Stop()
+	defer close(respond) // release the blocked handler before the stub consenter stops
+
+	done := make(chan error, 1)
+	go func() { done <- configAcker.SubmitConfigAck(1) }()
+
+	select {
+	case <-acked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the sender did not send the ConfigAck")
+	}
+
+	configAcker.Stop()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, ErrSenderStopped)
+	case <-time.After(10 * time.Second):
+		t.Fatal("SubmitConfigAck did not return after Stop was called")
+	}
 }

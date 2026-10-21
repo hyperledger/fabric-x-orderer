@@ -29,6 +29,7 @@ import (
 	node_ledger "github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/hyperledger/fabric-x-orderer/node/utils"
+	"github.com/pkg/errors"
 )
 
 type Net interface {
@@ -401,9 +402,14 @@ func (a *Assembler) ProcessNewConfigBlock(configBlock *common.Block) {
 		a.logger.Panicf("Failed to apply last config: %v", err)
 	}
 
-	// send ack to the consensus node
+	// send ack to the consensus node, and wait for its response before applying the new config
 	if err := a.configAcker.SubmitConfigAck(configSeq); err != nil {
-		a.logger.Warnf("failed sending ConfigAck for config sequence %d: %v", configSeq, err)
+		// the assembler is being stopped; applying the new config would start it up again.
+		if errors.Is(err, configack.ErrSenderStopped) {
+			a.logger.Infof("assembler is stopping, aborting reconfiguration on config sequence %d", configSeq)
+			return
+		}
+		a.logger.Warnf("did not receive the consenter's response to the ConfigAck for config sequence %d, proceeding with the new config: %v", configSeq, err)
 	}
 
 	// check if config can be applied
