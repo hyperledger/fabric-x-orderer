@@ -105,6 +105,8 @@ type GeneralConfig struct {
 	LogSpec string `yaml:"LogSpec,omitempty"`
 	// ClientSignatureVerificationRequired specifies if the router and batcher will validate the signature in the requests
 	ClientSignatureVerificationRequired bool `yaml:"ClientSignatureVerificationRequired,omitempty"`
+	// Profile configures the Go pprof profiling server
+	Profile *Profile `yaml:"Profile,omitempty"`
 }
 
 type TLSConfigYaml struct {
@@ -153,6 +155,20 @@ type ClusterYaml struct {
 	CertExpirationWarningThreshold time.Duration `yaml:"CertExpirationWarningThreshold,omitempty"`
 	// TLSHandshakeTimeShift is the duration by which to shift TLS handshakes time sampling to the past.
 	TLSHandshakeTimeShift time.Duration `yaml:"TLSHandshakeTimeShift,omitempty"`
+}
+
+// Profile configures the Go pprof profiling HTTP server.
+type Profile struct {
+	// Enabled turns the profiling server on.
+	Enabled bool `yaml:"Enabled"`
+	// ListenAddress is the IP on which the profiling server listens.
+	ListenAddress string `yaml:"ListenAddress,omitempty"`
+	// ListenPort is the port on which the profiling server listens.
+	ListenPort uint32 `yaml:"ListenPort,omitempty"`
+	// BlockProfileRate samples one blocking event per this many nanoseconds spent blocked; 0 disables it.
+	BlockProfileRate int `yaml:"BlockProfileRate,omitempty"`
+	// MutexProfileFraction samples one in this many mutex contention events; 0 disables it.
+	MutexProfileFraction int `yaml:"MutexProfileFraction,omitempty"`
 }
 
 // FileStore sets the configuration of the file store.
@@ -545,6 +561,23 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig, logger *flogging.Fab
 		logger.Info("General.Cluster client TLS credentials are not set, using General.TLS credentials")
 	}
 
+	// Use the default profiling configuration when none is provided.
+	if generalConfig.Profile == nil {
+		defaultProfile := *DefaultNodeLocalConfig.GeneralConfig.Profile
+		generalConfig.Profile = &defaultProfile
+		logger.Info("General.Profile is not set, using default configuration")
+	}
+
+	if generalConfig.Profile.ListenAddress == "" {
+		generalConfig.Profile.ListenAddress = DefaultNodeLocalConfig.GeneralConfig.Profile.ListenAddress
+		logger.Infof("General.Profile.ListenAddress is not set, using default value: %s", generalConfig.Profile.ListenAddress)
+	}
+
+	if generalConfig.Profile.ListenPort == 0 {
+		generalConfig.Profile.ListenPort = DefaultNodeLocalConfig.GeneralConfig.Profile.ListenPort
+		logger.Infof("General.Profile.ListenPort is not set, using default value: %d", generalConfig.Profile.ListenPort)
+	}
+
 	// Use the default operations configuration when none is provided.
 	if nodeLocalConfig.OperationsConfig == nil {
 		defaultOperations := *DefaultNodeLocalConfig.OperationsConfig
@@ -710,6 +743,15 @@ func validateLocalConfigValues(nodeLocalConfig *NodeLocalConfig, role string) er
 	}
 	if cluster.ReplicationMinRetryInterval > cluster.ReplicationMaxRetryInterval {
 		return fmt.Errorf("node local config is not valid, General.Cluster.ReplicationMinRetryInterval must be less than or equal to General.Cluster.ReplicationMaxRetryInterval")
+	}
+
+	profile := nodeLocalConfig.GeneralConfig.Profile
+
+	if profile.BlockProfileRate < 0 {
+		return fmt.Errorf("node local config is not valid, General.Profile.BlockProfileRate must not be negative")
+	}
+	if profile.MutexProfileFraction < 0 {
+		return fmt.Errorf("node local config is not valid, General.Profile.MutexProfileFraction must not be negative")
 	}
 
 	if nodeLocalConfig.MetricsConfig.MetricsLogInterval < 0 {
