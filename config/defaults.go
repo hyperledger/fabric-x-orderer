@@ -26,6 +26,11 @@ var DefaultNodeLocalConfig = NodeLocalConfig{
 			ReplicationMaxRetryDuration:    time.Minute,
 			CertExpirationWarningThreshold: time.Hour * 24 * 7,
 		},
+		Profile: &Profile{
+			Enabled:       false,
+			ListenAddress: "127.0.0.1",
+			ListenPort:    6060,
+		},
 	},
 	OperationsConfig: &Operations{
 		ListenAddress: "127.0.0.1",
