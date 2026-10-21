@@ -42,6 +42,9 @@ func TestBucketBasic(t *testing.T) {
 	require.ErrorIs(t, b.tryInsert("3", []byte{3}), errBucketSealed)
 	require.ErrorContains(t, b2.tryInsert("1", []byte{1}), "already inserted")
 	require.Zero(t, b2.getSize())
-	require.NoError(t, b2.tryInsert("2", []byte{2}))
+	// delete leaves the id to the caller, so "2" is still known.
+	require.ErrorContains(t, b2.tryInsert("2", []byte{2}), "already inserted")
+	require.Zero(t, b2.getSize())
+	require.NoError(t, b2.tryInsert("4", []byte{4}))
 	require.Equal(t, uint32(1), b2.size)
 }

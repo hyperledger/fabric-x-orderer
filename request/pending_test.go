@@ -610,3 +610,86 @@ func TestPendingStoreOnDeleteOncePerRequest(t *testing.T) {
 		require.False(t, ps.Contains(requestInspector.RequestID(req)))
 	})
 }
+
+func TestPendingStoreSubmitRacingRemove(t *testing.T) {
+	requestInspector := &reqInspector{}
+
+	t.Run("submit racing removal of an absent request", func(t *testing.T) {
+		ps := newTestPendingStore(t, func(key string) {})
+
+		// A removal that runs concurrently with the Submit of the same request must not leave it pooled,
+		// whichever of the two wins: if the removal wins, the id is tombstoned and the Submit is rejected.
+		trials := 20000
+		for i := 0; i < trials; i++ {
+			req := make([]byte, 8)
+			binary.BigEndian.PutUint64(req, uint64(i))
+			reqID := requestInspector.RequestID(req)
+
+			var start, done sync.WaitGroup
+			start.Add(1)
+			done.Add(2)
+			go func() {
+				defer done.Done()
+				start.Wait()
+				_ = ps.Submit(req)
+			}()
+			go func() {
+				defer done.Done()
+				start.Wait()
+				ps.RemoveRequests(reqID)
+			}()
+			start.Done()
+			done.Wait()
+
+			require.False(t, ps.Contains(reqID), "trial %d: removed request is still pooled", i)
+		}
+	})
+
+	t.Run("concurrent submits and removals of a held request", func(t *testing.T) {
+		var deleted atomic.Int64
+		ps := newTestPendingStore(t, func(key string) { deleted.Add(1) })
+
+		// As when a router delivers a request while a pulled batch containing it is being removed, possibly
+		// with the id repeated in the batch. A submit that runs after a removal may insert the request
+		// again, but every accepted submit must be either still held or deleted exactly once.
+		workers := runtime.NumCPU()
+		trials := 2000
+		for i := 0; i < trials; i++ {
+			req := make([]byte, 8)
+			binary.BigEndian.PutUint64(req, uint64(i))
+			reqID := requestInspector.RequestID(req)
+
+			deleted.Store(0)
+			var submitted atomic.Int64
+			require.NoError(t, ps.Submit(req))
+			submitted.Add(1)
+
+			var start, done sync.WaitGroup
+			start.Add(1)
+			for j := 0; j < workers; j++ {
+				done.Add(2)
+				go func() {
+					defer done.Done()
+					start.Wait()
+					if ps.Submit(req) == nil {
+						submitted.Add(1)
+					}
+				}()
+				go func() {
+					defer done.Done()
+					start.Wait()
+					ps.RemoveRequests(reqID)
+				}()
+			}
+			start.Done()
+			done.Wait()
+
+			var held int64
+			if ps.Contains(reqID) {
+				held = 1
+			}
+			require.Equal(t, submitted.Load()-held, deleted.Load(),
+				"trial %d: accepted submits that are not held must be deleted exactly once", i)
+		}
+	})
+}
