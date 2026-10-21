@@ -211,6 +211,35 @@ func TestLoadLocalConfigAppliesGeneralDefaults(t *testing.T) {
 	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.CertExpirationWarningThreshold, loadedConfig.ClusterConfig.CertExpirationWarningThreshold)
 	require.Equal(t, loadedConfig.TLSConfig.Certificate, loadedConfig.ClusterConfig.ClientCertificate)
 	require.Equal(t, loadedConfig.TLSConfig.PrivateKey, loadedConfig.ClusterConfig.ClientPrivateKey)
+	require.Equal(t, *config.DefaultNodeLocalConfig.GeneralConfig.Profile, *loadedConfig.NodeLocalConfig.GeneralConfig.Profile)
+}
+
+func TestLoadLocalConfigFillsProfileDefaults(t *testing.T) {
+	dir := t.TempDir()
+	require.DirExists(t, dir)
+
+	networkConfig := testutil.GenerateNetworkConfig(t, "mTLS", "mTLS")
+	_, err := armageddon.GenerateCryptoConfigWithProfile(&networkConfig, dir, true)
+	require.NoError(t, err)
+
+	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir, false)
+	require.NoError(t, err)
+
+	localConfig := networkLocalConfig.PartiesLocalConfig[0].ConsenterLocalConfig
+	localConfig.GeneralConfig.Profile = &config.Profile{Enabled: true}
+
+	configPath := path.Join(dir, "config", "party1", "local_config_consenter.yaml")
+	err = utils.WriteToYAML(localConfig, configPath)
+	require.NoError(t, err)
+
+	logger := testutil.CreateLoggerForModule(t, "LoadLocalConfig", zap.DebugLevel)
+	loadedConfig, _, err := config.LoadLocalConfig(configPath, logger)
+	require.NoError(t, err)
+
+	profile := loadedConfig.NodeLocalConfig.GeneralConfig.Profile
+	require.True(t, profile.Enabled)
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Profile.ListenAddress, profile.ListenAddress)
+	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Profile.ListenPort, profile.ListenPort)
 }
 
 func TestLoadLocalConfigRejectsNegativeValues(t *testing.T) {
@@ -293,6 +322,22 @@ func TestLoadLocalConfigRejectsNegativeValues(t *testing.T) {
 				}
 			},
 			expectedErr: "node local config is not valid, Metrics.MetricsLogInterval must not be negative",
+		},
+		{
+			name:         "negative block profile rate",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.GeneralConfig.Profile = &config.Profile{BlockProfileRate: -1}
+			},
+			expectedErr: "node local config is not valid, General.Profile.BlockProfileRate must not be negative",
+		},
+		{
+			name:         "negative mutex profile fraction",
+			createConfig: testutil.CreateTestConsensusLocalConfig,
+			update: func(c *config.NodeLocalConfig) {
+				c.GeneralConfig.Profile = &config.Profile{MutexProfileFraction: -1}
+			},
+			expectedErr: "node local config is not valid, General.Profile.MutexProfileFraction must not be negative",
 		},
 		{
 			name:         "negative router connections per batcher",
