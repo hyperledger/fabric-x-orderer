@@ -93,6 +93,9 @@ type State struct {
 	// PrunePoints holds the agreed prune point of each <shard, primary>, sorted by (shard, primary) with
 	// at most one entry per pair. A pair with no entry has prune point 0.
 	PrunePoints []PrunePoint
+	// DurableWatermark is the highest decision that at least 2f+1 assemblers reported as committed, so at
+	// least f+1 honest assemblers hold every decision up to it. It never decreases.
+	DurableWatermark types.DecisionNum
 }
 
 func (s *State) String() string {
@@ -127,8 +130,9 @@ func (s *State) String() string {
 	}
 
 	return fmt.Sprintf("State{N: %d, Quorum: %d, Threshold: %d, ShardCount: %d, AssemblerHeights: %d, PrunePoints: %d, "+
-		"\nPending: %s, \nComplaints: %s}",
-		s.N, s.Quorum, s.Threshold, len(s.Shards), len(s.AssemblerHeights), len(s.PrunePoints), pendingStr, complaintsStr)
+		"DurableWatermark: %d, \nPending: %s, \nComplaints: %s}",
+		s.N, s.Quorum, s.Threshold, len(s.Shards), len(s.AssemblerHeights), len(s.PrunePoints), s.DurableWatermark,
+		pendingStr, complaintsStr)
 }
 
 func (s *State) Serialize() []byte {
@@ -190,6 +194,7 @@ func (s *State) Serialize() []byte {
 		StaleConfigBafs:  protoStaleConfigBAFs,
 		AssemblerHeights: protoAssemblerHeights,
 		PrunePoints:      protoPrunePoints,
+		DurableWatermark: uint64(s.DurableWatermark),
 	}
 
 	buff, err := proto.MarshalOptions{Deterministic: true}.Marshal(protoState)
@@ -293,6 +298,8 @@ func (s *State) Deserialize(rawBytes []byte) error {
 		}
 	}
 
+	s.DurableWatermark = types.DecisionNum(ps.GetDurableWatermark())
+
 	// Load app context - ensure it's never nil, always []byte{} at minimum
 	s.AppContext = []byte{}
 	if ps.AppContext != nil {
@@ -322,6 +329,7 @@ func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence
 
 	// After applying the rules above, extract all batch attestations for which enough fragments have been collected.
 	extracted := ExtractBatchAttestationsFromPending(nextState, l)
+	nextState.UpdateDurableWatermark(l)
 	nextState.UpdatePrunePoints()
 	configRequests := ExtractConfigRequests(filteredCEs)
 	return nextState, extracted, configRequests
@@ -540,6 +548,34 @@ func (s *State) CollectAssemblerReports(l *flogging.FabricLogger, ces ...Control
 		slices.SortFunc(s.AssemblerHeights, func(a, b AssemblerHeight) int {
 			return cmp.Compare(a.Party, b.Party)
 		})
+	}
+}
+
+// UpdateDurableWatermark raises s.DurableWatermark to the 2f+1-th highest height in s.AssemblerHeights, the
+// highest decision that at least 2f+1 assemblers reported as committed. Of those 2f+1, at most f are
+// faulty, so at least f+1 honest assemblers hold every decision up to it. f is derived from N, and 2f+1 may
+// be below the quorum when N is not 3f+1: holding the decisions needs f+1 honest assemblers, not a quorum.
+// With fewer than 2f+1 heights, or when the 2f+1-th highest is lower, the watermark is kept: it never
+// decreases, also when a reconfiguration drops a party's height or changes f.
+func (s *State) UpdateDurableWatermark(l *flogging.FabricLogger) {
+	if s.N == 0 {
+		return
+	}
+	f, _, _ := utils.ComputeFTQ(s.N)
+	k := int(2*f + 1)
+	if len(s.AssemblerHeights) < k {
+		return
+	}
+
+	decisionNums := make([]types.DecisionNum, len(s.AssemblerHeights))
+	for i, h := range s.AssemblerHeights {
+		decisionNums[i] = h.DecisionNum
+	}
+	slices.Sort(decisionNums)
+
+	if watermark := decisionNums[len(decisionNums)-k]; watermark > s.DurableWatermark {
+		l.Debugf("Durable watermark advanced from decision %d to %d", s.DurableWatermark, watermark)
+		s.DurableWatermark = watermark
 	}
 }
 

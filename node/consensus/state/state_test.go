@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	consensus_state "github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	stateprotos "github.com/hyperledger/fabric-x-orderer/node/protos/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
@@ -274,7 +275,8 @@ func TestStateSerializeDeserialize(t *testing.T) {
 					{Shard: 1, Primary: 2, Seq: 40},
 					{Shard: 2, Primary: 1, Seq: 5},
 				},
-				AppContext: []byte{1},
+				DurableWatermark: 7,
+				AppContext:       []byte{1},
 			},
 		},
 	}
@@ -325,6 +327,7 @@ func TestStateString(t *testing.T) {
 	assert.Contains(t, str, "ShardCount: 2")
 	assert.Contains(t, str, "AssemblerHeights: 0")
 	assert.Contains(t, str, "PrunePoints: 0")
+	assert.Contains(t, str, "DurableWatermark: 0")
 	assert.Contains(t, str, "Pending: none")
 	assert.Contains(t, str, "Complaints: 1")
 	assert.Contains(t, str, "Complaint: Signer: 2")
@@ -1003,6 +1006,116 @@ func TestProcessRecordsAssemblerReports(t *testing.T) {
 	assert.Equal(t, []consensus_state.AssemblerHeight{{Party: 1, DecisionNum: 20}}, next.AssemblerHeights)
 	assert.Equal(t, []consensus_state.PrunePoint{{Shard: 1, Primary: 2, Seq: 8}}, next.PrunePoints)
 	assert.Empty(t, st.AssemblerHeights, "Process must not modify the receiver")
+}
+
+func TestUpdateDurableWatermark(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+
+	heights := func(decisionNums ...types.DecisionNum) []consensus_state.AssemblerHeight {
+		hs := make([]consensus_state.AssemblerHeight, len(decisionNums))
+		for i, d := range decisionNums {
+			hs[i] = consensus_state.AssemblerHeight{Party: types.PartyID(i + 1), DecisionNum: d}
+		}
+		return hs
+	}
+
+	tests := []struct {
+		name     string
+		n        uint16
+		heights  []consensus_state.AssemblerHeight
+		previous types.DecisionNum
+		expected types.DecisionNum
+	}{
+		{
+			name:     "n=4: no reports keep the watermark",
+			n:        4,
+			previous: 5,
+			expected: 5,
+		},
+		{
+			name:     "n=4: two reports are below 2f+1=3 and keep the watermark",
+			n:        4,
+			heights:  heights(100, 90),
+			previous: 5,
+			expected: 5,
+		},
+		{
+			name:     "n=4: three reports set the watermark to the third highest",
+			n:        4,
+			heights:  heights(100, 90, 80),
+			expected: 80,
+		},
+		{
+			name:     "n=4: four reports set the watermark to the third highest",
+			n:        4,
+			heights:  heights(50, 100, 80, 90),
+			expected: 80,
+		},
+		{
+			name:     "n=4: a lower third highest never lowers the watermark",
+			n:        4,
+			heights:  heights(100, 90, 80),
+			previous: 85,
+			expected: 85,
+		},
+		{
+			name:     "n=5: 2f+1=3 reports suffice, although the quorum is 4",
+			n:        5,
+			heights:  heights(30, 20, 10),
+			expected: 10,
+		},
+		{
+			name:     "n=7: 2f+1=5 reports set the watermark to the fifth highest",
+			n:        7,
+			heights:  heights(70, 60, 50, 40, 30, 20, 10),
+			expected: 30,
+		},
+		{
+			name:     "n=0: no parties keep the watermark",
+			n:        0,
+			heights:  heights(9),
+			previous: 5,
+			expected: 5,
+		},
+		{
+			name:     "n=1: the only report sets the watermark",
+			n:        1,
+			heights:  heights(9),
+			expected: 9,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := consensus_state.State{N: tt.n, AssemblerHeights: tt.heights, DurableWatermark: tt.previous}
+			_, s.Threshold, s.Quorum = utils.ComputeFTQ(tt.n)
+			s.UpdateDurableWatermark(logger)
+			assert.Equal(t, tt.expected, s.DurableWatermark)
+		})
+	}
+}
+
+// TestProcessAdvancesDurableWatermark verifies that Process derives the watermark from the reports it
+// records in the same decision, keeps the latest report of a party, and never lowers the watermark.
+func TestProcessAdvancesDurableWatermark(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+
+	st := initialState.Clone() // n=4, so 2f+1=3
+
+	st, _, _ = st.Process(logger, 0, reportCE(1, 10, 0), reportCE(2, 20, 0))
+	assert.Zero(t, st.DurableWatermark, "two reports are not enough")
+
+	st, _, _ = st.Process(logger, 0, reportCE(3, 30, 0))
+	assert.Equal(t, types.DecisionNum(10), st.DurableWatermark)
+
+	st, _, _ = st.Process(logger, 0, reportCE(1, 40, 0), reportCE(1, 15, 0))
+	assert.Equal(t, types.DecisionNum(20), st.DurableWatermark, "the latest (highest) report of party 1 counts")
+
+	// A reconfiguration removes party 3; with party 4's low report the third highest height drops to 5,
+	// but the watermark does not.
+	st.RetainAssemblerHeights([]types.PartyID{1, 2, 4})
+	st, _, _ = st.Process(logger, 0, reportCE(4, 5, 0))
+	assert.Equal(t, types.DecisionNum(20), st.DurableWatermark)
 }
 
 func TestStateCloneAssemblerHeightsAndPrunePoints(t *testing.T) {
