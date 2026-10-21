@@ -62,8 +62,16 @@ RELEASE_LDFLAGS := $(patsubst %,-X 'github.com/hyperledger/fabric-x-orderer/comm
 .PHONY: binary
 binary:
 	mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 go build -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o $(BIN_DIR)/arma ./cmd/arma
-	CGO_ENABLED=0 go build -trimpath -ldflags "$(RELEASE_LDFLAGS)" -o $(BIN_DIR)/armageddon ./cmd/armageddon
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(GO_LDFLAGS) $(RELEASE_LDFLAGS)" -o $(BIN_DIR)/arma ./cmd/arma
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(GO_LDFLAGS) $(RELEASE_LDFLAGS)" -o $(BIN_DIR)/armageddon ./cmd/armageddon
+
+# Builds with test values and checks armageddon prints them back, so a broken -X path fails the build.
+.PHONY: check-version-injection
+check-version-injection:
+	$(MAKE) binary VERSION=check-version ORDERER_REVISION=check-commit
+	./bin/armageddon version | grep check-version
+	./bin/armageddon version | grep check-commit
+	$(MAKE) binary
 
 # Cross-compile both binaries for a single GOOS/GOARCH and place them under
 # $(RELEASE_DIR)/$(GOOS)-$(GOARCH)/bin/.  Called by scripts/create-binary-package.sh.
