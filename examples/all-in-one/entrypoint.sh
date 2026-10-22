@@ -86,12 +86,8 @@ for i in 1 2 3 4; do
   sed -i "s|/var/dec-trust/production/orderer/store|${STORAGE_DIR}/party${i}/batcher|g" ${PARTY_DIR}/local_config_batcher1.yaml
   sed -i "s|/var/dec-trust/production/orderer/store|${STORAGE_DIR}/party${i}/consenter|g" ${PARTY_DIR}/local_config_consenter.yaml
 
-  # Enable the pprof profiling server. This must come after the General ListenPort patching above,
-  # because that patching replaces every ListenPort under General, including this one.
-  sed -i "/^General:/ a\\    Profile:\n        Enabled: true\n        ListenAddress: 0.0.0.0\n        ListenPort: $((9022 + OFFSET))" ${PARTY_DIR}/local_config_router.yaml
-  sed -i "/^General:/ a\\    Profile:\n        Enabled: true\n        ListenAddress: 0.0.0.0\n        ListenPort: $((9023 + OFFSET))" ${PARTY_DIR}/local_config_assembler.yaml
-  sed -i "/^General:/ a\\    Profile:\n        Enabled: true\n        ListenAddress: 0.0.0.0\n        ListenPort: $((9024 + OFFSET))" ${PARTY_DIR}/local_config_batcher1.yaml
-  sed -i "/^General:/ a\\    Profile:\n        Enabled: true\n        ListenAddress: 0.0.0.0\n        ListenPort: $((9025 + OFFSET))" ${PARTY_DIR}/local_config_consenter.yaml
+  # Enable the pprof profiling endpoints on the operations server.
+  sed -i "/^    Profile:/,/Enabled:/ s/Enabled: false/Enabled: true/" ${PARTY_DIR}/local_config_*.yaml
 
 done
 

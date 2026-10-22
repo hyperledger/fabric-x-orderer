@@ -18,8 +18,8 @@ make binary
 for config in /tmp/arma-sample/config/party*/local_config_*.yaml; do
   sed -i "/^Operations:/,/^Metrics:/ {/^[[:space:]]*ListenPort:/d;}" "${config}"
   sed -i "/^Operations:/ a\\    ListenPort: 8080" "${config}"
-  # Enable the pprof profiling server on its default address, 127.0.0.1:6060.
-  sed -i "/^General:/ a\\    Profile:\n        Enabled: true" "${config}"
+  # Enable the pprof profiling endpoints on the operations server.
+  sed -i "/^    Profile:/,/Enabled:/ s/Enabled: false/Enabled: true/" "${config}"
 done
 
 cd "${EXAMPLE_DIR}" && docker compose up -d --wait

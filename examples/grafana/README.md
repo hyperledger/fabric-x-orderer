@@ -22,7 +22,7 @@ The `run_dashboard.sh` script performs the following tasks:
 - Starts the Arma network together with Prometheus and Grafana.
 - Submits transactions using `armageddon submit`, which processes 300000 transactions at a rate of 1000 per second.
 - Prints the dashboard link and opens it in a browser.
-- Enables the Go [pprof](../../docs/architecture.md#profiling) profiling server in every node, on `127.0.0.1:6060` inside its container.
+- Enables the Go [pprof](../../docs/architecture.md#profiling) profiling endpoints in every node, on its operations port 8080 inside its container.
 
 To change the defaults, set `RATE`, `TX_SIZE`, `DURATION_SECONDS` or `OPEN_BROWSER=false`, for example:
 ```

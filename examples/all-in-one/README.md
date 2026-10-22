@@ -120,14 +120,7 @@ Each party uses fixed ports:
 
 Ports are exposed from the container to the host to allow the test client (armageddon) to connect.
 
-Each node also serves Go [pprof](../../docs/architecture.md#profiling) profiles on its own port. These ports are not exposed; to read one from the host, add it to `docker run`, e.g. `-p 127.0.0.1:9022:9022`:
-
-| pprof     | Party 1 | Party 2 | Party 3 | Party 4 |
-| --------- | ------- | ------- | ------- | ------- |
-| Router    | 9022    | 9122    | 9222    | 9322    |
-| Assembler | 9023    | 9123    | 9223    | 9323    |
-| Batcher   | 9024    | 9124    | 9224    | 9324    |
-| Consenter | 9025    | 9125    | 9225    | 9325    |
+Each node also serves Go [pprof](../../docs/architecture.md#profiling) profiles on its operations port, which is its port above plus 2000 (e.g. 8022 for party 1's router). These ports are not exposed; to read one from the host, add it to `docker run`, e.g. `-p 127.0.0.1:8022:8022`.
 
 All endpoints use:
 

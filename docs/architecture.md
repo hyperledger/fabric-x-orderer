@@ -214,15 +214,15 @@ For example, slow assembler fetches may indicate missing or slow batcher data, w
 
 ### Profiling
 
-Each node can serve Go [pprof](https://pkg.go.dev/net/http/pprof) profiles, like the Fabric orderer. Set `General.Profile.Enabled: true` in the node's local config; it then listens on `127.0.0.1:6060` (`ListenAddress`, `ListenPort`). It has no authentication, so keep it on localhost.
+Each node can serve Go [pprof](https://pkg.go.dev/net/http/pprof) profiles, like the Fabric orderer. Set `Operations.Profile.Enabled: true` in the node's local config; the profiles are then served under `/debug/pprof/` on the operations server, next to `/metrics`, and require a client certificate when operations TLS is enabled. In the commands below, replace `<operations>` with the node's operations address (`Operations.ListenAddress:Operations.ListenPort`):
 
 ```bash
 # CPU: where the node spends its time over 30 seconds, as a flame graph in the browser
-go tool pprof -http=:8081 'http://127.0.0.1:6060/debug/pprof/profile?seconds=30'
+go tool pprof -http=:8081 'http://<operations>/debug/pprof/profile?seconds=30'
 # Memory: what the node holds now
-go tool pprof -top http://127.0.0.1:6060/debug/pprof/heap
+go tool pprof -top http://<operations>/debug/pprof/heap
 # A stuck node: the stack of every goroutine
-curl -s 'http://127.0.0.1:6060/debug/pprof/goroutine?debug=2'
+curl -s 'http://<operations>/debug/pprof/goroutine?debug=2'
 ```
 
 The lock and channel wait profiles (`/debug/pprof/mutex`, `/debug/pprof/block`) are off by default because they slow every lock and channel a little; set `MutexProfileFraction` or `BlockProfileRate` above 0 to turn them on.

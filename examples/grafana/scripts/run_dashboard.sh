@@ -38,9 +38,8 @@ for config in "${SAMPLE_DIR}"/config/party*/local_config_*.yaml; do
     { print }
   ' "${config}" > "${config}.new"
   mv "${config}.new" "${config}"
-  # Enable the pprof profiling server on its default address, 127.0.0.1:6060.
-  # This must come after the awk above, which rewrites every "ListenAddress: 127.0.0.1" line.
-  sed -i "/^General:/ a\\    Profile:\n        Enabled: true" "${config}"
+  # Enable the pprof profiling endpoints on the operations server.
+  sed -i "/^    Profile:/,/Enabled:/ s/Enabled: false/Enabled: true/" "${config}"
 done
 
 # Optionally throttle party 1's router, so the router throttling panels have data to show.
