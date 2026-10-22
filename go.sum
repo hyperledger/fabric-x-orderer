@@ -851,8 +851,8 @@ github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3/go.mod h1:o//XUCC/F+yRGJoPO/VU
 github.com/hashicorp/golang-lru v0.5.0/go.mod h1:/m3WP610KZHVQ1SGc6re/UDhFvYD7pJ4Ao+sR/qLZy8=
 github.com/hashicorp/golang-lru v0.5.1/go.mod h1:/m3WP610KZHVQ1SGc6re/UDhFvYD7pJ4Ao+sR/qLZy8=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
-github.com/hyperledger/SmartBFT v1.0.3-0.20261010195840-f44fcdf9f24f h1:5G9e+Go4QlS2X2ea+D8pUrTk9TwANRpcRKhRs/tX2Uw=
-github.com/hyperledger/SmartBFT v1.0.3-0.20261010195840-f44fcdf9f24f/go.mod h1:J4Gq9ziqNHoOePmL5Oa2sen8LlC/+XoLFivMvqCrwPo=
+github.com/hyperledger/SmartBFT v1.0.3-0.20261022164550-3de2161e08b2 h1:MIcKSx84tCY7aJ2iy50O8iaRoMwL/QTh6BUBq6E3wMM=
+github.com/hyperledger/SmartBFT v1.0.3-0.20261022164550-3de2161e08b2/go.mod h1:afFtxfRLBUAkVi+upOhyCOeuxR8lMxZefD34LK0sB0s=
 github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2 h1:B1Nt8hKb//KvgGRprk0h1t4lCnwhE9/ryb1WqfZbV+M=
 github.com/hyperledger/fabric-amcl v0.0.0-20230602173724-9e02669dceb2/go.mod h1:X+DIyUsaTmalOpmpQfIvFZjKHQedrURQ5t4YqquX7lE=
 github.com/hyperledger/fabric-config v0.3.0 h1:FS5/dc9GAniljP6RYxQRG92AaiBVoN2vTvtOvnWqeQs=
