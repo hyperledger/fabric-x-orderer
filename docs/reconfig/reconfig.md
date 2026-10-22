@@ -93,9 +93,8 @@ When a node pulls a new config block, it **soft-stops** and takes one of two pat
 | **Dynamic restart**    | None of the pending-admin triggers below applies to this node     | Re-initializes in-process with the new config and resumes work                                       | Nothing. Check for the log line below.                             |
 | **Pending admin**      | See the list below                                                | Stays soft-stopped and processes nothing. The assembler keeps serving `Deliver` of the blocks it already has | Prepare the node (local config / crypto), then **restart the process** |
 
-A node enters **pending-admin** only when one of these triggers applies. Other changes, even to the
-node's own party (for example, its party's `CACerts` / `TLSCACerts` or org MSP, as in CA rotation
-Steps 1 and 3), restart it dynamically:
+A node enters **pending-admin** only when one of the following triggers occurs. All other changes, including changes to the node's own party 
+(e.g., its party's `CACerts` / `TLSCACerts` or org MSP, as described in Steps 1 and 3 of CA rotation), trigger a dynamic restart instead:
 
 - **Its own party was removed.** This applies to all node types.
 - **Its own identity changed.** An identity change is any of:
@@ -167,10 +166,11 @@ applies them:
 - a router, batcher or assembler pulls the missed decisions only from its own party's consenter, at
   the address in its stored config, once that consenter has caught up.
 
-So, in most cases, you do not need to change `General.Bootstrap.File` either. The exception is when
-the stored config no longer lets the node start, or reach the nodes it syncs or pulls from. Then the
-node must **rejoin**: set `General.Bootstrap.File` of each of the party's nodes to the latest config
-block before you restart them (see
+So, in most cases, you do not need to change `General.Bootstrap.File` either. The exception is a
+party that was down for an extended period of time while the network went through configuration
+changes, so that its stored config no longer lets it reach the other consensus nodes. Then the party
+must **rejoin**: set `General.Bootstrap.File` of each of the party's nodes to the latest config block
+before you restart them (see
 [Bringing back a party that was down during reconfigurations](#bringing-back-a-party-that-was-down-during-reconfigurations)).
 
 **Removed party's nodes after a restart:** what happens depends on whether the node received the
@@ -455,8 +455,8 @@ party, so the TX is allowed.
 
 | Node                 | Also update                                                                                       |
 |----------------------|---------------------------------------------------------------------------------------------------|
-| Router               | The `broadcast` address in `org1`'s `Endpoints` (`id=1,broadcast,<host>:<port>`), if clients reach the router at its internal address. If clients use an external (NAT) address, change `Endpoints` only when that address changes. Not validated: see [Section 3](#3-rules-every-config-update-must-follow) |
-| Assembler            | The `deliver` address in `org1`'s `Endpoints` (`id=1,deliver,<host>:<port>`), with the same rule as the router. Not validated: see [Section 3](#3-rules-every-config-update-must-follow) |
+| Router               | `org1`'s `Endpoints`: the `broadcast` address (`id=1,broadcast,<host>:<port>`). Clients connect to this address. If clients connect to the router directly, set it to the new `host`/`port`. If clients connect through NAT or a DNS name, leave it unless that address changes. **The orderer doesn't check this:** if you forget it, the TX is still accepted, and clients keep connecting to the old address |
+| Assembler            | `org1`'s `Endpoints`: the `deliver` address (`id=1,deliver,<host>:<port>`). Clients connect to this address. If clients connect to the assembler directly, set it to the new `host`/`port`. If clients connect through NAT or a DNS name, leave it unless that address changes. **The orderer doesn't check this:** if you forget it, the TX is still accepted, and clients keep connecting to the old address |
 | Consenter            | `host` / `port` of party 1's entry in `consenter_mapping`                                          |
 | Batcher of shard S   | Nothing else                                                                                      |
 
@@ -693,35 +693,30 @@ blocks pulled from all assemblers.
 #### Bringing back a party that was down during reconfigurations
 
 A party that missed config updates while it was down usually needs no action: on restart, its
-consenter syncs the missed blocks from the other consenters, and its other nodes catch up from it.
+consenter syncs the missed blocks from the other consenters, and its router, batchers and assembler
+pull the missed decisions from it.
 
-The party must **rejoin** from the latest config block when its stored config no longer lets its
-nodes start, or reach the nodes they sync or pull from:
+**When the party must rejoin?** When a party is down for an extended period of time, and the
+network goes through configuration changes, the party might not be able to join the cluster when it
+restarts. For example, the endpoints or certificates of all the other consensus nodes have changed
+while it was down. Its consenter can reach and trust the other consenters only through the addresses
+and certificates in its stored config. When none of them are still valid, it can't sync, and stays
+on its old config. It then rejects the requests that the other consenters send from the newer config
+(`Failed submitting request: config sequence ahead`), and the whole party stays out of the network.
 
-| Case (while the party was down) | What happens without a rejoin |
-|---|---|
-| The other parties' consenters **moved to new endpoints, or were removed or replaced** | The consenter looks for the cluster only at the addresses in its stored config, and nobody answers there. It can't sync, so it never pulls the config blocks with the new addresses, and stays on the old config. The rest of the network sends it requests from the newer config, which it rejects (`Failed submitting request: config sequence ahead`). The party's other nodes pull only from this consenter, so the whole party stays out |
-| The party's **own consenter moved** (its router, batcher or assembler were down) | These nodes pull decisions only from their party's consenter, at the address in their stored config, so they can't reach it |
-| The other parties **rotated their CAs** ([5.5](#55-rotate-a-partys-ca-certificates), all three steps) | The node trusts only the TLS CAs in its stored config, so its TLS handshakes with the other consenters fail. Same result as the first case. A new certificate from the **same** CA is not a problem |
-| The party's **own node certificates were rotated**, and the new ones are installed on its nodes | At startup each node compares its local certificates with its stored config, which lists the old ones. It exits with `certificate mismatch: ... differs from the shared configuration TLS certificate` (or `sign certificate mismatch`) |
-| The node's **storage was lost** (disk wiped, or the node rebuilt) | With nothing stored, the node starts from the bootstrap file as is. If that is still the genesis block, it starts from the first config; if its party was added after genesis, it is not listed there and the node exits at startup |
-
-Only the first case is covered by a test (`TestReJoinSingleParty`, `TestConsensusFullReplacement`).
-The others follow from the code.
-
-To rejoin, set `General.Bootstrap.File` of **every** node of the party to the **latest** config
-block, and restart them. Each node picks the newer of its stored config and its bootstrap block, and
-logs `rejoin-block detected`. The consenter syncs with the cluster before it takes part. If a rejoin
-is not possible, you can instead remove the party and add it again as a new party (with a new party
-ID).
+**How to rejoin:** put the latest config block on the file system of **every** node of the party,
+point `General.Bootstrap.File` at it, and restart the nodes. Each node detects that this block is
+newer than the last config block it stored (a **rejoin block**), and logs `rejoin-block detected`.
+It then uses the rejoin block to connect to the network and catch up; the consenter syncs with the
+cluster before it takes part.
 
 The bootstrap block is used in three cases:
 
-| Case                     | `General.Bootstrap.File`                          |
-|--------------------------|---------------------------------------------------|
-| First start of a network | The genesis block                                 |
-| A new party joins        | The config block that added the party ([5.7](#57-add-a-party)) |
-| A party rejoins          | The latest config block, in the cases above       |
+| Case                     | `General.Bootstrap.File`                                        |
+|--------------------------|-----------------------------------------------------------------|
+| First start of a network | The genesis block                                               |
+| A new party joins        | The config block that added the party ([5.7](#57-add-a-party))  |
+| A party rejoins          | The latest config block                                         |
 
 ---
 
