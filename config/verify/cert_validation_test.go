@@ -376,6 +376,64 @@ func TestVerifyCert_IgnoreExpiration(t *testing.T) {
 	})
 }
 
+func TestValidateUniqueSigningCerts(t *testing.T) {
+	now := time.Now()
+	signCACert, signCAKey, _ := generateTestCAWithKey(t, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+	newSignCert := func() []byte {
+		return generateTestSigningCert(t, signCACert, signCAKey, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+	}
+
+	newParty := func(partyID uint32) *ordererpb.PartyConfig {
+		return &ordererpb.PartyConfig{
+			PartyID:         partyID,
+			RouterConfig:    &ordererpb.RouterNodeConfig{SignCert: newSignCert()},
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{SignCert: newSignCert()},
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{SignCert: newSignCert()},
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{
+				{ShardID: 1, SignCert: newSignCert()},
+				{ShardID: 2, SignCert: newSignCert()},
+			},
+		}
+	}
+
+	t.Run("unique certs", func(t *testing.T) {
+		require.NoError(t, validateUniqueSigningCerts([]*ordererpb.PartyConfig{newParty(1), newParty(2)}))
+	})
+
+	t.Run("duplicate cert within party", func(t *testing.T) {
+		party := newParty(1)
+		party.AssemblerConfig.SignCert = party.RouterConfig.SignCert
+
+		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party, newParty(2)})
+		require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing certificate")
+	})
+
+	t.Run("duplicate cert across batchers", func(t *testing.T) {
+		party := newParty(1)
+		party.BatchersConfig[1].SignCert = party.BatchersConfig[0].SignCert
+
+		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party})
+		require.EqualError(t, err, "batcher of party 1 in shard 1 and batcher of party 1 in shard 2 share the same signing certificate")
+	})
+
+	t.Run("duplicate cert across parties", func(t *testing.T) {
+		party1 := newParty(1)
+		party2 := newParty(2)
+		party2.BatchersConfig[0].SignCert = party1.ConsenterConfig.SignCert
+
+		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party1, party2})
+		require.EqualError(t, err, "consenter of party 1 and batcher of party 2 in shard 1 share the same signing certificate")
+	})
+
+	t.Run("duplicate cert with different PEM encoding", func(t *testing.T) {
+		party := newParty(1)
+		party.AssemblerConfig.SignCert = append([]byte("\n"), party.RouterConfig.SignCert...)
+
+		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party})
+		require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing certificate")
+	})
+}
+
 func generateTestCAWithKey(t *testing.T, notBefore, notAfter time.Time) (*x509.Certificate, *ecdsa.PrivateKey, []byte) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
