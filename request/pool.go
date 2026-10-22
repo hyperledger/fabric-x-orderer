@@ -380,26 +380,27 @@ func (rp *Pool) isBatchingEnabled() bool {
 	return rp.batchingEnabled
 }
 
+// moveToPendingStore moves the requests of the batch store into a new pending store. A batch that was
+// fetched but not yet removed is no longer in the batch store, so its requests are not moved, and the
+// permits they hold are released here. Each moved request carries its permit over to the pending store.
 func (rp *Pool) moveToPendingStore() {
 	requests := make([][]byte, 0, rp.options.MaxSize)
-	cnt := 0
 	rp.batchStore.ForEach(func(_, v interface{}) {
 		requests = append(requests, v.(*requestItem).request)
-		cnt++
 	})
+	if dropped := atomic.SwapInt64(&rp.size, 0) - int64(len(requests)); dropped > 0 {
+		rp.semaphore.Release(dropped)
+	}
 	rp.pending = rp.createPendingStore()
 	rp.pending.Init()
 	for _, req := range requests {
 		reqInfo := rp.inspector.RequestID(req)
 		if err := rp.submitToPendingStore(reqInfo, req); err != nil {
 			rp.logger.Errorf("Could not submit request to pending store; error: %s", err)
-			return
 		}
 	}
 	rp.pending.Start()
 	rp.batchStore = nil
-
-	atomic.StoreInt64(&rp.size, int64(cnt))
 }
 
 func (rp *Pool) moveToBatchStore() {
