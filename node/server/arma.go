@@ -90,11 +90,6 @@ func launchAssembler(stop chan struct{}) func(configFile *os.File) {
 			assemblerLogger = flogging.MustGetLogger(fmt.Sprintf("Assembler%d", conf.PartyId))
 		}
 
-		profile := configuration.LocalConfig.NodeLocalConfig.GeneralConfig.Profile
-		if profile.Enabled {
-			startProfilingServer(profile, assemblerLogger)
-		}
-
 		assembler := assembler.NewAssembler(conf, configuration, lastConfigBlock, stop, assemblerLogger, signer)
 		assembler.StartAssemblerService()
 
@@ -133,11 +128,6 @@ func launchConsensus(stop chan struct{}) func(configFile *os.File) {
 			consenterLogger = testLogger
 		} else {
 			consenterLogger = flogging.MustGetLogger(fmt.Sprintf("Consensus%d", nodeConfig.PartyId))
-		}
-
-		profile := config.LocalConfig.NodeLocalConfig.GeneralConfig.Profile
-		if profile.Enabled {
-			startProfilingServer(profile, consenterLogger)
 		}
 
 		consensus := consensus.CreateConsensus(nodeConfig, config, lastConfigBlock, consenterLogger, stop, signer, &policy.DefaultConfigUpdateProposer{})
@@ -181,11 +171,6 @@ func launchBatcher(stop chan struct{}) func(configFile *os.File) {
 			batcherLogger = flogging.MustGetLogger(fmt.Sprintf("Batcher%dShard%d", nodeConfig.PartyId, nodeConfig.ShardId))
 		}
 
-		profile := config.LocalConfig.NodeLocalConfig.GeneralConfig.Profile
-		if profile.Enabled {
-			startProfilingServer(profile, batcherLogger)
-		}
-
 		batcher := batcher.CreateBatcher(nodeConfig, config, batcherLogger, stop, &batcher.ConsensusDecisionReplicatorFactory{}, &batcher.ConsenterControlEventSenderFactory{}, signer)
 		batcher.StartBatcherService()
 		batcher.Run()
@@ -225,11 +210,6 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 			routerLogger = testLogger
 		} else {
 			routerLogger = flogging.MustGetLogger(fmt.Sprintf("Router%d", routerConf.PartyID))
-		}
-
-		profile := conf.LocalConfig.NodeLocalConfig.GeneralConfig.Profile
-		if profile.Enabled {
-			startProfilingServer(profile, routerLogger)
 		}
 		r := router.NewRouter(routerConf, conf, routerLogger, signer, stop, &policy.DefaultConfigUpdateProposer{}, &verify.DefaultOrdererRules{})
 		r.StartRouterService()
