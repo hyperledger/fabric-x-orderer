@@ -71,19 +71,19 @@ What each of these metrics tells you about the assembler is described in [Assemb
 All assembler metrics carry the "party_id" label, and "prefetch_index_size_bytes" also carries "shard_id".
 
 - **Namespace:** "assembler"  
-  **Name:** "batch_unary_fetch_latency_seconds"
+  **Name:** "batch_unary_fetch_latency_seconds"  
   **Help:** "The latency to unary fetch a requested batch from the batchers in the shard."
 
 - **Namespace:** "assembler"  
-  **Name:** "attestation_to_batch_collation_latency_seconds"
+  **Name:** "attestation_to_batch_collation_latency_seconds"  
   **Help:** "The latency from receiving a batch attestation until the matching batch is available."
 
 - **Namespace:** "assembler"  
-  **Name:** "batch_ledger_append_latency_seconds"
+  **Name:** "batch_ledger_append_latency_seconds"  
   **Help:** "The latency to append a batch to the ledger."
 
 - **Namespace:** "assembler"  
-  **Name:** "prefetch_index_size_bytes"
+  **Name:** "prefetch_index_size_bytes"  
   **Help:** "The current size of the assembler prefetch index for a shard in bytes."
 
 - **Namespace:** "assembler"  
@@ -243,8 +243,8 @@ Metrics:
     MetricsLogInterval: 10s
 ```
 
-- `ListenAddress`: `armageddon generate` writes `127.0.0.1`, which is reachable only from the same machine. Use `0.0.0.0` so that Prometheus can reach the node.
-- `ListenPort`: without it a random port is picked, so set a fixed one. All nodes can use the same port.
+- `ListenAddress`: defaults to `127.0.0.1`, which is reachable only from the same machine. Use `0.0.0.0` so that Prometheus can reach the node.
+- `ListenPort`: without it a random port is picked, so set a fixed one. Nodes on different hosts can use the same port, as in the example deployment; nodes that share a machine need different ports.
 - `TLS.Enabled`: when true, the metrics are served over HTTPS and Prometheus must be configured for it.
 - `Provider`: `prometheus` (the default) or `disabled`.
 - `MetricsLogInterval`: how often the node also writes its metrics to its log; `0` turns this off.
