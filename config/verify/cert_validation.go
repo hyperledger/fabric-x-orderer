@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
+	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/pkg/errors"
 )
 
@@ -105,6 +106,49 @@ func validatePartyCertificates(party *ordererpb.PartyConfig, ignoreExpiration bo
 			return errors.Wrap(err, "batcher signing certificate validation failed")
 		}
 
+	}
+
+	return nil
+}
+
+// validateUniqueSigningCerts verifies that no two nodes share a signing certificate.
+func validateUniqueSigningCerts(parties []*ordererpb.PartyConfig) error {
+	type nodeSignCert struct {
+		node arma_types.NodeIdentity
+		cert []byte
+	}
+
+	signCertOwners := make(map[string]arma_types.NodeIdentity)
+	for _, party := range parties {
+		if party == nil {
+			return errors.New("party config is nil")
+		}
+
+		partyID := arma_types.PartyID(party.PartyID)
+		signCerts := []nodeSignCert{
+			{node: arma_types.NewRouterIdentity(partyID), cert: party.GetRouterConfig().GetSignCert()},
+			{node: arma_types.NewAssemblerIdentity(partyID), cert: party.GetAssemblerConfig().GetSignCert()},
+			{node: arma_types.NewConsenterIdentity(partyID), cert: party.GetConsenterConfig().GetSignCert()},
+		}
+		for _, b := range party.BatchersConfig {
+			signCerts = append(signCerts, nodeSignCert{
+				node: arma_types.NewBatcherIdentity(partyID, arma_types.ShardID(b.GetShardID())),
+				cert: b.GetSignCert(),
+			})
+		}
+
+		for _, sc := range signCerts {
+			cert, err := parseCertificateFromBytes(sc.cert)
+			if err != nil {
+				return errors.Wrapf(err, "invalid signing certificate of %s", sc.node)
+			}
+
+			certKey := string(cert.Raw)
+			if owner, exists := signCertOwners[certKey]; exists {
+				return errors.Errorf("%s and %s share the same signing certificate", owner, sc.node)
+			}
+			signCertOwners[certKey] = sc.node
+		}
 	}
 
 	return nil

@@ -372,6 +372,75 @@ func TestValidateNewConfig_RouterAndAssemblerEndpointsMismatch(t *testing.T) {
 	}
 }
 
+func TestValidateNewConfig_DuplicateSigningCertInGenesis(t *testing.T) {
+	_, env, _, _, _, _, _ := setupOrdererRulesTest(t, 2)
+
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+	cfgEnv := &common.ConfigEnvelope{}
+	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+
+	shared := configutil.GetSharedConfig(t, cfgEnv)
+	shared.PartiesConfig[0].AssemblerConfig.SignCert = shared.PartiesConfig[0].RouterConfig.SignCert
+
+	consensusType := &orderer.ConsensusType{}
+	ordererValues := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values
+	require.NoError(t, proto.Unmarshal(ordererValues["ConsensusType"].Value, consensusType))
+	consensusType.Metadata = protoutil.MarshalOrPanic(shared)
+	ordererValues["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
+
+	payload.Data = protoutil.MarshalOrPanic(cfgEnv)
+	env.Payload = protoutil.MarshalOrPanic(payload)
+
+	err = (&verify.DefaultOrdererRules{}).ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
+	require.EqualError(t, err, "signing certificates are not unique: router of party 1 and assembler of party 1 share the same signing certificate")
+}
+
+func TestValidateNewConfig_SigningCertInConfigUpdate(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		duplicate bool
+	}{
+		{name: "duplicate", duplicate: true},
+		{name: "unique", duplicate: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, _, currBundle, builder, proposer, signer, verifier := setupOrdererRulesTest(t, 2)
+			bccsp := factory.GetDefault()
+			or := verify.DefaultOrdererRules{}
+
+			var signCert []byte
+			if tc.duplicate {
+				var err error
+				signCert, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "orderers", "party1", "router", "msp", "signcerts", "router-cert.pem"))
+				require.NoError(t, err)
+			} else {
+				signCert = generateAssemblerSignCert(t, dir, 1)
+			}
+
+			updatePb := builder.UpdateAssemblerSignCert(t, types.PartyID(1), signCert)
+			updateEnv := configutil.CreateConfigTX(t, dir, []types.PartyID{1, 2}, 1, updatePb)
+			req := &comm.Request{Payload: updateEnv.Payload, Signature: updateEnv.Signature}
+
+			nextCfgEnv, err := proposer.ProposeConfigUpdate(req, currBundle, signer, verifier, bccsp)
+			require.NoError(t, err)
+
+			nextEnv := &common.Envelope{
+				Payload:   nextCfgEnv.Payload,
+				Signature: nextCfgEnv.Signature,
+			}
+
+			err = or.ValidateNewConfig(nextEnv, bccsp, types.PartyID(1))
+			if tc.duplicate {
+				require.EqualError(t, err, "signing certificates are not unique: router of party 1 and assembler of party 1 share the same signing certificate")
+			} else {
+				require.NoError(t, err)
+				require.NoError(t, or.ValidateTransition(currBundle, nextEnv, bccsp))
+			}
+		})
+	}
+}
+
 func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
 	or := verify.DefaultOrdererRules{}
 	bccsp := factory.GetDefault()
@@ -683,6 +752,24 @@ func generateConsenterTLSCert(t *testing.T, dir string, partyID int) []byte {
 	newKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "orderers", fmt.Sprintf("party%d", partyID), "consenter", "tls", "server.key")
 
 	newCert, err := armageddon.CreateNewCertificateFromCA(tlsCACertPath, tlsCAPrivKeyPath, "tls", tlsCertPath, newKeyPath, []string{"127.0.0.1"})
+	require.NoError(t, err)
+
+	return newCert
+}
+
+func generateAssemblerSignCert(t *testing.T, dir string, partyID int) []byte {
+	t.Helper()
+
+	org := fmt.Sprintf("org%d", partyID)
+
+	signCACertPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "ca", fmt.Sprintf("%s-CA-cert.pem", org))
+	signCAPrivKeyPath := filepath.Join(dir, "crypto", "ordererOrganizations", org, "ca", "priv_sk")
+
+	mspDir := filepath.Join(dir, "crypto", "ordererOrganizations", org, "orderers", fmt.Sprintf("party%d", partyID), "assembler", "msp")
+	signCertPath := filepath.Join(mspDir, "signcerts", "assembler-cert.pem")
+	newKeyPath := filepath.Join(mspDir, "keystore", "priv_sk")
+
+	newCert, err := armageddon.CreateNewCertificateFromCA(signCACertPath, signCAPrivKeyPath, "sign", signCertPath, newKeyPath, []string{"127.0.0.1"})
 	require.NoError(t, err)
 
 	return newCert
