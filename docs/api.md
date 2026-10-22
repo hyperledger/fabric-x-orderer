@@ -11,7 +11,7 @@ ListenAddress: 127.0.0.1
 ListenPort: 7050
 ```
 In addition, each node exposes a monitoring endpoint that provides runtime metrics such as transaction throughput and latency. 
-For more details on monitoring see [Monitoring and Metrics](https://github.com/hyperledger/fabric-x-orderer/blob/main/doc/monitoring/metrics.md).  
+For more details on monitoring see [Monitoring and Metrics](monitoring/metrics.md).  
 
 Here is a description of Arma gRPC services:
 
@@ -77,7 +77,7 @@ service Consensus {
 }
 ```
 
-   Note: `RequestTransmit`, `BatcherControlService` and `Consensus` gRPC services are found in: [communication.proto](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/protos/comm/communication.proto).
+   Note: `RequestTransmit`, `BatcherControlService` and `Consensus` gRPC services are found in: [communication.proto](../node/protos/comm/communication.proto).
 ## gRPC services distribution across roles
 
 The following describes the gRPC services implemented by each node role.
@@ -99,7 +99,7 @@ Consenter:
 It also accepts configuration requests, performs validation checks and processes them.
 * `Deliver` - exposed by each consenter to enable pulling decisions. 
 Routers, Batchers and Assebmlers consume decisions from consensus nodes acting as clients of the consensus nodes.
-For the events the consenter ingests, the decisions it serves, and the access control applied to them, see [Consenter](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/consensus.md#2-interfaces-ingesting-events-and-serving-decisions).
+For the events the consenter ingests, the decisions it serves, and the access control applied to them, see [Consenter](consensus.md#2-interfaces-ingesting-events-and-serving-decisions).
 
 Assembler:
 * `Deliver` - the assembler accepts a signed envelope from a client and responds with the requested blocks.
@@ -107,4 +107,4 @@ In order to pull blocks it is enough for a scalable committer (peer) to connect 
 For the seek request, the access control applied to it, and the rest of the assembler's client interface, see [Assembler](assembler.md#2-consuming-blocks-the-client-interface).
 
 
-For more details on Arma see [Hyperledger Fabric-X orderer](https://github.com/hyperledger/fabric-x-orderer/blob/main/README.md).
+For more details on Arma see [Hyperledger Fabric-X orderer](../README.md).
