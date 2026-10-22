@@ -14,6 +14,7 @@ import (
 	"encoding/pem"
 	"fmt"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/utils"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
@@ -31,11 +32,25 @@ func (v ECDSAVerifier) VerifySignature(id types.NodeIdentity, msg, sig []byte) e
 
 	digest := sha256.Sum256(msg)
 
-	if ecdsa.VerifyASN1(&pk, digest[:], sig) {
-		return nil
+	if !ecdsa.VerifyASN1(&pk, digest[:], sig) {
+		return fmt.Errorf("signature %s of %s", base64.StdEncoding.EncodeToString(sig), id.String())
 	}
 
-	return fmt.Errorf("signature %s of %s", base64.StdEncoding.EncodeToString(sig), id.String())
+	// For a valid signature (r, s), (r, N-s) is valid too. Accept only the low-S form that honest signers
+	// produce, so a signed message has a single valid encoding.
+	_, s, err := utils.UnmarshalECDSASignature(sig)
+	if err != nil {
+		return fmt.Errorf("signature %s of %s: %w", base64.StdEncoding.EncodeToString(sig), id.String(), err)
+	}
+	lowS, err := utils.IsLowS(&pk, s)
+	if err != nil {
+		return fmt.Errorf("signature %s of %s: %w", base64.StdEncoding.EncodeToString(sig), id.String(), err)
+	}
+	if !lowS {
+		return fmt.Errorf("signature %s of %s is not in low-S form", base64.StdEncoding.EncodeToString(sig), id.String())
+	}
+
+	return nil
 }
 
 // AddPublicKeyToVerifier adds a public key to the verifier map after parsing it from PEM format.
