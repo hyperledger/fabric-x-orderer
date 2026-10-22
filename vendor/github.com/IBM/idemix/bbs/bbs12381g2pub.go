@@ -71,7 +71,13 @@ func New(curve *ml.Curve) *BBSG2Pub {
 const frCompressedSize = 32
 
 // Verify makes BLS BBS12-381 signature verification.
-func (bbs *BBSG2Pub) Verify(messages [][]byte, sigBytes, pubKeyBytes []byte) error {
+func (bbs *BBSG2Pub) Verify(messages [][]byte, sigBytes, pubKeyBytes []byte) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("failure [%s]", r)
+		}
+	}()
+
 	signature, err := bbs.lib.ParseSignature(sigBytes)
 	if err != nil {
 		return fmt.Errorf("parse signature: %w", err)
@@ -109,18 +115,40 @@ func (bbs *BBSG2Pub) Sign(messages [][]byte, privKeyBytes []byte) ([]byte, error
 }
 
 // VerifyProof verifies BBS+ signature proof for one ore more revealed messages.
-func (bbs *BBSG2Pub) VerifyProof(messagesBytes [][]byte, proof, nonce, pubKeyBytes []byte) error {
+func (bbs *BBSG2Pub) VerifyProof(messagesBytes [][]byte, proof, nonce, pubKeyBytes []byte) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("failure [%s]", r)
+		}
+	}()
+
 	messages := MessagesToFr(messagesBytes, bbs.curve)
 
 	return bbs.VerifyProofFr(messages, proof, nonce, pubKeyBytes)
 }
 
+// MaxMessagesCount bounds the number of messages a BBS+ proof may claim to cover.
+// Generator derivation in ToPublicKeyWithGenerators performs one hash-to-curve operation
+// per message, so an unbounded, attacker-controlled count (up to 0xFFFF on the wire) can be
+// used to force excessive CPU work during verification.
+const MaxMessagesCount = 1024
+
 // VerifyProofFr verifies BBS+ signature proof for one ore more revealed messages.
 // The messages are supplied as scalars and not bytes.
-func (bbs *BBSG2Pub) VerifyProofFr(messages []*SignatureMessage, proof, nonce, pubKeyBytes []byte) error {
+func (bbs *BBSG2Pub) VerifyProofFr(messages []*SignatureMessage, proof, nonce, pubKeyBytes []byte) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("failure [%s]", r)
+		}
+	}()
+
 	payload, err := ParsePoKPayload(proof)
 	if err != nil {
 		return fmt.Errorf("parse signature proof: %w", err)
+	}
+
+	if payload.MessagesCount < 0 || payload.MessagesCount > MaxMessagesCount {
+		return fmt.Errorf("invalid message count in proof: %d", payload.MessagesCount)
 	}
 
 	signatureProof, err := bbs.lib.ParseSignatureProof(proof[payload.LenInBytes():])
@@ -327,17 +355,23 @@ func (cb *commitmentBuilder) Build() *ml.G1 {
 	return sumOfG1Products(cb.bases, cb.scalars)
 }
 
+// sumOfG1Products computes the sum via pairwise Mul2 (joint scalar multiplication), which is
+// not faster in wall-clock time than two independent Mul calls on the gnark-backed curves (it
+// forgoes the GLV endomorphism speedup — see mathlib's Mul2 doc comment), but it allocates far
+// less, so it is preferred over a naive Mul+Add loop for the same wall-clock cost.
+//
+// It deliberately does not dispatch to curve.MultiScalarMul for larger inputs. This package's
+// hot paths (per-attribute nym/signature proofs) sum only a handful of bases, and gnark's
+// bucket-method MultiExp buys its wall-clock win there by fanning out over runtime.NumCPU()
+// goroutines and allocating buckets — cheap for one caller in isolation, but a net loss once
+// the whole process is already saturated with concurrent verifications. Callers that sum many
+// bases and want MultiExp can call curve.MultiScalarMul themselves.
 func sumOfG1Products(bases []*ml.G1, scalars []*ml.Zr) *ml.G1 {
 	var res *ml.G1
 
 	i := 0
 	for ; i+1 < len(bases); i += 2 {
-		b1 := bases[i]
-		s1 := FrToRepr(scalars[i])
-		b2 := bases[i+1]
-		s2 := FrToRepr(scalars[i+1])
-
-		g := b1.Mul2(s1, b2, s2)
+		g := bases[i].Mul2(scalars[i], bases[i+1], scalars[i+1])
 		if res == nil {
 			res = g
 		} else {
@@ -346,10 +380,7 @@ func sumOfG1Products(bases []*ml.G1, scalars []*ml.Zr) *ml.G1 {
 	}
 
 	if i < len(bases) {
-		b := bases[i]
-		s := FrToRepr(scalars[i])
-
-		g := b.Mul(s)
+		g := bases[i].Mul(scalars[i])
 		if res == nil {
 			res = g
 		} else {
