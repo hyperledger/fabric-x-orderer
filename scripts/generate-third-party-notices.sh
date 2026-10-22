@@ -56,7 +56,7 @@ while IFS= read -r -d '' license_file; do
   } >> "${OUTPUT}"
 
 done < <(find vendor -type f \( \
-    -iname 'LICENSE' -o -iname 'LICENSE.txt' -o -iname 'LICENSE.md' \
+    -iname 'LICENSE' -o -iname 'LICENSE.*' \
     -o -iname 'LICENCE' -o -iname 'LICENCE.txt' \
     -o -iname 'COPYING' -o -iname 'COPYING.txt' \
     -o -iname 'NOTICE'  -o -iname 'NOTICE.txt' \
