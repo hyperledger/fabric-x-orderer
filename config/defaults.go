@@ -33,6 +33,9 @@ var DefaultNodeLocalConfig = NodeLocalConfig{
 		TLSConfig: &TLSConfigYaml{
 			Enabled: false,
 		},
+		Profile: &Profile{
+			Enabled: false,
+		},
 	},
 	MetricsConfig: &Metrics{
 		Provider:           "prometheus",

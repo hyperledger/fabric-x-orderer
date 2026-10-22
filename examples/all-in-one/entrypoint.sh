@@ -86,6 +86,9 @@ for i in 1 2 3 4; do
   sed -i "s|/var/dec-trust/production/orderer/store|${STORAGE_DIR}/party${i}/batcher|g" ${PARTY_DIR}/local_config_batcher1.yaml
   sed -i "s|/var/dec-trust/production/orderer/store|${STORAGE_DIR}/party${i}/consenter|g" ${PARTY_DIR}/local_config_consenter.yaml
 
+  # Enable the pprof profiling endpoints on the operations server.
+  sed -i "/^    Profile:/,/Enabled:/ s/Enabled: false/Enabled: true/" ${PARTY_DIR}/local_config_*.yaml
+
 done
 
 echo "🚀 STARTING SERVICES"

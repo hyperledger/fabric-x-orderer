@@ -21,6 +21,10 @@ The `run_sample.sh` script performs the following tasks:
 - Creates and manages a volume for configuration files, with each node running in its own container.
 - Starts the nodes in order using `/healthz`: every batcher waits for all 4 consenters, each party's assembler waits for that party's 2 batchers, and each party's router waits for that party's assembler.
 - Submits transactions using `armageddon submit`, which processes 1000 transactions at a rate of 500 per second. 
+- Enables the Go [pprof](../docs/architecture.md#profiling) profiling endpoints in every node, on its operations port 8080 inside its container. For example, to see the goroutines of party 1's router:
+  ```
+  (cd examples; docker compose exec router.p1 wget -qO- 'http://127.0.0.1:8080/debug/pprof/goroutine?debug=1')
+  ```
 
 ### Clean Up Sample
 To clean up the environment after running the Arma example, run the following command from the root directory:

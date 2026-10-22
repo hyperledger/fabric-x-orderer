@@ -59,6 +59,18 @@ type Operations struct {
 	ListenPort uint32 `yaml:"ListenPort,omitempty"`
 	// TLS config for the operations server
 	TLSConfig *TLSConfigYaml `yaml:"TLS,omitempty"`
+	// Profile configures the Go pprof profiling endpoints of the operations server
+	Profile *Profile `yaml:"Profile,omitempty"`
+}
+
+// Profile configures the Go pprof profiling endpoints.
+type Profile struct {
+	// Enabled serves the pprof endpoints under /debug/pprof/ on the operations server.
+	Enabled bool `yaml:"Enabled"`
+	// BlockProfileRate samples one blocking event per this many nanoseconds spent blocked; 0 disables it.
+	BlockProfileRate int `yaml:"BlockProfileRate,omitempty"`
+	// MutexProfileFraction samples one in this many mutex contention events; 0 disables it.
+	MutexProfileFraction int `yaml:"MutexProfileFraction,omitempty"`
 }
 
 // Metrics configures the metrics provider for the orderer.
@@ -568,6 +580,12 @@ func applyGeneralDefaults(nodeLocalConfig *NodeLocalConfig, logger *flogging.Fab
 		logger.Info("Operations.TLS is not set, using default configuration")
 	}
 
+	if operationsConfig.Profile == nil {
+		defaultProfile := *DefaultNodeLocalConfig.OperationsConfig.Profile
+		operationsConfig.Profile = &defaultProfile
+		logger.Info("Operations.Profile is not set, using default configuration")
+	}
+
 	// If TLS is enabled for the operations server and the certificate, private key,
 	// or root CAs are not provided, use the ones from the general TLS config.
 	if operationsConfig.TLSConfig.Enabled {
@@ -710,6 +728,15 @@ func validateLocalConfigValues(nodeLocalConfig *NodeLocalConfig, role string) er
 	}
 	if cluster.ReplicationMinRetryInterval > cluster.ReplicationMaxRetryInterval {
 		return fmt.Errorf("node local config is not valid, General.Cluster.ReplicationMinRetryInterval must be less than or equal to General.Cluster.ReplicationMaxRetryInterval")
+	}
+
+	profile := nodeLocalConfig.OperationsConfig.Profile
+
+	if profile.BlockProfileRate < 0 {
+		return fmt.Errorf("node local config is not valid, Operations.Profile.BlockProfileRate must not be negative")
+	}
+	if profile.MutexProfileFraction < 0 {
+		return fmt.Errorf("node local config is not valid, Operations.Profile.MutexProfileFraction must not be negative")
 	}
 
 	if nodeLocalConfig.MetricsConfig.MetricsLogInterval < 0 {
