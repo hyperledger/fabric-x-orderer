@@ -135,6 +135,15 @@ func newBlockfileMgr(id string, conf *Conf, indexStore *leveldbhelper.DBHandle) 
 		return nil, err
 	}
 
+	// A prune that crashed between recording a block file as gone and unlinking it left the file behind, and
+	// the restart after the crash is the first chance to remove it. That waits until syncIndex has accepted
+	// the prune info, so an open that fails on a mismatch with the block files deletes nothing. Failing to
+	// remove an orphan does not fail the open: the file holds only blocks no read returns, and the next prune
+	// sweeps again.
+	if err := mgr.pruner.sweepOrphans(mgr.pruner.firstStoredBlockfileNum()); err != nil {
+		logger.Warnf("Could not remove the block files left behind by an earlier prune: %s", err)
+	}
+
 	bcInfo := &common.BlockchainInfo{}
 
 	if !blockfilesInfo.noBlockFiles {
