@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-ARG GO_VERSION=1.27.0
+ARG GO_VERSION=1.27.3
 ARG BASE_IMAGE=alpine
 # Version and commit hash written into the binaries; pass the real values with --build-arg.
 ARG VERSION=latest

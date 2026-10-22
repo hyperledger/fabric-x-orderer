@@ -162,6 +162,25 @@ Application: &ApplicationDefaults
         # Users can override these defaults using the ACLs section in their channel definition
         peer/Propose: /Channel/Application/Writers
 
+        # Fabric-X committer's exposed resources, keyed by gRPC full-method name. The committer's
+        # auth service authorizes each call against the policy its method maps to here.
+        # In the committer, access to each resource is governed by the
+        # /Channel/Application/Readers policy unless otherwise specified here.
+        /committerpb.QueryService/GetRows:                  &CommitterReaders /Channel/Application/Readers
+        /committerpb.QueryService/BeginView:                *CommitterReaders
+        /committerpb.QueryService/EndView:                  *CommitterReaders
+        /committerpb.QueryService/GetNamespacePolicies:     *CommitterReaders
+        /committerpb.QueryService/GetConfigTransaction:     *CommitterReaders
+        /committerpb.QueryService/GetTransactionStatus:     *CommitterReaders
+        /committerpb.SidecarService/GetBlockchainInfo:      *CommitterReaders
+        /committerpb.SidecarService/GetBlockByNumber:       *CommitterReaders
+        /committerpb.SidecarService/GetBlockByTxID:         *CommitterReaders
+        /committerpb.SidecarService/GetTxByID:              *CommitterReaders
+        /committerpb.SidecarService/OpenNotificationStream: *CommitterReaders
+        /committerpb.SidecarService/StreamBlocks:           *CommitterReaders
+        # The sidecar implements the Deliver API, which is not part of the committer codebase.
+        /protos.Deliver/Deliver:                            *CommitterReaders
+
     # Organizations lists the orgs participating on the application side of the
     # network.
     Organizations:

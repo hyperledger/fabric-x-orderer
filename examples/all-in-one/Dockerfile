@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-ARG GO_VERSION=1.27.0
+ARG GO_VERSION=1.27.3
 # Version and commit hash written into the binaries and the image labels; the release workflow passes the real values.
 ARG VERSION=latest
 ARG REVISION=unknown
