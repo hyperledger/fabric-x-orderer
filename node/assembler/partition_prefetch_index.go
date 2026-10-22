@@ -414,9 +414,12 @@ func (pi *PartitionPrefetchIndex) removeUnsafe(batchId types.BatchID) (types.Bat
 
 func (bs *PartitionPrefetchIndex) Stop() {
 	bs.cancelContextFunc()
+	bs.stateCond.L.Lock()
+	defer bs.stateCond.L.Unlock()
+	// Broadcast under the lock: a PopOrWait or Put is then either blocked in Wait and woken by it,
+	// or has not checked the context yet and will see it cancelled
 	bs.stateCond.Broadcast()
 	// Stop all the timers
-	bs.stateCond.L.Lock()
 	for {
 		batchAndTimer := bs.sequenceHeap.Pop()
 		if batchAndTimer == nil {
@@ -424,5 +427,4 @@ func (bs *PartitionPrefetchIndex) Stop() {
 		}
 		batchAndTimer.Value.Stop()
 	}
-	bs.stateCond.L.Unlock()
 }
