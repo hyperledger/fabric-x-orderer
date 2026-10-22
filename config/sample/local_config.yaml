@@ -191,24 +191,6 @@ General:
   # ClientSignatureVerificationRequired specifies if the router and batcher will validate the signature in the requests
   ClientSignatureVerificationRequired: false
 
-  # Profile: an HTTP server for Go "pprof" profiling, as documented at
-  # https://pkg.go.dev/net/http/pprof
-  # It has no authentication and no TLS. Keep it bound to localhost unless
-  # access from another machine is really needed.
-  Profile:
-    # Enabled turns the profiling server on.
-    Enabled: false
-    # ListenAddress is the IP on which the profiling server listens.
-    ListenAddress: 127.0.0.1
-    # ListenPort is the port on which the profiling server listens.
-    ListenPort: 6060
-    # BlockProfileRate samples one goroutine blocking event (channel, select)
-    # per this many nanoseconds spent blocked. 0 turns the block profile off.
-    BlockProfileRate: 0
-    # MutexProfileFraction samples one in this many mutex contention events.
-    # 0 turns the mutex profile off.
-    MutexProfileFraction: 0
-
 
 ################################################################################
 #
@@ -254,6 +236,19 @@ Operations:
 
     # Paths to PEM encoded ca certificates to trust for client authentication
     ClientRootCAs: []
+
+  # Profile: Go "pprof" profiling endpoints under /debug/pprof/ on the operations
+  # server, as documented at https://pkg.go.dev/net/http/pprof
+  # When TLS is enabled they require a client certificate, like /metrics.
+  Profile:
+    # Enabled serves the profiling endpoints.
+    Enabled: false
+    # BlockProfileRate samples one goroutine blocking event (channel, select)
+    # per this many nanoseconds spent blocked. 0 turns the block profile off.
+    BlockProfileRate: 0
+    # MutexProfileFraction samples one in this many mutex contention events.
+    # 0 turns the mutex profile off.
+    MutexProfileFraction: 0
 
 ################################################################################
 #

@@ -211,10 +211,10 @@ func TestLoadLocalConfigAppliesGeneralDefaults(t *testing.T) {
 	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Cluster.CertExpirationWarningThreshold, loadedConfig.ClusterConfig.CertExpirationWarningThreshold)
 	require.Equal(t, loadedConfig.TLSConfig.Certificate, loadedConfig.ClusterConfig.ClientCertificate)
 	require.Equal(t, loadedConfig.TLSConfig.PrivateKey, loadedConfig.ClusterConfig.ClientPrivateKey)
-	require.Equal(t, *config.DefaultNodeLocalConfig.GeneralConfig.Profile, *loadedConfig.NodeLocalConfig.GeneralConfig.Profile)
+	require.Equal(t, *config.DefaultNodeLocalConfig.OperationsConfig.Profile, *loadedConfig.NodeLocalConfig.OperationsConfig.Profile)
 }
 
-func TestLoadLocalConfigFillsProfileDefaults(t *testing.T) {
+func TestLoadLocalConfigFillsOperationsProfileDefault(t *testing.T) {
 	dir := t.TempDir()
 	require.DirExists(t, dir)
 
@@ -225,8 +225,9 @@ func TestLoadLocalConfigFillsProfileDefaults(t *testing.T) {
 	networkLocalConfig, err := generate.CreateArmaLocalConfig(networkConfig, dir, dir, false)
 	require.NoError(t, err)
 
+	// An Operations section without a Profile block, as in configs written before Profile existed.
 	localConfig := networkLocalConfig.PartiesLocalConfig[0].ConsenterLocalConfig
-	localConfig.GeneralConfig.Profile = &config.Profile{Enabled: true}
+	localConfig.OperationsConfig = &config.Operations{ListenAddress: "127.0.0.1"}
 
 	configPath := path.Join(dir, "config", "party1", "local_config_consenter.yaml")
 	err = utils.WriteToYAML(localConfig, configPath)
@@ -236,10 +237,7 @@ func TestLoadLocalConfigFillsProfileDefaults(t *testing.T) {
 	loadedConfig, _, err := config.LoadLocalConfig(configPath, logger)
 	require.NoError(t, err)
 
-	profile := loadedConfig.NodeLocalConfig.GeneralConfig.Profile
-	require.True(t, profile.Enabled)
-	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Profile.ListenAddress, profile.ListenAddress)
-	require.Equal(t, config.DefaultNodeLocalConfig.GeneralConfig.Profile.ListenPort, profile.ListenPort)
+	require.Equal(t, *config.DefaultNodeLocalConfig.OperationsConfig.Profile, *loadedConfig.NodeLocalConfig.OperationsConfig.Profile)
 }
 
 func TestLoadLocalConfigRejectsNegativeValues(t *testing.T) {
@@ -327,17 +325,17 @@ func TestLoadLocalConfigRejectsNegativeValues(t *testing.T) {
 			name:         "negative block profile rate",
 			createConfig: testutil.CreateTestConsensusLocalConfig,
 			update: func(c *config.NodeLocalConfig) {
-				c.GeneralConfig.Profile = &config.Profile{BlockProfileRate: -1}
+				c.OperationsConfig = &config.Operations{Profile: &config.Profile{BlockProfileRate: -1}}
 			},
-			expectedErr: "node local config is not valid, General.Profile.BlockProfileRate must not be negative",
+			expectedErr: "node local config is not valid, Operations.Profile.BlockProfileRate must not be negative",
 		},
 		{
 			name:         "negative mutex profile fraction",
 			createConfig: testutil.CreateTestConsensusLocalConfig,
 			update: func(c *config.NodeLocalConfig) {
-				c.GeneralConfig.Profile = &config.Profile{MutexProfileFraction: -1}
+				c.OperationsConfig = &config.Operations{Profile: &config.Profile{MutexProfileFraction: -1}}
 			},
-			expectedErr: "node local config is not valid, General.Profile.MutexProfileFraction must not be negative",
+			expectedErr: "node local config is not valid, Operations.Profile.MutexProfileFraction must not be negative",
 		},
 		{
 			name:         "negative router connections per batcher",
