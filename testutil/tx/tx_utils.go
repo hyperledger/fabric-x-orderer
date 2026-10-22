@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -58,6 +59,7 @@ func createStructuredPayload(data []byte, requestType common.HeaderType) *common
 		Creator: id,
 		Nonce:   []byte("nonce"),
 	}
+	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)
 	return &common.Payload{
 		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
 		Data:   data,
@@ -198,31 +200,34 @@ func ExtractTimestampFromTx(data []byte) time.Time {
 	return sendTime
 }
 
-// currently, for large enough data, the overhead remains constant at 58 bytes.
-var headersOverheadSize = func() int {
-	size := 300
-	env := CreateStructuredEnvelope(make([]byte, size))
-	envBytes, _ := proto.Marshal(env)
-	return len(envBytes) - size
+// emptyPayloadSize is the marshaled size of a structured envelope's payload without data (headers only), and
+// envelopeSigFieldSize is the marshaled size of that envelope's signature field.
+var emptyPayloadSize, envelopeSigFieldSize = func() (int, int) {
+	env := CreateStructuredEnvelope(nil)
+	payloadSize := len(env.GetPayload())
+	return payloadSize, proto.Size(env) - protowire.SizeTag(1) - protowire.SizeBytes(payloadSize)
 }()
 
 // PrepareUnsignedEnvelope prepares an envelope of size envSize, accounting for the overhead introduced by additional headers in the transaction.
+// When no data size yields exactly envSize (a varint length grows by a byte), the envelope is one byte smaller.
 // this method will be used for creating envelope for unsigned signing mode.
 func PrepareUnsignedEnvelope(txNumber int, envSize int, sessionNumber []byte) *common.Envelope {
-	var dataSize int
-
-	overheadSize := headersOverheadSize
-	if envSize < 186 { // 128+58
-		overheadSize -= 2
-	}
-
-	if envSize < overheadSize {
-		dataSize = envSize
-	} else {
-		dataSize = envSize - overheadSize
+	// the overhead only grows with the data size, so this is a lower bound on the fitting data size.
+	dataSize := max(0, 2*envSize-structuredEnvelopeSize(envSize))
+	for structuredEnvelopeSize(dataSize+1) <= envSize {
+		dataSize++
 	}
 	data := PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
 	return CreateStructuredEnvelope(data)
+}
+
+// structuredEnvelopeSize returns the marshaled size of an envelope created by CreateStructuredEnvelope with dataSize bytes of data.
+func structuredEnvelopeSize(dataSize int) int {
+	payloadSize := emptyPayloadSize
+	if dataSize > 0 {
+		payloadSize += protowire.SizeTag(2) + protowire.SizeBytes(dataSize)
+	}
+	return protowire.SizeTag(1) + protowire.SizeBytes(payloadSize) + envelopeSigFieldSize
 }
 
 // PrepareSignedEnvelopeWithCertificate prepares an fully signed envelope.
@@ -279,6 +284,7 @@ func createSignedStructuredPayloadWithCertID(data []byte, certBytes []byte, org 
 		Creator: deterministicMarshall(sId),
 		Nonce:   []byte("nonce"),
 	}
+	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)
 	return &common.Payload{
 		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
 		Data:   data,
@@ -310,6 +316,7 @@ func createSignedStructuredPayload(data []byte, certBytes []byte, org string) *c
 		Creator: deterministicMarshall(sId),
 		Nonce:   []byte("nonce"),
 	}
+	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)
 	return &common.Payload{
 		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
 		Data:   data,

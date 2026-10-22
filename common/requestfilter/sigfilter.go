@@ -90,6 +90,10 @@ func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.Sign
 		return nil, reqType, fmt.Errorf("failed unmarshalling channel header, err %s", err.Error())
 	}
 
+	if err = VerifyTxID(chdr, shdr); err != nil {
+		return nil, reqType, err
+	}
+
 	// TODO: check channel ID
 	// if sf.channelID != chdr.ChannelId {
 	// 	return nil, fmt.Errorf("channelID is incorrect. expected: %s, actual: %s", sf.channelID, chdr.ChannelId)
@@ -111,5 +115,17 @@ func (sf *SigFilter) Update(config FilterConfig) error {
 	sf.clientSignatureVerificationRequired = config.GetClientSignatureVerificationRequired()
 	sf.channelID = config.GetChannelID()
 	sf.policyManager = config.GetPolicyManager()
+	return nil
+}
+
+// VerifyTxID checks that the signature header carries a nonce, and that the channel header's TxId
+// is the one derived from the signature header's nonce and creator.
+func VerifyTxID(chdr *common.ChannelHeader, shdr *common.SignatureHeader) error {
+	if len(shdr.GetNonce()) == 0 {
+		return fmt.Errorf("missing nonce in signature header")
+	}
+	if err := protoutil.CheckTxID(chdr.GetTxId(), shdr.GetNonce(), shdr.GetCreator()); err != nil {
+		return fmt.Errorf("invalid tx id: %s", err)
+	}
 	return nil
 }
