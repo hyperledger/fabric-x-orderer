@@ -62,7 +62,7 @@ type DefaultOrdererRules struct{}
 //  10. Party certificates must be valid, with expiration enforced for genesis
 //     configs and ignored for later config updates.
 //  11. Party IDs, shard IDs, and MaxPartyID must be within their valid ranges.
-//     For genesis configs, no PartyID may exceed MaxPartyID.
+//     No PartyID may exceed MaxPartyID.
 //  12. Router and assembler hosts and ports in SharedConfig should match the corresponding
 //     broadcast and deliver OrdererEndpoints. Mismatches are logged as warnings.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
@@ -175,9 +175,7 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 	if sharedConfig.MaxPartyID > math.MaxUint16 {
 		return errors.Errorf("MaxPartyID %d exceeds uint16 maximum %d", sharedConfig.MaxPartyID, math.MaxUint16)
 	}
-
-	isGenesis := bundle.ConfigtxValidator().Sequence() == 0
-	if err := validatePartyAndShardIDs(sharedConfig.PartiesConfig, sharedConfig.MaxPartyID, isGenesis); err != nil {
+	if err := validatePartyAndShardIDs(sharedConfig.PartiesConfig, sharedConfig.MaxPartyID); err != nil {
 		return errors.Wrap(err, "invalid party or shard ID in shared config")
 	}
 
@@ -692,7 +690,7 @@ func certificateSetsEqual(sharedConfigCerts, orgCerts [][]byte) error {
 	return nil
 }
 
-func validatePartyAndShardIDs(parties []*ordererpb.PartyConfig, maxPartyID uint32, isGenesis bool) error {
+func validatePartyAndShardIDs(parties []*ordererpb.PartyConfig, maxPartyID uint32) error {
 	for _, party := range parties {
 		if party == nil {
 			return errors.New("party config is nil")
@@ -700,8 +698,8 @@ func validatePartyAndShardIDs(parties []*ordererpb.PartyConfig, maxPartyID uint3
 		if party.PartyID == 0 || party.PartyID > math.MaxUint16 {
 			return errors.Errorf("party ID %d out of range [1, %d]", party.PartyID, math.MaxUint16)
 		}
-		if isGenesis && party.PartyID > maxPartyID {
-			return errors.Errorf("party ID %d exceeds MaxPartyID %d in genesis config", party.PartyID, maxPartyID)
+		if party.PartyID > maxPartyID {
+			return errors.Errorf("party ID %d exceeds MaxPartyID %d", party.PartyID, maxPartyID)
 		}
 
 		for _, batcher := range party.BatchersConfig {

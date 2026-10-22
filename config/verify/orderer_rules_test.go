@@ -347,13 +347,14 @@ func TestValidateNewConfig_PartyIDExceedsMaxPartyID(t *testing.T) {
 
 	// Genesis config is rejected
 	err = or.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
-	require.EqualError(t, err, "invalid party or shard ID in shared config: party ID 1 exceeds MaxPartyID 0 in genesis config")
+	require.EqualError(t, err, "invalid party or shard ID in shared config: party ID 1 exceeds MaxPartyID 0")
 
-	// Config updates are allowed
+	// Config updates are rejected as well
 	cfgEnv.Config.Sequence = 1
 	payload.Data = protoutil.MarshalOrPanic(cfgEnv)
 	env.Payload = protoutil.MarshalOrPanic(payload)
-	require.NoError(t, or.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1)))
+	err = or.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
+	require.EqualError(t, err, "invalid party or shard ID in shared config: party ID 1 exceeds MaxPartyID 0")
 }
 
 func TestValidateNewConfig_RouterAndAssemblerEndpointsMismatch(t *testing.T) {

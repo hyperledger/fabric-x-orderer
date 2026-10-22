@@ -270,38 +270,36 @@ func TestValidatePartyAndShardIDs(t *testing.T) {
 	}
 
 	t.Run("boundary IDs are valid", func(t *testing.T) {
-		require.NoError(t, validatePartyAndShardIDs(partyWithShard(1, 1), 1, true))
-		require.NoError(t, validatePartyAndShardIDs(partyWithShard(math.MaxUint16, math.MaxUint16-1), math.MaxUint16, true))
+		require.NoError(t, validatePartyAndShardIDs(partyWithShard(1, 1), 1))
+		require.NoError(t, validatePartyAndShardIDs(partyWithShard(math.MaxUint16, math.MaxUint16-1), math.MaxUint16))
 	})
 
 	t.Run("party ID out of range", func(t *testing.T) {
 		for _, partyID := range []uint32{0, math.MaxUint16 + 1, math.MaxUint16 + 2} {
-			err := validatePartyAndShardIDs(partyWithShard(partyID, 1), math.MaxUint16, true)
+			err := validatePartyAndShardIDs(partyWithShard(partyID, 1), math.MaxUint16)
 			require.EqualError(t, err, fmt.Sprintf("party ID %d out of range [1, %d]", partyID, math.MaxUint16))
 		}
 	})
 
 	t.Run("shard ID out of range", func(t *testing.T) {
 		for _, shardID := range []uint32{0, math.MaxUint16, math.MaxUint16 + 1, math.MaxUint16 + 2} {
-			err := validatePartyAndShardIDs(partyWithShard(1, shardID), 1, true)
+			err := validatePartyAndShardIDs(partyWithShard(1, shardID), 1)
 			require.EqualError(t, err, fmt.Sprintf("shard ID %d of party 1 out of range [1, %d]", shardID, math.MaxUint16-1))
 		}
 	})
 
 	t.Run("party ID exceeds MaxPartyID", func(t *testing.T) {
-		err := validatePartyAndShardIDs(partyWithShard(2, 1), 1, true)
-		require.EqualError(t, err, "party ID 2 exceeds MaxPartyID 1 in genesis config")
-
-		require.NoError(t, validatePartyAndShardIDs(partyWithShard(2, 1), 1, false))
+		err := validatePartyAndShardIDs(partyWithShard(2, 1), 1)
+		require.EqualError(t, err, "party ID 2 exceeds MaxPartyID 1")
 	})
 
 	t.Run("party config is nil", func(t *testing.T) {
-		err := validatePartyAndShardIDs([]*ordererpb.PartyConfig{nil}, 1, true)
+		err := validatePartyAndShardIDs([]*ordererpb.PartyConfig{nil}, 1)
 		require.EqualError(t, err, "party config is nil")
 	})
 
 	t.Run("batcher config is nil", func(t *testing.T) {
-		err := validatePartyAndShardIDs([]*ordererpb.PartyConfig{{PartyID: 1, BatchersConfig: []*ordererpb.BatcherNodeConfig{nil}}}, 1, true)
+		err := validatePartyAndShardIDs([]*ordererpb.PartyConfig{{PartyID: 1, BatchersConfig: []*ordererpb.BatcherNodeConfig{nil}}}, 1)
 		require.EqualError(t, err, "nil batcher config for party 1")
 	})
 }
