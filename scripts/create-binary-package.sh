@@ -56,8 +56,8 @@ echo "Generating third-party notices..."
 # Ship the project license alongside the binaries.
 cp LICENSE "${RELEASE_DIR}/"
 
-# -C changes into RELEASE_DIR first, so the archive holds relative paths (bin/, LICENSE).
+# -C changes into RELEASE_DIR first, so the archive holds relative paths (bin/, LICENSE, THIRD-PARTY-NOTICES).
 ARCHIVE="fabric-x-orderer-${TARGET}-${VERSION}.tar.gz"
-tar -czf "${RELEASE_DIR}/${ARCHIVE}" -C "${RELEASE_DIR}" bin LICENSE
+tar -czf "${RELEASE_DIR}/${ARCHIVE}" -C "${RELEASE_DIR}" bin LICENSE THIRD-PARTY-NOTICES
 
 echo "${RELEASE_DIR}/${ARCHIVE}"

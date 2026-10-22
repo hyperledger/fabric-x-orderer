@@ -31,6 +31,9 @@ jobs:
       tag: ${{ steps.extract.outputs.tag }}
       make_latest: ${{ steps.extract.outputs.make_latest }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
       - name: Extract and validate version from tag
         id: extract
         env:
@@ -63,8 +66,12 @@ jobs:
           if [[ -n "${HIGHEST}" ]]; then
             HIGH_MAJOR="${HIGHEST%%.*}"
             HIGH_MINOR="${HIGHEST#*.}"; HIGH_MINOR="${HIGH_MINOR%%.*}"
+            HIGH_PATCH="${HIGHEST##*.}"
+            THIS_PATCH="${RAW_TAG#*.*.}"
+            THIS_PATCH="${THIS_PATCH%%[!0-9]*}"
             if (( THIS_MAJOR > HIGH_MAJOR )) || \
-               (( THIS_MAJOR == HIGH_MAJOR && THIS_MINOR >= HIGH_MINOR )); then
+               (( THIS_MAJOR == HIGH_MAJOR && THIS_MINOR > HIGH_MINOR )) || \
+               (( THIS_MAJOR == HIGH_MAJOR && THIS_MINOR == HIGH_MINOR && THIS_PATCH >= HIGH_PATCH )); then
               echo "make_latest=true"  >> "$GITHUB_OUTPUT"
             else
               echo "make_latest=false" >> "$GITHUB_OUTPUT"
