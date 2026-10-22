@@ -374,6 +374,8 @@ most useful are:
 | `batcher_mempool_size` | How many requests are waiting in the mempool. A mempool that keeps growing on a secondary means the primary is not batching them. |
 | `batcher_router_txs_total`, `batcher_batched_txs_total` | The transactions received from the router, and those stored in batches. Their rates should match. |
 | `batcher_batches_pulled_total` | How many batches a secondary has pulled and verified. |
+| `batch_ledger_batches_size_bytes_total` | The bytes of the batches appended to the ledger. With the batch rate, it gives the ledger's write bandwidth. |
+| `batcher_batch_size_avg_bytes` | The average size of the batches appended during the last `Metrics.MetricsLogInterval`. It is 0 for an interval with no batches. |
 | `batcher_first_resends_total`, `batcher_complaints_total` | How many requests were forwarded after the first strike, and how many complaints were sent. These are the early signals of a primary in trouble. |
 
 The full list, including the latency histograms of batch cutting, hashing and verification, is in the
