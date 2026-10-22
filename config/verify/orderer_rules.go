@@ -186,7 +186,7 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 
 	// 13.
 	if err := validateUniqueSigningCerts(sharedConfig.PartiesConfig); err != nil {
-		return errors.Wrap(err, "signing certificates are not unique")
+		return err
 	}
 
 	return nil
