@@ -1,3 +1,9 @@
+/*
+Copyright IBM Corp. All Rights Reserved.
+
+SPDX-License-Identifier: Apache-2.0
+*/
+
 # Arma Reconfiguration Guide
 
 A guide for Arma party administrators. It explains how to build, sign and submit a configuration
@@ -84,10 +90,12 @@ When a node pulls a new config block, it **soft-stops** and takes one of two pat
 
 | Outcome                | When                                                              | What the node does                                                                                   | What you must do                                                   |
 |------------------------|-------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
-| **Dynamic restart**    | The change does not touch this node's identity or its party       | Re-initializes in-process with the new config and resumes work                                       | Nothing. Check for the log line below.                             |
+| **Dynamic restart**    | None of the pending-admin triggers below applies to this node     | Re-initializes in-process with the new config and resumes work                                       | Nothing. Check for the log line below.                             |
 | **Pending admin**      | See the list below                                                | Stays soft-stopped and processes nothing. The assembler keeps serving `Deliver` of the blocks it already has | Prepare the node (local config / crypto), then **restart the process** |
 
-A node enters **pending-admin** when, in the new config:
+A node enters **pending-admin** only when one of these triggers applies. Other changes, even to the
+node's own party (for example, its party's `CACerts` / `TLSCACerts` or org MSP, as in CA rotation
+Steps 1 and 3), restart it dynamically:
 
 - **Its own party was removed.** This applies to all node types.
 - **Its own identity changed.** An identity change is any of:
@@ -98,9 +106,17 @@ A node enters **pending-admin** when, in the new config:
   [5.2](#52-update-batching-parameters)). The batcher's memory pool cannot be reconfigured
   in-process, so **every batcher in the network** goes to pending-admin.
 
-Only the node whose own identity changed goes to pending-admin. For example, a new router TLS
-certificate for party 1 puts only party 1's router into pending-admin. All other nodes,
-including party 1's other nodes, restart dynamically.
+The first two triggers apply only to the node concerned. For example, a new router TLS certificate
+for party 1 puts only party 1's router into pending-admin; all other nodes, including party 1's
+other nodes, restart dynamically. The mempool trigger is the exception: it affects every batcher.
+
+A node logs only the **first** trigger it finds, and a batcher checks the mempool parameters before
+its own identity. So if one TX changes a mempool parameter and also changes a batcher's identity
+(for example, rotates its TLS certificate or moves its endpoint), that batcher logs only
+`Batcher's pool options were changed in the new configuration`. Before you restart a batcher, check
+the TX for other changes that affect it, and do the matching admin action too.
+For example, if the TX also rotates the batcher's TLS certificate, put the new certificate and key at `General.TLS.Certificate` / `General.TLS.PrivateKey` first (see 5.4),
+Otherwise the restart fails with `certificate mismatch: ... differs from the shared configuration TLS certificate`.
 
 ### Log messages to look for
 
@@ -137,9 +153,25 @@ Pending admin action to apply new config
 The assembler adds: `Pending admin action to apply new config. Assembler's deliver service remains available.`
 
 **After an admin restart:** the node logs `<Node> listening on <host:port>` (the router also adds
-`PartyID: <id>`). It reads the newest config on its own: routers and batchers read it from their
-config store, consenters and assemblers from their ledger. You do **not** need to change
-`General.Bootstrap.File` for an existing node.
+`PartyID: <id>`). It loads the newer of two config blocks: the last one it stored (routers and
+batchers in their config store, consenters and assemblers in their ledger) and the one in
+`General.Bootstrap.File`. For a node that was running when the config changed, the stored block is
+the newest, so you do **not** need to change `General.Bootstrap.File`.
+
+A node that was **down** while config updates were committed also loads its stored config, which is
+now outdated. It then catches up on what it missed, including the missed config blocks, and
+applies them:
+
+- a consenter syncs from the other consenters. It finds them through the consenter addresses and
+  TLS CAs in its stored config, and switches to the new ones as it applies each missed config block;
+- a router, batcher or assembler pulls the missed decisions only from its own party's consenter, at
+  the address in its stored config, once that consenter has caught up.
+
+So, in most cases, you do not need to change `General.Bootstrap.File` either. The exception is when
+the stored config no longer lets the node start, or reach the nodes it syncs or pulls from. Then the
+node must **rejoin**: set `General.Bootstrap.File` of each of the party's nodes to the latest config
+block before you restart them (see
+[Bringing back a party that was down during reconfigurations](#bringing-back-a-party-that-was-down-during-reconfigurations)).
 
 **Removed party's nodes after a restart:** what happens depends on whether the node received the
 config block that removed its party before it was stopped:
@@ -172,7 +204,8 @@ The local config fields you may need to change are under `General`:
 
 | Change in the config TX          | Edit in `local_config_<node>.yaml` before restarting                                                            |
 |----------------------------------|----------------------------------------------------------------------------------------------------------------|
-| Node host / port                 | `General.ListenAddress`, `General.ListenPort`                                                                  |
+| Node port                        | `General.ListenPort`                                                                                           |
+| Node host                        | `General.ListenAddress`, only if it is a specific IP and the node moved to a machine with a new IP. Nothing if it is `0.0.0.0`, or if only the external address or DNS name changed. See [5.3](#53-change-a-node-endpoint) |
 | Node TLS certificate             | Put the new cert/key at `General.TLS.Certificate` / `General.TLS.PrivateKey` (or point these fields at the new files) |
 | Node signing certificate         | Put the new cert in `<General.LocalMSPDir>/signcerts/` and its key in `<General.LocalMSPDir>/keystore/priv_sk` |
 | Party CA certificates            | Update the CA files the node trusts, such as `General.TLS.RootCAs` and `<LocalMSPDir>/cacerts`, `tlscacerts` |
@@ -200,19 +233,38 @@ router rejects the TX and returns an error to the submitter. The network is not 
    between 1 and 65534.
 
 **Consistency rules** (several values appear in more than one place in the config, and every copy
-must match):
+must match). The **Validated** column says whether the orderer rejects a TX that breaks the rule.
+A rule marked **no** is not enforced: the TX is accepted, so you must keep the copies in sync yourself.
 
-| If you change...                               | ...you must also update                                                                                                         |
-|------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
-| A consenter's `host` / `port`                  | The party's entry in `Orderer.values.Orderers.value.consenter_mapping` (`host`, `port`)                                          |
-| A consenter's `tls_cert`                       | `consenter_mapping` (`client_tls_cert`, `server_tls_cert`)                                                                       |
-| A consenter's `sign_cert`                      | `consenter_mapping` (`identity`) **and** the `Orderer.policies.BlockValidation` policy                                           |
-| The set of parties (add / remove)              | `consenter_mapping`, the orderer org under `Orderer.groups`, **and** the `BlockValidation` policy (BFT quorum over the consenters) |
-| A party's `TLSCACerts`                         | The org MSP `tls_root_certs` under `Orderer.groups.<org>`                                                                        |
-| A party's `CACerts`                            | The org MSP `root_certs` under `Orderer.groups.<org>`                                                                            |
-| A router `host`/`port` or assembler `host`/`port` | The org `Endpoints` (`broadcast` = router, `deliver` = assembler) under `Orderer.groups.<org>`                                 |
-| `BatchingConfig.BatchSize.AbsoluteMaxBytes`    | `Orderer.values.BatchSize.value.absolute_max_bytes` must be equal. If you lower it, `Orderer.values.BatchSize.value.preferred_max_bytes` must stay `<=` it |
-| `BatchingConfig.RequestMaxBytes`               | `ConsensusConfig.SmartBFTConfig.RequestMaxBytes` must stay `>=` it                                                               |
+| If you change...                               | ...you must also update                                                                                                         | Validated |
+|------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|-----------|
+| A consenter's `host` / `port`                  | The party's entry in `Orderer.values.Orderers.value.consenter_mapping` (`host`, `port`)                                          | yes       |
+| A consenter's `tls_cert`                       | `consenter_mapping` (`client_tls_cert`, `server_tls_cert`)                                                                       | yes       |
+| A consenter's `sign_cert`                      | `consenter_mapping` (`identity`) **and** the `Orderer.policies.BlockValidation` policy                                           | yes       |
+| The set of parties (add / remove)              | `consenter_mapping`, the orderer org under `Orderer.groups`, **and** the `BlockValidation` policy (BFT quorum over the consenters) | yes       |
+| A party's `TLSCACerts`                         | The org MSP `tls_root_certs` under `Orderer.groups.<org>`                                                                        | yes       |
+| A party's `CACerts`                            | The org MSP `root_certs` under `Orderer.groups.<org>`                                                                            | **no**    |
+| A router `host`/`port` or assembler `host`/`port` | The org `Endpoints` (`broadcast` = router, `deliver` = assembler) under `Orderer.groups.<org>`, unless clients reach the node at a different (external) address; see below | **no** (a mismatch is only logged as a warning) |
+| `BatchingConfig.BatchSize.AbsoluteMaxBytes`    | `Orderer.values.BatchSize.value.absolute_max_bytes` must be equal. If you lower it, `Orderer.values.BatchSize.value.preferred_max_bytes` must stay `<=` it | yes |
+| `BatchingConfig.RequestMaxBytes`               | `ConsensusConfig.SmartBFTConfig.RequestMaxBytes` must stay `>=` it                                                               | yes       |
+
+**Router and assembler endpoints: when a mismatch matters.** The two copies are read by different
+parties:
+
+- The `host` / `port` in `PartiesConfig` (`RouterConfig`, `AssemblerConfig`) is the node's internal
+  address: other Arma nodes connect to it, and `fxadmin` reads it.
+- The org `Endpoints` are the addresses for clients: clients that find the routers and assemblers
+  from the config block connect to these.
+
+The orderer only warns on a mismatch because the two may differ on purpose: when the node is behind
+NAT, a load balancer or a proxy, clients reach it at an external address (and possibly port) that is
+not the node's internal one. In that case, keep the org `Endpoints` set to the external address, and
+change it only when the external address changes.
+
+When there is no such translation, clients reach the node at its internal address, so the two copies
+must be the same. Then a mismatch is a mistake. For example, if you change a router's port in
+`PartiesConfig` but not in the org's `Endpoints`, the TX is accepted, but clients keep dialing the
+old port and can no longer reach the router.
 
 Also: all batching timeouts must be positive durations, and the SmartBFT config must pass SmartBFT's own validation.
 
@@ -390,12 +442,21 @@ larger than the new `RequestMaxBytes`.
 
 The flow is the same for any node. Only the node whose endpoint changes needs admin action.
 
+**If the host changes:** the node's TLS certificate must list the new host in its SANs. Other
+nodes and clients check the host name they dial against the node's certificate. The config TX
+itself is accepted either way, because the orderer validates the certificate's CA chain and key
+usage, not its SANs. But after the restart, every TLS handshake with the node fails with
+`x509: certificate is valid for <old>, not <new>`, and the node is cut off. If the current
+certificate does not cover the new host, rotate the node's TLS certificate
+([5.4](#54-rotate-a-nodes-tls-or-signing-certificate)) in the same TX. Both changes modify the same
+party, so the TX is allowed.
+
 **Edit:** set the node's `host` / `port` in its entry in `<shared>.PartiesConfig[]` (party 1), and:
 
 | Node                 | Also update                                                                                       |
 |----------------------|---------------------------------------------------------------------------------------------------|
-| Router               | The `broadcast` address in `org1`'s `Endpoints` (`id=1,broadcast,<host>:<port>`)                   |
-| Assembler            | The `deliver` address in `org1`'s `Endpoints` (`id=1,deliver,<host>:<port>`)                       |
+| Router               | The `broadcast` address in `org1`'s `Endpoints` (`id=1,broadcast,<host>:<port>`), if clients reach the router at its internal address. If clients use an external (NAT) address, change `Endpoints` only when that address changes. Not validated: see [Section 3](#3-rules-every-config-update-must-follow) |
+| Assembler            | The `deliver` address in `org1`'s `Endpoints` (`id=1,deliver,<host>:<port>`), with the same rule as the router. Not validated: see [Section 3](#3-rules-every-config-update-must-follow) |
 | Consenter            | `host` / `port` of party 1's entry in `consenter_mapping`                                          |
 | Batcher of shard S   | Nothing else                                                                                      |
 
@@ -412,8 +473,26 @@ must be one of them, because the edit changes `org1`'s `Endpoints` (see [Signing
 **Admin action (party 1's admin):**
 
 1. Wait for `Pending admin action to apply new config` on the changed node, then stop it.
-2. In its `local_config_<node>.yaml`, set `General.ListenAddress` / `General.ListenPort` to the new endpoint.
-3. Start the node and check for `<Node> listening on <new host:port>`.
+2. Update the node's `local_config_<node>.yaml`:
+   - **If the port changed:** set `General.ListenPort` to the new port.
+   - **If the host changed:** the `host` in the config block and `General.ListenAddress` in the local
+     config are not the same thing:
+     - the `host` is the address the **other parties' nodes** connect to. If party 1's nodes are
+       behind NAT or a DNS name, it is that external address or name;
+     - `General.ListenAddress` is the local IP address on the node's own machine where it opens its
+       port. It must be one of the machine's IP addresses, or `0.0.0.0` for all of them. It can't be
+       a DNS name or an external NAT address.
+
+     What to do:
+     - If `ListenAddress` is `0.0.0.0`, don't change it.
+     - If `ListenAddress` is the machine's IP and the node moved to a machine with a new IP, 
+       set it to the new IP. Otherwise the node can't start.
+     - If only the external address or DNS name changed and the machine is the same, the config TX
+       updates the `host`, but you don't change `General.ListenAddress`: the node still listens on
+       the same local IP. The node still goes to pending-admin, because its address changed, and you
+       must still restart it.
+3. Start the node and check for `<Node> listening on <ListenAddress>:<ListenPort>`. This line shows
+   the local address the node listens on, not the `host` from the config block.
 4. **Router or assembler:** tell clients to use the new address. Clients cannot reach the node
    at the old address after the change.
 
@@ -455,7 +534,7 @@ certificates at once.
 **Admin action (party 1's admin, for each changed node):**
 
 1. Wait for `Pending admin action to apply new config`, then stop the node.
-2. Install the new certificate and key:
+2. Update the new certificate and key:
    - TLS: at `General.TLS.Certificate` / `General.TLS.PrivateKey`;
    - signing: `<General.LocalMSPDir>/signcerts/` and `<General.LocalMSPDir>/keystore/priv_sk`.
 3. Start the node and check for `<Node> listening on ...`.
@@ -495,7 +574,7 @@ node certificates (TLS and signing for every node of the party), and new admin a
   identity: an identity from the new CA is only trusted after this TX commits.
 - **Node behavior:** **all of party 1's nodes go to pending-admin** (identity changed). All other
   nodes restart dynamically.
-- **Admin action (party 1):** stop each node. Install its new TLS and signing certificates/keys,
+- **Admin action (party 1):** stop each node. Update its new TLS and signing certificates/keys,
   and the new CA files in its MSP and TLS trust lists. Then restart it. From now on, party 1's admin
   and clients use their identities from the new CA.
 
@@ -520,6 +599,13 @@ still point at the old CA), Step 3 is rejected and the network is unchanged. Com
 This example removes **party 4**. Only one party can be removed per config TX. To remove
 several, run this flow once per party.
 
+**Before you remove a party, check that the network stays live.** The orderer does not check
+whether the remaining parties can still reach a quorum. After the removal, with `N` remaining
+parties, `f = (N-1)/3` and a quorum of `ceil((N + f + 1) / 2)` parties must be up. For example, in a
+network of 5 parties with party 2 down, removing party 5 leaves `N = 4`, `f = 1` and a quorum of 3,
+while only parties 1, 3 and 4 are up: one more failure stops ordering. Confirm which parties are
+healthy before you remove one.
+
 **Edit:** in the same TX:
 
 - remove party 4's entry from `<shared>.PartiesConfig[]`;
@@ -529,7 +615,8 @@ several, run this flow once per party.
 
 `MaxPartyID` does not change, so ID 4 can never be used again.
 
-**Sign:** majority of the **remaining** parties' admins. You don't need the removed party's admin.
+**Sign:** a majority of **all** the orderer orgs' admins, counted over the config **before** the
+removal.
 
 **Before you submit (optional):** you may stop party 4 first. If it is already stopped, submit to
 the remaining routers; `fxadmin tx send` succeeds as long as a quorum of routers accepts the TX.
@@ -603,11 +690,38 @@ blocks pulled from all assemblers.
 > **Replacing a party** (remove one, add another) takes at least two config TXs. Use the config
 > block produced by the **latest** TX as the new party's bootstrap block.
 
-> **Bringing back a party that was down during reconfigurations.** If a party missed config
-> updates while it was down, set `General.Bootstrap.File` of each of its nodes to the **latest**
-> config block before restarting it. A node picks the newer of its stored config and its bootstrap
-> block (and logs `rejoin-block detected`). With an outdated config, its consenter fails with
-> `config sequence ahead`.
+#### Bringing back a party that was down during reconfigurations
+
+A party that missed config updates while it was down usually needs no action: on restart, its
+consenter syncs the missed blocks from the other consenters, and its other nodes catch up from it.
+
+The party must **rejoin** from the latest config block when its stored config no longer lets its
+nodes start, or reach the nodes they sync or pull from:
+
+| Case (while the party was down) | What happens without a rejoin |
+|---|---|
+| The other parties' consenters **moved to new endpoints, or were removed or replaced** | The consenter looks for the cluster only at the addresses in its stored config, and nobody answers there. It can't sync, so it never pulls the config blocks with the new addresses, and stays on the old config. The rest of the network sends it requests from the newer config, which it rejects (`Failed submitting request: config sequence ahead`). The party's other nodes pull only from this consenter, so the whole party stays out |
+| The party's **own consenter moved** (its router, batcher or assembler were down) | These nodes pull decisions only from their party's consenter, at the address in their stored config, so they can't reach it |
+| The other parties **rotated their CAs** ([5.5](#55-rotate-a-partys-ca-certificates), all three steps) | The node trusts only the TLS CAs in its stored config, so its TLS handshakes with the other consenters fail. Same result as the first case. A new certificate from the **same** CA is not a problem |
+| The party's **own node certificates were rotated**, and the new ones are installed on its nodes | At startup each node compares its local certificates with its stored config, which lists the old ones. It exits with `certificate mismatch: ... differs from the shared configuration TLS certificate` (or `sign certificate mismatch`) |
+| The node's **storage was lost** (disk wiped, or the node rebuilt) | With nothing stored, the node starts from the bootstrap file as is. If that is still the genesis block, it starts from the first config; if its party was added after genesis, it is not listed there and the node exits at startup |
+
+Only the first case is covered by a test (`TestReJoinSingleParty`, `TestConsensusFullReplacement`).
+The others follow from the code.
+
+To rejoin, set `General.Bootstrap.File` of **every** node of the party to the **latest** config
+block, and restart them. Each node picks the newer of its stored config and its bootstrap block, and
+logs `rejoin-block detected`. The consenter syncs with the cluster before it takes part. If a rejoin
+is not possible, you can instead remove the party and add it again as a new party (with a new party
+ID).
+
+The bootstrap block is used in three cases:
+
+| Case                     | `General.Bootstrap.File`                          |
+|--------------------------|---------------------------------------------------|
+| First start of a network | The genesis block                                 |
+| A new party joins        | The config block that added the party ([5.7](#57-add-a-party)) |
+| A party rejoins          | The latest config block, in the cases above       |
 
 ---
 
@@ -622,6 +736,7 @@ The router returns these errors to the submitter. The network is unchanged; fix 
 | `signature did not satisfy policy /Channel/Writers`                                               | The envelope's outer signature is invalid or not from a channel writer                            |
 | `proposed update requires that key ... be at version N, but it is currently at version M`          | The update was built from an old config block. Fetch the latest and rebuild                        |
 | `more than one party added / removed / modified in config tx`, `only one party can be changed`    | Split the change into one TX per party                                                            |
+| `proposed MaxPartyID X must equal the newly added PartyID Y`                                      | `MaxPartyID` was not set to the new party's ID. Set `MaxPartyID` to the new `PartyID` in the same TX |
 | `proposed MaxPartyID X must be greater than previous MaxPartyID Y by one`, `proposed party ID ... must be greater than previous MaxPartyID` | The new party's ID must be exactly `MaxPartyID + 1`, and IDs cannot be reused                    |
 | `MaxPartyID cannot change if no new party is added`                                               | Restore `MaxPartyID`                                                                               |
 | `party ID ... out of range`, `shard ID ... out of range`, `MaxPartyID ... exceeds uint16 maximum` | Use IDs in the valid range                                                                        |
