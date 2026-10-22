@@ -303,24 +303,11 @@ func TestValidateNewConfig_CertificateExpiration(t *testing.T) {
 func TestValidateNewConfig_InvalidMaxPartyID(t *testing.T) {
 	_, env, _, _, _, _, _ := setupOrdererRulesTest(t, 1)
 
-	payload, err := protoutil.UnmarshalPayload(env.Payload)
-	require.NoError(t, err)
-	cfgEnv := &common.ConfigEnvelope{}
-	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+	env = updateSharedConfig(t, env, func(shared *ordererpb.SharedConfig) {
+		shared.MaxPartyID = math.MaxUint16 + 1
+	})
 
-	shared := configutil.GetSharedConfig(t, cfgEnv)
-	shared.MaxPartyID = math.MaxUint16 + 1
-
-	consensusType := &orderer.ConsensusType{}
-	ordererValues := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values
-	require.NoError(t, proto.Unmarshal(ordererValues["ConsensusType"].Value, consensusType))
-	consensusType.Metadata = protoutil.MarshalOrPanic(shared)
-	ordererValues["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
-
-	payload.Data = protoutil.MarshalOrPanic(cfgEnv)
-	env.Payload = protoutil.MarshalOrPanic(payload)
-
-	err = (&verify.DefaultOrdererRules{}).ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
+	err := (&verify.DefaultOrdererRules{}).ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
 	require.EqualError(t, err, fmt.Sprintf("MaxPartyID %d exceeds uint16 maximum %d", math.MaxUint16+1, math.MaxUint16))
 }
 
@@ -350,23 +337,12 @@ func TestValidateNewConfig_RouterAndAssemblerEndpointsMismatch(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			payload, err := protoutil.UnmarshalPayload(env.Payload)
-			require.NoError(t, err)
-			cfgEnv := &common.ConfigEnvelope{}
-			require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
-
 			// change the host or port in the shared config without updating the orderer endpoints
-			shared := configutil.GetSharedConfig(t, cfgEnv)
-			tc.update(shared.PartiesConfig[0])
-
-			consensusType := &orderer.ConsensusType{}
-			require.NoError(t, proto.Unmarshal(cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"].Value, consensusType))
-			consensusType.Metadata = protoutil.MarshalOrPanic(shared)
-			cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
-			payload.Data = protoutil.MarshalOrPanic(cfgEnv)
+			nextEnv := updateSharedConfig(t, env, func(shared *ordererpb.SharedConfig) {
+				tc.update(shared.PartiesConfig[0])
+			})
 
 			// a host or port mismatch only logs a warning and does not fail the validation
-			nextEnv := &common.Envelope{Payload: protoutil.MarshalOrPanic(payload), Signature: env.Signature}
 			require.NoError(t, or.ValidateNewConfig(nextEnv, factory.GetDefault(), types.PartyID(1)))
 		})
 	}
@@ -375,25 +351,12 @@ func TestValidateNewConfig_RouterAndAssemblerEndpointsMismatch(t *testing.T) {
 func TestValidateNewConfig_DuplicateSigningCertInGenesis(t *testing.T) {
 	_, env, _, _, _, _, _ := setupOrdererRulesTest(t, 2)
 
-	payload, err := protoutil.UnmarshalPayload(env.Payload)
-	require.NoError(t, err)
-	cfgEnv := &common.ConfigEnvelope{}
-	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+	env = updateSharedConfig(t, env, func(shared *ordererpb.SharedConfig) {
+		shared.PartiesConfig[0].AssemblerConfig.SignCert = shared.PartiesConfig[0].RouterConfig.SignCert
+	})
 
-	shared := configutil.GetSharedConfig(t, cfgEnv)
-	shared.PartiesConfig[0].AssemblerConfig.SignCert = shared.PartiesConfig[0].RouterConfig.SignCert
-
-	consensusType := &orderer.ConsensusType{}
-	ordererValues := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values
-	require.NoError(t, proto.Unmarshal(ordererValues["ConsensusType"].Value, consensusType))
-	consensusType.Metadata = protoutil.MarshalOrPanic(shared)
-	ordererValues["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
-
-	payload.Data = protoutil.MarshalOrPanic(cfgEnv)
-	env.Payload = protoutil.MarshalOrPanic(payload)
-
-	err = (&verify.DefaultOrdererRules{}).ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
-	require.EqualError(t, err, "signing certificates are not unique: router of party 1 and assembler of party 1 share the same signing certificate")
+	err := (&verify.DefaultOrdererRules{}).ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
+	require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing certificate")
 }
 
 func TestValidateNewConfig_SigningCertInConfigUpdate(t *testing.T) {
@@ -432,7 +395,7 @@ func TestValidateNewConfig_SigningCertInConfigUpdate(t *testing.T) {
 
 			err = or.ValidateNewConfig(nextEnv, bccsp, types.PartyID(1))
 			if tc.duplicate {
-				require.EqualError(t, err, "signing certificates are not unique: router of party 1 and assembler of party 1 share the same signing certificate")
+				require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing certificate")
 			} else {
 				require.NoError(t, err)
 				require.NoError(t, or.ValidateTransition(currBundle, nextEnv, bccsp))
@@ -738,6 +701,27 @@ func setupOrdererRulesTest(t *testing.T, parties int, genArgs ...string) (
 	verifier.AddStructureRule(sr)
 
 	return dir, env, bundle, builder, proposer, fakeSigner, verifier
+}
+
+func updateSharedConfig(t *testing.T, env *common.Envelope, update func(*ordererpb.SharedConfig)) *common.Envelope {
+	t.Helper()
+
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+	cfgEnv := &common.ConfigEnvelope{}
+	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+
+	shared := configutil.GetSharedConfig(t, cfgEnv)
+	update(shared)
+
+	consensusType := &orderer.ConsensusType{}
+	ordererValues := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Values
+	require.NoError(t, proto.Unmarshal(ordererValues["ConsensusType"].Value, consensusType))
+	consensusType.Metadata = protoutil.MarshalOrPanic(shared)
+	ordererValues["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
+	payload.Data = protoutil.MarshalOrPanic(cfgEnv)
+
+	return &common.Envelope{Payload: protoutil.MarshalOrPanic(payload), Signature: env.Signature}
 }
 
 func generateConsenterTLSCert(t *testing.T, dir string, partyID int) []byte {
