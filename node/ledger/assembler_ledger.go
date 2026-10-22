@@ -22,6 +22,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/protobuf/proto"
 )
 
 type (
@@ -104,22 +105,22 @@ func (l *AssemblerLedger) Metrics() *AssemblerLedgerMetrics {
 	return &l.metrics
 }
 
-func (l *AssemblerLedger) estimatedBlockSize(block *common.Block) uint64 {
-	blockSize := uint64(0)
+// updateMetrics counts a block that was appended to the ledger: its TXs, the bytes of its TXs, and the estimated
+// size of the whole block (its TXs, its metadata and its header).
+func (l *AssemblerLedger) updateMetrics(block *common.Block) {
+	transactionsSize := 0
 	for _, data := range block.GetData().GetData() {
-		if len(data) == 0 {
-			continue
-		}
-		blockSize += uint64(len(data))
+		transactionsSize += len(data)
 	}
+	metadataSize := 0
 	for _, md := range block.GetMetadata().GetMetadata() {
-		if len(md) == 0 {
-			continue
-		}
-		blockSize += uint64(len(md))
+		metadataSize += len(md)
 	}
-	headerSize := uint64(len(protoutil.MarshalOrPanic(block.Header)))
-	return blockSize + headerSize
+
+	l.metrics.TransactionCount.Add(float64(len(block.GetData().GetData())))
+	l.metrics.TransactionsSize.Add(float64(transactionsSize))
+	l.metrics.BlocksSize.Add(float64(transactionsSize + metadataSize + proto.Size(block.GetHeader())))
+	l.metrics.BlocksCount.Add(1)
 }
 
 func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInformation) {
@@ -158,9 +159,7 @@ func (l *AssemblerLedger) Append(batch types.Batch, ordInfo *state.OrderingInfor
 		panic(err)
 	}
 
-	l.metrics.TransactionCount.Add(float64(len(batch.Requests())))
-	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(blockToAppend)))
-	l.metrics.BlocksCount.Add(1)
+	l.updateMetrics(blockToAppend)
 }
 
 func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) {
@@ -192,8 +191,6 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 		})
 	}
 
-	l.metrics.TransactionCount.Add(1) // for the config TX
-
 	l.Logger.Debugf(
 		"Config Block: H: %+v; D: %d TXs; M: <primary=%d, shard=%d, seq=%d> <dec=%d, index=%d, count=%d> <signers: %+v>",
 		configBlock.Header,                   // Header
@@ -207,8 +204,7 @@ func (l *AssemblerLedger) AppendConfig(orderingInfo *state.OrderingInformation) 
 		panic(err)
 	}
 
-	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(configBlock)))
-	l.metrics.BlocksCount.Add(1)
+	l.updateMetrics(configBlock)
 }
 
 // AppendBlock appends a block to the ledger. It is used by the BFT synchronizer to append blocks pulled from other nodes.
@@ -223,9 +219,7 @@ func (l *AssemblerLedger) AppendBlock(block *common.Block) {
 		panic(err)
 	}
 
-	l.metrics.TransactionCount.Add(float64(len(block.GetData().GetData())))
-	l.metrics.BlocksSize.Add(float64(l.estimatedBlockSize(block)))
-	l.metrics.BlocksCount.Add(1)
+	l.updateMetrics(block)
 }
 
 // TODO this should be done by the consenter
