@@ -67,12 +67,18 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 		return cr.endpoint
 	}
 
+	// seekInfo is where the next connection starts: the initial seek until a decision is handed over,
+	// then the decision after the last one handed over, so a reconnect does not deliver a decision twice.
+	// It is kept in memory only; after a restart the node seeks from the decisions it stored.
+	// Pull calls both the request factory and the block handler from its goroutine.
+	seekInfo := cr.seekInfo
+
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
 			DecisionChannelName(cr.channelID),
 			cr.signer,
-			cr.seekInfo,
+			seekInfo,
 			int32(0),
 			uint64(0),
 			cr.tlsCertHash,
@@ -89,6 +95,7 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 	blockHandlerFunc := func(block *common.Block) {
 		header := extractHeaderFromBlock(block, cr.logger)
 		res <- header
+		seekInfo = NextSeekInfo(block.GetHeader().GetNumber() + 1)
 	}
 
 	onClose := func() {
