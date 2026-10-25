@@ -163,7 +163,7 @@ What each of these metrics tells you about the batcher is described in [Batcher]
 
 ### Consenter
 
-What each of these metrics tells you about the consenter is described in [Consenter](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/consensus.md#5-metrics-and-monitoring).
+What each of these metrics tells you about the consenter is described in [Consenter](../consensus.md#5-metrics-and-monitoring).
 
 - **Namespace:** "consensus"  
   **Name:** "decisions_count"  

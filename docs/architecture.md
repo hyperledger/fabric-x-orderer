@@ -90,10 +90,10 @@ Fabric-X Orderer is split into role-specific services so each part can be scaled
 
 | Component | Purpose | Main package |
 |-----------|---------|--------------|
-| Router | Accepts client transactions, applies request rules, maps requests to shards, and forwards to batchers. | [`node/router`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/router) |
-| Batcher | Collects requests, forms batches, persists batches, replicate batches, serves batches for assembler pull, and sends batch attestation fragments to consenters. | [`node/batcher`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/batcher) |
-| Consenter | Runs SmartBFT consensus to order batch attestations and configuration decisions. | [`node/consensus`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus) |
-| Assembler | Reads ordered attestations, pulls batches from batchers, and writes Fabric-compatible blocks. | [`node/assembler`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/assembler) |
+| Router | Accepts client transactions, applies request rules, maps requests to shards, and forwards to batchers. | [`node/router`](../node/router) |
+| Batcher | Collects requests, forms batches, persists batches, replicates batches, serves batches for assembler pull, and sends batch attestation fragments to consenters. | [`node/batcher`](../node/batcher) |
+| Consenter | Runs SmartBFT consensus to order batch attestations and configuration decisions. | [`node/consensus`](../node/consensus) |
+| Assembler | Reads ordered attestations, pulls batches from batchers, and writes Fabric-compatible blocks. | [`node/assembler`](../node/assembler) |
 
 Routers and assemblers form the public client boundary. Batchers and consenters are internal ordering-service roles. 
 
@@ -161,7 +161,7 @@ All nodes in a deployment must use the same genesis block configuration.
 
 Like in Fabric, the configuration block is part of the ledger, and can be changed only through a configuration transaction.
 
-Configuration generation is typically handled by [`armageddon`](https://github.com/hyperledger/fabric-x-orderer/blob/main/cmd/armageddon/README.md). Generated files reduce accidental mismatch between parties, but operators still need to distribute identical genesis/configuration inputs and correct local identities to every node.
+Configuration generation is typically handled by [`armageddon`](../cmd/armageddon/README.md). Generated files reduce accidental mismatch between parties, but operators still need to distribute identical genesis/configuration inputs and correct local identities to every node.
 
 ## 7. State, Persistence, and Recovery
 
@@ -217,11 +217,11 @@ For example, slow assembler fetches may indicate missing or slow batcher data, w
 
 The role-specific documents contain deeper operational and implementation details. Start with this architecture document for the overall flow, then use the links below to inspect startup behavior, APIs, metrics, and failure handling for each service.
 
-- Router details: [`node/router`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/router)
-- Batcher details: [`docs/batcher.md`](batcher.md) and [`node/batcher`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/batcher)
-- Consenter details: [`docs/consensus.md`](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/consensus.md) and [`node/consensus`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus)
-- Assembler details: [`docs/assembler.md`](assembler.md) and [`node/assembler`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/assembler)
-- Deployment guide: [../deployment/README.md](https://github.com/hyperledger/fabric-x-orderer/blob/main/deployment/README.md)
-- Configuration generator: [../cmd/armageddon/README.md](https://github.com/hyperledger/fabric-x-orderer/blob/main/cmd/armageddon/README.md)
+- Router details: [`node/router`](../node/router)
+- Batcher details: [`docs/batcher.md`](batcher.md) and [`node/batcher`](../node/batcher)
+- Consenter details: [`docs/consensus.md`](consensus.md) and [`node/consensus`](../node/consensus)
+- Assembler details: [`docs/assembler.md`](assembler.md) and [`node/assembler`](../node/assembler)
+- Deployment guide: [`deployment/README.md`](../deployment/README.md)
+- Configuration generator: [`cmd/armageddon/README.md`](../cmd/armageddon/README.md)
 
 For code navigation, map role names directly to top-level packages under `node/`. Configuration generation and deployment files are useful when checking how role-level concepts become concrete endpoints, certificates, local paths, and bootstrap material.
