@@ -356,7 +356,7 @@ func TestValidateNewConfig_DuplicateSigningCertInGenesis(t *testing.T) {
 	})
 
 	err := (&verify.DefaultOrdererRules{}).ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
-	require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing certificate")
+	require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing key")
 }
 
 func TestValidateNewConfig_SigningCertInConfigUpdate(t *testing.T) {
@@ -395,7 +395,7 @@ func TestValidateNewConfig_SigningCertInConfigUpdate(t *testing.T) {
 
 			err = or.ValidateNewConfig(nextEnv, bccsp, types.PartyID(1))
 			if tc.duplicate {
-				require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing certificate")
+				require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing key")
 			} else {
 				require.NoError(t, err)
 				require.NoError(t, or.ValidateTransition(currBundle, nextEnv, bccsp))

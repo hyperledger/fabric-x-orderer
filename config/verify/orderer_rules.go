@@ -64,7 +64,7 @@ type DefaultOrdererRules struct{}
 //  11. Party IDs, shard IDs, and MaxPartyID must be within their valid ranges.
 //  12. Router and assembler hosts and ports in SharedConfig should match the corresponding
 //     broadcast and deliver OrdererEndpoints. Mismatches are logged as warnings.
-//  13. Signing certificates must be unique across all nodes.
+//  13. Signing certificates must have unique public keys across all nodes.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {

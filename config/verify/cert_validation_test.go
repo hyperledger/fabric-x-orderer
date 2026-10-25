@@ -405,7 +405,7 @@ func TestValidateUniqueSigningCerts(t *testing.T) {
 		party.AssemblerConfig.SignCert = party.RouterConfig.SignCert
 
 		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party, newParty(2)})
-		require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing certificate")
+		require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing key")
 	})
 
 	t.Run("duplicate cert across batchers", func(t *testing.T) {
@@ -413,7 +413,7 @@ func TestValidateUniqueSigningCerts(t *testing.T) {
 		party.BatchersConfig[1].SignCert = party.BatchersConfig[0].SignCert
 
 		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party})
-		require.EqualError(t, err, "batcher of party 1 in shard 1 and batcher of party 1 in shard 2 share the same signing certificate")
+		require.EqualError(t, err, "batcher of party 1 in shard 1 and batcher of party 1 in shard 2 share the same signing key")
 	})
 
 	t.Run("duplicate cert across parties", func(t *testing.T) {
@@ -422,7 +422,7 @@ func TestValidateUniqueSigningCerts(t *testing.T) {
 		party2.BatchersConfig[0].SignCert = party1.ConsenterConfig.SignCert
 
 		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party1, party2})
-		require.EqualError(t, err, "consenter of party 1 and batcher of party 2 in shard 1 share the same signing certificate")
+		require.EqualError(t, err, "consenter of party 1 and batcher of party 2 in shard 1 share the same signing key")
 	})
 
 	t.Run("duplicate cert with different PEM encoding", func(t *testing.T) {
@@ -430,7 +430,28 @@ func TestValidateUniqueSigningCerts(t *testing.T) {
 		party.AssemblerConfig.SignCert = append([]byte("\n"), party.RouterConfig.SignCert...)
 
 		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party})
-		require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing certificate")
+		require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing key")
+	})
+
+	t.Run("different certs with the same key", func(t *testing.T) {
+		priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		require.NoError(t, err)
+		assemblerCertPEM := generateTestSigningCertWithKey(t, signCACert, signCAKey, &priv.PublicKey, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+		consenterCertPEM := generateTestSigningCertWithKey(t, signCACert, signCAKey, &priv.PublicKey, now.Add(-24*time.Hour), now.Add(365*24*time.Hour))
+
+		assemblerCert, err := parseCertificateFromBytes(assemblerCertPEM)
+		require.NoError(t, err)
+		consenterCert, err := parseCertificateFromBytes(consenterCertPEM)
+		require.NoError(t, err)
+		require.NotEqual(t, assemblerCert.Raw, consenterCert.Raw)
+		require.Equal(t, assemblerCert.RawSubjectPublicKeyInfo, consenterCert.RawSubjectPublicKeyInfo)
+
+		party := newParty(1)
+		party.AssemblerConfig.SignCert = assemblerCertPEM
+		party.ConsenterConfig.SignCert = consenterCertPEM
+
+		err = validateUniqueSigningCerts([]*ordererpb.PartyConfig{party})
+		require.EqualError(t, err, "assembler of party 1 and consenter of party 1 share the same signing key")
 	})
 }
 
@@ -499,6 +520,10 @@ func generateTestSigningCert(t *testing.T, caCert *x509.Certificate, caKey *ecds
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
+	return generateTestSigningCertWithKey(t, caCert, caKey, &priv.PublicKey, notBefore, notAfter)
+}
+
+func generateTestSigningCertWithKey(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, pub *ecdsa.PublicKey, notBefore, notAfter time.Time) []byte {
 	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	require.NoError(t, err)
 
@@ -515,7 +540,7 @@ func generateTestSigningCert(t *testing.T, caCert *x509.Certificate, caKey *ecds
 		IsCA:                  false,
 	}
 
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, caCert, &priv.PublicKey, caKey)
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, caCert, pub, caKey)
 	require.NoError(t, err)
 
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})

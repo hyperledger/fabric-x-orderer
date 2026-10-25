@@ -111,7 +111,7 @@ func validatePartyCertificates(party *ordererpb.PartyConfig, ignoreExpiration bo
 	return nil
 }
 
-// validateUniqueSigningCerts verifies that no two nodes share a signing certificate.
+// validateUniqueSigningCerts verifies that signing certificates have unique public keys across all nodes.
 func validateUniqueSigningCerts(parties []*ordererpb.PartyConfig) error {
 	type nodeSignCert struct {
 		node arma_types.NodeIdentity
@@ -143,9 +143,9 @@ func validateUniqueSigningCerts(parties []*ordererpb.PartyConfig) error {
 				return errors.Wrapf(err, "invalid signing certificate of %s", sc.node)
 			}
 
-			certKey := string(cert.Raw)
+			certKey := string(cert.RawSubjectPublicKeyInfo)
 			if owner, exists := signCertOwners[certKey]; exists {
-				return errors.Errorf("%s and %s share the same signing certificate", owner, sc.node)
+				return errors.Errorf("%s and %s share the same signing key", owner, sc.node)
 			}
 			signCertOwners[certKey] = sc.node
 		}
