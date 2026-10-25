@@ -114,7 +114,7 @@ jobs:
         env:
           TARGET: ${{ matrix.os }}-${{ matrix.arch }}
           RELEASE: ${{ needs.prepare.outputs.tag }}
-        run: ./scripts/create-binary-package.sh
+        run: bash ./scripts/create-binary-package.sh
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
