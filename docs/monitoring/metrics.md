@@ -90,6 +90,14 @@ All assembler metrics carry the "party_id" label, and "prefetch_index_size_bytes
   **Name:** "prefetch_index_cache_evictions_total"  
   **Help:** "The total number of evictions from the assembler prefetch index cache."
 
+- **Namespace:** "assembler"  
+  **Name:** "block_size_avg_bytes"  
+  **Help:** "The average size in bytes of the blocks committed in the last metrics interval."
+
+- **Namespace:** "assembler"  
+  **Name:** "tx_size_avg_bytes"  
+  **Help:** "The average size in bytes of the transactions committed in the last metrics interval."
+
 - **Namespace:** "assembler_ledger"  
   **Name:** "transaction_count_total"  
   **Help:** "The total number of transactions committed to the ledger."
@@ -101,6 +109,10 @@ All assembler metrics carry the "party_id" label, and "prefetch_index_size_bytes
 - **Namespace:** "assembler_ledger"  
   **Name:** "blocks_count_total"  
   **Help:** "The total number of blocks committed to the ledger."
+
+- **Namespace:** "assembler_ledger"  
+  **Name:** "transactions_size_bytes_total"  
+  **Help:** "The total size in bytes of transactions committed to the ledger."
 
 The assembler also serves the Deliver API, and exposes these metrics for it:
 
@@ -225,6 +237,14 @@ All consenter metrics carry the "party_id" label.
 - **Namespace:** "consensus"  
   **Name:** "txs_count"  
   **Help:** "Total number of transactions ordered by the consenter."
+
+- **Namespace:** "consensus"  
+  **Name:** "decisions_size_bytes"  
+  **Help:** "The total size in bytes of the decisions written to the consensus ledger."
+
+- **Namespace:** "consensus"  
+  **Name:** "decision_size_avg_bytes"  
+  **Help:** "The average size in bytes of the decisions written to the consensus ledger in the last metrics interval."
 
 ---
 
