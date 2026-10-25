@@ -75,6 +75,8 @@ func (c *ConfigRequest) ID() (string, error) {
 		return "", errors.Errorf("unexpected channel header type %d", channelHeader.Type)
 	}
 
+	// The SigFilter already rejects an empty TxID, on submit and on the followers' validation of a proposed config,
+	// so this check is only a defense in depth for other callers.
 	if channelHeader.TxId == "" {
 		return "", errors.New("channel header has empty tx id")
 	}

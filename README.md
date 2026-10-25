@@ -98,6 +98,10 @@ signed by the submitting client, and the scalable committer, which is in charge 
 semantics and signatures, verifies them downstream. Config update transactions are always verified, signature
 included.
 
+Note that the TxID check is a structure check, not a proof of ownership: when client signatures are not verified,
+nothing binds the creator in the signature header to the sender, so a client can copy another client's nonce and
+creator, and produce the same TxID.
+
 ## Run
 
 Arma is composed of 4 types of servers: `router`, `batcher`, `consensus` and `assembler`; also known as "server roles".

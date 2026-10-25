@@ -8,6 +8,7 @@ package requestfilter_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/hyperledger/fabric-x-common/msp"
@@ -75,7 +76,7 @@ func TestSigVerifyFilter(t *testing.T) {
 	require.NoError(t, err)
 	req.Payload = p
 	_, err = v.VerifyStructureAndClassify(req)
-	require.EqualError(t, err, "failed to convert request to signedData : invalid tx id: invalid txid. got [], expected ["+protoutil.ComputeTxID([]byte("nonce"), id)+"]")
+	require.EqualError(t, err, "failed to convert request to signedData : invalid tx id")
 
 	chdr.TxId = protoutil.ComputeTxID([]byte("nonce"), id)
 	chdrBytes, err = proto.Marshal(chdr)
@@ -141,9 +142,11 @@ func TestSigVerifyTxID(t *testing.T) {
 		errMsg string
 	}{
 		{name: "correct tx id", nonce: nonce, txID: protoutil.ComputeTxID(nonce, id)},
-		{name: "empty tx id", nonce: nonce, txID: "", errMsg: "invalid tx id: invalid txid. got []"},
-		{name: "wrong tx id", nonce: nonce, txID: "junk", errMsg: "invalid tx id: invalid txid. got [junk]"},
+		{name: "empty tx id", nonce: nonce, txID: "", errMsg: "invalid tx id"},
+		{name: "wrong tx id", nonce: nonce, txID: "junk", errMsg: "invalid tx id"},
 		{name: "tx id of another nonce", nonce: nonce, txID: protoutil.ComputeTxID([]byte("other"), id), errMsg: "invalid tx id"},
+		{name: "tx id of wrong length", nonce: nonce, txID: protoutil.ComputeTxID(nonce, id) + "0", errMsg: "invalid tx id"},
+		{name: "upper-case tx id", nonce: nonce, txID: strings.ToUpper(protoutil.ComputeTxID(nonce, id)), errMsg: "invalid tx id"},
 		{name: "tx id of another creator", nonce: nonce, txID: protoutil.ComputeTxID(nonce, otherID), errMsg: "invalid tx id"},
 		{name: "empty nonce", nonce: nil, txID: protoutil.ComputeTxID(nil, id), errMsg: "missing nonce in signature header"},
 	} {

@@ -15,6 +15,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/policy"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
+	"github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
@@ -27,6 +28,9 @@ type DefaultValidateConfigRequest struct {
 	ConfigUpdateProposer policy.ConfigUpdateProposer
 	Bundle               channelconfig.Resources
 	BCCSP                bccsp.BCCSP
+	// RequestVerifier checks the structure, TxID and signature of the config envelope and of its LastUpdate,
+	// as the consenter does for a submitted config update.
+	RequestVerifier *requestfilter.RulesVerifier
 }
 
 //go:generate counterfeiter -o mocks/config_request_validator.go . ConfigRequestValidator
@@ -34,12 +38,12 @@ func (vc *DefaultValidateConfigRequest) ValidateConfigRequest(envelope *common.E
 	// extract from envelope the config envelope (from envelope.payload.Data)
 	// 1. take configEnvelope.LastUpdate which is the CONFIG_UPDATE and produce the corresponding configEnvelope, which is the expected ConfigEnvelope produced by the update
 	// 2. check that original configEnvelope.Config == expectedConfigEnvelope.Config
+	if err := vc.verifyRequest(envelope, common.HeaderType_CONFIG); err != nil {
+		return errors.Wrap(err, "config envelope")
+	}
 	payload, err := protoutil.UnmarshalPayload(envelope.Payload)
 	if err != nil {
 		return err
-	}
-	if err = verifyPayloadTxID(payload); err != nil {
-		return errors.Wrap(err, "config envelope")
 	}
 
 	configEnvelope := &common.ConfigEnvelope{}
@@ -51,11 +55,10 @@ func (vc *DefaultValidateConfigRequest) ValidateConfigRequest(envelope *common.E
 		return errors.New("invalid config envelope")
 	}
 
-	lastUpdatePayload, err := protoutil.UnmarshalPayload(configEnvelope.LastUpdate.Payload)
-	if err != nil {
-		return errors.Wrap(err, "failed to unmarshal last update payload")
-	}
-	if err = verifyPayloadTxID(lastUpdatePayload); err != nil {
+	// The leader proposes the LastUpdate, so verify it as a submitted config update, signature included: otherwise a
+	// Byzantine leader could put another client's creator, nonce and TxID on it, and have that client's update dropped
+	// as a duplicate.
+	if err = vc.verifyRequest(configEnvelope.LastUpdate, common.HeaderType_CONFIG_UPDATE); err != nil {
 		return errors.Wrap(err, "last update")
 	}
 
@@ -72,18 +75,14 @@ func (vc *DefaultValidateConfigRequest) ValidateConfigRequest(envelope *common.E
 	return nil
 }
 
-// verifyPayloadTxID checks that the payload's channel header carries the TxId derived from its signature header.
-func verifyPayloadTxID(payload *common.Payload) error {
-	if payload.GetHeader() == nil {
-		return errors.New("missing header in payload")
-	}
-	chdr, err := protoutil.UnmarshalChannelHeader(payload.Header.ChannelHeader)
+// verifyRequest verifies the envelope with the RequestVerifier, and checks that it is of the expected type.
+func (vc *DefaultValidateConfigRequest) verifyRequest(envelope *common.Envelope, expectedType common.HeaderType) error {
+	reqType, err := vc.RequestVerifier.VerifyStructureAndClassify(&comm.Request{Payload: envelope.Payload, Signature: envelope.Signature})
 	if err != nil {
 		return err
 	}
-	shdr, err := protoutil.UnmarshalSignatureHeader(payload.Header.SignatureHeader)
-	if err != nil {
-		return err
+	if reqType != expectedType {
+		return errors.Errorf("unexpected type %s, expected %s", reqType, expectedType)
 	}
-	return requestfilter.VerifyTxID(chdr, shdr)
+	return nil
 }
