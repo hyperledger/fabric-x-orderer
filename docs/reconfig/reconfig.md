@@ -73,6 +73,28 @@ What happens inside Arma after submission:
    Each node then either restarts dynamically with the new config, or enters **pending-admin**
    (see [Section 2](#2-how-a-node-reacts-to-a-new-config)).
 
+![The path of a config update through party 1](../figures/reconfig-flow.png)
+
+*Figure 1: The path of a config update through party 1. The admins compute the config update
+(Δ-TX) as the difference between the current config and the new candidate, and the admin client
+submits it to router R1 over Fabric's Broadcast API. R1 verifies it and forwards it to consenter C1;
+C1 and the other consenters verify it again, decide on the new config block, 
+and store it in their decision ledger. R1, the party's
+batchers and assembler A1 each pull that decision from C1. R1 and the batchers add the config block it
+holds to their config store, and A1 adds it to its block ledger, which clients read over Fabric's
+Deliver API.*
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../figures/reconfig-config-ack-dark.svg">
+  <img alt="The config ack exchange between a party's router, batchers and assembler and its consenter" src="../figures/reconfig-config-ack.svg">
+</picture>
+
+*Figure 2: The config ack flow within one party. The router, the batchers and the assembler,
+soft-stopped, each send a config ack for the new config sequence to their consenter (①). The
+consenter waits up to 60 seconds for all the acks, then sends a response back to every node that
+acked (②), and applies the config itself. Each node applies the config after the response, or after
+90 seconds without one (③).*
+
 > **Use the latest config block as input.** A config update is computed against a specific config
 > version. If it is built from an older block (for example, the genesis block after a
 > reconfiguration has already happened), the routers reject it with
@@ -107,6 +129,13 @@ MSP, as in Steps 1 and 3 of CA rotation), trigger a dynamic restart instead:
 The first two triggers apply only to the node concerned. For example, a new router TLS certificate
 for party 1 puts only party 1's router into pending-admin; all other nodes, including party 1's
 other nodes, restart dynamically. The mempool trigger is the exception: it affects every batcher.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../figures/reconfig-decision-dark.svg">
+  <img alt="How a node decides between a dynamic restart and pending-admin" src="../figures/reconfig-decision.svg">
+</picture>
+
+*Figure 3: How a node decides between a dynamic restart and pending-admin*
 
 **A dynamic restart is not invisible to clients.** When the router soft-stops, it closes every client
 connection, and requests in flight may fail with `router is stopping, cannot process request`. When
