@@ -867,3 +867,51 @@ func TestPoolPendingPermitAccounting(t *testing.T) {
 		}
 	})
 }
+
+// TestMoveToPendingStoreReleasesFetchedPermits checks that switching from batching to pending mode
+// releases the permits of a batch that was fetched but not yet removed, so the pool is not left full
+// while it reports itself empty.
+func TestMoveToPendingStoreReleasesFetchedPermits(t *testing.T) {
+	insp := &testRequestInspector{}
+	pool := NewPool(testutil.CreateLogger(t, 0), insp.RequestID, PoolOptions{
+		FirstStrikeThreshold:  time.Minute,
+		SecondStrikeThreshold: time.Minute,
+		BatchMaxSize:          10,
+		BatchMaxSizeBytes:     100 * 1024,
+		MaxSize:               10,
+		RequestMaxBytes:       1024,
+		AutoRemoveTimeout:     time.Second * 10,
+		SubmitTimeout:         time.Millisecond * 200,
+	}, &striker{})
+	defer pool.Close()
+
+	pool.Restart(true)
+	for i := 0; i < 10; i++ {
+		require.NoError(t, pool.Submit(makeTestRequest(fmt.Sprintf("%d", i), "foo")))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
+	fetched, ids := pool.NextRequests(ctx)
+	require.Len(t, fetched, 10)
+
+	// The fetched batch is not removed before the pool switches to pending mode, e.g., a primary
+	// interrupted by a term change before its BAF reached the consenters.
+	pool.Restart(false)
+	require.Equal(t, int64(0), pool.RequestCount())
+
+	// The pool reports itself empty, so its full capacity must be available again, including for a
+	// resubmission of a fetched request.
+	require.NoError(t, pool.Submit(fetched[0]))
+	for i := 0; i < 9; i++ {
+		require.NoError(t, pool.Submit(makeTestRequest(fmt.Sprintf("new-%d", i), "foo")))
+	}
+	require.Equal(t, int64(10), pool.RequestCount())
+
+	// Removing the fetched ids frees only the resubmitted request, so exactly one more request fits.
+	pool.RemoveRequests(ids...)
+	require.Equal(t, int64(9), pool.RequestCount())
+	require.NoError(t, pool.Submit(makeTestRequest("last", "foo")))
+	require.Error(t, pool.Submit(makeTestRequest("over", "foo")))
+	require.Equal(t, int64(10), pool.RequestCount())
+}
