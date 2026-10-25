@@ -55,6 +55,20 @@ var (
 		Help:       "Total number of transactions ordered by the consenter.",
 		LabelNames: []string{"party_id"},
 	}
+
+	decisionsBytesOpts = metrics.CounterOpts{
+		Namespace:  "consensus",
+		Name:       "decisions_size_bytes",
+		Help:       "Total size in bytes of the decisions written to the consensus ledger.",
+		LabelNames: []string{"party_id"},
+	}
+
+	decisionSizeAvgOpts = metrics.GaugeOpts{
+		Namespace:  "consensus",
+		Name:       "decision_size_avg_bytes",
+		Help:       "The average size in bytes of the decisions written to the consensus ledger in the last metrics interval.",
+		LabelNames: []string{"party_id"},
+	}
 )
 
 type ConsensusMetrics struct {
@@ -71,6 +85,8 @@ type ConsensusMetrics struct {
 	bafsCount       metrics.Counter
 	complaintsCount metrics.Counter
 	txsCount        metrics.Counter
+	decisionsBytes  metrics.Counter
+	decisionSizeAvg metrics.Gauge
 }
 
 func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisions uint64, txCount uint64, logger *flogging.FabricLogger) *ConsensusMetrics {
@@ -98,6 +114,8 @@ func NewConsensusMetrics(consenterNodeConfig *config.ConsenterNodeConfig, decisi
 		bafsCount:       provider.NewCounter(metrics.CounterOpts(bafsCountOpts)).With([]string{partyID}...),
 		complaintsCount: provider.NewCounter(metrics.CounterOpts(complaintsCountOpts)).With([]string{partyID}...),
 		txsCount:        txsCount,
+		decisionsBytes:  provider.NewCounter(metrics.CounterOpts(decisionsBytesOpts)).With([]string{partyID}...),
+		decisionSizeAvg: provider.NewGauge(decisionSizeAvgOpts).With([]string{partyID}...),
 	}
 }
 
@@ -113,17 +131,20 @@ func (m *ConsensusMetrics) StopMetricsTracker() {
 	m.stopOnce.Do(func() {
 		close(m.stopChan)
 		m.logger.Infof("Reporting routine is stopping")
-		m.logger.Infof("CONSENSUS_METRICS party_id=%d: decisions: total=%d, blocks: total=%d, bafs: total=%d, complaints: total=%d, txs: total=%d", m.partyID,
+		m.logger.Infof("CONSENSUS_METRICS party_id=%d: decisions: total=%d, blocks: total=%d, bafs: total=%d, complaints: total=%d, txs: total=%d, decisions_size_bytes: total=%d", m.partyID,
 			uint64(monitoring.GetMetricValue(m.decisionsCount.(prometheus.Metric), m.logger)),
 			uint64(monitoring.GetMetricValue(m.blocksCount.(prometheus.Metric), m.logger)),
 			uint64(monitoring.GetMetricValue(m.bafsCount.(prometheus.Metric), m.logger)),
 			uint64(monitoring.GetMetricValue(m.complaintsCount.(prometheus.Metric), m.logger)),
-			uint64(monitoring.GetMetricValue(m.txsCount.(prometheus.Metric), m.logger)))
+			uint64(monitoring.GetMetricValue(m.txsCount.(prometheus.Metric), m.logger)),
+			uint64(monitoring.GetMetricValue(m.decisionsBytes.(prometheus.Metric), m.logger)))
 	})
 }
 
 func (m *ConsensusMetrics) trackMetrics() {
-	prevDec, prevBlk := uint64(0), uint64(0)
+	prevDec := uint64(monitoring.GetMetricValue(m.decisionsCount.(prometheus.Metric), m.logger))
+	prevBlk := uint64(monitoring.GetMetricValue(m.blocksCount.(prometheus.Metric), m.logger))
+	prevBytes := uint64(monitoring.GetMetricValue(m.decisionsBytes.(prometheus.Metric), m.logger))
 	sec := m.interval.Seconds()
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
@@ -133,9 +154,14 @@ func (m *ConsensusMetrics) trackMetrics() {
 		case <-t.C:
 			dec := uint64(monitoring.GetMetricValue(m.decisionsCount.(prometheus.Metric), m.logger))
 			blk := uint64(monitoring.GetMetricValue(m.blocksCount.(prometheus.Metric), m.logger))
+			bytes := uint64(monitoring.GetMetricValue(m.decisionsBytes.(prometheus.Metric), m.logger))
+
+			// the average size of the decisions made in this interval only
+			decisionSizeAvg := uint64(monitoring.Average(float64(bytes-prevBytes), dec-prevDec))
+			m.decisionSizeAvg.Set(float64(decisionSizeAvg))
 
 			m.logger.Infof(
-				"CONSENSUS_METRICS party_id=%d: interval=%.2f sec, decisions: interval=%d, rate=%.4f, total=%d, blocks: interval=%d, rate=%.4f, total=%d, bafs: total=%d, complaints: total=%d",
+				"CONSENSUS_METRICS party_id=%d: interval=%.2f sec, decisions: interval=%d, rate=%.4f, total=%d, blocks: interval=%d, rate=%.4f, total=%d, bafs: total=%d, complaints: total=%d, decisions_size_bytes: interval=%d, rate=%.4f, total=%d, avg=%d",
 				m.partyID,
 				sec,
 				dec-prevDec, float64(dec-prevDec)/sec,
@@ -144,9 +170,11 @@ func (m *ConsensusMetrics) trackMetrics() {
 				blk,
 				uint64(monitoring.GetMetricValue(m.bafsCount.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.complaintsCount.(prometheus.Metric), m.logger)),
+				bytes-prevBytes, float64(bytes-prevBytes)/sec,
+				bytes, decisionSizeAvg,
 			)
 
-			prevDec, prevBlk = dec, blk
+			prevDec, prevBlk, prevBytes = dec, blk, bytes
 
 		case <-m.stopChan:
 			return
