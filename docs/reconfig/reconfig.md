@@ -1,23 +1,21 @@
-/*
+<!--
 Copyright IBM Corp. All Rights Reserved.
 
 SPDX-License-Identifier: Apache-2.0
-*/
-
+-->
 # Arma Reconfiguration Guide
 
-A guide for Arma party administrators. It explains how to build, sign and submit a configuration
-update transaction (config TX), and then describes the flow for each common change:
-consensus parameters, batching parameters, endpoints, node certificates, CA certificates, and
-adding or removing a party.
+*Audience: party administrators of an Arma ordering service, who prepare, sign and submit
+configuration updates, and restart nodes when needed.*
+
+This guide explains how to build, sign and submit a configuration update transaction (config TX),
+and then describes the flow for each common change: consensus parameters, batching parameters,
+endpoints, node certificates, CA certificates, and adding or removing a party.
 
 For each change, the guide describes how every node reacts. A node either restarts **dynamically**
 (in-process, no action needed) or enters the **pending-admin** state and waits for the admin to
-restart it.
-
----
-
-## Table of Contents
+restart it. For the configuration model this rests on, see
+[Configuration and Membership](../architecture.md#6-configuration-and-membership).
 
 1. [Overview](#1-overview)
 2. [How a node reacts to a new config](#2-how-a-node-reacts-to-a-new-config)
@@ -32,8 +30,7 @@ restart it.
    - [5.6 Remove a party](#56-remove-a-party)
    - [5.7 Add a party](#57-add-a-party)
 6. [Troubleshooting: rejected config TXs](#6-troubleshooting-rejected-config-txs)
-
----
+7. [Further Reading](#7-further-reading)
 
 ## 1. Overview
 
@@ -82,19 +79,21 @@ What happens inside Arma after submission:
 > `proposed update requires that key ... be at version N, but it is currently at version M`.
 > After each successful reconfiguration, use the new config block for the next one.
 
----
-
 ## 2. How a node reacts to a new config
 
-When a node pulls a new config block, it **soft-stops** and takes one of two paths:
+When a node pulls a new config block, it **soft-stops** and takes one of two paths. What each node
+does internally is described in the Reconfiguration section of each role's doc:
+[batcher](../batcher.md#7-reconfiguration), [consenter](../consensus.md#7-reconfiguration) and
+[assembler](../assembler.md#7-reconfiguration).
 
 | Outcome                | When                                                              | What the node does                                                                                   | What you must do                                                   |
 |------------------------|-------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
-| **Dynamic restart**    | None of the pending-admin triggers below applies to this node     | Re-initializes in-process with the new config and resumes work                                       | Nothing. Check for the log line below.                             |
+| **Dynamic restart**    | None of the pending-admin triggers below applies to this node     | Re-initializes in-process with the new config and resumes work. Clients are disconnected and must reconnect (see below) | Nothing. Check for the log line below.                             |
 | **Pending admin**      | See the list below                                                | Stays soft-stopped and processes nothing. The assembler keeps serving `Deliver` of the blocks it already has | Prepare the node (local config / crypto), then **restart the process** |
 
-A node enters **pending-admin** only when one of the following triggers occurs. All other changes, including changes to the node's own party 
-(e.g., its party's `CACerts` / `TLSCACerts` or org MSP, as described in Steps 1 and 3 of CA rotation), trigger a dynamic restart instead:
+A node enters **pending-admin** only when one of the following triggers occurs. All other changes,
+including changes to the node's own party (for example, its party's `CACerts` / `TLSCACerts` or org
+MSP, as in Steps 1 and 3 of CA rotation), trigger a dynamic restart instead:
 
 - **Its own party was removed.** This applies to all node types.
 - **Its own identity changed.** An identity change is any of:
@@ -109,13 +108,20 @@ The first two triggers apply only to the node concerned. For example, a new rout
 for party 1 puts only party 1's router into pending-admin; all other nodes, including party 1's
 other nodes, restart dynamically. The mempool trigger is the exception: it affects every batcher.
 
+**A dynamic restart is not invisible to clients.** When the router soft-stops, it closes every client
+connection, and requests in flight may fail with `router is stopping, cannot process request`. When
+the assembler restarts, it ends every open `Deliver` stream. Clients must reconnect once the node is
+serving again. There is nothing for the admin to do, but clients should be able to retry.
+
 A node logs only the **first** trigger it finds, and a batcher checks the mempool parameters before
 its own identity. So if one TX changes a mempool parameter and also changes a batcher's identity
 (for example, rotates its TLS certificate or moves its endpoint), that batcher logs only
 `Batcher's pool options were changed in the new configuration`. Before you restart a batcher, check
-the TX for other changes that affect it, and do the matching admin action too.
-For example, if the TX also rotates the batcher's TLS certificate, put the new certificate and key at `General.TLS.Certificate` / `General.TLS.PrivateKey` first (see 5.4),
-Otherwise the restart fails with `certificate mismatch: ... differs from the shared configuration TLS certificate`.
+the TX for other changes that affect it, and do the matching admin action too. For example, if the
+TX also rotates the batcher's TLS certificate, first replace the certificate and key at
+`General.TLS.Certificate` / `General.TLS.PrivateKey` with the new ones
+(see [5.4](#54-rotate-a-nodes-tls-or-signing-certificate)). Otherwise the restart fails with
+`certificate mismatch: ... differs from the shared configuration TLS certificate`.
 
 ### Log messages to look for
 
@@ -138,6 +144,12 @@ Applying new config with sequence <N> (current: <N-1>), <node> will be restarted
 Reconfiguring batcher                                                                          # batcher
 <Node> started with new config sequence <N>, listening on <host:port>                          # all nodes
 ```
+
+On a dynamic restart, a batcher keeps its mempool, and re-verifies the requests waiting in it under
+the new config. It drops the ones that no longer pass, for example requests signed by an identity
+whose CA was removed, and logs `Mempool pruning completed: <n> transactions were dropped`. This does
+not happen when a batcher goes to pending-admin: it is restarted by the admin with an empty mempool (see
+[5.2](#52-update-batching-parameters)).
 
 **Pending admin (action required).** The node logs the reason first, then the warning:
 ```
@@ -200,7 +212,8 @@ with the same command:
 arma <router|batcher|consensus|assembler> --config <path>/local_config_<node>.yaml
 ```
 
-The local config fields you may need to change are under `General`:
+The local config fields you may need to change are under `General`. Each field is documented in
+[`local_config.yaml`](../../config/sample/local_config.yaml):
 
 | Change in the config TX          | Edit in `local_config_<node>.yaml` before restarting                                                            |
 |----------------------------------|----------------------------------------------------------------------------------------------------------------|
@@ -209,8 +222,6 @@ The local config fields you may need to change are under `General`:
 | Node TLS certificate             | Put the new cert/key at `General.TLS.Certificate` / `General.TLS.PrivateKey` (or point these fields at the new files) |
 | Node signing certificate         | Put the new cert in `<General.LocalMSPDir>/signcerts/` and its key in `<General.LocalMSPDir>/keystore/priv_sk` |
 | Party CA certificates            | Update the CA files the node trusts, such as `General.TLS.RootCAs` and `<LocalMSPDir>/cacerts`, `tlscacerts` |
-
----
 
 ## 3. Rules every config update must follow
 
@@ -266,7 +277,8 @@ must be the same. Then a mismatch is a mistake. For example, if you change a rou
 `PartiesConfig` but not in the org's `Endpoints`, the TX is accepted, but clients keep dialing the
 old port and can no longer reach the router.
 
-Also: all batching timeouts must be positive durations, and the SmartBFT config must pass SmartBFT's own validation.
+Also: all batching timeouts must be positive durations, and the SmartBFT config must pass
+SmartBFT's own validation.
 
 ### Signing policy
 
@@ -316,8 +328,6 @@ A TX that does not meet the policy is rejected with, for example:
 policy for [Value]  /Channel/Orderer/org1/Endpoints not satisfied: signature set did not satisfy policy
 ```
 
----
-
 ## 4. Preparing a config TX with `fxadmin`
 
 Use **`fxadmin`**, the Fabric-X reconfiguration admin CLI, to fetch the latest config block, decode
@@ -365,8 +375,6 @@ rule whose `n` is `ceil((N + f + 1) / 2)` (with `N` consenters and `f = (N-1)/3`
 from `consenter_mapping`. Rebuild it whenever the set of consenters or a consenter's signing
 certificate changes.
 
----
-
 ## 5. Configuration change flows
 
 The flows use **party 1** as the party being changed, in a network of 4 parties, unless noted otherwise.
@@ -377,21 +385,22 @@ network uses different policies, collect the signatures those policies require.
 
 **Edit:** change the parameter under `<shared>.ConsensusConfig.SmartBFTConfig`. Keep the type the
 decoded config uses: numeric values are JSON strings (for example `"1048576"`), and durations look
-like `"2s"`. If you lower `SmartBFTConfig.RequestMaxBytes`, it must stay `>=` `BatchingConfig.RequestMaxBytes`.
+like `"2s"`. If you lower `SmartBFTConfig.RequestMaxBytes`, it must stay `>=`
+`BatchingConfig.RequestMaxBytes`.
 
 **Sign:** majority of the orderer org admins.
 
 **Node behavior:** **all nodes restart dynamically.** No admin action is needed.
 
-**What you should see:** every node logs `... started with new config sequence <N>`. Transactions keep flowing.
-
----
+**What you should see:** every node logs `... started with new config sequence <N>`. Clients
+reconnect to the routers and assemblers, and transactions keep flowing.
 
 ### 5.2 Update batching parameters
 
 The batching parameters are in `<shared>.BatchingConfig`. Each batcher builds its memory pool
-(mempool) from most of them: the largest request the mempool accepts, the most requests and bytes it
-puts in one batch, and the timeouts that protect against a censoring primary. The mempool cannot be
+(mempool, see [The Memory Pool and Censorship Resistance](../batcher.md#34-the-memory-pool-and-censorship-resistance))
+from most of them: the largest request the mempool accepts, the most requests and bytes it puts in
+one batch, and the timeouts that protect against a censoring primary. The mempool cannot be
 reconfigured in-process, so a change to any of these parameters makes the batchers wait for an
 admin restart.
 
@@ -434,9 +443,10 @@ new transactions. Coordinate the restart across all parties.
 
 **What you should see:** after the restart, new blocks follow the new parameters. For example, with
 `MaxMessageCount = 2`, no block holds more than 2 transactions, and a router rejects a request
-larger than the new `RequestMaxBytes`.
-
----
+larger than the new `RequestMaxBytes`. The mempool is not persisted
+([Restarting from Local State](../batcher.md#61-restarting-from-local-state)), and in this flow every
+batcher restarts, so the requests that were waiting in the mempools and not yet in a batch are lost.
+Clients must resubmit the requests that were not included in a block.
 
 ### 5.3 Change a node endpoint
 
@@ -485,7 +495,7 @@ must be one of them, because the edit changes `org1`'s `Endpoints` (see [Signing
 
      What to do:
      - If `ListenAddress` is `0.0.0.0`, don't change it.
-     - If `ListenAddress` is the machine's IP and the node moved to a machine with a new IP, 
+     - If `ListenAddress` is the machine's IP and the node moved to a machine with a new IP,
        set it to the new IP. Otherwise the node can't start.
      - If only the external address or DNS name changed and the machine is the same, the config TX
        updates the `host`, but you don't change `General.ListenAddress`: the node still listens on
@@ -498,8 +508,6 @@ must be one of them, because the edit changes `org1`'s `Endpoints` (see [Signing
 
 **What you should see:** the other nodes log `started with new config sequence <N>`.
 Transactions sent to the new address are processed and appear in blocks pulled from all assemblers.
-
----
 
 ### 5.4 Rotate a node's TLS or signing certificate
 
@@ -534,7 +542,7 @@ certificates at once.
 **Admin action (party 1's admin, for each changed node):**
 
 1. Wait for `Pending admin action to apply new config`, then stop the node.
-2. Update the new certificate and key:
+2. Replace the certificate and key with the new ones:
    - TLS: at `General.TLS.Certificate` / `General.TLS.PrivateKey`;
    - signing: `<General.LocalMSPDir>/signcerts/` and `<General.LocalMSPDir>/keystore/priv_sk`.
 3. Start the node and check for `<Node> listening on ...`.
@@ -543,8 +551,6 @@ certificates at once.
 new certificate. The router logs `Pulled config block number ...`, the batcher logs
 `Got config block number ...`, and the assembler logs `Started pulling blocks from: shard<S>party<P>`.
 Transactions are processed.
-
----
 
 ### 5.5 Rotate a party's CA certificates
 
@@ -574,9 +580,9 @@ node certificates (TLS and signing for every node of the party), and new admin a
   identity: an identity from the new CA is only trusted after this TX commits.
 - **Node behavior:** **all of party 1's nodes go to pending-admin** (identity changed). All other
   nodes restart dynamically.
-- **Admin action (party 1):** stop each node. Update its new TLS and signing certificates/keys,
-  and the new CA files in its MSP and TLS trust lists. Then restart it. From now on, party 1's admin
-  and clients use their identities from the new CA.
+- **Admin action (party 1):** stop each node. Replace its TLS and signing certificates and keys with
+  the new ones, and add the new CA files to its MSP and TLS trust lists. Then restart it. From now
+  on, party 1's admin and clients use their identities from the new CA.
 
 **Step 3: Remove the old CAs.**
 
@@ -591,8 +597,6 @@ node certificates (TLS and signing for every node of the party), and new admin a
 
 If Step 2 was skipped or incomplete (a node still has a certificate from the old CA, or the node OUs
 still point at the old CA), Step 3 is rejected and the network is unchanged. Complete Step 2 and retry.
-
----
 
 ### 5.6 Remove a party
 
@@ -637,9 +641,9 @@ the remaining routers; `fxadmin tx send` succeeds as long as a quorum of routers
 
 **What you should see:** the remaining parties log `started with new config sequence <N>`.
 Transactions sent to the remaining routers are processed, and the remaining assemblers
-deliver all blocks. In the new config block, `PartiesConfig` no longer lists party 4.
-
----
+deliver all blocks. In the new config block, `PartiesConfig` no longer lists party 4. Removing a
+party starts a new term in every shard, so the batcher primaries may change: the batchers log
+`Primary changed from <old> to <new>`.
 
 ### 5.7 Add a party
 
@@ -672,7 +676,8 @@ This example adds **party 5** to a network of parties 1–4. Only one party can 
 
 **Sign:** majority of the **existing** parties' admins. The new party has no say yet.
 
-**Node behavior:** **all existing nodes restart dynamically.** No admin action is needed on the existing parties.
+**Node behavior:** **all existing nodes restart dynamically.** No admin action is needed on the
+existing parties.
 
 **Admin action (new party's admin):**
 
@@ -685,7 +690,8 @@ This example adds **party 5** to a network of parties 1–4. Only one party can 
 
 **What you should see:** party 5's assembler delivers blocks up to and including the config block
 with the new sequence. A transaction submitted to party 5's router is processed, and it appears in
-blocks pulled from all assemblers.
+blocks pulled from all assemblers. Adding a party starts a new term in every shard, so the batcher
+primaries may change: the batchers log `Primary changed from <old> to <new>`.
 
 > **Replacing a party** (remove one, add another) takes at least two config TXs. Use the config
 > block produced by the **latest** TX as the new party's bootstrap block.
@@ -696,13 +702,14 @@ A party that missed config updates while it was down usually needs no action: on
 consenter syncs the missed blocks from the other consenters, and its router, batchers and assembler
 pull the missed decisions from it.
 
-**When the party must rejoin?** When a party is down for an extended period of time, and the
+**When must the party rejoin?** When a party is down for an extended period of time, and the
 network goes through configuration changes, the party might not be able to join the cluster when it
 restarts. For example, the endpoints or certificates of all the other consensus nodes have changed
 while it was down. Its consenter can reach and trust the other consenters only through the addresses
 and certificates in its stored config. When none of them are still valid, it can't sync, and stays
-on its old config. It then rejects the requests that the other consenters send from the newer config
-(`Failed submitting request: config sequence ahead`), and the whole party stays out of the network.
+on its old config. It then rejects the BAFs that batchers send under the newer config
+(`Failed submitting request: config sequence ahead; the BAF's config seq is ...`), and the whole
+party stays out of the network.
 
 **How to rejoin:** put the latest config block on the file system of **every** node of the party,
 point `General.Bootstrap.File` at it, and restart the nodes. Each node detects that this block is
@@ -717,8 +724,6 @@ The bootstrap block is used in three cases:
 | First start of a network | The genesis block                                               |
 | A new party joins        | The config block that added the party ([5.7](#57-add-a-party))  |
 | A party rejoins          | The latest config block                                         |
-
----
 
 ## 6. Troubleshooting: rejected config TXs
 
@@ -748,3 +753,16 @@ The router returns these errors to the submitter. The network is unchanged; fix 
 | `x509: certificate signed by unknown authority`, `certificate validation failed for ... party ID N` | A certificate does not chain to the party's CAs, or a CA was removed while still in use ([5.5](#55-rotate-a-partys-ca-certificates)) |
 | `Failed adding OU`                                                                                | The org's `fabric_node_ous` point at a CA that is no longer in `root_certs` ([5.5](#55-rotate-a-partys-ca-certificates), Step 2) |
 | `channel ID cannot change in the proposed config`                                                 | Do not change the channel ID                                                                       |
+
+## 7. Further Reading
+
+- [Architecture overview](../architecture.md) — the four roles, the end-to-end flow, and the
+  [configuration model](../architecture.md#6-configuration-and-membership).
+- [Batcher](../batcher.md#7-reconfiguration), [Consenter](../consensus.md#7-reconfiguration) and
+  [Assembler](../assembler.md#7-reconfiguration) — what each role does internally on a
+  reconfiguration.
+- [fxadmin documentation](https://github.com/hyperledger/fabric-x/blob/main/tools/fxadmin/docs/README.md)
+  — the commands that fetch, edit, endorse and submit a config TX.
+- [`local_config.yaml`](../../config/sample/local_config.yaml) — every local config field, with
+  comments.
+- [`arma` CLI](../cli/arma.md) — the node binary and its subcommands.
