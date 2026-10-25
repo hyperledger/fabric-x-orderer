@@ -782,7 +782,7 @@ func (b *Batcher) Ack(seq types.BatchSequence, to types.PartyID) {
 		return
 	}
 
-	b.primaryAckConnector.SendAck(seq)
+	b.primaryAckConnector.SendAck(seq, to)
 }
 
 func (b *Batcher) Complain(reason string) {

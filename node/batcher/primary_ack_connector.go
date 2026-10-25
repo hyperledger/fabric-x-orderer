@@ -37,7 +37,10 @@ type PrimaryAckConnector struct {
 	sendTimeout      time.Duration
 }
 
-func (p *PrimaryAckConnector) SendAck(seq types.BatchSequence) {
+// SendAck acks batch seq to primary to. It drops the ack once the primary is no longer to: an ack is
+// meaningful only to the primary that sent the batch, and retrying it after a switch would otherwise
+// connect to the new primary, which can be this batcher itself.
+func (p *PrimaryAckConnector) SendAck(seq types.BatchSequence, to types.PartyID) {
 	sendTimer := time.NewTimer(p.sendTimeout)
 	var delay time.Duration
 	for {
@@ -60,25 +63,38 @@ func (p *PrimaryAckConnector) SendAck(seq types.BatchSequence) {
 		if delay == 0 {
 			delay = p.minRetryInterval
 		}
-		p.lock.RLock()
-		if p.stream == nil {
-			p.lock.RUnlock()
+		stream, primaryID := p.currentStream()
+		if primaryID != to {
+			p.logger.Debugf("Dropping ack of batch %d to primary %d; the primary is now %d", seq, to, primaryID)
+			return
+		}
+		if stream == nil {
 			p.ConnectToPrimary()
-			p.lock.RLock()
-			if p.stream == nil { // connecting to primary failed
-				p.logger.Errorf("Failed sending ack to primary %d; failed to connect", p.primaryID)
-				p.lock.RUnlock()
+			stream, primaryID = p.currentStream()
+			if primaryID != to {
+				p.logger.Debugf("Dropping ack of batch %d to primary %d; the primary is now %d", seq, to, primaryID)
+				return
+			}
+			if stream == nil { // connecting to primary failed
+				p.logger.Errorf("Failed sending ack to primary %d; failed to connect", primaryID)
 				continue
 			}
 		}
-		if err := p.stream.Send(&protos.Ack{Shard: uint32(p.shardID), Seq: uint64(seq)}); err != nil {
-			p.logger.Errorf("Failed sending ack to primary %d; error: %v", p.primaryID, err)
-			p.lock.RUnlock()
+		// The lock is not held across Send: a Send blocked on a full stream would otherwise keep
+		// ResetConnection from taking the lock, so the connection could never be closed to unblock it.
+		if err := stream.Send(&protos.Ack{Shard: uint32(p.shardID), Seq: uint64(seq)}); err != nil {
+			p.logger.Errorf("Failed sending ack to primary %d; error: %v", primaryID, err)
 			continue
 		}
-		p.lock.RUnlock()
 		return
 	}
+}
+
+// currentStream returns the stream to the current primary, nil if there is none, and the primary.
+func (p *PrimaryAckConnector) currentStream() (protos.BatcherControlService_NotifyAckClient, types.PartyID) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	return p.stream, p.primaryID
 }
 
 func (p *PrimaryAckConnector) ConnectToNewPrimary(primaryID types.PartyID) {
@@ -101,6 +117,11 @@ func (p *PrimaryAckConnector) ConnectToPrimary() {
 	ctx = p.connectionCtx
 	primary = p.primaryID
 	p.lock.Unlock()
+
+	// A batcher does not ack to itself. The primary can change to this batcher after a sender checked it.
+	if primary == p.config.PartyId {
+		return
+	}
 
 	primaryEndpoint := p.batchers[primary].Endpoint
 	primaryTLSCACerts := p.batchers[primary].TLSCACerts
