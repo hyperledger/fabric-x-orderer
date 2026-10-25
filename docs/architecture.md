@@ -43,7 +43,7 @@ Endorsing clients (E) submit transactions to the router using the Fabric broadca
 
 Batchers are responsible for creating batches of transactions, which later turn into blocks. They aggregate transactions into batches such as B1 and B2, persist them, and replicate them among the batchers in the shard. Batchers then compute batch attestation fragments over those batches, such as BAF1 and BAF2. A BAF is a short signed message (a batch digest and some metadata) attesting to a stored batch. The batch payloads remain in the batcher; they are not carried through the consensus bottleneck path. Only compact messages, including digests and some metadata that identify stored batches, are sent toward the consensus cluster. This separation lets large transaction envelopes use scalable storage and retrieval paths while consensus handles smaller ordering records.
 
-The consensus cluster collects BAFs from all parties in the shard. Once enough BAFs have been received for a particular batch, a batch attestaion (BA) is emitted. The ordering cluster emits a total order of batch attestations (BAs), and also serves as the controller of the entire system, in particular of the inter shard behavior.
+The consensus cluster collects BAFs from all parties in the shard. Once enough BAFs have been received for a particular batch, a batch attestation (BA) is emitted. The ordering cluster emits a total order of batch attestations (BAs), and also serves as the controller of the entire system, in particular of the inter shard behavior.
 
 The assembler consumes the ordered BAs from consensus and the corresponding batches from the shards. For each ordered BA, the assembler fetches or receives the referenced batch payload, checks that the payload matches the ordered metadata, and assembles HLF blocks according to the order induced by consensus. Once assembled, the HLF blocks are available for the scalable committer (SC) to pull through the Fabric deliver API. In this single-party view, the important idea is that payload handling and ordering proceed separately and in parallel, and meet again only at assembly time.
 
@@ -101,11 +101,11 @@ Each role is intentionally narrow. Routers decide where a request should go, bat
 
 ## 4. End-to-End Transaction Flow
 
-This section summarizes the normal data path described above. Control, configuration, failure handling, and reconfiguration paths are covered in the role-specific documents. The normal path starts at Fabric `Broadcast`, crosses the internal Arma pipeline, and ends at Fabric `Deliver`.
+This section summarizes the normal data path described above. Control, configuration, failure handling, and reconfiguration paths are covered in the document of each role, linked from the [implementation map](#11-implementation-map). The normal path starts at Fabric `Broadcast`, crosses the internal Arma pipeline, and ends at Fabric `Deliver`.
 
-1. Client opens a `Broadcast` stream to one or more routers. A correct client is expected to submit to try and submit to all routers, however it can stop trying after succesfully submiting to 2F+1 routers.
+1. Client opens a `Broadcast` stream to one or more routers. A correct client is expected to try to submit to all routers, but it can stop trying after successfully submitting to 2F+1 routers.
 2. Router receives `common.Envelope` messages, applies request rules, and maps each request to a shard.
-3. Router forwards the request to the batcher that belong to its party within that shard.
+3. Router forwards the request to the batcher that belongs to its party within that shard.
 4. Primary batcher inspects requests, inserts them into the request pool, cuts batches, persists batch payloads, and serves batches through `Deliver` for secondary pull.
 5. Secondary batchers pull primary batches through `Deliver`, verify them, persist local copies, send BAFs, and acknowledge the primary.
 6. Batchers emit batch attestation fragments (BAFs) and control events to consenters.
@@ -136,7 +136,7 @@ The orderer does not decide final transaction validity. Invalid-by-application t
 
 Each node is configured by two pieces of information: the shared configuration, which is encoded in a configuration block; and a local configuration which is stored in a local YAML file.
 
-Every node loads `config.NodeLocalConfig` from YAML. Local configuration a process which party it belongs to, where it listens, where it stores state, and which identity it uses. 
+Every node loads `config.NodeLocalConfig` from YAML. Local configuration tells a process which party it belongs to, where it listens, where it stores state, and which identity it uses. 
 The same binary can run different roles depending on which role is specified in the command starting the process. The server running a specific role then expects some role specific sections in the local config.
 
 Common sections include:
@@ -156,19 +156,18 @@ immediately — `Broadcast` returns `SERVICE_UNAVAILABLE` and keeps the stream o
 than being slowed with back-pressure. See `config/sample/local_config.yaml` for the
 documented fields.
 
-Network-wide membership comes from the shared configuration, which is encoded in a config block. To boostrap a network, all nodes must be given the same genesis block. The path to the genesis block is referenced by `General.Bootstrap` key. 
-All nodes in a deployment must use the same genesis block configuration.
+Network-wide membership comes from the shared configuration, which is encoded in a config block. Every config block of a network descends from a single genesis block. A node bootstraps from the block named by `General.Bootstrap.File`: the genesis block for a node that starts with the network, or a later config block for a node that joins a network already running or rejoins it after its party was evicted. On a restart, a node uses whichever is newer, that block or the last config block in its own storage, so it resumes from the configuration it last applied.
 
 Like in Fabric, the configuration block is part of the ledger, and can be changed only through a configuration transaction.
 
-Configuration generation is typically handled by [`armageddon`](../cmd/armageddon/README.md). Generated files reduce accidental mismatch between parties, but operators still need to distribute identical genesis/configuration inputs and correct local identities to every node.
+Operators distribute the genesis block, or a later config block that descends from it, together with the correct local identity, to every node.
 
 ## 7. State, Persistence, and Recovery
 
 Persistence is role-specific, but every role uses local state to restart without forgetting already processed configuration or ordering progress. Durable state is what lets a node recover without replaying the entire deployment from genesis or asking another role to reconstruct private local progress.
 
-- Routers store configuration state and the last replicated consensus decition in a WAL (Write Ahead Log) under the local file store.
-- Batchers persist batches in an array of ledgers, configuration state, and the last replicated consensus decision in a WAL.
+- Routers store received config blocks in a config store, and the last consensus decision in a WAL (Write Ahead Log), under the local file store.
+- Batchers persist batches in an array of ledgers, config blocks in a config store, and the last consensus decision in a WAL.
 - Consenters persist SmartBFT messages in a WAL and decision blocks (including configuration) in a ledger.
 - Assemblers persist the final block ledger and recover from metadata stored in each block.
 
@@ -182,20 +181,20 @@ Arma scales by separating work across roles and shards. The highest-volume data 
 The resource demands of the different server roles are not the same:
 
 - Provision routers with strong compute and networking capabilities. Storage requirements are very small.
-- Provision batchers and assemblers with a fast, high-end, large storage system. High IOPS and bandwith is required, as well as the ability to hold all the blocks for a long period of time. The batchers and assemblers also need a strong network.
+- Provision batchers and assemblers with a fast, high-end, large storage system. High IOPS and bandwidth are required, as well as the ability to hold all the blocks for a long period of time. The batchers and assemblers also need a strong network.
 - Provision batcher shards to scale transaction intake and batch storage. The number of shards cannot be changed or reconfigured in the current version.
-- Consensus nodes need less resources, as they process and store a much smaller volume of messages.
+- Consensus nodes need fewer resources, as they process and store a much smaller volume of messages.
 
 Fault tolerance comes from deploying several parties. Each party is assumed to be an administrative unit (an organization) in which the subcomponents trust each other. 
 In the Arma protocol, a party is the basic unit of failure: if any element of the party has failed, we consider the entire party as faulty.
 Different parties may belong to different organizations that do not trust each other.
 
-The Arma protocol can tolerate **F=Floor(N/3)** failures, where **N** is the number of parties. That is, in order to tolerate **F** failures, one must deploy **N >= 3F+1** parties.
+The Arma protocol can tolerate **F=Floor((N-1)/3)** failures, where **N** is the number of parties. That is, in order to tolerate **F** failures, one must deploy **N >= 3F+1** parties.
 Arma provides tolerance against Byzantine failures, i.e., arbitrary deviations from the protocol, which includes crashes as well as malicious behavior.
 
-Thus, the minimal deployment which supports fault tolerance has 4 parties. The recommended minimal production deployment has 7 parties, as this allows to bring one party down for maintenance while tolerating one extra unplanned failure.
+Thus, the minimal deployment which supports fault tolerance has 4 parties. The recommended minimal production deployment has 7 parties, as this allows bringing one party down for maintenance while tolerating one extra unplanned failure.
 
-Production deployments should enable TLS/mTLS and use identical genesis/configuration inputs across all parties. Correct configuration and certificate material are part of fault tolerance: a node with wrong membership or trust roots may be alive but unable to participate safely in routing, attestation, consensus, or delivery.
+Production deployments should enable TLS/mTLS, and give every party config blocks that descend from the same genesis block. Correct configuration and certificate material are part of fault tolerance: a node with wrong membership or trust roots may be alive but unable to participate safely in routing, attestation, consensus, or delivery.
 
 ## 9. Client APIs
 
@@ -215,13 +214,12 @@ For example, slow assembler fetches may indicate missing or slow batcher data, w
 
 ## 11. Implementation Map
 
-The role-specific documents contain deeper operational and implementation details. Start with this architecture document for the overall flow, then use the links below to inspect startup behavior, APIs, metrics, and failure handling for each service.
+Start with this document for the overall flow. The document of each role, linked below, covers its interfaces, design, configuration, metrics, failure handling, and reconfiguration.
 
 - Router details: [`docs/router.md`](router.md) and [`node/router`](../node/router)
 - Batcher details: [`docs/batcher.md`](batcher.md) and [`node/batcher`](../node/batcher)
 - Consenter details: [`docs/consensus.md`](consensus.md) and [`node/consensus`](../node/consensus)
 - Assembler details: [`docs/assembler.md`](assembler.md) and [`node/assembler`](../node/assembler)
 - Deployment guide: [`deployment/README.md`](../deployment/README.md)
-- Configuration generator: [`cmd/armageddon/README.md`](../cmd/armageddon/README.md)
 
 For code navigation, map role names directly to top-level packages under `node/`. Configuration generation and deployment files are useful when checking how role-level concepts become concrete endpoints, certificates, local paths, and bootstrap material.
