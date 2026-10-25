@@ -61,19 +61,8 @@ func New(opts NewOpts, cryptoProvider bccsp.BCCSP) (MSP, error) {
 		}
 	case *IdemixNewOpts:
 		switch opts.GetVersion() {
-		case MSPv1_3, MSPv1_4_3:
-			msp, err := idemixmsp.NewIdemixMsp(MSPv1_3)
-			if err != nil {
-				return nil, err
-			}
-			idemixMSP, ok := msp.(*idemixmsp.Idemixmsp)
-			if !ok {
-				return nil, errors.New("invalid idemix msp: type assertion failed")
-			}
-
-			return &idemixMSPWrapper{idemixMSP}, nil
-		case MSPv1_1:
-			msp, err := idemixmsp.NewIdemixMsp(MSPv1_1)
+		case MSPv1_0, MSPv1_1, MSPv1_3, MSPv1_4_3, MSPv3_0:
+			msp, err := idemixmsp.NewIdemixMsp(idemixmsp.MSPVersion(opts.GetVersion()))
 			if err != nil {
 				return nil, err
 			}
