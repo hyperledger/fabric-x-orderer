@@ -6,7 +6,7 @@ require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
 	github.com/cockroachdb/errors v1.14.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
-	github.com/hyperledger/SmartBFT v1.0.3-0.20261010195840-f44fcdf9f24f
+	github.com/hyperledger/SmartBFT v1.0.3-0.20261022164550-3de2161e08b2
 	github.com/hyperledger/fabric-config v0.3.0
 	github.com/hyperledger/fabric-lib-go v1.1.5
 	github.com/hyperledger/fabric-protos-go-apiv2 v0.3.7
