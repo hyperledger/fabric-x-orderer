@@ -20,6 +20,7 @@ The name to query in Prometheus is the namespace and the name joined by `_`, for
 
 ### Router
 
+What each of these metrics tells you about the router is described in [Router](../router.md#5-metrics-and-monitoring).
 All router metrics carry the "party_id" label.
 
 - **Namespace**: "router"  
