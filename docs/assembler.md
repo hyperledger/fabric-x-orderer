@@ -416,7 +416,10 @@ the ordering information in the last block: if that block was the last BA of its
 assembler asks the consenter for the next decision, and otherwise for the same decision again, in
 which case the BAs it has already committed are recognised by their batch index and skipped. A
 decision that was interrupted halfway is therefore completed rather than repeated, and a batch is
-never committed twice. The batch streams resume from the batch frontier, which the assembler
+never committed twice. A running assembler whose connection to the consenter breaks reconnects from
+a different point: after the last BA it handed to the collator, not after the last one committed.
+BAs that were received but not yet committed are already waiting in the collator's queue, so they are
+not requested again. The batch streams resume from the batch frontier, which the assembler
 reconstructs by scanning its ledger backwards — skipping config blocks, and keeping the first
 sequence it meets for each ⟨shard, primary⟩ — until it has found them all or
 `RestartLedgerScanTimeout` expires. Each stream then asks for the batches after the sequence found for
