@@ -11,10 +11,9 @@ produces.*
 
 This document describes the **consenter**, the Fabric-X Orderer node that runs Byzantine fault
 tolerant consensus. It covers the events the consenter ingests and the ordered stream it serves, the
-internal design and algorithms, and the configuration,
-recovery, and failure behavior. It focuses on the consenter; for the
-end-to-end system flow and how the consenter relates to the other three roles, start with the
-[architecture overview](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/architecture.md).
+internal design and algorithms, and the configuration, recovery, and failure behavior. It focuses on
+the consenter; for the end-to-end system flow and how the consenter relates to the other three
+roles, start with the [architecture overview](architecture.md).
 
 1. [Overview](#1-overview)
     1. [Units and Terms](#11-units-and-terms)
@@ -39,16 +38,16 @@ end-to-end system flow and how the consenter relates to the other three roles, s
 
 ## 1. Overview
 
-The **consenter** ([`node/consensus`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus))
-is the party-local node that establishes total order, and the third stage of the Arma pipeline
-(**Router → Batcher → Consenter → Assembler**). It is where the parties agree, under Byzantine fault
-tolerance, on the sequence of everything that reaches the ledger. What it orders is deliberately
-small: **control events** — a signed **batch attestation fragment (BAF)** from a batcher, a
-**complaint** against a shard's primary, or a **configuration request** from the router — never
-data transaction payloads, which travel the parallel batcher–assembler path. The consenter feeds these
-events into [SmartBFT](https://github.com/hyperledger/SmartBFT), the BFT engine the consenters of all
-parties run together, and interprets the ordered result: once enough batchers have attested the same
-batch, it emits a **batch attestation (BA)**, and its output is a totally ordered stream of BAs and
+The **consenter** ([`node/consensus`](../node/consensus)) is the party-local node that establishes
+total order, and the third stage of the Arma pipeline (**Router → Batcher → Consenter →
+Assembler**). It is where the parties agree, under Byzantine fault tolerance, on the sequence of
+everything that reaches the ledger. What it orders is deliberately small: **control events** — a
+signed **batch attestation fragment (BAF)** from a batcher, a **complaint** against a shard's
+primary, or a **configuration request** from the router — never data transaction payloads, which
+travel the parallel batcher–assembler path. The consenter feeds these events into
+[SmartBFT](https://github.com/hyperledger/SmartBFT), the BFT engine the consenters of all parties
+run together, and interprets the ordered result: once enough batchers have attested the same batch,
+it emits a **batch attestation (BA)**, and its output is a totally ordered stream of BAs and
 configuration decisions that every correct consenter produces identically.
 
 Beyond ordering, the consenter is the system's **controller**. Because it sees every attestation and
@@ -73,9 +72,8 @@ network of 4 parties and 2 shards; C1, R1, A1 and the B1 batchers belong to part
 
 A small number of units do the consenter's work, on the state and data named below; the units around
 them are named in [Units and Wiring](#31-units-and-wiring). The system-wide terms the consenter is
-defined in — party, shard, primary, batch, batchID, BAF, BA and decision — are the ones listed in the
-[data model](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/architecture.md#5-data-model)
-of the architecture overview.
+defined in — party, shard, primary, batch, batchID, BAF, BA and decision — are the ones listed in
+the [data model](architecture.md#5-data-model) of the architecture overview.
 
 **Units**
 
@@ -125,7 +123,7 @@ consenters; to the router of its own party, for configuration changes; to the co
 parties, for the consensus protocol itself; and to the nodes that read its ordered stream.
 
 **Ingesting events** happens through the `Consensus` gRPC service, defined in
-[`communication.proto`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/protos/comm/communication.proto):
+[`communication.proto`](../node/protos/comm/communication.proto):
 
 ```protobuf
 service Consensus {
@@ -355,31 +353,29 @@ ledger.*
 
 | Concept | Source |
 |---------|--------|
-| Node lifecycle: build, start, stop, soft stop, applying a new config | [`consensus.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/consensus.go), [`consensus_builder.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/consensus_builder.go) |
-| The SmartBFT adapter: proposal assembly, verification, signing, delivery | [`consensus.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/consensus.go) |
-| The deterministic state machine and its fold | [`state/state.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/state/state.go), [`consenter.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/consenter.go) |
-| Control events, BAFs, complaints, config requests | [`state/control_event.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/state/control_event.go), [`state/complaint.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/state/complaint.go), [`state/config_request.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/state/config_request.go) |
-| Batch attestations, composite signatures, ordering information | [`state/available_batch.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/state/available_batch.go), [`state/compound_sig.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/state/compound_sig.go), [`state/ordering_information.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/state/ordering_information.go) |
-| Decision ⇄ block encoding | [`state/decision.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/state/decision.go), [`state/header.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/state/header.go) |
-| Batch-attestation DB (dedup) | [`badb/badb.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/badb/badb.go) |
-| Configuration apply and config-request validation | [`consensus_config_applier.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/consensus_config_applier.go), [`configrequest/config_request_validator.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/configrequest/config_request_validator.go) |
-| Synchronizer: catch-up, block and signature verification | [`synchronizer/`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/synchronizer) |
-| `Deliver` service | [`node/delivery`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/delivery) |
-| Consensus ledger | [`node/ledger`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/ledger) |
-| Metrics | [`metrics.go`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus/metrics.go) |
+| Node lifecycle: build, start, stop, soft stop, applying a new config | [`consensus.go`](../node/consensus/consensus.go), [`consensus_builder.go`](../node/consensus/consensus_builder.go) |
+| The SmartBFT adapter: proposal assembly, verification, signing, delivery | [`consensus.go`](../node/consensus/consensus.go) |
+| The deterministic state machine and its fold | [`state/state.go`](../node/consensus/state/state.go), [`consenter.go`](../node/consensus/consenter.go) |
+| Control events, BAFs, complaints, config requests | [`state/control_event.go`](../node/consensus/state/control_event.go), [`state/complaint.go`](../node/consensus/state/complaint.go), [`state/config_request.go`](../node/consensus/state/config_request.go) |
+| Batch attestations, composite signatures, ordering information | [`state/available_batch.go`](../node/consensus/state/available_batch.go), [`state/compound_sig.go`](../node/consensus/state/compound_sig.go), [`state/ordering_information.go`](../node/consensus/state/ordering_information.go) |
+| Decision ⇄ block encoding | [`state/decision.go`](../node/consensus/state/decision.go), [`state/header.go`](../node/consensus/state/header.go) |
+| Batch-attestation DB (dedup) | [`badb/badb.go`](../node/consensus/badb/badb.go) |
+| Configuration apply and config-request validation | [`consensus_config_applier.go`](../node/consensus/consensus_config_applier.go), [`configrequest/config_request_validator.go`](../node/consensus/configrequest/config_request_validator.go) |
+| Synchronizer: catch-up, block and signature verification | [`synchronizer/`](../node/consensus/synchronizer) |
+| `Deliver` service | [`node/delivery`](../node/delivery) |
+| Consensus ledger | [`node/ledger`](../node/ledger) |
+| Metrics | [`metrics.go`](../node/consensus/metrics.go) |
 
 ## 4. Configuration
 
 A consenter is configured like every other node: a local YAML file for what this node is and where it
 keeps its state, and the shared configuration for what the network is, which it obtains from a config
 block. The sections common to all roles — `General`, `FileStore`, `Operations` and `Metrics` — are
-explained in the
-[configuration model](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/architecture.md#6-configuration-and-membership)
-of the architecture overview, and documented field by field in the commented
-[`local_config.yaml`](https://github.com/hyperledger/fabric-x-orderer/blob/main/config/sample/local_config.yaml).
-`General.Bootstrap` names the block the node bootstraps from — the genesis block, or a later config
-block for a node joining a running network — and `FileStore.Location` is the directory its state is
-written under.
+explained in the [configuration model](architecture.md#6-configuration-and-membership) of the
+architecture overview, and documented field by field in the commented
+[`local_config.yaml`](../config/sample/local_config.yaml). `General.Bootstrap` names the block the
+node bootstraps from — the genesis block, or a later config block for a node joining a running
+network — and `FileStore.Location` is the directory its state is written under.
 
 The role-specific section is `Consensus`, and it holds a single field:
 
@@ -438,12 +434,9 @@ Note that these govern SmartBFT's ordering of *control events*, not transaction 
 sizing and timeouts belong to the batchers and live in the shared `Batching` block. The consenter also
 takes its maximum request size from that shared batching configuration.
 
-Templates can be found under
-[`config/sample`](https://github.com/hyperledger/fabric-x-orderer/blob/main/config/sample):
-[`local_config_consenter.yaml`](https://github.com/hyperledger/fabric-x-orderer/blob/main/config/sample/local_config_consenter.yaml)
-for this role, and
-[`shared_config.yaml`](https://github.com/hyperledger/fabric-x-orderer/blob/main/config/sample/shared_config.yaml)
-for the network-wide part.
+Templates can be found under [`config/sample`](../config/sample):
+[`local_config_consenter.yaml`](../config/sample/local_config_consenter.yaml) for this role, and
+[`shared_config.yaml`](../config/sample/shared_config.yaml) for the network-wide part.
 
 ## 5. Metrics and Monitoring
 
@@ -464,7 +457,7 @@ Five metrics are the consenter's own, each a counter labelled with the party ID:
 | `consensus_txs_count` | How many transactions the consenter has ordered, across all the blocks it committed. |
 
 The full list of metrics for every role, and how to collect and visualize them, is in the
-[monitoring and metrics guide](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/monitoring/metrics.md).
+[monitoring and metrics guide](monitoring/metrics.md).
 
 Beside its metrics, a node keeps a status of its own, which moves between five states: `initializing`
 while it starts up or takes a new configuration, `running` once it is ordering, `soft-stopped` while it
@@ -542,8 +535,7 @@ pending update re-derives to exactly the configuration that was proposed, so eve
 the same change.
 
 For the configuration model this rests on, and how a configuration change is proposed and ordered in
-the first place, see
-[Configuration and Membership](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/architecture.md#6-configuration-and-membership).
+the first place, see [Configuration and Membership](architecture.md#6-configuration-and-membership).
 
 ## 8. Deployment Guidance
 
@@ -554,14 +546,11 @@ inter-consenter mesh.*
 
 ## 9. Further Reading
 
-- [Architecture overview](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/architecture.md)
-  — the four roles, the end-to-end flow, and the configuration model.
-- [APIs](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/api.md) — the gRPC services of
-  every role, and which role implements which.
-- [Monitoring and metrics](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/monitoring/metrics.md)
-  — the full list of metrics, and how to collect and visualize them.
+- [Architecture overview](architecture.md) — the four roles, the end-to-end flow, and the
+  configuration model.
+- [APIs](api.md) — the gRPC services of every role, and which role implements which.
+- [Monitoring and metrics](monitoring/metrics.md) — the full list of metrics, and how to collect and
+  visualize them.
 - [SmartBFT](https://github.com/hyperledger/SmartBFT) — the BFT engine the consenter embeds.
-- [`arma` CLI](https://github.com/hyperledger/fabric-x-orderer/blob/main/docs/cli/arma.md) — the node
-  binary and its subcommands.
-- [`node/consensus`](https://github.com/hyperledger/fabric-x-orderer/blob/main/node/consensus) — the
-  source.
+- [`arma` CLI](cli/arma.md) — the node binary and its subcommands.
+- [`node/consensus`](../node/consensus) — the source.
