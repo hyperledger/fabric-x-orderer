@@ -85,6 +85,14 @@ What each of these metrics tells you about the assembler is described in [Assemb
   **Name:** "prefetch_index_cache_evictions_total"  
   **Help:** "The total number of evictions from the assembler prefetch index cache."
 
+- **Namespace:** "assembler"  
+  **Name:** "block_size_avg_bytes"  
+  **Help:** "The average size in bytes of the blocks committed in the last metrics interval."
+
+- **Namespace:** "assembler"  
+  **Name:** "tx_size_avg_bytes"  
+  **Help:** "The average size in bytes of the transactions committed in the last metrics interval."
+
 - **Namespace:** "assembler_ledger"  
   **Name:** "transaction_count_total"  
   **Help:** "The total number of transactions committed to the ledger."
@@ -96,6 +104,10 @@ What each of these metrics tells you about the assembler is described in [Assemb
 - **Namespace:** "assembler_ledger"  
   **Name:** "blocks_count_total"  
   **Help:** "The total number of blocks committed to the ledger."
+
+- **Namespace:** "assembler_ledger"  
+  **Name:** "transactions_size_bytes_total"  
+  **Help:** "The total size in bytes of transactions committed to the ledger."
 
 ---
 
