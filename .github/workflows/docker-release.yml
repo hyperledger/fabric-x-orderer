@@ -46,9 +46,9 @@ jobs:
           if [[ "${GITHUB_REF}" =~ ^refs/tags/v([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
             VERSION="${BASH_REMATCH[1]}"
             echo "VERSION=$VERSION" >> $GITHUB_ENV
-            echo "✅ Tag validated: $VERSION"
+            echo "Tag validated: $VERSION"
           else
-            echo "❌ Invalid tag format: ${GITHUB_REF}. Expected format: refs/tags/v<semver>"
+            echo "Invalid tag format: ${GITHUB_REF}. Expected format: refs/tags/v<semver>"
             exit 1
           fi
 
