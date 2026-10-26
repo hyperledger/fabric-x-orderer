@@ -90,14 +90,17 @@ type RouterNodeConfig struct {
 	ListenAddress      string
 	FileStorePath      string
 	// Shared config
-	Shards                              []ShardInfo
-	Consenter                           ConsenterInfo
+	Shards          []ShardInfo
+	Consenter       ConsenterInfo
+	RequestMaxBytes uint64
+	// ClientRootCAs holds the TLS roots of the ordering service and the applications, from the
+	// shared config, and the client roots of the local config.
+	ClientRootCAs [][]byte
+	// Local config
 	NumOfConnectionsForBatcher          int
 	NumOfgRPCStreamsPerConnection       int
 	UseTLS                              bool
 	ClientAuthRequired                  bool
-	ClientRootCAs                       [][]byte
-	RequestMaxBytes                     uint64
 	ClientSignatureVerificationRequired bool
 	// Throttling configures the router's request throttling (rate limiting).
 	Throttling RouterThrottlingConfig
