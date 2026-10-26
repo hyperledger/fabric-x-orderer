@@ -11,8 +11,8 @@ BASE_DIR=/tmp/arma-all-in-one
 STORAGE_DIR=/storage
 
 if [ -d "${BASE_DIR}/config/party1" ]; then
-  echo "📦 Pre-generated configs found, skipping generation"
-  echo "🚀 STARTING SERVICES"
+  echo "Pre-generated configs found, skipping generation"
+  echo "STARTING SERVICES"
   exec /run_all.sh
 fi
 
@@ -22,7 +22,7 @@ echo "Cleaning storage before generating a fresh network"
 mkdir -p "$STORAGE_DIR"
 find "$STORAGE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
-echo "🔥 PATCH SOURCE CONFIG BEFORE GENERATE (CRITICAL)"
+echo "PATCH SOURCE CONFIG BEFORE GENERATE (CRITICAL)"
 
 sed -i 's/router.p1/127.0.0.1/g' $CONFIG
 sed -i 's/router.p2/127.0.0.1/g' $CONFIG
@@ -91,6 +91,6 @@ for i in 1 2 3 4; do
 
 done
 
-echo "🚀 STARTING SERVICES"
+echo "STARTING SERVICES"
 
 exec /run_all.sh

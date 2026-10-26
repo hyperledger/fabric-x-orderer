@@ -41,9 +41,9 @@ jobs:
         run: |
           if [[ "${RAW_TAG}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
             echo "tag=${RAW_TAG}" >> "$GITHUB_OUTPUT"
-            echo "✅ Tag validated: ${RAW_TAG}"
+            echo "Tag validated: ${RAW_TAG}"
           else
-            echo "❌ Invalid tag format: ${RAW_TAG}. Expected format: v<semver>"
+            echo "Invalid tag format: ${RAW_TAG}. Expected format: v<semver>"
             exit 1
           fi
 
