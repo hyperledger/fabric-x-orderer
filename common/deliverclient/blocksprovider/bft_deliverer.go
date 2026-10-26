@@ -386,6 +386,13 @@ func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint) {
 		}
 
 		d.mutex.Lock()
+		if d.stopFlag {
+			// Stop() ran after the DoneC check above, so it could not stop this receiver.
+			d.mutex.Unlock()
+			cancel()
+			d.fetchErrorsC <- &ErrStopping{Message: "stopping"}
+			return
+		}
 		d.blockReceiver = blockRcv
 		d.mutex.Unlock()
 
