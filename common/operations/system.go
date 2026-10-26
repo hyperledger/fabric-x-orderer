@@ -7,7 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package operations
 
 import (
+	"net/http"
+	"net/http/pprof"
 	"net/url"
+	"runtime"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -52,6 +55,14 @@ type Operations struct {
 	// ListenAddress is the host and port for the operations server to listen on. It should be in the format of "host:port".
 	ListenAddress string
 	TLS           TLS
+	Profile       Profile
+}
+
+// Profile configures the Go pprof profiling endpoints.
+type Profile struct {
+	Enabled              bool
+	BlockProfileRate     int
+	MutexProfileFraction int
 }
 
 // Metrics configures the metrics provider for the orderer.
@@ -70,6 +81,7 @@ type Options struct {
 	fabhttp.Options
 	Metrics MetricsOptions
 	Version string
+	Profile Profile
 }
 
 func operationServiceURL(scheme string, operationSubPath string, address string, logger *flogging.FabricLogger) string {
@@ -126,6 +138,7 @@ func NewOperationsSystem(ops Operations, metricsConfig Metrics) *System {
 			Provider: metricsConfig.Provider,
 		},
 		Version: metadata.Version,
+		Profile: ops.Profile,
 	}
 
 	logger := o.Logger
@@ -145,6 +158,9 @@ func NewOperationsSystem(ops Operations, metricsConfig Metrics) *System {
 	system.initializeHealthCheckHandler()
 	system.initializeLoggingHandler()
 	system.initializeVersionInfoHandler()
+	if o.Profile.Enabled {
+		system.initializeProfilingHandlers()
+	}
 
 	return system
 }
@@ -284,4 +300,16 @@ func (s *System) initializeVersionInfoHandler() {
 	//          properties:
 	//            Error: { type: string }
 	s.RegisterHandler("/version", versionInfo, false)
+}
+
+func (s *System) initializeProfilingHandlers() {
+	runtime.SetBlockProfileRate(s.options.Profile.BlockProfileRate)
+	runtime.SetMutexProfileFraction(s.options.Profile.MutexProfileFraction)
+
+	// Index also serves the named profiles, e.g. /debug/pprof/heap and /debug/pprof/goroutine.
+	s.RegisterHandler("/debug/pprof/", http.HandlerFunc(pprof.Index), s.options.TLS.Enabled)
+	s.RegisterHandler("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline), s.options.TLS.Enabled)
+	s.RegisterHandler("/debug/pprof/profile", http.HandlerFunc(pprof.Profile), s.options.TLS.Enabled)
+	s.RegisterHandler("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol), s.options.TLS.Enabled)
+	s.RegisterHandler("/debug/pprof/trace", http.HandlerFunc(pprof.Trace), s.options.TLS.Enabled)
 }

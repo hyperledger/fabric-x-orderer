@@ -91,7 +91,7 @@ wait_for_healthz() {
 
   if [ -z "$url" ]; then
     local reason="${label} failed to start: health check URL never appeared in log within ${phase_timeout}s"
-    echo "❌ ${reason}"
+    echo "${reason}"
     mkdir -p test-results
     echo "${reason}" > test-results/startup_failure.txt
     exit 1
@@ -103,7 +103,7 @@ wait_for_healthz() {
   elapsed=0
   while [ $elapsed -lt $phase_timeout ]; do
     if curl -sf "$url" > /dev/null 2>&1; then
-      echo "  ✅ ${label} healthy"
+      echo "  ${label} healthy"
       return 0
     fi
     sleep 1
@@ -111,7 +111,7 @@ wait_for_healthz() {
   done
 
   local reason="${label} failed to start: /healthz at ${url} did not return HTTP 200 within ${phase_timeout}s"
-  echo "❌ ${reason}"
+  echo "${reason}"
   mkdir -p test-results
   echo "${reason}" > test-results/startup_failure.txt
   exit 1
@@ -201,7 +201,7 @@ start_arma_network() {
   done
 
   echo "=========================================="
-  echo "✅ ARMA network started — all components healthy"
+  echo "ARMA network started — all components healthy"
   echo "=========================================="
 }
 
@@ -375,7 +375,7 @@ run_failure_runner() {
     fi
 
     echo "----------------------------------------------------"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🎲 Random pick: ${comp} party ${party}${shard:+ shard ${shard}}"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Random pick: ${comp} party ${party}${shard:+ shard ${shard}}"
     echo "----------------------------------------------------"
 
     _kill_and_restart "$comp" "$party" "$shard" "$config_file" "$log_file"
@@ -449,11 +449,11 @@ monitor_completion() {
     # Actual log line: "Load command finished, sent N TXs in ..."
     if grep -q "Load command finished" loader.log 2>/dev/null; then
       local SENT=$(grep "Load command finished" loader.log 2>/dev/null | tail -1 | grep -oP 'sent \K[0-9]+')
-      echo "Loader: ✅ Completed - Sent ${SENT:-unknown} txs total"
+      echo "Loader: Completed - Sent ${SENT:-unknown} txs total"
     else
       # Sum all per-10s Report lines per router to get exact cumulative sent count per router.
       # Actual log line: "BroadcastClient to Router 127.0.0.1:XXXX sent N transactions in the last 10s"
-      echo "Loader: 🔄 Running"
+      echo "Loader: Running"
       for i in $(seq 1 $NUM_PARTIES); do
         local SENT_ROUTER=$(grep "BroadcastClientToRouter${i}.*Report" loader.log 2>/dev/null \
           | grep -oP 'sent \K[0-9]+(?= transactions in the last)' \
@@ -467,14 +467,14 @@ monitor_completion() {
       if grep -q "Receive command finished" receiver${i}.log 2>/dev/null; then
         # Actual log line: "N txs were expected and overall N were successfully received"
         local RECEIVED=$(grep "were successfully received" receiver${i}.log 2>/dev/null | tail -1 | grep -oP 'overall \K[0-9]+')
-        echo "Party ${i}: ✅ Completed - Received ${RECEIVED:-unknown} txs"
+        echo "Party ${i}: Completed - Received ${RECEIVED:-unknown} txs"
       else
         # For running receivers, read cumulative txs from CSV (column 2 = num txs, column 3 = num blocks)
         if [ -f "${TEST_DIR}/output${i}/statistics.csv" ]; then
           local RECEIVED=$(tail -n +3 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | awk -F',' '{sum+=$2} END {print sum}')
-          echo "Party ${i}: 🔄 Running - Received ${RECEIVED:-0} txs so far"
+          echo "Party ${i}: Running - Received ${RECEIVED:-0} txs so far"
         else
-          echo "Party ${i}: 🔄 Running - Received 0 txs so far"
+          echo "Party ${i}: Running - Received 0 txs so far"
         fi
       fi
     done
@@ -510,7 +510,7 @@ monitor_completion() {
     if _time_limit_reached; then
       echo ""
       echo "=========================================="
-      echo "⏰ Duration limit reached (${DURATION_MINUTES} minutes)"
+      echo "Duration limit reached (${DURATION_MINUTES} minutes)"
       echo "=========================================="
       _get_current_stats
       break
@@ -534,7 +534,7 @@ monitor_completion() {
     if [ "$LOADER_DONE" = "true" ] && [ "$ALL_RECEIVERS_DONE" = "true" ]; then
       echo ""
       echo "=========================================="
-      echo "✅ All components completed before timeout!"
+      echo "All components completed before timeout!"
       echo "=========================================="
       _get_current_stats
       break
@@ -547,7 +547,7 @@ monitor_completion() {
         local TOTAL_KILLS=$(cat "${TEST_DIR}/kill_counter" 2>/dev/null || echo "?")
         echo ""
         echo "=========================================="
-        echo "🎲 Randomized batch of ${KILLS_PER_REPORT} kills complete (total kills so far: ${TOTAL_KILLS})"
+        echo "Randomized batch of ${KILLS_PER_REPORT} kills complete (total kills so far: ${TOTAL_KILLS})"
         echo "=========================================="
         _get_current_stats
         rm -f "$BATCH_SIGNAL"
@@ -628,7 +628,7 @@ monitor_completion() {
   pkill -f "armageddon receive" || true
 
   echo "=========================================="
-  echo "✅ Monitoring completed"
+  echo "Monitoring completed"
   echo "=========================================="
 }
 
@@ -785,10 +785,10 @@ Loader Results
 EOF
 
   if [ "$LOADER_STATUS" = "completed" ]; then
-    echo "✅ Loader completed" >> test-results/summary.txt
+    echo "Loader completed" >> test-results/summary.txt
     echo "Sent: ${SENT:-unknown} transactions" >> test-results/summary.txt
   else
-    echo "⏰ Loader stopped by timeout" >> test-results/summary.txt
+    echo "Loader stopped by timeout" >> test-results/summary.txt
     echo "Sent: ${SENT:-0} transactions (incomplete)" >> test-results/summary.txt
   fi
 
@@ -808,22 +808,22 @@ EOF
     local STATUS="${RECEIVER_STATUS[$i]}"
 
     if [ "$STATUS" = "completed" ]; then
-      echo "  ✅ Completed - Received: ${RECEIVED} txs" >> test-results/summary.txt
+      echo "  Completed - Received: ${RECEIVED} txs" >> test-results/summary.txt
       if [ -n "$RECEIVED" ] && [ "$RECEIVED" != "unknown" ] && [ "$RECEIVED" -gt 0 ] 2>/dev/null; then
         TOTAL_RECEIVED=$((TOTAL_RECEIVED + RECEIVED))
       fi
     elif [ "$STATUS" = "timeout" ]; then
       if [ -f "${TEST_DIR}/output${i}/statistics.csv" ]; then
         local BLOCKS=$(tail -n +4 "${TEST_DIR}/output${i}/statistics.csv" 2>/dev/null | awk -F',' '{sum+=$3} END {print sum+0}')
-        echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs in ${BLOCKS} blocks" >> test-results/summary.txt
+        echo "  Stopped by timeout - Received: ${RECEIVED} txs in ${BLOCKS} blocks" >> test-results/summary.txt
       else
-        echo "  ⏰ Stopped by timeout - Received: ${RECEIVED} txs" >> test-results/summary.txt
+        echo "  Stopped by timeout - Received: ${RECEIVED} txs" >> test-results/summary.txt
       fi
       if [ -n "$RECEIVED" ] && [ "$RECEIVED" -gt 0 ] 2>/dev/null; then
         TOTAL_RECEIVED=$((TOTAL_RECEIVED + RECEIVED))
       fi
     else
-      echo "  ❌ No statistics available" >> test-results/summary.txt
+      echo "  No statistics available" >> test-results/summary.txt
     fi
   done
 
@@ -867,12 +867,12 @@ EOF
   echo "========================================" >> test-results/summary.txt
 
   if [ -n "$SENT" ] && [ "$SENT" -gt 0 ] && [ "${REPRESENTATIVE_RECEIVED:-0}" -gt 0 ] 2>/dev/null; then
-    echo "✅ PASSED - Test ran for ${DURATION} minutes" >> test-results/summary.txt
+    echo "PASSED - Test ran for ${DURATION} minutes" >> test-results/summary.txt
     echo "   Sent: ${SENT} txs, representative party received: ${REPRESENTATIVE_RECEIVED} txs (${PARTY_SUCCESS_RATE}%)" >> test-results/summary.txt
   elif [ -n "$SENT" ] && [ "$SENT" -gt 0 ]; then
-    echo "⚠️  PARTIAL - Loader sent ${SENT} txs but no receiver completed (all were mid-kill at drain time)" >> test-results/summary.txt
+    echo "PARTIAL - Loader sent ${SENT} txs but no receiver completed (all were mid-kill at drain time)" >> test-results/summary.txt
   else
-    echo "❌ FAILED - No transactions processed" >> test-results/summary.txt
+    echo "FAILED - No transactions processed" >> test-results/summary.txt
   fi
 
   # ---------------------------------------------------------------------------
@@ -910,7 +910,7 @@ Total kills: ${TOTAL_KILLS}
 EOF
 
   echo "=========================================="
-  echo "✅ Results collected in test-results/"
+  echo "Results collected in test-results/"
   echo "=========================================="
 
   # Display both summaries
@@ -1102,7 +1102,7 @@ EOF
   pkill -f "armageddon" 2>/dev/null
 
   echo "=========================================="
-  echo "✅ Fully randomized failure test completed successfully!"
+  echo "Fully randomized failure test completed successfully!"
   echo "=========================================="
   exit 0
 }
