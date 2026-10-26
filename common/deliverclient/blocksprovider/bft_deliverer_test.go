@@ -8,6 +8,7 @@ package blocksprovider_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"sync"
@@ -48,7 +49,7 @@ type bftDelivererTestSetup struct {
 	fakeUpdatableBlockVerifier         *fake.UpdatableBlockVerifier
 	fakeSigner                         *fake.Signer
 	fakeDeliverStreamer                *fake.DeliverStreamer
-	fakeDeliverClient                  *fake.DeliverClient
+	fakeDeliverClient                  *fake.DeliverClient // records calls only; drive Recv() through recvStepC
 	fakeCensorshipMonFactory           *fake.CensorshipDetectorFactory
 	fakeCensorshipMon                  *fake.CensorshipDetector
 	fakeEndpointsExtractor             *fake.EndpointsExtractor
@@ -57,9 +58,8 @@ type bftDelivererTestSetup struct {
 	fakeCryptoProvider                 bccsp.BCCSP
 	channelConfig                      *common.Config
 
-	deliverClientDoneC chan struct{} // signals the deliverClient to exit
-	recvStepC          chan *orderer.DeliverResponse
-	endC               chan struct{}
+	recvStepC chan *orderer.DeliverResponse
+	endC      chan struct{}
 
 	mutex         sync.Mutex                 // protects the following fields
 	clientConnSet []*grpc.ClientConn         // client connection set
@@ -86,7 +86,6 @@ func newBFTDelivererTestSetup(t *testing.T) *bftDelivererTestSetup {
 		fakeEndpointsExtractor:             &fake.EndpointsExtractor{},
 		fakeSleeper:                        &fake.Sleeper{},
 		fakeDurationExceededHandler:        &fake.DurationExceededHandler{},
-		deliverClientDoneC:                 make(chan struct{}),
 		recvStepC:                          make(chan *orderer.DeliverResponse),
 		endC:                               make(chan struct{}),
 	}
@@ -139,27 +138,6 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 	s.fakeOrdererConnectionSourceFactory.CreateConnectionSourceReturns(s.fakeOrdererConnectionSource)
 
 	s.fakeSigner.SignReturns([]byte("good-sig"), nil)
-
-	s.fakeDeliverClient.RecvStub = func() (*orderer.DeliverResponse, error) {
-		select {
-		case r := <-s.recvStepC:
-			if r == nil {
-				return nil, fmt.Errorf("fake-recv-step-error")
-			}
-			return r, nil
-		case <-s.deliverClientDoneC:
-			return nil, nil
-		}
-	}
-
-	s.fakeDeliverClient.CloseSendStub = func() error {
-		select {
-		case s.recvStepC <- nil:
-		case <-s.deliverClientDoneC:
-		}
-
-		return nil
-	}
 
 	s.fakeDeliverStreamer.DeliverReturns(s.fakeDeliverClient, nil)
 
@@ -234,7 +212,7 @@ func (s *bftDelivererTestSetup) initialize(t *testing.T) {
 		CryptoProvider:                  s.fakeCryptoProvider,
 		DoneC:                           make(chan struct{}),
 		Signer:                          s.fakeSigner,
-		DeliverStreamer:                 s.fakeDeliverStreamer,
+		DeliverStreamer:                 &perStreamDeliverStreamer{DeliverStreamer: s.fakeDeliverStreamer, s: s},
 		CensorshipDetectorFactory:       s.fakeCensorshipMonFactory,
 		ConfigBlockOps:                  &utils.CommonConfigBlockOperations{},
 		EndpointsExtractor:              s.fakeEndpointsExtractor,
@@ -264,13 +242,6 @@ func (s *bftDelivererTestSetup) start() {
 
 func (s *bftDelivererTestSetup) stop() {
 	s.d.Stop()
-
-	select {
-	case <-s.deliverClientDoneC:
-	default:
-		close(s.deliverClientDoneC)
-	}
-
 	<-s.endC
 }
 
@@ -290,6 +261,33 @@ func (s *bftDelivererTestSetup) assertEventuallyMonitorCallCount(n int) {
 			}
 
 			return s.fakeCensorshipMon.MonitorCallCount()
+		}, eventuallyTO,
+	).Should(Equal(n))
+}
+
+// assertEventuallyMonitorSetLen waits until the factory stub has registered n monitors. The fake bumps
+// CreateCallCount before the stub runs, so the count alone does not mean s.monErrC belongs to the newest monitor;
+// sending on it under s.mutex before then would block the stub, and the deliverer with it.
+func (s *bftDelivererTestSetup) assertEventuallyMonitorSetLen(n int) {
+	s.gWithT.Eventually(
+		func() int {
+			s.mutex.Lock()
+			defer s.mutex.Unlock()
+
+			return len(s.monitorSet)
+		}, eventuallyTO,
+	).Should(Equal(n))
+}
+
+// assertEventuallyClientConnSetLen waits until the dialer stub has recorded n connections; like the factory, the
+// fake bumps DialCallCount before the stub runs.
+func (s *bftDelivererTestSetup) assertEventuallyClientConnSetLen(n int) {
+	s.gWithT.Eventually(
+		func() int {
+			s.mutex.Lock()
+			defer s.mutex.Unlock()
+
+			return len(s.clientConnSet)
 		}, eventuallyTO,
 	).Should(Equal(n))
 }
@@ -788,13 +786,8 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 		addr2, _ := setup.fakeDialer.DialArgsForCall(1)
 		require.NotEqual(t, addr1, addr2)
 
-		func() {
-			setup.mutex.Lock()
-			defer setup.mutex.Unlock()
-
-			require.Len(t, setup.clientConnSet, 2)
-			require.Len(t, setup.monitorSet, 2)
-		}()
+		setup.assertEventuallyClientConnSetLen(2)
+		setup.assertEventuallyMonitorSetLen(2)
 
 		t.Log("does not handle the block")
 		require.Equal(t, 0, setup.fakeBlockHandler.HandleBlockCallCount())
@@ -834,13 +827,8 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 		addr2, _ := setup.fakeDialer.DialArgsForCall(1)
 		require.NotEqual(t, addr1, addr2)
 
-		func() {
-			setup.mutex.Lock()
-			defer setup.mutex.Unlock()
-
-			require.Len(t, setup.clientConnSet, 2)
-			require.Len(t, setup.monitorSet, 2)
-		}()
+		setup.assertEventuallyClientConnSetLen(2)
+		setup.assertEventuallyMonitorSetLen(2)
 
 		t.Log("handle the block")
 		require.Equal(t, 1, setup.fakeBlockHandler.HandleBlockCallCount())
@@ -905,7 +893,6 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 		setup.gWithT.Expect(setup.fakeDialer.DialCallCount()).Should(Equal(25))
 
 		t.Log("a Recv() error occurs")
-		setup.fakeDeliverClient.CloseSendStub = nil
 		setup.recvStepC <- nil
 
 		setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(26))
@@ -962,7 +949,6 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 		require.Equal(t, 80, setup.fakeSleeper.SleepCallCount())
 
 		t.Log("a Recv() error occurs, more dial attempts")
-		setup.fakeDeliverClient.CloseSendStub = nil
 		setup.recvStepC <- nil
 		setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(161))
 		setup.gWithT.Expect(setup.fakeSleeper.SleepCallCount()).To(Equal(160))
@@ -979,7 +965,6 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 		require.Equal(t, 160, setup.fakeSleeper.SleepCallCount())
 
 		t.Log("a Recv() error occurs, more dial attempts")
-		setup.fakeDeliverClient.CloseSendStub = nil
 		setup.recvStepC <- nil
 		setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(241))
 		setup.gWithT.Expect(setup.fakeSleeper.SleepCallCount()).To(Equal(240))
@@ -1216,8 +1201,8 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 
 			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(1))
 			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(1))
+			setup.assertEventuallyMonitorSetLen(1)
 
-			// var mon *fake.CensorshipDetector
 			t.Logf("monitor error channel returns unexpected value: %v", errVal)
 			func() {
 				setup.mutex.Lock()
@@ -1241,6 +1226,7 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 
 		setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(1))
 		setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(1))
+		setup.assertEventuallyMonitorSetLen(1)
 
 		t.Log("monitor error channel returns censorship error")
 		func() {
@@ -1267,6 +1253,7 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 		for n := 1; n <= 40; n++ {
 			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(n))
 			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(n))
+			setup.assertEventuallyMonitorSetLen(n)
 
 			t.Logf("monitor error channel returns censorship error num: %d", n)
 			func() {
@@ -1276,13 +1263,7 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 				setup.monErrC <- &blocksprovider.ErrCensorship{Message: fmt.Sprintf("censorship %d", n)}
 			}()
 
-			numMon := func() int {
-				setup.mutex.Lock()
-				defer setup.mutex.Unlock()
-
-				return len(setup.monitorSet)
-			}
-			setup.gWithT.Eventually(numMon, eventuallyTO).Should(Equal(n + 1))
+			setup.assertEventuallyMonitorSetLen(n + 1)
 
 			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(n + 1))
 			setup.gWithT.Expect(setup.fakeSleeper.SleepCallCount()).To(Equal(n))
@@ -1416,4 +1397,45 @@ func TestBFTDeliverer_RefreshEndpoints(t *testing.T) {
 	require.Equal(t, 0, setup.fakeSleeper.SleepCallCount())
 
 	setup.stop()
+}
+
+// perStreamDeliverStreamer wraps the fake streamer so that every stream is bound to the context it was opened with.
+// All streams share s.fakeDeliverClient (to record calls) and s.recvStepC (to feed responses), but each stream is
+// unblocked only by cancelling its own context, as with gRPC. Otherwise, tearing down an old stream can steal a
+// response from (or inject an error into) the stream that replaced it.
+type perStreamDeliverStreamer struct {
+	*fake.DeliverStreamer
+	s *bftDelivererTestSetup
+}
+
+//nolint:ireturn // implements blocksprovider.DeliverStreamer.
+func (ds *perStreamDeliverStreamer) Deliver(
+	ctx context.Context, cc *grpc.ClientConn,
+) (orderer.AtomicBroadcast_DeliverClient, error) {
+	client, err := ds.DeliverStreamer.Deliver(ctx, cc)
+	if err != nil {
+		return nil, err
+	}
+	return &perStreamDeliverClient{AtomicBroadcast_DeliverClient: client, ctx: ctx, s: ds.s}, nil
+}
+
+type perStreamDeliverClient struct {
+	orderer.AtomicBroadcast_DeliverClient
+	ctx context.Context //nolint:containedctx // the stream's lifetime is bound to it.
+	s   *bftDelivererTestSetup
+}
+
+// Recv records the call on the shared fake, ignoring its stubs and return values; responses come from recvStepC.
+func (c *perStreamDeliverClient) Recv() (*orderer.DeliverResponse, error) {
+	_, _ = c.AtomicBroadcast_DeliverClient.Recv()
+
+	select {
+	case r := <-c.s.recvStepC:
+		if r == nil {
+			return nil, errors.New("fake-recv-step-error")
+		}
+		return r, nil
+	case <-c.ctx.Done():
+		return nil, c.ctx.Err()
+	}
 }
