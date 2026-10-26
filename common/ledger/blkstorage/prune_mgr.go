@@ -74,6 +74,16 @@ func (p *pruneMgr) pruneBefore(blockNum uint64, tail *blockfilesInfo) error {
 
 	current := p.info.Load()
 
+	// The open refuses a prune info that names a first stored file beyond the latest one, and pruning never
+	// records one, since the active file is never eligible. Checked here as well because the sweep below
+	// deletes every file below that one, the active file included if the record were past it.
+	if current.firstStoredBlockfileNum > tail.latestFileNumber {
+		return errors.Errorf(
+			"cannot prune. the prune info records block file [%d] as the lowest surviving block file, but the "+
+				"latest block file is [%d]", current.firstStoredBlockfileNum, tail.latestFileNumber,
+		)
+	}
+
 	if err := p.sweepOrphans(current.firstStoredBlockfileNum); err != nil {
 		return err
 	}
@@ -165,10 +175,10 @@ func (p *pruneMgr) firstBlockNumAfter(fileNum int, tail *blockfilesInfo) (uint64
 // the index entries of those blocks, and only then unlinks it. Each step is durable before the next begins,
 // which is what makes an interrupted prune recoverable without a single atomic write across the three of them.
 //
-// A crash after the first step leaves a file recorded as gone, which sweepOrphans unlinks on the next call.
-// Its index entries stay behind: no read reaches them, since their blocks lie below firstReadableBlockNum
-// and checkBlockAvailable refuses those before the index is consulted, and an index rebuild drops them. A
-// crash after the second step leaves the same kind of file without the entries.
+// A crash after the first step leaves a file recorded as gone, which sweepOrphans unlinks when the ledger
+// next opens. Its index entries stay behind: no read reaches them, since their blocks lie below
+// firstReadableBlockNum and checkBlockAvailable refuses those before the index is consulted, and an index
+// rebuild drops them. A crash after the second step leaves the same kind of file without the entries.
 func (p *pruneMgr) pruneBlockfile(fileNum int, from, to, firstAvailable uint64) error {
 	err := p.setInfo(&pruneInfo{firstReadableBlockNum: firstAvailable, firstStoredBlockfileNum: fileNum + 1})
 	if err != nil {
@@ -187,7 +197,9 @@ func (p *pruneMgr) pruneBlockfile(fileNum int, from, to, firstAvailable uint64) 
 
 // sweepOrphans unlinks the block files below the lowest one the info records. A prune that recorded a file
 // as gone and then failed to unlink it leaves it behind the bound, where counting would never reach it
-// again. It lists the directory rather than probing from zero, and syncs it once at the end.
+// again. It runs when the ledger opens, which collects what a crash left, and at the start of every prune,
+// which also collects what a failed unlink left without one. It lists the directory rather than probing from
+// zero, and syncs it once at the end.
 //
 // It leaves the index alone: entries such a prune did not get to delete stay behind, unreachable (see
 // pruneBlockfile).

@@ -79,9 +79,11 @@ At start up a new manager:
 	  the file blkstorage
 			-- Instantiates a new blockIdxInfo
 			-- Loads the index from the db if exists
+			-- Loads the prune info, and fails if the block files disagree with it
 			-- syncIndex comparing the last block indexed to what is in the FS
 			-- If index and file system are not in sync, syncs index from the FS
 	  *)  Updates blockchain info used by the APIs
+	  *)  Removes the block files an interrupted prune left behind
 */
 func newBlockfileMgr(id string, conf *Conf, indexStore *leveldbhelper.DBHandle) (*blockfileMgr, error) {
 	logger.Debugf("newBlockfileMgr() initializing file-based block storage for ledger: %s ", id)
@@ -131,6 +133,10 @@ func newBlockfileMgr(id string, conf *Conf, indexStore *leveldbhelper.DBHandle) 
 		return nil, err
 	}
 
+	if err := mgr.checkPruneInfoAgainstBlockfiles(); err != nil {
+		return nil, err
+	}
+
 	if err := mgr.syncIndex(); err != nil {
 		return nil, err
 	}
@@ -148,7 +154,52 @@ func newBlockfileMgr(id string, conf *Conf, indexStore *leveldbhelper.DBHandle) 
 		bcInfo.PreviousBlockHash = lastBlockHeader.PreviousHash
 	}
 	mgr.bcInfo.Store(bcInfo)
+
+	// A prune that crashed between recording a block file as gone and unlinking it left the file behind, and
+	// the restart after the crash is the first chance to remove it. It is the last step, so an open that
+	// fails deletes nothing. Failing to remove an orphan does not fail the open: the file holds only blocks
+	// no read returns, and the next prune sweeps again.
+	if err := mgr.pruner.sweepOrphans(mgr.pruner.firstStoredBlockfileNum()); err != nil {
+		logger.Warnf("Could not remove the block files left behind by an earlier prune: %s", err)
+	}
 	return mgr, nil
+}
+
+// checkPruneInfoAgainstBlockfiles refuses to open a ledger whose prune info and block files disagree. The
+// prune info names the lowest block file that survived pruning, so that file must exist and must not lie
+// beyond the latest file. Either mismatch is unrecoverable: the pruned blocks are gone and nothing records
+// how far they went. It runs on every open, before anything relies on the prune info, and in particular
+// before the sweep that deletes the files below that one.
+//
+// The opposite skew is benign: files below the recorded first file are orphans left by a crash mid-prune,
+// which the sweep at the end of the open removes.
+func (mgr *blockfileMgr) checkPruneInfoAgainstBlockfiles() error {
+	if mgr.blockfilesInfo.noBlockFiles {
+		return nil
+	}
+	first := mgr.pruner.firstStoredBlockfileNum()
+
+	// The errors report what the record says rather than diagnosing why it says it: an absent record is
+	// indistinguishable from a zero-valued one here, and a first stored file of 0 is an ordinary record too.
+	if first > mgr.blockfilesInfo.latestFileNumber {
+		return errors.Errorf(
+			"cannot open block store. the prune info records block file [%d] as the lowest surviving block "+
+				"file with blocks readable from [%d], but the latest block file is [%d]",
+			first, mgr.pruner.firstReadableBlockNum(), mgr.blockfilesInfo.latestFileNumber,
+		)
+	}
+	exists, _, err := fileutil.FileExists(deriveBlockfilePath(mgr.rootDir, first))
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.Errorf(
+			"cannot open block store. block file [%d] is missing, though the prune info records it as the "+
+				"lowest surviving block file with blocks readable from [%d]",
+			first, mgr.pruner.firstReadableBlockNum(),
+		)
+	}
+	return nil
 }
 
 func syncBlockfilesInfoFromFS(rootDir string, blkfilesInfo *blockfilesInfo) {
@@ -326,20 +377,7 @@ func (mgr *blockfileMgr) syncIndex() error {
 	skipFirstBlock := false
 	endFileNum := mgr.blockfilesInfo.latestFileNumber
 
-	// If that file is absent, the prune info and the files disagree. That is unrecoverable: the pruned
-	// blocks are gone and nothing records how far they went.
-	exists, _, err := fileutil.FileExists(deriveBlockfilePath(mgr.rootDir, startFileNum))
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return errors.Errorf(
-			"cannot sync index with block files. block file [%d] is missing, though the prune info records "+
-				"it as the lowest surviving block file with blocks readable from [%d]",
-			startFileNum, mgr.pruner.firstReadableBlockNum(),
-		)
-	}
-
+	// checkPruneInfoAgainstBlockfiles has already checked that this file exists.
 	firstAvailableBlkNum, err := retrieveFirstBlockNumFromFile(mgr.rootDir, startFileNum)
 	if err != nil {
 		return err
