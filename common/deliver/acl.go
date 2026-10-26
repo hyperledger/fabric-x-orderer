@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
 )
 
 // ExpiresAtFunc is used to extract the time at which an identity expires.
-type ExpiresAtFunc func(identityBytes []byte) time.Time
+type ExpiresAtFunc func(identity *msppb.Identity) (time.Time, error)
 
 // ConfigSequencer provides the sequence number of the current config block.
 type ConfigSequencer interface {
@@ -23,21 +24,25 @@ type ConfigSequencer interface {
 }
 
 // NewSessionAC creates an instance of SessionAccessControl. This constructor will
-// return an error if a signature header cannot be extracted from the envelope.
+// return an error if a signature header cannot be extracted from the envelope, or if
+// the time at which the identity expires cannot be determined.
 func NewSessionAC(chain ConfigSequencer, env *common.Envelope, policyChecker PolicyChecker, channelID string, expiresAt ExpiresAtFunc) (*SessionAccessControl, error) {
 	signedData, err := protoutil.EnvelopeAsSignedData(env)
 	if err != nil {
 		return nil, err
 	}
 
-	id := signedData[0].Identity.GetCertificate()
+	sessionEndTime, err := expiresAt(signedData[0].Identity)
+	if err != nil {
+		return nil, err
+	}
 
 	return &SessionAccessControl{
 		envelope:       env,
 		channelID:      channelID,
 		sequencer:      chain,
 		policyChecker:  policyChecker,
-		sessionEndTime: expiresAt(id),
+		sessionEndTime: sessionEndTime,
 	}, nil
 }
 
