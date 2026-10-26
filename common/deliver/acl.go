@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/pkg/errors"
 )
 
 // ExpiresAtFunc is used to extract the time at which an identity expires.
-type ExpiresAtFunc func(identityBytes []byte) time.Time
+type ExpiresAtFunc func(identity *msppb.Identity) (time.Time, error)
 
 // ConfigSequencer provides the sequence number of the current config block.
 type ConfigSequencer interface {
@@ -30,14 +31,15 @@ func NewSessionAC(chain ConfigSequencer, env *common.Envelope, policyChecker Pol
 		return nil, err
 	}
 
-	id := signedData[0].Identity.GetCertificate()
+	sessionEndTime, expiryErr := expiresAt(signedData[0].Identity)
 
 	return &SessionAccessControl{
 		envelope:       env,
 		channelID:      channelID,
 		sequencer:      chain,
 		policyChecker:  policyChecker,
-		sessionEndTime: expiresAt(id),
+		sessionEndTime: sessionEndTime,
+		expiryErr:      expiryErr,
 	}, nil
 }
 
@@ -52,12 +54,19 @@ type SessionAccessControl struct {
 	lastConfigSequence uint64
 	sessionEndTime     time.Time
 	usedAtLeastOnce    bool
+	// expiryErr is why the time at which the identity expires cannot be determined, which refuses
+	// the request.
+	expiryErr error
 }
 
 // Evaluate uses the PolicyChecker to determine if a request should be allowed.
 // The decision is cached until the identity expires or the chain configuration
 // changes.
 func (ac *SessionAccessControl) Evaluate() error {
+	if ac.expiryErr != nil {
+		return ac.expiryErr
+	}
+
 	if !ac.sessionEndTime.IsZero() && time.Now().After(ac.sessionEndTime) {
 		return errors.Errorf("deliver client identity expired %v before", time.Since(ac.sessionEndTime))
 	}

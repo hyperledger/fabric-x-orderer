@@ -18,9 +18,11 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/common/crypto"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/common/util"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -89,7 +91,7 @@ func (inspector InspectorFunc) Inspect(ctx context.Context, p proto.Message) err
 
 // Handler handles server requests.
 type Handler struct {
-	ExpirationCheckFunc func(identityBytes []byte) time.Time
+	ExpirationCheckFunc ExpiresAtFunc
 	ChainManager        ChainManager
 	TimeWindow          time.Duration
 	BindingInspector    Inspector
@@ -142,17 +144,20 @@ func ExtractChannelHeaderCertHash(msg proto.Message) []byte {
 }
 
 // NewHandler creates an implementation of the Handler interface.
-func NewHandler(cm ChainManager, timeWindow time.Duration, mutualTLS bool, metrics *Metrics, expirationCheckDisabled bool, configBlockOps utils.ConfigBlockOperations) *Handler {
-	expirationCheck := crypto.ExpiresAt
-	if expirationCheckDisabled {
-		expirationCheck = noExpiration
-	}
+func NewHandler(
+	cm ChainManager,
+	timeWindow time.Duration,
+	mutualTLS bool,
+	metrics *Metrics,
+	expiresAt ExpiresAtFunc,
+	configBlockOps utils.ConfigBlockOperations,
+) *Handler {
 	return &Handler{
 		ChainManager:        cm,
 		TimeWindow:          timeWindow,
 		BindingInspector:    InspectorFunc(NewBindingInspector(mutualTLS, ExtractChannelHeaderCertHash)),
 		Metrics:             metrics,
-		ExpirationCheckFunc: expirationCheck,
+		ExpirationCheckFunc: expiresAt,
 		ConfigBlockOps:      configBlockOps,
 	}
 }
@@ -417,6 +422,26 @@ func (h *Handler) validateChannelHeader(ctx context.Context, chdr *cb.ChannelHea
 	return nil
 }
 
-func noExpiration(_ []byte) time.Time {
-	return time.Time{}
+// NewExpiresAtFunc returns an ExpiresAtFunc that resolves a request identity through identities,
+// whether it carries its certificate or is sent by certificate ID, and expires it with the identity
+// it resolves to. An identity that does not resolve is an error. Without identities, it takes the
+// expiry from the certificate the identity carries.
+func NewExpiresAtFunc(identities msp.IdentityDeserializer) ExpiresAtFunc {
+	return func(identity *msppb.Identity) (time.Time, error) {
+		if identities == nil {
+			return crypto.ExpiresAt(identity.GetCertificate()), nil
+		}
+
+		resolved, err := identities.DeserializeIdentity(identity)
+		if err != nil {
+			return time.Time{}, errors.Wrapf(err, "failed resolving the identity of MSP %s", identity.GetMspId())
+		}
+
+		return resolved.ExpiresAt(), nil
+	}
+}
+
+// NoExpiration is an ExpiresAtFunc that never expires an identity.
+func NoExpiration(_ *msppb.Identity) (time.Time, error) {
+	return time.Time{}, nil
 }

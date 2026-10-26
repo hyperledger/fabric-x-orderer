@@ -7,7 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package deliver
 
 import (
+	"time"
+
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -20,6 +23,7 @@ import (
 type AccessControl struct {
 	policy     policies.Policy
 	policyName string
+	expiresAt  ExpiresAtFunc
 }
 
 // NewAccessControl refuses a bundle that does not hold the policy, since every request would then
@@ -34,7 +38,7 @@ func NewAccessControl(bundle channelconfig.Resources, policyName string) (*Acces
 		return nil, errors.Errorf("the configuration holds no policy %s", policyName)
 	}
 
-	return &AccessControl{policy: policy, policyName: policyName}, nil
+	return &AccessControl{policy: policy, policyName: policyName, expiresAt: NewExpiresAtFunc(bundle.MSPManager())}, nil
 }
 
 // CheckPolicy refuses a request whose signature does not satisfy the policy. The channel is not
@@ -50,4 +54,10 @@ func (a *AccessControl) CheckPolicy(envelope *cb.Envelope, channelID string) err
 	}
 
 	return nil
+}
+
+// ExpiresAt returns the time at which the identity that signed a request expires, as the MSPs of the
+// configuration resolve it.
+func (a *AccessControl) ExpiresAt(identity *msppb.Identity) (time.Time, error) {
+	return a.expiresAt(identity)
 }
