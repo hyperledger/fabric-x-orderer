@@ -186,9 +186,12 @@ further:
 1. **Rules** — the payload must not be empty, and the payload and signature together must not exceed
    `RequestMaxBytes`.
 2. **Structure, signature and policy** — the payload must be a `common.Payload` with a channel header
-   and a signature header, whose creator identity must decode; and, when
-   `ClientSignatureVerificationRequired` is set or the request is a configuration update, its signature
-   must satisfy the channel's `Writers` policy.
+   and a signature header, whose creator identity must decode; the signature header must carry a
+   non-empty nonce, and the channel header's TxID must be the one derived from it,
+   `hex(SHA256(nonce || creator))`; and, when `ClientSignatureVerificationRequired` is set or the
+   request is a configuration update, its signature must satisfy the channel's `Writers` policy. The
+   TxID check is a structure check, not a proof of ownership: without signature verification, a
+   client can copy another client's nonce and creator and produce the same TxID.
 3. **Type** — the request's type is taken from its channel header. A configuration update goes to
    the config submitter, and any other supported type to the batcher; a config block, an orderer
    transaction, or a deliver request is rejected, as is a type above the known range.

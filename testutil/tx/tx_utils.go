@@ -29,6 +29,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -48,7 +49,10 @@ func createPayloadHeader(ch *common.ChannelHeader, sh *common.SignatureHeader) *
 	}
 }
 
-func createStructuredPayload(data []byte, requestType common.HeaderType) *common.Payload {
+// fixedNonce is the nonce of the structured test envelopes, which are deterministic and so all share the same TxID.
+var fixedNonce = []byte("nonce")
+
+func createStructuredPayload(data []byte, requestType common.HeaderType, nonce []byte) *common.Payload {
 	payloadChannelHeader := createChannelHeader(requestType, 0, "channelID", 0)
 	id, err := msp.NewSerializedIdentity("org1", []byte("cert"))
 	if err != nil {
@@ -56,8 +60,9 @@ func createStructuredPayload(data []byte, requestType common.HeaderType) *common
 	}
 	payloadSignatureHeader := &common.SignatureHeader{
 		Creator: id,
-		Nonce:   []byte("nonce"),
+		Nonce:   nonce,
 	}
+	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)
 	return &common.Payload{
 		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
 		Data:   data,
@@ -74,7 +79,7 @@ func deterministicMarshall(msg proto.Message) []byte {
 }
 
 func CreateStructuredEnvelope(data []byte) *common.Envelope {
-	payload := createStructuredPayload(data, common.HeaderType_MESSAGE)
+	payload := createStructuredPayload(data, common.HeaderType_MESSAGE, fixedNonce)
 	payloadBytes := deterministicMarshall(payload)
 	return &common.Envelope{
 		Payload:   payloadBytes,
@@ -101,7 +106,7 @@ func CreateECDSAPrivateKey(privateKeyBytes []byte) (*ecdsa.PrivateKey, error) {
 }
 
 func CreateStructuredConfigUpdateEnvelope(data []byte) *common.Envelope {
-	payload := createStructuredPayload(data, common.HeaderType_CONFIG_UPDATE)
+	payload := createStructuredPayload(data, common.HeaderType_CONFIG_UPDATE, fixedNonce)
 	payloadBytes := deterministicMarshall(payload)
 	return &common.Envelope{
 		Payload:   payloadBytes,
@@ -110,7 +115,7 @@ func CreateStructuredConfigUpdateEnvelope(data []byte) *common.Envelope {
 }
 
 func CreateStructuredConfigEnvelope(data []byte) *common.Envelope {
-	payload := createStructuredPayload(data, common.HeaderType_CONFIG)
+	payload := createStructuredPayload(data, common.HeaderType_CONFIG, fixedNonce)
 	payloadBytes := deterministicMarshall(payload)
 	return &common.Envelope{
 		Payload:   payloadBytes,
@@ -120,7 +125,7 @@ func CreateStructuredConfigEnvelope(data []byte) *common.Envelope {
 
 func CreateConfigBlock(number uint64, data []byte) *common.Block {
 	block := protoutil.NewBlock(number, nil)
-	payload := createStructuredPayload(data, common.HeaderType_CONFIG)
+	payload := createStructuredPayload(data, common.HeaderType_CONFIG, fixedNonce)
 	payloadBytes := deterministicMarshall(payload)
 	env := &common.Envelope{
 		Payload:   payloadBytes,
@@ -137,7 +142,7 @@ func CreateConfigBlock(number uint64, data []byte) *common.Block {
 }
 
 func CreateStructuredConfigUpdateRequest(data []byte) *protos.Request {
-	payload := createStructuredPayload(data, common.HeaderType_CONFIG_UPDATE)
+	payload := createStructuredPayload(data, common.HeaderType_CONFIG_UPDATE, fixedNonce)
 	payloadBytes := deterministicMarshall(payload)
 	return &protos.Request{
 		Payload:   payloadBytes,
@@ -147,7 +152,7 @@ func CreateStructuredConfigUpdateRequest(data []byte) *protos.Request {
 }
 
 func CreateStructuredRequest(data []byte) *protos.Request {
-	payload := createStructuredPayload(data, common.HeaderType_MESSAGE)
+	payload := createStructuredPayload(data, common.HeaderType_MESSAGE, fixedNonce)
 	payloadBytes := deterministicMarshall(payload)
 	return &protos.Request{
 		Payload:   payloadBytes,
@@ -198,61 +203,90 @@ func ExtractTimestampFromTx(data []byte) time.Time {
 	return sendTime
 }
 
-// currently, for large enough data, the overhead remains constant at 58 bytes.
-var headersOverheadSize = func() int {
-	size := 300
-	env := CreateStructuredEnvelope(make([]byte, size))
-	envBytes, _ := proto.Marshal(env)
-	return len(envBytes) - size
-}()
-
 // PrepareUnsignedEnvelope prepares an envelope of size envSize, accounting for the overhead introduced by additional headers in the transaction.
+// When no data size yields exactly envSize (a varint length grows by a byte), the envelope is one byte smaller.
+// The data is at least 8+8+len(sessionNumber) bytes (see PrepareTxWithTimestamp), so the envelope is larger than
+// requested when envSize is below that plus the headers.
+// Each envelope gets a random nonce, and so a unique TxID.
 // this method will be used for creating envelope for unsigned signing mode.
 func PrepareUnsignedEnvelope(txNumber int, envSize int, sessionNumber []byte) *common.Envelope {
-	var dataSize int
-
-	overheadSize := headersOverheadSize
-	if envSize < 186 { // 128+58
-		overheadSize -= 2
+	payload := createStructuredPayload(nil, common.HeaderType_MESSAGE, protoutil.CreateNonceOrPanic())
+	signature := []byte("signature")
+	dataSize := fitDataSize(envSize, proto.Size(payload), signatureFieldSize(len(signature)))
+	payload.Data = PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
+	return &common.Envelope{
+		Payload:   deterministicMarshall(payload),
+		Signature: signature,
 	}
-
-	if envSize < overheadSize {
-		dataSize = envSize
-	} else {
-		dataSize = envSize - overheadSize
-	}
-	data := PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
-	return CreateStructuredEnvelope(data)
 }
 
-// PrepareSignedEnvelopeWithCertificate prepares an fully signed envelope.
+// PrepareSignedEnvelopeWithCertificate prepares an fully signed envelope of size envSize, or at most a few bytes
+// smaller, as the size of an ECDSA signature varies. As with PrepareUnsignedEnvelope, the data has a minimum size.
 // this method will be used for creating signed envelope for full signing mode.
 func PrepareSignedEnvelopeWithCertificate(txNumber int, envSize int, sessionNumber []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
-	data := PrepareTxWithTimestamp(txNumber, envSize, sessionNumber)
-	return CreateSignedStructuredEnvelope(data, signer, certBytes, org)
+	payload := createSignedStructuredPayload(nil, certBytes, org)
+	return prepareSignedEnvelope(payload, txNumber, envSize, sessionNumber, signer)
 }
 
 // PrepareSignedEnvelopeWithCertificateID is used for creating signed envelopes for the "short" (known-identity) signing mode.
+// The envelope's size is as with PrepareSignedEnvelopeWithCertificate.
 func PrepareSignedEnvelopeWithCertificateID(txNumber int, envSize int, sessionNumber []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
-	data := PrepareTxWithTimestamp(txNumber, envSize, sessionNumber)
-	return CreateSignedStructuredEnvelopeWithCertID(data, signer, certBytes, org)
+	payload := createSignedStructuredPayloadWithCertID(nil, certBytes, org)
+	return prepareSignedEnvelope(payload, txNumber, envSize, sessionNumber, signer)
+}
+
+// prepareSignedEnvelope fills the payload with data, so that once signed the envelope is at most envSize bytes,
+// assuming a signature of the largest size the signer can make.
+func prepareSignedEnvelope(payload *common.Payload, txNumber int, envSize int, sessionNumber []byte, signer *crypto.ECDSASigner) *common.Envelope {
+	dataSize := fitDataSize(envSize, proto.Size(payload), signatureFieldSize(maxECDSASignatureSize(signer)))
+	payload.Data = PrepareTxWithTimestamp(txNumber, dataSize, sessionNumber)
+	return signPayload(payload, signer)
+}
+
+// fitDataSize returns the largest data size for which envelopeSize is at most envSize, or 0 if there is none.
+func fitDataSize(envSize int, emptyPayloadSize int, sigFieldSize int) int {
+	// The overhead, envelopeSize(d)-d, never decreases as d grows, and the fitting data size is at most envSize.
+	// So starting at d0 = envSize-overhead(envSize) never overshoots, as envelopeSize(d0) = d0+overhead(d0) <=
+	// d0+overhead(envSize) = envSize, and the loop only steps up from there, a few bytes at most.
+	overhead := envelopeSize(emptyPayloadSize, sigFieldSize, envSize) - envSize
+	dataSize := max(0, envSize-overhead)
+	for envelopeSize(emptyPayloadSize, sigFieldSize, dataSize+1) <= envSize {
+		dataSize++
+	}
+	return dataSize
+}
+
+// envelopeSize returns the marshaled size of an envelope whose payload is emptyPayloadSize bytes without data, plus
+// dataSize bytes of data, and whose signature field is sigFieldSize bytes.
+func envelopeSize(emptyPayloadSize int, sigFieldSize int, dataSize int) int {
+	payloadSize := emptyPayloadSize
+	if dataSize > 0 {
+		payloadSize += protowire.SizeTag(2) + protowire.SizeBytes(dataSize)
+	}
+	return protowire.SizeTag(1) + protowire.SizeBytes(payloadSize) + sigFieldSize
+}
+
+// signatureFieldSize returns the marshaled size of an envelope's signature field, for a signature of sigSize bytes.
+func signatureFieldSize(sigSize int) int {
+	return protowire.SizeTag(2) + protowire.SizeBytes(sigSize)
+}
+
+// maxECDSASignatureSize returns the largest DER encoding of a signature by the signer: a sequence of two integers,
+// each at most one byte longer than the curve's order.
+func maxECDSASignatureSize(signer *crypto.ECDSASigner) int {
+	intSize := 2 + (signer.Curve.Params().BitSize+7)/8 + 1
+	contentSize := 2 * intSize
+	if contentSize > 127 {
+		return 3 + contentSize
+	}
+	return 2 + contentSize
 }
 
 // CreateSignedStructuredEnvelopeWithCertID creates an envelope whose SignatureHeader.Creator carries a
 // certificate-ID (hex SHA256 of the DER-encoded cert) rather than the full PEM certificate.
 // The verifying MSP must have the corresponding certificate registered in its known-identities list.
 func CreateSignedStructuredEnvelopeWithCertID(data []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
-	payload := createSignedStructuredPayloadWithCertID(data, certBytes, org)
-	payloadBytes := deterministicMarshall(payload)
-
-	signature, err := signer.Sign(payloadBytes)
-	if err != nil {
-		return nil
-	}
-	return &common.Envelope{
-		Payload:   payloadBytes,
-		Signature: signature,
-	}
+	return signPayload(createSignedStructuredPayloadWithCertID(data, certBytes, org), signer)
 }
 
 func computeCertID(certBytes []byte) (string, error) {
@@ -277,8 +311,9 @@ func createSignedStructuredPayloadWithCertID(data []byte, certBytes []byte, org 
 
 	payloadSignatureHeader := &common.SignatureHeader{
 		Creator: deterministicMarshall(sId),
-		Nonce:   []byte("nonce"),
+		Nonce:   protoutil.CreateNonceOrPanic(),
 	}
+	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)
 	return &common.Payload{
 		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
 		Data:   data,
@@ -286,7 +321,11 @@ func createSignedStructuredPayloadWithCertID(data []byte, certBytes []byte, org 
 }
 
 func CreateSignedStructuredEnvelope(data []byte, signer *crypto.ECDSASigner, certBytes []byte, org string) *common.Envelope {
-	payload := createSignedStructuredPayload(data, certBytes, org)
+	return signPayload(createSignedStructuredPayload(data, certBytes, org), signer)
+}
+
+// signPayload marshals the payload and signs it, returning nil if signing fails.
+func signPayload(payload *common.Payload, signer *crypto.ECDSASigner) *common.Envelope {
 	payloadBytes := deterministicMarshall(payload)
 
 	// Sign the payload
@@ -308,8 +347,9 @@ func createSignedStructuredPayload(data []byte, certBytes []byte, org string) *c
 
 	payloadSignatureHeader := &common.SignatureHeader{
 		Creator: deterministicMarshall(sId),
-		Nonce:   []byte("nonce"),
+		Nonce:   protoutil.CreateNonceOrPanic(),
 	}
+	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)
 	return &common.Payload{
 		Header: createPayloadHeader(payloadChannelHeader, payloadSignatureHeader),
 		Data:   data,
@@ -323,7 +363,7 @@ func CreatePayloadWithConfigUpdate(data []byte, certBytes []byte, org string) *c
 
 	payloadSignatureHeader := &common.SignatureHeader{
 		Creator: deterministicMarshall(sId),
-		Nonce:   []byte("nonce"),
+		Nonce:   protoutil.CreateNonceOrPanic(),
 	}
 
 	protoutil.SetTxID(payloadChannelHeader, payloadSignatureHeader)

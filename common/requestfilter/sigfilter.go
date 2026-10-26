@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package requestfilter
 
 import (
+	"crypto/sha256"
+	"errors"
 	"fmt"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -90,6 +92,10 @@ func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.Sign
 		return nil, reqType, fmt.Errorf("failed unmarshalling channel header, err %s", err.Error())
 	}
 
+	if err = verifyTxID(chdr, shdr); err != nil {
+		return nil, reqType, err
+	}
+
 	// TODO: check channel ID
 	// if sf.channelID != chdr.ChannelId {
 	// 	return nil, fmt.Errorf("channelID is incorrect. expected: %s, actual: %s", sf.channelID, chdr.ChannelId)
@@ -111,5 +117,27 @@ func (sf *SigFilter) Update(config FilterConfig) error {
 	sf.clientSignatureVerificationRequired = config.GetClientSignatureVerificationRequired()
 	sf.channelID = config.GetChannelID()
 	sf.policyManager = config.GetPolicyManager()
+	return nil
+}
+
+var (
+	errMissingNonce = errors.New("missing nonce in signature header")
+	errInvalidTxID  = errors.New("invalid tx id")
+)
+
+// verifyTxID checks that the signature header carries a nonce, and that the channel header's TxId
+// is the one derived from the signature header's nonce and creator.
+// It returns constant errors, so a rejected request does not echo its (unbounded) TxID into errors and logs.
+// It rejects a TxID of the wrong length before calling protoutil.CheckTxID, which formats the TxID into its error.
+func verifyTxID(chdr *common.ChannelHeader, shdr *common.SignatureHeader) error {
+	if len(shdr.GetNonce()) == 0 {
+		return errMissingNonce
+	}
+	if len(chdr.GetTxId()) != 2*sha256.Size {
+		return errInvalidTxID
+	}
+	if protoutil.CheckTxID(chdr.GetTxId(), shdr.GetNonce(), shdr.GetCreator()) != nil {
+		return errInvalidTxID
+	}
 	return nil
 }
