@@ -221,10 +221,14 @@ NUM_SHARDS                ?= 2
 FAILURE_RUNNER_ENABLED    ?= true
 FAILURE_RUNNER_STOP_DURATION  ?= 30
 FAILURE_RUNNER_RESTART_WAIT   ?= 30
+# How long submit keeps verifying after it finished sending (deadline, not delay)
+SUBMIT_DRAIN_SECONDS          ?= 120
+# Grace period before the failure runner's first kill
+FAILURE_RUNNER_START_DELAY    ?= 10
 
 .PHONY: deterministic-failure-test
 deterministic-failure-test: binary
-	@chmod +x test/deterministic-failure-test/deterministic-failure-test.sh
+	@chmod +x test/failure-tests/deterministic-failure-test/deterministic-failure-test.sh
 	DURATION_MINUTES=$(DURATION_MINUTES) \
 	TX_RATE=$(TX_RATE) \
 	TX_SIZE=$(TX_SIZE) \
@@ -233,11 +237,13 @@ deterministic-failure-test: binary
 	FAILURE_RUNNER_ENABLED=$(FAILURE_RUNNER_ENABLED) \
 	FAILURE_RUNNER_STOP_DURATION=$(FAILURE_RUNNER_STOP_DURATION) \
 	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
-	test/deterministic-failure-test/deterministic-failure-test.sh
+	SUBMIT_DRAIN_SECONDS=$(SUBMIT_DRAIN_SECONDS) \
+	FAILURE_RUNNER_START_DELAY=$(FAILURE_RUNNER_START_DELAY) \
+	test/failure-tests/deterministic-failure-test/deterministic-failure-test.sh
 
 .PHONY: fully-randomized-failure-test
 fully-randomized-failure-test: binary
-	@chmod +x test/fully-randomized-failure-test/fully-randomized-failure-test.sh
+	@chmod +x test/failure-tests/fully-randomized-failure-test/fully-randomized-failure-test.sh
 	DURATION_MINUTES=$(DURATION_MINUTES) \
 	TX_RATE=$(TX_RATE) \
 	TX_SIZE=$(TX_SIZE) \
@@ -246,7 +252,10 @@ fully-randomized-failure-test: binary
 	FAILURE_RUNNER_ENABLED=$(FAILURE_RUNNER_ENABLED) \
 	FAILURE_RUNNER_STOP_DURATION=$(FAILURE_RUNNER_STOP_DURATION) \
 	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
-	test/fully-randomized-failure-test/fully-randomized-failure-test.sh
+	SUBMIT_DRAIN_SECONDS=$(SUBMIT_DRAIN_SECONDS) \
+	FAILURE_RUNNER_START_DELAY=$(FAILURE_RUNNER_START_DELAY) \
+	RANDOM_SEED=$(RANDOM_SEED) \
+	test/failure-tests/fully-randomized-failure-test/fully-randomized-failure-test.sh
 
 .PHONY: sample-tests
 sample-tests:
