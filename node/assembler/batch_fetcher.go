@@ -136,6 +136,10 @@ func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan types.Batch {
 }
 
 func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom config.BatcherInfo, primaryID types.PartyID, resultChan chan types.Batch, wg *sync.WaitGroup) {
+	// seq is where the next connection starts: the batch frontier until a batch is handed over, then the
+	// batch after the last one handed over, so a reconnect does not pull the batches since the start
+	// again. It is kept in memory only; after a restart the assembler seeks from its batch frontier.
+	// Pull calls both the request factory and the block handler from its goroutine.
 	seq := br.initialBatchFrontier[shardID][primaryID]
 
 	endpoint := func() string {
@@ -170,6 +174,7 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 		}
 		br.logger.Infof("Assembler pulled from %s batch %s", batcherToPullFrom.Endpoint, types.BatchIDToString(fb))
 		resultChan <- fb
+		seq = fb.Seq() + 1
 	}
 
 	onClose := func() {
