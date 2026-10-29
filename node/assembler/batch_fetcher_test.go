@@ -73,6 +73,56 @@ func TestBatchFetcherSignsTheRequestsItPullsWith(t *testing.T) {
 	})
 }
 
+// Scenario:
+//  1. Start a stub batcher that holds batches 0 to 4 of primary 1.
+//  2. Replicate the shard from the start, and consume batches 0 and 1, leaving the rest unconsumed.
+//  3. Restart the batcher, add batches 5 to 7, and consume the rest of primary 1.
+//  4. Expect every batch from 2 to 7 exactly once and in order.
+func TestBatchFetcherResumesAfterTheLastBatchOnReconnect(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	shardID := types.ShardID(1)
+	partyID := types.PartyID(1)
+
+	batchers, batcherInfos, cleanup := createStubBatchersAndInfos(t, 1, shardID, ca)
+	t.Cleanup(cleanup)
+	for seq := range types.BatchSequence(5) {
+		batchers[0].SetNextBatch(types.NewSimpleBatch(shardID, partyID, seq, types.BatchedRequests{[]byte{byte(seq)}}, 0, nil))
+	}
+
+	nodeConfig := fetcherConfig(t, ca, partyID, []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}})
+	nodeConfig.ReplicationChannelSize = 100
+	signer, _ := signutil.NewSelfSignedSigner(t, "org")
+	fetcher := assembler.NewBatchFetcher(nil, nodeConfig, signer, testutil.CreateLogger(t, int(partyID)))
+	t.Cleanup(fetcher.Stop)
+	batches := fetcher.Replicate(shardID)
+
+	require.Equal(t, types.BatchSequence(0), nextBatch(t, batches).Seq())
+	require.Equal(t, types.BatchSequence(1), nextBatch(t, batches).Seq())
+
+	batchers[0].Stop()
+	batchers[0].Restart()
+	for seq := types.BatchSequence(5); seq < 8; seq++ {
+		batchers[0].SetNextBatch(types.NewSimpleBatch(shardID, partyID, seq, types.BatchedRequests{[]byte{byte(seq)}}, 0, nil))
+	}
+
+	for expected := types.BatchSequence(2); expected < 8; expected++ {
+		require.Equal(t, expected, nextBatch(t, batches).Seq())
+	}
+	require.Never(t, func() bool { return len(batches) > 0 }, time.Second, 100*time.Millisecond)
+}
+
+func nextBatch(t *testing.T, batches <-chan types.Batch) types.Batch {
+	select {
+	case batch := <-batches:
+		return batch
+	case <-time.After(10 * time.Second):
+		t.Fatal("no batch was replicated")
+		return nil
+	}
+}
+
 // fetcherConfig is the configuration of the assembler of a party that fetches batches from the shards.
 func fetcherConfig(
 	t *testing.T, ca tlsgen.CA, partyID types.PartyID, shards []config.ShardInfo,

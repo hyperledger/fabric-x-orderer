@@ -81,6 +81,53 @@ func TestConsensusDecisionReplicatorSignsTheRequestsItPullsWith(t *testing.T) {
 	})
 }
 
+// Scenario:
+//  1. Serve the consensus deliver service over TLS, over a decision ledger holding decisions 1 to 5.
+//  2. Replicate decisions from decision 1 and consume decisions 1 and 2, leaving the rest unconsumed.
+//  3. Restart the deliver service, append decisions 6 to 8, and consume the rest.
+//  4. Expect every decision from 3 to 8 exactly once and in order.
+func TestConsensusDecisionReplicatorResumesAfterTheLastDecisionOnReconnect(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	signer, cert := signutil.NewSelfSignedSigner(t, "org")
+	bundle := &mocks.FakeConfigResources{}
+	configutil.AdmitSigners(bundle, cert)
+
+	server := serveDecisionsOverTLS(t, "arma", bundle, ca)
+	server.appendDecisions(t, 6)
+
+	clientKeyPair, err := ca.NewClientCertKeyPair()
+	require.NoError(t, err)
+	replicator := delivery.NewConsensusDecisionReplicator(
+		"arma", []config.RawBytes{ca.CertBytes()}, clientKeyPair.Key, clientKeyPair.Cert, server.endpoint, signer,
+		testutil.CreateLogger(t, 1), delivery.NextSeekInfo(1),
+	)
+	t.Cleanup(replicator.Stop)
+	headers := replicator.ReplicateDecision()
+
+	require.Equal(t, types.DecisionNum(1), nextHeader(t, headers).Num)
+	require.Equal(t, types.DecisionNum(2), nextHeader(t, headers).Num)
+
+	server.restart(t)
+	server.appendDecisions(t, 3)
+
+	for expected := types.DecisionNum(3); expected <= 8; expected++ {
+		require.Equal(t, expected, nextHeader(t, headers).Num)
+	}
+	require.Never(t, func() bool { return len(headers) > 0 }, time.Second, 100*time.Millisecond)
+}
+
+func nextHeader(t *testing.T, headers <-chan *state.Header) *state.Header {
+	select {
+	case header := <-headers:
+		return header
+	case <-time.After(10 * time.Second):
+		t.Fatal("no decision was replicated")
+		return nil
+	}
+}
+
 // countRefusals counts the requests the policy of the bundle refuses.
 func countRefusals(t *testing.T, bundle *mocks.FakeConfigResources) *atomic.Int32 {
 	policy, ok := bundle.PolicyManager().GetPolicy(policies.ChannelOrdererReaders)

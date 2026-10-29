@@ -59,25 +59,30 @@ func (p *PrimaryReqConnector) SendReq(req []byte) {
 		if delay == 0 {
 			delay = p.minRetryInterval
 		}
-		p.lock.RLock()
-		if p.stream == nil {
-			p.lock.RUnlock()
+		stream, primaryID := p.currentStream()
+		if stream == nil {
 			p.ConnectToPrimary()
-			p.lock.RLock()
-			if p.stream == nil { // connecting to primary failed
-				p.logger.Errorf("Failed sending req to primary %d; failed to connect", p.primaryID)
-				p.lock.RUnlock()
+			stream, primaryID = p.currentStream()
+			if stream == nil { // connecting to primary failed
+				p.logger.Errorf("Failed sending req to primary %d; failed to connect", primaryID)
 				continue
 			}
 		}
-		if err := p.stream.Send(&protos.FwdRequest{Request: req}); err != nil {
-			p.logger.Errorf("Failed sending req to primary %d; error: %v", p.primaryID, err)
-			p.lock.RUnlock()
+		// The lock is not held across Send: a Send blocked on a full stream would otherwise keep
+		// ResetConnection from taking the lock, so the connection could never be closed to unblock it.
+		if err := stream.Send(&protos.FwdRequest{Request: req}); err != nil {
+			p.logger.Errorf("Failed sending req to primary %d; error: %v", primaryID, err)
 			continue
 		}
-		p.lock.RUnlock()
 		return
 	}
+}
+
+// currentStream returns the stream to the current primary, nil if there is none, and the primary.
+func (p *PrimaryReqConnector) currentStream() (protos.BatcherControlService_FwdRequestStreamClient, types.PartyID) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	return p.stream, p.primaryID
 }
 
 func (p *PrimaryReqConnector) ConnectToNewPrimary(primaryID types.PartyID) {
