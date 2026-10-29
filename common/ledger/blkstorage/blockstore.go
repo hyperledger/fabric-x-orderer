@@ -24,8 +24,10 @@ type BlockStore struct {
 }
 
 // newBlockStore constructs a `BlockStore`
-func newBlockStore(id string, conf *Conf, dbHandle *leveldbhelper.DBHandle, stats *stats) (*BlockStore, error) {
-	fileMgr, err := newBlockfileMgr(id, conf, dbHandle)
+func newBlockStore(
+	id string, conf *Conf, dbHandle *leveldbhelper.DBHandle, stats *stats, locateLastConfig LastConfigBlockLocator,
+) (*BlockStore, error) {
+	fileMgr, err := newBlockfileMgr(id, conf, dbHandle, locateLastConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -71,16 +73,29 @@ func (store *BlockStore) RetrieveBlockByNumber(blockNum uint64) (*common.Block, 
 	return store.fileMgr.retrieveBlockByNumber(blockNum)
 }
 
+// RetrieveConfigBlockByNumber returns the block at blockNum as RetrieveBlockByNumber does, and also serves the
+// config block a prune retained below FirstAvailableBlockNumber. It is for a caller that knows blockNum names a
+// config block, such as the one a block's LAST_CONFIG metadata points to; the store cannot tell a config block
+// from any other.
+func (store *BlockStore) RetrieveConfigBlockByNumber(blockNum uint64) (*common.Block, error) {
+	return store.fileMgr.retrieveConfigBlockByNumber(blockNum)
+}
+
 // PruneBefore removes the block files whose blocks all lie below blockNum, advancing a durable bound so
 // that reads below it fail with ErrPruned. blockNum is an upper bound: files are removed on whole-file
 // boundaries, so the bound lands at or below it. Height() is unchanged, and the last block always survives.
 // Idempotent and monotone: a request below the bound in force does not lower it.
+//
+// A store opened with a config-block locator keeps a copy of the config block the new bound would hide, so
+// that RetrieveConfigBlockByNumber still serves it; every other read refuses it like any other pruned block.
+// A store opened without one retains nothing.
 func (store *BlockStore) PruneBefore(blockNum uint64) error {
 	return store.fileMgr.pruneBefore(blockNum)
 }
 
-// FirstAvailableBlockNumber returns the lowest block number this store can serve. It is 0 unless the
-// ledger has been pruned. Reads below it fail with ErrPruned.
+// FirstAvailableBlockNumber returns the lowest block number this store can serve. It is 0 unless the ledger has
+// been pruned. Reads below it fail with ErrPruned, except that RetrieveConfigBlockByNumber still serves a
+// config block retained below it.
 func (store *BlockStore) FirstAvailableBlockNumber() uint64 {
 	return store.fileMgr.pruner.firstReadableBlockNum()
 }

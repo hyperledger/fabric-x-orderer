@@ -83,9 +83,11 @@ At start up a new manager:
 			-- syncIndex comparing the last block indexed to what is in the FS
 			-- If index and file system are not in sync, syncs index from the FS
 	  *)  Updates blockchain info used by the APIs
-	  *)  Removes the block files an interrupted prune left behind
+	  *)  Removes the block files and config block copies an interrupted prune left behind
 */
-func newBlockfileMgr(id string, conf *Conf, indexStore *leveldbhelper.DBHandle) (*blockfileMgr, error) {
+func newBlockfileMgr(
+	id string, conf *Conf, indexStore *leveldbhelper.DBHandle, locateLastConfig LastConfigBlockLocator,
+) (*blockfileMgr, error) {
 	logger.Debugf("newBlockfileMgr() initializing file-based block storage for ledger: %s ", id)
 	rootDir := conf.getLedgerBlockDir(id)
 	_, err := fileutil.CreateDirIfMissing(rootDir)
@@ -129,7 +131,7 @@ func newBlockfileMgr(id string, conf *Conf, indexStore *leveldbhelper.DBHandle) 
 
 	// Construct the pruner before syncIndex, since a pruned ledger's block files no longer start at
 	// blockfile_000000 and the index rebuild has to know where they do start.
-	if mgr.pruner, err = newPruneMgr(rootDir, mgr.index); err != nil {
+	if mgr.pruner, err = newPruneMgr(rootDir, mgr.index, mgr.retrieveBlockBytesByNumber, locateLastConfig); err != nil {
 		return nil, err
 	}
 
@@ -156,11 +158,12 @@ func newBlockfileMgr(id string, conf *Conf, indexStore *leveldbhelper.DBHandle) 
 	mgr.bcInfo.Store(bcInfo)
 
 	// A prune that crashed between recording a block file as gone and unlinking it left the file behind, and
-	// the restart after the crash is the first chance to remove it. It is the last step, so an open that
-	// fails deletes nothing. Failing to remove an orphan does not fail the open: the file holds only blocks
-	// no read returns, and the next prune sweeps again.
+	// the restart after the crash is the first chance to remove it, along with any config block copy the prune
+	// info does not name. It is the last step, so an open that fails deletes nothing. Failing to remove an
+	// orphan does not fail the open: the file holds only blocks no read returns, and the next prune sweeps
+	// again.
 	if err := mgr.pruner.sweepOrphans(mgr.pruner.firstStoredBlockfileNum()); err != nil {
-		logger.Warnf("Could not remove the block files left behind by an earlier prune: %s", err)
+		logger.Warnf("Could not remove the files left behind by an earlier prune: %s", err)
 	}
 	return mgr, nil
 }
@@ -472,6 +475,19 @@ func (mgr *blockfileMgr) updateBlockchainInfo(latestBlockHash []byte, latestBloc
 	mgr.bcInfo.Store(newBCInfo)
 }
 
+// retrieveConfigBlockByNumber is retrieveBlockByNumber with one block more below the bound: the config block
+// pruning kept a copy of, without which a node resuming from this ledger could not read its own configuration.
+func (mgr *blockfileMgr) retrieveConfigBlockByNumber(blockNum uint64) (*common.Block, error) {
+	block, err := mgr.retrieveBlockByNumber(blockNum)
+	if !errors.Is(err, ErrPruned) {
+		return block, err
+	}
+	if retained := mgr.pruner.retainedConfigBlock(blockNum); retained != nil {
+		return retained, nil
+	}
+	return nil, err
+}
+
 func (mgr *blockfileMgr) retrieveBlockByNumber(blockNum uint64) (*common.Block, error) {
 	logger.Debugf("retrieveBlockByNumber() - blockNum = [%d]", blockNum)
 
@@ -495,6 +511,15 @@ func (mgr *blockfileMgr) retrieveBlockByNumber(blockNum uint64) (*common.Block, 
 
 func (mgr *blockfileMgr) retrieveBlockHeaderByNumber(blockNum uint64) (*common.BlockHeader, error) {
 	logger.Debugf("retrieveBlockHeaderByNumber() - blockNum = [%d]", blockNum)
+	blockBytes, err := mgr.retrieveBlockBytesByNumber(blockNum)
+	if err != nil {
+		return nil, err
+	}
+	return extractSerializedBlockHeader(blockBytes)
+}
+
+// retrieveBlockBytesByNumber returns a block's serialized bytes, under the same guards as retrieveBlockByNumber.
+func (mgr *blockfileMgr) retrieveBlockBytesByNumber(blockNum uint64) ([]byte, error) {
 	if err := mgr.checkBlockAvailable(blockNum); err != nil {
 		return nil, err
 	}
@@ -506,8 +531,7 @@ func (mgr *blockfileMgr) retrieveBlockHeaderByNumber(blockNum uint64) (*common.B
 	if err != nil {
 		return nil, mgr.errAfterFailedRead(blockNum, err)
 	}
-
-	return extractSerializedBlockHeader(blockBytes)
+	return blockBytes, nil
 }
 
 func (mgr *blockfileMgr) retrieveBlocks(startNum uint64) (*blocksItr, error) {
