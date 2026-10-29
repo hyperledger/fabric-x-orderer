@@ -20,7 +20,9 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -437,6 +439,36 @@ func TestValidateNewConfig_SigningCertInConfigUpdate(t *testing.T) {
 	}
 }
 
+func TestValidateNewConfig_SigningCAConsistency(t *testing.T) {
+	_, otherEnv, _, _, _, _, _ := setupOrdererRulesTest(t, 2)
+	additionalCA := partyCACerts(t, otherEnv, 1)[0]
+	rules := &verify.DefaultOrdererRules{}
+
+	t.Run("node OUs enabled", func(t *testing.T) {
+		_, env, _, _, _, _, _ := setupOrdererRulesTest(t, 2)
+		require.NoError(t, rules.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1)))
+
+		t.Run("OU pin changed before node certificates", func(t *testing.T) {
+			env := updateSharedConfig(t, env, func(shared *ordererpb.SharedConfig) {
+				shared.PartiesConfig[0].CACerts = append(shared.PartiesConfig[0].CACerts, additionalCA)
+			})
+			env = updateOrgMSP(t, env, "org1", func(c *msppb.FabricMSPConfig) {
+				c.RootCerts = append(c.RootCerts, additionalCA)
+				c.FabricNodeOus.OrdererOuIdentifier.Certificate = additionalCA
+			})
+
+			err := rules.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))
+			require.ErrorContains(t, err, "failed to validate signing certificate of")
+			require.ErrorContains(t, err, "certifiersIdentifier does not match")
+		})
+	})
+
+	t.Run("node OUs disabled", func(t *testing.T) {
+		_, env, _, _, _, _, _ := setupOrdererRulesTest(t, 2, "--noOUs")
+		require.NoError(t, rules.ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1)))
+	})
+}
+
 func TestValidateTransition_RemoveAndAddSameParty(t *testing.T) {
 	or := verify.DefaultOrdererRules{}
 	bccsp := factory.GetDefault()
@@ -790,4 +822,42 @@ func generateAssemblerSignCert(t *testing.T, dir string, partyID int) []byte {
 	require.NoError(t, err)
 
 	return newCert
+}
+
+func partyCACerts(t *testing.T, env *common.Envelope, partyID uint32) [][]byte {
+	t.Helper()
+
+	var certs [][]byte
+	updateSharedConfig(t, env, func(shared *ordererpb.SharedConfig) {
+		for _, p := range shared.PartiesConfig {
+			if p.PartyID == partyID {
+				certs = p.CACerts
+			}
+		}
+	})
+	require.NotEmpty(t, certs)
+	return certs
+}
+
+func updateOrgMSP(t *testing.T, env *common.Envelope, org string, update func(*msppb.FabricMSPConfig)) *common.Envelope {
+	t.Helper()
+
+	payload, err := protoutil.UnmarshalPayload(env.Payload)
+	require.NoError(t, err)
+	cfgEnv := &common.ConfigEnvelope{}
+	require.NoError(t, proto.Unmarshal(payload.Data, cfgEnv))
+
+	mspValue := cfgEnv.Config.ChannelGroup.Groups["Orderer"].Groups[org].Values["MSP"]
+	mspConfig := &msp.MSPConfig{}
+	require.NoError(t, proto.Unmarshal(mspValue.Value, mspConfig))
+	fabricConfig := &msppb.FabricMSPConfig{}
+	require.NoError(t, proto.Unmarshal(mspConfig.Config, fabricConfig))
+
+	update(fabricConfig)
+
+	mspConfig.Config = protoutil.MarshalOrPanic(fabricConfig)
+	mspValue.Value = protoutil.MarshalOrPanic(mspConfig)
+	payload.Data = protoutil.MarshalOrPanic(cfgEnv)
+
+	return &common.Envelope{Payload: protoutil.MarshalOrPanic(payload), Signature: env.Signature}
 }

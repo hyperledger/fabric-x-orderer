@@ -21,6 +21,7 @@ import (
 	"github.com/hyperledger/fabric-x-common/api/types"
 	"github.com/hyperledger/fabric-x-common/common/channelconfig"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	fabmsp "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/pkg/errors"
@@ -66,6 +67,7 @@ type DefaultOrdererRules struct{}
 //  12. Router and assembler hosts and ports in SharedConfig should match the corresponding
 //     broadcast and deliver OrdererEndpoints. Mismatches are logged as warnings.
 //  13. Signing certificates must have unique public keys across all nodes.
+//  14. Node OU CAs and node signing certificates must be consistent with the party's signing CAs and MSP.
 func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccsp bccsp.BCCSP, partyID arma_types.PartyID) error {
 	bundle, err := channelconfig.NewBundleFromEnvelope(envelope, bccsp)
 	if err != nil {
@@ -188,6 +190,11 @@ func (or *DefaultOrdererRules) ValidateNewConfig(envelope *common.Envelope, bccs
 	// 13.
 	if err := validateUniqueSigningCerts(sharedConfig.PartiesConfig); err != nil {
 		return err
+	}
+
+	// 14.
+	if err := validateSigningCAConsistency(sharedConfig.PartiesConfig, partyOrgMap, ordererGroup); err != nil {
+		return errors.Wrap(err, "party signing configuration is inconsistent with the orderer organization MSP")
 	}
 
 	return nil
@@ -670,6 +677,101 @@ func validateTLSCACertsConsistency(parties []*ordererpb.PartyConfig, partyOrgMap
 	}
 
 	return nil
+}
+
+func validateSigningCAConsistency(parties []*ordererpb.PartyConfig, partyOrgMap map[uint32]channelconfig.OrdererOrg, ordererGroup *common.ConfigGroup) error {
+	for _, party := range parties {
+		if party == nil {
+			return errors.New("party config is nil in shared config")
+		}
+
+		org, exists := partyOrgMap[party.PartyID]
+		if !exists {
+			return errors.Errorf("missing orderer organization for party %d", party.PartyID)
+		}
+
+		mspConfig, err := orgMSPConfig(ordererGroup, org.Name())
+		if err != nil {
+			return errors.Wrapf(err, "party %d", party.PartyID)
+		}
+
+		nodeOUs := mspConfig.GetFabricNodeOus()
+		if !nodeOUs.GetEnable() {
+			continue
+		}
+
+		// Ensure each node OU CA is included in the party's signing CAs.
+		for _, ou := range []*msp.FabricOUIdentifier{
+			nodeOUs.GetClientOuIdentifier(),
+			nodeOUs.GetPeerOuIdentifier(),
+			nodeOUs.GetAdminOuIdentifier(),
+			nodeOUs.GetOrdererOuIdentifier(),
+		} {
+			if len(ou.GetCertificate()) == 0 {
+				continue
+			}
+
+			if !slices.ContainsFunc(party.CACerts, func(ca []byte) bool {
+				return slices.Equal(ca, ou.Certificate)
+			}) {
+				return errors.Errorf("party %d: the certificate of node OU %q is not one of the party's signing CA certificates", party.PartyID, ou.OrganizationalUnitIdentifier)
+			}
+		}
+
+		type nodeCert struct {
+			node arma_types.NodeIdentity
+			cert []byte
+		}
+
+		partyID := arma_types.PartyID(party.PartyID)
+		certs := []nodeCert{
+			{arma_types.NewRouterIdentity(partyID), party.GetRouterConfig().GetSignCert()},
+			{arma_types.NewAssemblerIdentity(partyID), party.GetAssemblerConfig().GetSignCert()},
+			{arma_types.NewConsenterIdentity(partyID), party.GetConsenterConfig().GetSignCert()},
+		}
+
+		for _, b := range party.BatchersConfig {
+			certs = append(certs, nodeCert{
+				arma_types.NewBatcherIdentity(partyID, arma_types.ShardID(b.GetShardID())),
+				b.GetSignCert(),
+			})
+		}
+
+		for _, sc := range certs {
+			id, err := org.MSP().DeserializeIdentity(msppb.NewIdentity(org.MSPID(), sc.cert))
+			if err != nil {
+				return errors.Wrapf(err, "failed to deserialize signing certificate of %s for organization %s", sc.node, org.Name())
+			}
+
+			if err := id.Validate(); err != nil {
+				return errors.Wrapf(err, "failed to validate signing certificate of %s for organization %s", sc.node, org.Name())
+			}
+		}
+	}
+
+	return nil
+}
+
+func orgMSPConfig(ordererGroup *common.ConfigGroup, orgName string) (*msppb.FabricMSPConfig, error) {
+	value := ordererGroup.GetGroups()[orgName].GetValues()[channelconfig.MSPKey]
+	if value == nil {
+		return nil, errors.Errorf("MSP of orderer organization %s not found", orgName)
+	}
+
+	mspConfig := &msp.MSPConfig{}
+	if err := proto.Unmarshal(value.Value, mspConfig); err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal MSP config of orderer organization %s", orgName)
+	}
+	if mspConfig.Type != int32(fabmsp.FABRIC) {
+		return nil, errors.Errorf("MSP of orderer organization %s is not a Fabric MSP", orgName)
+	}
+
+	fabricConfig := &msppb.FabricMSPConfig{}
+	if err := proto.Unmarshal(mspConfig.Config, fabricConfig); err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal Fabric MSP config of orderer organization %s", orgName)
+	}
+
+	return fabricConfig, nil
 }
 
 func certificateSetsEqual(sharedConfigCerts, orgCerts [][]byte) error {

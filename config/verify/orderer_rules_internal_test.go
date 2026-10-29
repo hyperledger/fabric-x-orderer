@@ -7,10 +7,19 @@ SPDX-License-Identifier: Apache-2.0
 package verify
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
 	"math"
+	"math/big"
 	"testing"
+	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp/factory"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
 	"github.com/hyperledger/fabric-x-common/api/msppb"
@@ -304,12 +313,185 @@ func TestValidatePartyAndShardIDs(t *testing.T) {
 	})
 }
 
-type testOrdererOrg struct {
-	mspImpl fabmsp.MSP
+func TestValidateSigningCAConsistency(t *testing.T) {
+	now := time.Now()
+	oldCA, oldKey, oldCAPEM := generateTestCAWithKey(t, now.Add(-time.Hour), now.Add(time.Hour))
+	newCA, newKey, newCAPEM := generateTestCAWithKey(t, now.Add(-time.Hour), now.Add(time.Hour))
+
+	oldNode := generateTestNodeCert(t, oldCA, oldKey, "orderer")
+	newNode := generateTestNodeCert(t, newCA, newKey, "orderer")
+	nodeWithoutOU := generateTestNodeCert(t, oldCA, oldKey)
+	bothCAs := [][]byte{oldCAPEM, newCAPEM}
+
+	tests := []struct {
+		name          string
+		trustedCAs    [][]byte
+		partyCAs      [][]byte // defaults to trustedCAs
+		pinnedCA      []byte
+		adminPinnedCA []byte // defaults to pinnedCA
+		nodeCert      []byte
+		batcherCert   []byte
+		wantErrors    []string
+	}{
+		{
+			name:       "add new CA",
+			trustedCAs: bothCAs,
+			pinnedCA:   oldCAPEM,
+			nodeCert:   oldNode,
+		},
+		{
+			name:       "switch nodes and OU pin to new CA",
+			trustedCAs: bothCAs,
+			pinnedCA:   newCAPEM,
+			nodeCert:   newNode,
+		},
+		{
+			name:       "remove old CA",
+			trustedCAs: [][]byte{newCAPEM},
+			pinnedCA:   newCAPEM,
+			nodeCert:   newNode,
+		},
+		{
+			name:          "OU pins differ while both CAs are trusted",
+			trustedCAs:    bothCAs,
+			pinnedCA:      newCAPEM,
+			adminPinnedCA: oldCAPEM,
+			nodeCert:      newNode,
+		},
+		{
+			name:          "admin OU pin missing from party CAs",
+			trustedCAs:    bothCAs,
+			partyCAs:      [][]byte{newCAPEM},
+			pinnedCA:      newCAPEM,
+			adminPinnedCA: oldCAPEM,
+			nodeCert:      newNode,
+			wantErrors:    []string{`the certificate of node OU "admin" is not one of the party's signing CA certificates`},
+		},
+		{
+			name:       "nodes switched before OU pin",
+			trustedCAs: bothCAs,
+			pinnedCA:   oldCAPEM,
+			nodeCert:   newNode,
+			wantErrors: []string{"certifiersIdentifier does not match"},
+		},
+		{
+			name:       "missing node OU",
+			trustedCAs: [][]byte{oldCAPEM},
+			pinnedCA:   oldCAPEM,
+			nodeCert:   nodeWithoutOU,
+			wantErrors: []string{"does not have an OU that resolves"},
+		},
+		{
+			name:        "batcher does not match OU pin",
+			trustedCAs:  bothCAs,
+			pinnedCA:    oldCAPEM,
+			nodeCert:    oldNode,
+			batcherCert: newNode,
+			wantErrors: []string{
+				"failed to validate signing certificate of batcher",
+				"certifiersIdentifier does not match",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			nodeOU := func(role string) *msp.FabricOUIdentifier {
+				pin := tc.pinnedCA
+				if role == "admin" && tc.adminPinnedCA != nil {
+					pin = tc.adminPinnedCA
+				}
+				return &msp.FabricOUIdentifier{
+					OrganizationalUnitIdentifier: role,
+					Certificate:                  pin,
+				}
+			}
+
+			mspConfig := &msppb.FabricMSPConfig{
+				Name:      "Org1MSP",
+				RootCerts: tc.trustedCAs,
+				FabricNodeOus: &msp.FabricNodeOUs{
+					Enable:              true,
+					ClientOuIdentifier:  nodeOU("client"),
+					PeerOuIdentifier:    nodeOU("peer"),
+					AdminOuIdentifier:   nodeOU("admin"),
+					OrdererOuIdentifier: nodeOU("orderer"),
+				},
+			}
+
+			rawMSP := &msp.MSPConfig{
+				Type:   int32(fabmsp.FABRIC),
+				Config: protoutil.MarshalOrPanic(mspConfig),
+			}
+
+			fabMSP, err := channelconfig.NewMSPConfigHandler(
+				fabmsp.MSPv3_0, factory.GetDefault(),
+			).ProposeMSP(rawMSP)
+			require.NoError(t, err)
+
+			batcherCert := tc.nodeCert
+			if tc.batcherCert != nil {
+				batcherCert = tc.batcherCert
+			}
+
+			partyCAs := tc.trustedCAs
+			if tc.partyCAs != nil {
+				partyCAs = tc.partyCAs
+			}
+
+			party := &ordererpb.PartyConfig{
+				PartyID:         1,
+				CACerts:         partyCAs,
+				RouterConfig:    &ordererpb.RouterNodeConfig{SignCert: tc.nodeCert},
+				AssemblerConfig: &ordererpb.AssemblerNodeConfig{SignCert: tc.nodeCert},
+				ConsenterConfig: &ordererpb.ConsenterNodeConfig{SignCert: tc.nodeCert},
+				BatchersConfig:  []*ordererpb.BatcherNodeConfig{{ShardID: 1, SignCert: batcherCert}},
+			}
+
+			ordererGroup := &common.ConfigGroup{
+				Groups: map[string]*common.ConfigGroup{
+					"org1": {
+						Values: map[string]*common.ConfigValue{
+							channelconfig.MSPKey: {
+								Value: protoutil.MarshalOrPanic(rawMSP),
+							},
+						},
+					},
+				},
+			}
+
+			org := &testOrdererOrg{
+				mspImpl: fabMSP,
+				name:    "org1",
+				mspID:   "Org1MSP",
+			}
+
+			err = validateSigningCAConsistency(
+				[]*ordererpb.PartyConfig{party},
+				map[uint32]channelconfig.OrdererOrg{1: org},
+				ordererGroup,
+			)
+
+			if len(tc.wantErrors) == 0 {
+				require.NoError(t, err)
+				return
+			}
+
+			for _, expected := range tc.wantErrors {
+				require.ErrorContains(t, err, expected)
+			}
+		})
+	}
 }
 
-func (o *testOrdererOrg) Name() string        { return "" }
-func (o *testOrdererOrg) MSPID() string       { return "" }
+type testOrdererOrg struct {
+	mspImpl fabmsp.MSP
+	name    string
+	mspID   string
+}
+
+func (o *testOrdererOrg) Name() string        { return o.name }
+func (o *testOrdererOrg) MSPID() string       { return o.mspID }
 func (o *testOrdererOrg) MSP() fabmsp.MSP     { return o.mspImpl }
 func (o *testOrdererOrg) Endpoints() []string { return nil }
 
@@ -343,4 +525,24 @@ func buildBlockValidationPolicy(consenters []*common.Consenter, rules ...*common
 			}),
 		},
 	}
+}
+
+func generateTestNodeCert(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, ous ...string) []byte {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	require.NoError(t, err)
+
+	template := x509.Certificate{
+		SerialNumber:          serialNumber,
+		Subject:               pkix.Name{CommonName: "node", OrganizationalUnit: ous},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, caCert, &priv.PublicKey, caKey)
+	require.NoError(t, err)
+
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 }
