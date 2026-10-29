@@ -8,8 +8,10 @@ package consensus
 
 import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
+	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 )
 
 type TotalOrder interface {
@@ -19,8 +21,8 @@ type TotalOrder interface {
 //go:generate counterfeiter -o mocks/batch_attestation_db.go . BatchAttestationDB
 type BatchAttestationDB interface {
 	Exists(digest []byte) bool
-	Put(digest [][]byte, epoch []uint64) // TODO remove epochs from BADB
-	Clean(epoch uint64)                  // TODO remove clean by epoch
+	Put(ids []types.BatchID, decision types.DecisionNum)
+	Clean(epoch uint64) // TODO remove clean by epoch
 }
 
 type Consenter struct {
@@ -53,13 +55,27 @@ func (c *Consenter) SimulateStateTransition(prevState *state.State, configSeq ty
 	return newState, batchAttestations, configRequests
 }
 
-// Index indexes BAs (digests).
-// Note that this must hold: Index(digests) with the same digests is idempotent.
+// Index indexes the batches committed by the decision with the given header, under the decision's number.
+// A config decision carries its config block last, after the data blocks; the batch ID of each data block is
+// taken from its ORDERER metadata and header data hash. All of these are fixed by proposal verification.
+// Note that this must hold: Index of the same header is idempotent.
 // TODO revise the recovery from failure or shutdown, specifically the order of Index and Append.
-func (c *Consenter) Index(digests [][]byte) {
-	if len(digests) > 0 {
-		epochs := make([]uint64, len(digests)) // TODO remove
-		c.DB.Put(digests, epochs)
+func (c *Consenter) Index(hdr *state.Header) {
+	dataBlocks := hdr.AvailableCommonBlocks
+	if hdr.Num == hdr.DecisionNumOfLastConfigBlock && len(dataBlocks) > 0 {
+		dataBlocks = dataBlocks[:len(dataBlocks)-1]
+	}
+
+	ids := make([]types.BatchID, 0, len(dataBlocks))
+	for _, ab := range dataBlocks {
+		primary, shard, seq, _, _, _, _, err := ledger.AssemblerBlockMetadataFromBytes(ab.GetMetadata().GetMetadata()[common.BlockMetadataIndex_ORDERER])
+		if err != nil {
+			c.Logger.Panicf("Failed extracting the batch ID of block %d in decision %d: %v", ab.GetHeader().GetNumber(), hdr.Num, err)
+		}
+		ids = append(ids, state.NewAvailableBatch(primary, shard, seq, ab.GetHeader().GetDataHash()))
+	}
+	if len(ids) > 0 {
+		c.DB.Put(ids, hdr.Num)
 	}
 }
 
