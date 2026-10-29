@@ -35,7 +35,7 @@ All router metrics carry the "party_id" label.
 - **Namespace**: "router"  
   **Name**: "requests_rejected"  
   **Help**: "The number of incoming requests that have been rejected."  
-  **Labels**: "code" is either "400" or "500".
+  **Labels**: "code" is "400" for a request that is itself wrong (failed verification, or an invalid config update), or "500" for one the router could not serve.
 
 - **Namespace**: "router"  
   **Name**: "requests_throttled"  

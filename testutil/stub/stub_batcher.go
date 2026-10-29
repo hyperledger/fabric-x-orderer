@@ -39,6 +39,7 @@ type StubBatcher struct {
 	shardID      types.ShardID
 	logger       *flogging.FabricLogger
 	dropRequests bool
+	respError    string // when not empty, every response carries this error, as when a batcher rejects a request
 }
 
 const (
@@ -219,7 +220,7 @@ func (sb *StubBatcher) SubmitStream(stream protos.RequestTransmit_SubmitStreamSe
 		}
 
 		resp := &protos.SubmitResponse{
-			Error:   "",
+			Error:   sb.respError,
 			ReqID:   req.Identity,
 			TraceId: req.TraceId,
 		}
@@ -247,4 +248,8 @@ func (sb *StubBatcher) GetBatcherEndpoint() string {
 
 func (sb *StubBatcher) SetDropRequests(dropRequests bool) {
 	sb.dropRequests = dropRequests
+}
+
+func (sb *StubBatcher) SetResponseError(respError string) {
+	sb.respError = respError
 }

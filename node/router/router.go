@@ -556,7 +556,7 @@ func (r *Router) Submit(ctx context.Context, request *protos.Request) (*protos.S
 		}
 	case <-ctx.Done():
 		response = Response{
-			err:   fmt.Errorf("context done before receiving response for request %x: %v", reqID, ctx.Err()),
+			err:   fmt.Errorf("%w for request %x: %v", errContextDone, reqID, ctx.Err()),
 			reqID: reqID,
 		}
 	}

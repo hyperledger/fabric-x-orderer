@@ -19,6 +19,7 @@ import (
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
+	"github.com/pkg/errors"
 )
 
 type stream struct {
@@ -133,19 +134,19 @@ func (s *stream) verifyAndClassifyRequest(request *protos.Request) (common.Heade
 	err := s.verifier.Verify(request)
 	if err != nil {
 		s.logger.Debugf("request is invalid: %s", err)
-		return reqType, fmt.Errorf("request verification error: %s", err)
+		return reqType, badRequest(fmt.Errorf("request verification error: %s", err))
 	}
 
 	// verify the request structure and clasify the request
 	reqType, err = s.verifier.VerifyStructureAndClassify(request)
 	if err != nil {
 		s.logger.Debugf("request structure is invalid: %s", err)
-		return reqType, fmt.Errorf("request structure verification error: %s", err)
+		return reqType, badRequest(fmt.Errorf("request structure verification error: %s", err))
 	}
 
 	if int(reqType) >= len(common.HeaderType_value) || reqType == common.HeaderType_CONFIG || reqType == common.HeaderType_ORDERER_TRANSACTION || reqType == common.HeaderType_DELIVER_SEEK_INFO {
 		s.logger.Debugf("request has unsupported type: %s", reqType)
-		return reqType, fmt.Errorf("request structure verification error: request has unsupported type %s", reqType)
+		return reqType, badRequest(fmt.Errorf("request structure verification error: request has unsupported type %s", reqType))
 	}
 
 	return reqType, nil
@@ -160,7 +161,12 @@ func (s *stream) forwardResponseToClient(response *protos.SubmitResponse) error 
 	s.lock.Unlock()
 	if exists {
 		s.logger.Debugf("registration for request with trace id %x was removed upon receiving a response", traceID)
+		var err error
+		if response.Error != "" {
+			err = errors.New(response.Error)
+		}
 		tr.feedback.reply(Response{
+			err:            err,
 			SubmitResponse: response,
 		})
 		return nil
@@ -183,6 +189,7 @@ func (s *stream) responseToClientWithError(rr *TrackedRequest, err error) {
 		if exists {
 			s.logger.Debugf("responding to request with trace id %x, and removing registration from map", traceID)
 			tr.feedback.reply(Response{
+				err:            err,
 				SubmitResponse: &protos.SubmitResponse{Error: err.Error(), TraceId: traceID},
 			})
 		} else {
