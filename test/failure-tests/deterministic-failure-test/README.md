@@ -85,4 +85,4 @@ test/failure-tests/test-results/
 `.github/workflows/deterministic-failure-test.yml` runs this script, shows `summary.txt` in the run's
 Summary tab, and uploads the results' `logs/` folder. It runs Sun/Tue/Thu at 03:00 UTC for 2 hours and Sat at
 03:00 UTC for 5.5 hours, alternating with the fully randomized test. It can also be started manually with
-the workflow inputs above.
+the workflow inputs above. A failed run, scheduled or manual, is reported to Slack with the run type.
