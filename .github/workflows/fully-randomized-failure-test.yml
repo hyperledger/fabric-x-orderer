@@ -177,7 +177,7 @@ jobs:
           fi
 
       - name: Notify Slack on failure
-        if: failure() && github.event_name == 'schedule'
+        if: failure()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           REASON: ${{ steps.failure_reason.outputs.reason }}
@@ -186,7 +186,12 @@ jobs:
             echo "SLACK_WEBHOOK_URL is not set — skipping notification"
             exit 0
           fi
-          TEXT=":red_circle: *Fully Randomized Failure Test FAILED* — Run #${{ github.run_number }}\n>$REASON"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            RUN_TYPE="scheduled run"
+          else
+            RUN_TYPE="manual run by ${{ github.actor }}"
+          fi
+          TEXT=":red_circle: *Fully Randomized Failure Test FAILED* (${RUN_TYPE}) — Run #${{ github.run_number }}\n>$REASON"
           curl -s --fail -X POST "$SLACK_WEBHOOK_URL" \
             -H 'Content-type: application/json' \
             --data "{
@@ -195,7 +200,8 @@ jobs:
                 \"color\": \"danger\",
                 \"fields\": [
                   { \"title\": \"Repository\", \"value\": \"${{ github.repository }}\", \"short\": true },
-                  { \"title\": \"Branch\",     \"value\": \"${{ github.ref_name }}\",   \"short\": true }
+                  { \"title\": \"Branch\",     \"value\": \"${{ github.ref_name }}\",   \"short\": true },
+                  { \"title\": \"Run type\",   \"value\": \"${RUN_TYPE}\",              \"short\": true }
                 ],
                 \"actions\": [{
                   \"type\": \"button\",

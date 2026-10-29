@@ -88,4 +88,5 @@ test/failure-tests/test-results/
 `.github/workflows/fully-randomized-failure-test.yml` runs this script, shows `summary.txt` and
 `summary-kills.txt` in the run's Summary tab, and uploads the results' `logs/` folder and the kill report.
 It runs Mon/Wed/Fri at 03:00 UTC for 2 hours and Sat at 09:00 UTC for 5.5 hours (after the deterministic
-test ends). It can also be started manually with the workflow inputs above.
+test ends). It can also be started manually with the workflow inputs above. A failed run, scheduled or
+manual, is reported to Slack with the run type.
