@@ -133,8 +133,8 @@ func (c *ConsenterSupportAdapter) indexAndWrite(block *common.Block) *state.Head
 	if err != nil {
 		c.consensus.Logger.Panicf("Failed to create proposal from block: %v", err)
 	}
-	hdr, digests := c.consensus.headerAndDigestsFromProposal(*proposal)
-	c.consensus.Arma.Index(digests)
+	hdr := c.consensus.headerFromProposal(*proposal)
+	c.consensus.Arma.Index(hdr)
 
 	c.consensus.Storage.WriteBlock(block)
 

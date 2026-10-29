@@ -11,13 +11,16 @@ import (
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/testutil"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -46,7 +49,7 @@ func TestConsenter(t *testing.T) {
 	assert.Empty(t, batchAttestations)
 	assert.Empty(t, newState.Pending)
 
-	consenter.Index([][]byte{})
+	consenter.Index(headerWithBatches(t, 1))
 	assert.Zero(t, db.PutCallCount())
 
 	// Test a valid event below threshold
@@ -55,7 +58,7 @@ func TestConsenter(t *testing.T) {
 	assert.Empty(t, batchAttestations)
 	assert.Len(t, newState.Pending, 1)
 
-	consenter.Index([][]byte{})
+	consenter.Index(headerWithBatches(t, 2))
 	assert.Zero(t, db.PutCallCount())
 
 	// Test valid events meeting the threshold
@@ -67,7 +70,7 @@ func TestConsenter(t *testing.T) {
 	assert.Len(t, batchAttestations[0], 2)
 	assert.Empty(t, newState.Pending)
 
-	consenter.Index([][]byte{batchAttestations[0][0].Digest()})
+	consenter.Index(headerWithBatches(t, 3, batchAttestations[0][0]))
 	assert.Equal(t, db.PutCallCount(), 1)
 
 	// Test the complaint is not stored in the DB
@@ -81,7 +84,7 @@ func TestConsenter(t *testing.T) {
 
 	_, batchAttestations, _ = consenter.SimulateStateTransition(s, 0, events)
 	assert.Empty(t, batchAttestations)
-	consenter.Index([][]byte{})
+	consenter.Index(headerWithBatches(t, 4))
 	assert.Equal(t, db.PutCallCount(), 1)
 
 	// Test ConfigRequest is returned by SimulateStateTransition
@@ -282,6 +285,139 @@ func TestConsenterEquivocatingDigests(t *testing.T) {
 		assert.Equal(t, 1, seenPrimaries[arma_types.PartyID(1)])
 		assert.Equal(t, 1, seenPrimaries[arma_types.PartyID(6)])
 	})
+}
+
+// TestConsenterIndex verifies that Index records the batches of a decision's data blocks under the
+// decision's number, and skips the config block that ends a config decision, which carries no batch.
+func TestConsenterIndex(t *testing.T) {
+	consenter := createConsenter(testutil.CreateLogger(t, 0))
+	db := &mocks.FakeBatchAttestationDB{}
+	consenter.DB = db
+
+	batches := []arma_types.BatchID{
+		state.NewAvailableBatch(1, 0, 4, []byte{1}),
+		state.NewAvailableBatch(2, 1, 9, []byte{2}),
+	}
+	hdr := headerWithBatches(t, 7, batches...)
+	configReq := protoutil.MarshalOrPanic(tx.CreateStructuredConfigEnvelope([]byte{3}))
+	configBlock, err := consensus.CreateConfigCommonBlock(2, nil, 0, 7, 3, 2, configReq)
+	require.NoError(t, err)
+	hdr.AvailableCommonBlocks = append(hdr.AvailableCommonBlocks, configBlock)
+	hdr.DecisionNumOfLastConfigBlock = 7
+
+	consenter.Index(hdr)
+
+	require.Equal(t, 1, db.PutCallCount())
+	ids, decision := db.PutArgsForCall(0)
+	assert.Equal(t, arma_types.DecisionNum(7), decision)
+	require.Len(t, ids, len(batches))
+	for i, id := range ids {
+		assert.True(t, arma_types.BatchIDEqual(batches[i], id), "batch %d: got %s", i, arma_types.BatchIDToString(id))
+	}
+}
+
+// TestConsenterIndexDecisionWithoutConfig verifies that Index records every available block of a decision
+// that carries no config block, including its last one.
+func TestConsenterIndexDecisionWithoutConfig(t *testing.T) {
+	consenter := createConsenter(testutil.CreateLogger(t, 0))
+	db := &mocks.FakeBatchAttestationDB{}
+	consenter.DB = db
+
+	batches := []arma_types.BatchID{
+		state.NewAvailableBatch(1, 0, 4, []byte{1}),
+		state.NewAvailableBatch(2, 1, 9, []byte{2}),
+	}
+	hdr := headerWithBatches(t, 7, batches...)
+	hdr.DecisionNumOfLastConfigBlock = 3
+
+	consenter.Index(hdr)
+
+	require.Equal(t, 1, db.PutCallCount())
+	ids, _ := db.PutArgsForCall(0)
+	require.Len(t, ids, len(batches))
+	for i, id := range ids {
+		assert.True(t, arma_types.BatchIDEqual(batches[i], id), "batch %d: got %s", i, arma_types.BatchIDToString(id))
+	}
+}
+
+// TestConsenterIndexGenesis verifies that Index records nothing for the genesis decision, whose only
+// available block is the genesis config block.
+func TestConsenterIndexGenesis(t *testing.T) {
+	consenter := createConsenter(testutil.CreateLogger(t, 0))
+	db := &mocks.FakeBatchAttestationDB{}
+	consenter.DB = db
+
+	genesis := tx.CreateConfigBlock(0, []byte{3})
+	genesis.Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = utils.GenesisBlockMetadataBytes()
+
+	consenter.Index(&state.Header{Num: 0, DecisionNumOfLastConfigBlock: 0, AvailableCommonBlocks: []*common.Block{genesis}})
+
+	assert.Zero(t, db.PutCallCount())
+}
+
+// TestConsenterIndexUsesOnlyVerifiedFields verifies that Index takes the batch ID and the data/config
+// distinction from the ORDERER metadata and the header, which proposal verification pins, and does not
+// depend on the SIGNATURES metadata or the data of an available block.
+func TestConsenterIndexUsesOnlyVerifiedFields(t *testing.T) {
+	batch := state.NewAvailableBatch(1, 0, 4, []byte{1})
+
+	for _, tst := range []struct {
+		name   string
+		mutate func(*common.Block)
+	}{
+		{
+			name: "unparsable signatures metadata",
+			mutate: func(b *common.Block) {
+				b.Metadata.Metadata[common.BlockMetadataIndex_SIGNATURES] = []byte{0xff, 0xff, 0xff}
+			},
+		},
+		{
+			name: "data that looks like a config block",
+			mutate: func(b *common.Block) {
+				b.Data = &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(tx.CreateStructuredConfigEnvelope([]byte{3}))}}
+				require.True(t, protoutil.IsConfigBlock(b))
+			},
+		},
+	} {
+		t.Run(tst.name, func(t *testing.T) {
+			consenter := createConsenter(testutil.CreateLogger(t, 0))
+			db := &mocks.FakeBatchAttestationDB{}
+			consenter.DB = db
+
+			hdr := headerWithBatches(t, 7, batch)
+			tst.mutate(hdr.AvailableCommonBlocks[0])
+
+			require.NotPanics(t, func() { consenter.Index(hdr) })
+
+			require.Equal(t, 1, db.PutCallCount())
+			ids, decision := db.PutArgsForCall(0)
+			assert.Equal(t, arma_types.DecisionNum(7), decision)
+			require.Len(t, ids, 1)
+			assert.True(t, arma_types.BatchIDEqual(batch, ids[0]), "got %s", arma_types.BatchIDToString(ids[0]))
+		})
+	}
+}
+
+// TestConsenterIndexPanicsOnMalformedOrdererMetadata verifies that Index fail-stops on an available block
+// whose ORDERER metadata cannot be parsed, since it cannot tell which batch the block holds.
+func TestConsenterIndexPanicsOnMalformedOrdererMetadata(t *testing.T) {
+	consenter := createConsenter(testutil.CreateLogger(t, 0))
+
+	hdr := headerWithBatches(t, 7, state.NewAvailableBatch(1, 0, 4, []byte{1}))
+	hdr.AvailableCommonBlocks[0].Metadata.Metadata[common.BlockMetadataIndex_ORDERER] = []byte{0xff, 0xff, 0xff}
+
+	assert.Panics(t, func() { consenter.Index(hdr) })
+}
+
+// headerWithBatches returns the header of decision num whose available blocks hold the given batches.
+func headerWithBatches(t *testing.T, num arma_types.DecisionNum, batches ...arma_types.BatchID) *state.Header {
+	hdr := &state.Header{Num: num}
+	for i, batch := range batches {
+		block, err := consensus.CreateDataCommonBlock(uint64(i), nil, batch, 1, num, len(batches), i, 0)
+		require.NoError(t, err)
+		hdr.AvailableCommonBlocks = append(hdr.AvailableCommonBlocks, block)
+	}
+	return hdr
 }
 
 func createConsenter(logger *flogging.FabricLogger) *consensus.Consenter {

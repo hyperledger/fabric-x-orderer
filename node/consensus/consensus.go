@@ -79,7 +79,7 @@ type SigVerifier interface {
 
 type Arma interface {
 	SimulateStateTransition(prevState *state.State, configSeq arma_types.ConfigSequence, events [][]byte) (*state.State, [][]arma_types.BatchAttestationFragment, []*state.ConfigRequest)
-	Index([][]byte)
+	Index(hdr *state.Header)
 }
 
 type BFT interface {
@@ -1027,7 +1027,7 @@ func (c *Consensus) AssembleProposal(metadata []byte, requests [][]byte) smartbf
 // It returns whether this proposal was a reconfiguration and the current config.
 // (from SmartBFT API)
 func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smartbft_types.Signature) smartbft_types.Reconfig {
-	hdr, digests := c.headerAndDigestsFromProposal(proposal)
+	hdr := c.headerFromProposal(proposal)
 
 	// Why do we first give Arma the batchAttestations (digests) and then append the decision to storage?
 	// Upon commit, Arma indexes the batch attestations (digests) which passed the threshold in its index,
@@ -1036,7 +1036,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// However, if we first append the decision and then index afterwards and crash during or right before
 	// we index, next time we spawn, we will not recognize we did not index and as a result we will may sign
 	// a batch attestation twice.
-	// This is true because a Index(digests) with the same digests is idempotent.
+	// This is true because Index of the same header is idempotent.
 
 	// NOTE: we intentionally do NOT "defer c.lock.Unlock()" here. When this decision
 	// includes a new config block we must release the lock and then block until the
@@ -1044,7 +1044,7 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 	// SmartBFT. See the blocking section below.
 	c.lock.Lock()
 
-	c.Arma.Index(digests)
+	c.Arma.Index(hdr)
 	block := state.CreateBlockToAppendFromDecision(uint64(hdr.Num), proposal, signatures, c.PrevHash, uint64(hdr.DecisionNumOfLastConfigBlock))
 	c.Storage.Append(block)
 
@@ -1245,19 +1245,12 @@ func (c *Consensus) updateMetricsOnDeliver(hdr *state.Header, block *common.Bloc
 	}
 }
 
-func (c *Consensus) headerAndDigestsFromProposal(proposal smartbft_types.Proposal) (*state.Header, [][]byte) {
+func (c *Consensus) headerFromProposal(proposal smartbft_types.Proposal) *state.Header {
 	hdr := &state.Header{}
 	if err := hdr.Deserialize(proposal.Header); err != nil {
 		c.Logger.Panicf("Failed deserializing header: %v", err)
 	}
-
-	digests := make([][]byte, 0, len(hdr.AvailableCommonBlocks))
-	for _, ab := range hdr.AvailableCommonBlocks {
-		if !protoutil.IsConfigBlock(ab) {
-			digests = append(digests, ab.GetHeader().GetDataHash())
-		}
-	}
-	return hdr, digests
+	return hdr
 }
 
 func (c *Consensus) getLastTxCountFromHeader(header *state.Header) uint64 {
@@ -1554,7 +1547,7 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 	if err != nil {
 		c.Logger.Panicf("Failed parsing block we pulled with BFT Synchronizer: %v", err)
 	}
-	hdr, _ := c.headerAndDigestsFromProposal(*proposal)
+	hdr := c.headerFromProposal(*proposal)
 
 	// update state
 	c.lock.Lock()
