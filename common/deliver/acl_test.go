@@ -10,6 +10,7 @@ import (
 	"time"
 
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver"
 	"github.com/hyperledger/fabric-x-orderer/common/deliver/mock"
@@ -37,7 +38,7 @@ var _ = Describe("SessionAccessControl", func() {
 
 		fakeChain = &mock.Chain{}
 		fakePolicyChecker = &mock.PolicyChecker{}
-		expiresAt = func([]byte) time.Time { return time.Time{} }
+		expiresAt = func(*msppb.Identity) (time.Time, error) { return time.Time{}, nil }
 	})
 
 	It("evaluates the policy", func() {
@@ -106,8 +107,8 @@ var _ = Describe("SessionAccessControl", func() {
 
 	Context("when an identity expires", func() {
 		BeforeEach(func() {
-			expiresAt = func([]byte) time.Time {
-				return time.Now().Add(250 * time.Millisecond)
+			expiresAt = func(*msppb.Identity) (time.Time, error) {
+				return time.Now().Add(250 * time.Millisecond), nil
 			}
 		})
 
@@ -133,6 +134,20 @@ var _ = Describe("SessionAccessControl", func() {
 
 			_, err := deliver.NewSessionAC(fakeChain, envelope, fakePolicyChecker, "chain-id", expiresAt)
 			Expect(err).To(Equal(expectedError))
+		})
+	})
+
+	Context("when the expiry of the identity cannot be determined", func() {
+		BeforeEach(func() {
+			expiresAt = func(*msppb.Identity) (time.Time, error) {
+				return time.Time{}, errors.New("identity is unknown")
+			}
+		})
+
+		It("returns an error, and never evaluates the policy", func() {
+			_, err := deliver.NewSessionAC(fakeChain, envelope, fakePolicyChecker, "chain-id", expiresAt)
+			Expect(err).To(MatchError("identity is unknown"))
+			Expect(fakePolicyChecker.CheckPolicyCallCount()).To(Equal(0))
 		})
 	})
 })

@@ -55,7 +55,7 @@ func (a AssemblerDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverS
 		time.Hour,
 		a.mutualTLS,
 		a.deliverMetrics,
-		false, // expirationCheckDisabled
+		deliver.NewExpiresAtFunc(a.bundle.MSPManager()),
 		&utils.CommonConfigBlockOperations{},
 	)
 

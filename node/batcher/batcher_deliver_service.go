@@ -42,7 +42,7 @@ func (d *BatcherDeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverSe
 		time.Hour,
 		true, // mutualTLS
 		deliver.NewMetrics(&disabled.Provider{}),
-		false, // expirationCheckDisabled
+		d.AccessControl.ExpiresAt,
 		&utils.CommonConfigBlockOperations{},
 	)
 

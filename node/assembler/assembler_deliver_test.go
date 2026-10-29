@@ -360,8 +360,9 @@ func createDeliveryClientAndPull(t *testing.T, assemblerEndpoint string, assembl
 //  2. Commit one block, so the assembler has something to deliver.
 //  3. Pull with the identity of a user of a party of the channel, and expect the block.
 //  4. Pull with the same key material under an MSP identifier that is not in the channel, and
-//     expect the request to be forbidden.
-//  5. Pull with an unsigned request, and expect the request to be forbidden.
+//     expect the request to be refused as a bad request, since no MSP of the channel resolves it.
+//  5. Pull with an unsigned request, and expect it to be refused as a bad request, since it carries
+//     no identity an MSP of the channel resolves.
 func TestAssemblerDeliver_ChannelReadersPolicy(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -409,12 +410,12 @@ func TestAssemblerDeliver_ChannelReadersPolicy(t *testing.T) {
 		signer := testSignerWithMSPID(t, dir, "org1", "orgNotInTheChannel")
 
 		resp := deliverFirstResponse(t, assemblerEndpoint, assemblerRootCAs, ca, signer)
-		require.Equal(t, common.Status_FORBIDDEN, resp.GetStatus())
+		require.Equal(t, common.Status_BAD_REQUEST, resp.GetStatus())
 	})
 
 	t.Run("Unsigned", func(t *testing.T) {
 		resp := deliverFirstResponse(t, assemblerEndpoint, assemblerRootCAs, ca, nil)
-		require.Equal(t, common.Status_FORBIDDEN, resp.GetStatus())
+		require.Equal(t, common.Status_BAD_REQUEST, resp.GetStatus())
 	})
 }
 
