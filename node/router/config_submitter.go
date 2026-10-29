@@ -118,7 +118,7 @@ func (cs *configSubmitter) Forward(tr *TrackedRequest) {
 	default:
 		cs.logger.Warnf("config requests channel is full, rejecting config request %x", tr.reqID)
 		tr.feedback.reply(Response{
-			err:   errors.New("server error: config request queue is full, try again later"),
+			err:   serverError(errors.New("server error: config request queue is full, try again later")),
 			reqID: tr.reqID,
 		})
 	}
@@ -135,20 +135,20 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 
 	configRequest, err := cs.configUpdateProposer.ProposeConfigUpdate(tr.request, cs.bundle, cs.signer, cs.verifier, cs.bccsp)
 	if err != nil {
-		feedback.err = fmt.Errorf("error in verification and proposing update: %s", err)
+		feedback.err = badRequest(fmt.Errorf("error in verification and proposing update: %s", err))
 		tr.feedback.reply(feedback)
 		return err
 	}
 
 	env := &common.Envelope{Payload: configRequest.Payload, Signature: configRequest.Signature}
 	if err = cs.configRulesVerifier.ValidateNewConfig(env, cs.bccsp, cs.partyID); err != nil {
-		feedback.err = fmt.Errorf("error in validating config rules: %w", err)
+		feedback.err = badRequest(fmt.Errorf("error in validating config rules: %w", err))
 		tr.feedback.reply(feedback)
 		return err
 	}
 
 	if err = cs.configRulesVerifier.ValidateTransition(cs.bundle, env, cs.bccsp); err != nil {
-		feedback.err = fmt.Errorf("error in validating config transition rules: %w", err)
+		feedback.err = badRequest(fmt.Errorf("error in validating config transition rules: %w", err))
 		tr.feedback.reply(feedback)
 		return err
 	}
@@ -161,12 +161,12 @@ func (cs *configSubmitter) forwardRequest(tr *TrackedRequest) error {
 	}
 	feedback.SubmitResponse = resp
 	if err != nil {
-		feedback.err = fmt.Errorf("error forwarding config request to consenter: %v", err)
+		feedback.err = serverError(fmt.Errorf("error forwarding config request to consenter: %v", err))
 	} else {
 		cs.metrics.forwardedToConsenter.Add(1)
 		feedback.SubmitResponse = resp
 		if resp.Error != "" {
-			feedback.err = errors.New(resp.Error)
+			feedback.err = serverError(errors.New(resp.Error))
 		}
 	}
 

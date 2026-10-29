@@ -144,7 +144,7 @@ func (sr *ShardRouter) Forward(trackedReq *TrackedRequest) {
 
 		// Send a response and return
 		trackedReq.feedback.reply(Response{
-			err:   fmt.Errorf("server error: connection between router and batcher %s is broken, try again later", sr.batcherEndpoint),
+			err:   serverError(fmt.Errorf("server error: connection between router and batcher %s is broken, try again later", sr.batcherEndpoint)),
 			reqID: trackedReq.reqID,
 		})
 		return

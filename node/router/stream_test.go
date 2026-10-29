@@ -592,6 +592,55 @@ func TestSendResponseToAllClientsOnErrorAnswersATracedRequestOnce(t *testing.T) 
 }
 
 // Scenario:
+//  1. Register a traced request on a stream, as Forward does.
+//  2. Answer it as the batcher does when it rejects the request, with an error in the response.
+//  3. Expect the client to get that response unchanged, and the error to be counted as a server error (500).
+func TestForwardResponseToClientCountsABatcherError(t *testing.T) {
+	responseChan := make(chan Response, 1)
+	trace := []byte("request1")
+	tr := CreateTrackedRequest(&protos.Request{TraceId: trace}, responseChan, []byte("reqID1"), trace)
+
+	s := &stream{
+		logger:            testutil.CreateLogger(t, 0),
+		requestsByTraceID: make(map[string]*TrackedRequest),
+	}
+	s.registerReply(tr)
+
+	batcherResponse := &protos.SubmitResponse{Error: "request already exists", TraceId: trace}
+	require.NoError(t, s.forwardResponseToClient(batcherResponse))
+
+	resp := <-responseChan
+	require.Same(t, batcherResponse, resp.SubmitResponse)
+	var r *rejection
+	require.ErrorAs(t, resp.GetResponseError(), &r)
+	require.Equal(t, "500", r.code)
+}
+
+// Scenario:
+//  1. Register a traced request on a stream, as Forward does.
+//  2. Answer it with a verification error, as sendRequests does for a bad request.
+//  3. Expect the client to get the error in the response, and the error to be counted as a bad request (400).
+func TestResponseToClientWithErrorCountsATracedBadRequest(t *testing.T) {
+	responseChan := make(chan Response, 1)
+	trace := []byte("request1")
+	tr := CreateTrackedRequest(&protos.Request{TraceId: trace}, responseChan, []byte("reqID1"), trace)
+
+	s := &stream{
+		logger:            testutil.CreateLogger(t, 0),
+		requestsByTraceID: make(map[string]*TrackedRequest),
+	}
+	s.registerReply(tr)
+
+	s.responseToClientWithError(tr, badRequest(fmt.Errorf("request verification error: empty payload field")))
+
+	resp := <-responseChan
+	require.Equal(t, "request verification error: empty payload field", resp.SubmitResponse.Error)
+	var r *rejection
+	require.ErrorAs(t, resp.GetResponseError(), &r)
+	require.Equal(t, "400", r.code)
+}
+
+// Scenario:
 //  1. Queue a traced config update on a stream, registered as Forward does.
 //  2. Let sendRequests classify it and hand it to the config submitter.
 //  3. Expect the registration to be gone, so that a later error on this stream

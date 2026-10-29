@@ -7,8 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package router
 
 import (
+	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -223,15 +223,13 @@ func (m *RouterMetrics) reportMetrics(final bool) {
 }
 
 func (m *RouterMetrics) increaseErrorCount(err error) {
-	if err == nil {
+	var r *rejection
+	if !errors.As(err, &r) {
 		return
 	}
-	if strings.Contains(err.Error(), "request verification error") ||
-		strings.Contains(err.Error(), "request structure verification error") ||
-		strings.Contains(err.Error(), "bad request") {
+	if r.code == "400" {
 		m.rejectedTxsWithCode400.Add(1)
-	}
-	if strings.Contains(err.Error(), "server error") {
+	} else {
 		m.rejectedTxsWithCode500.Add(1)
 	}
 }
