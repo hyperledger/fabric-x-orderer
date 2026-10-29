@@ -20,6 +20,7 @@
 #   - build-multiplatform-test-node-image: builds the all-in-one test-node image for multiple platforms
 #   - deterministic-failure-test:    runs the deterministic failure test locally (5 min, 1000 tx/s, failure runner enabled)
 #   - fully-randomized-failure-test: runs the fully randomized failure test locally (5 min, 1000 tx/s, failure runner enabled)
+#   - custom-order-failure-test:     runs the custom order failure test locally (5 min, 1000 tx/s, kill order from KILL_ORDER)
 #   - release-bins: cross-compiles arma and armageddon for a single GOOS/GOARCH into release/<GOOS>-<GOARCH>/bin/
 
 # Docker image vars
@@ -256,6 +257,21 @@ fully-randomized-failure-test: binary
 	FAILURE_RUNNER_START_DELAY=$(FAILURE_RUNNER_START_DELAY) \
 	RANDOM_SEED=$(RANDOM_SEED) \
 	test/failure-tests/fully-randomized-failure-test/fully-randomized-failure-test.sh
+
+.PHONY: custom-order-failure-test
+custom-order-failure-test: binary
+	@chmod +x test/failure-tests/custom-order-failure-test/custom-order-failure-test.sh
+	DURATION_MINUTES=$(DURATION_MINUTES) \
+	TX_RATE=$(TX_RATE) \
+	TX_SIZE=$(TX_SIZE) \
+	NUM_PARTIES=$(NUM_PARTIES) \
+	NUM_SHARDS=$(NUM_SHARDS) \
+	FAILURE_RUNNER_STOP_DURATION=$(FAILURE_RUNNER_STOP_DURATION) \
+	FAILURE_RUNNER_RESTART_WAIT=$(FAILURE_RUNNER_RESTART_WAIT) \
+	SUBMIT_DRAIN_SECONDS=$(SUBMIT_DRAIN_SECONDS) \
+	FAILURE_RUNNER_START_DELAY=$(FAILURE_RUNNER_START_DELAY) \
+	KILL_ORDER="$(KILL_ORDER)" \
+	test/failure-tests/custom-order-failure-test/custom-order-failure-test.sh
 
 .PHONY: sample-tests
 sample-tests:

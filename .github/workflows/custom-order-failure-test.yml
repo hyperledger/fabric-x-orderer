@@ -1,0 +1,191 @@
+# Copyright the Hyperledger Fabric contributors. All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Custom Order Failure Test
+
+on:
+  schedule:
+    # Sun, Tue, Thu: 1-hour test at 05:30 UTC, after the deterministic test ends
+    - cron: '30 5 * * 0,2,4'
+
+  workflow_dispatch:
+    inputs:
+      kill_order:
+        description: 'Kill order, e.g. "C -> A -> B1 -> R -> B2" for every party, or "p3:C p3:C p4:A" (see README)'
+        required: true
+        default: 'C -> A -> R -> C -> C -> B1 -> B2'
+        type: string
+      duration_minutes:
+        description: 'Test duration in minutes'
+        required: true
+        default: '30'
+        type: string
+      tx_rate:
+        description: 'Transactions per second'
+        required: true
+        default: '1000'
+        type: string
+      tx_size:
+        description: 'Transaction size in bytes'
+        required: true
+        default: '300'
+        type: string
+      num_parties:
+        description: 'Number of parties (4, 7, or 10)'
+        required: true
+        default: '4'
+        type: choice
+        options:
+          - '4'
+          - '7'
+          - '10'
+      num_shards:
+        description: 'Number of shards (1, 2, or 4)'
+        required: true
+        default: '2'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '4'
+      failure_runner_stop_duration:
+        description: 'How long to keep component down (seconds)'
+        required: true
+        default: '30'
+        type: string
+      failure_runner_restart_wait:
+        description: 'Wait after component restart (seconds)'
+        required: true
+        default: '30'
+        type: string
+      submit_drain_seconds:
+        description: 'How long submit keeps verifying after it finished sending (seconds)'
+        required: true
+        default: '120'
+        type: string
+
+env:
+  GOPATH: /opt/go
+  PATH: /opt/go/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+
+permissions:
+  contents: read
+
+jobs:
+  custom-order-failure-test:
+    name: Custom Order Failure Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.repository == 'hyperledger/fabric-x-orderer'
+
+    steps:
+      - name: Checkout Fabric-X Code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build arma and armageddon binaries
+        run: make binary
+
+      # On a scheduled run every input is empty, so each one falls back to its default here or in the script
+      - name: Run Custom Order Failure Test
+        env:
+          KILL_ORDER: ${{ inputs.kill_order }}
+          DURATION_MINUTES: ${{ inputs.duration_minutes || '60' }}
+          TX_RATE: ${{ inputs.tx_rate || '1000' }}
+          TX_SIZE: ${{ inputs.tx_size || '300' }}
+          NUM_PARTIES: ${{ inputs.num_parties || '4' }}
+          NUM_SHARDS: ${{ inputs.num_shards || '2' }}
+          FAILURE_RUNNER_STOP_DURATION: ${{ inputs.failure_runner_stop_duration || '30' }}
+          FAILURE_RUNNER_RESTART_WAIT: ${{ inputs.failure_runner_restart_wait || '30' }}
+          SUBMIT_DRAIN_SECONDS: ${{ inputs.submit_drain_seconds || '120' }}
+        run: |
+          chmod +x test/failure-tests/custom-order-failure-test/*.sh
+          test/failure-tests/custom-order-failure-test/custom-order-failure-test.sh
+
+      - name: Publish test summary
+        if: always()
+        run: |
+          echo "## Custom Order Failure Test — Run #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          if [ -f test/failure-tests/test-results/summary.txt ]; then
+            cat test/failure-tests/test-results/summary.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "_No summary files were produced._" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f test/failure-tests/test-results/summary-kills.txt ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat test/failure-tests/test-results/summary-kills.txt >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-order-failure-test-logs-${{ github.run_number }}
+          path: test/failure-tests/test-results/logs/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload kill report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-order-failure-test-kill-report-${{ github.run_number }}
+          path: test/failure-tests/test-results/summary-kills.txt
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Detect startup failure reason
+        if: failure()
+        id: failure_reason
+        run: |
+          if [ -f test/failure-tests/test-results/failure_reason.txt ]; then
+            echo "reason=$(cat test/failure-tests/test-results/failure_reason.txt)" >> $GITHUB_OUTPUT
+          elif [ -f test/failure-tests/test-results/startup_failure.txt ]; then
+            echo "reason=$(cat test/failure-tests/test-results/startup_failure.txt)" >> $GITHUB_OUTPUT
+          else
+            echo "reason=The test job failed to run (possibly due to insufficient runner resources or an infrastructure issue)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          REASON: ${{ steps.failure_reason.outputs.reason }}
+          KILL_ORDER: ${{ inputs.kill_order || 'C -> A -> R -> C -> C -> B1 -> B2' }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL is not set — skipping notification"
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            RUN_TYPE="scheduled run"
+          else
+            RUN_TYPE="manual run by ${{ github.actor }}"
+          fi
+          TEXT=":red_circle: *Custom Order Failure Test FAILED* (${RUN_TYPE}) — Run #${{ github.run_number }}\n>$REASON"
+          curl -s --fail -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            --data "{
+              \"text\": \"$TEXT\",
+              \"attachments\": [{
+                \"color\": \"danger\",
+                \"fields\": [
+                  { \"title\": \"Repository\", \"value\": \"${{ github.repository }}\", \"short\": true },
+                  { \"title\": \"Branch\",     \"value\": \"${{ github.ref_name }}\",   \"short\": true },
+                  { \"title\": \"Run type\",   \"value\": \"${RUN_TYPE}\",              \"short\": true },
+                  { \"title\": \"Kill order\", \"value\": \"${KILL_ORDER}\",            \"short\": true }
+                ],
+                \"actions\": [{
+                  \"type\": \"button\",
+                  \"text\": \"View Run\",
+                  \"url\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                }]
+              }]
+            }" || true
