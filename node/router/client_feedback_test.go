@@ -142,7 +142,7 @@ func TestClientFeedbackDroppedErrorIsStillCountedAsRejected(t *testing.T) {
 
 	require.True(t, cc.reply(Response{}))
 
-	require.False(t, cc.reply(Response{err: errors.New("server error: batcher is unreachable")}))
+	require.False(t, cc.reply(Response{err: serverError(errors.New("server error: batcher is unreachable"))}))
 	require.Equal(t, float64(1), read(cc.metrics.rejectedTxsWithCode500))
 	require.Zero(t, read(cc.metrics.rejectedTxsWithCode400))
 }

@@ -20,6 +20,30 @@ import (
 // common.Status); on the Submit API it is surfaced via SubmitResponse.Error.
 var ErrThrottled = errors.New("service unavailable: request throttled by router rate limiter")
 
+// rejection is an error the router answers a request with. Its code is the code label it is counted
+// under in router_requests_rejected: "400" when the request itself is wrong, "500" when the router
+// could not serve it.
+type rejection struct {
+	code string
+	err  error
+}
+
+func (r *rejection) Error() string {
+	return r.err.Error()
+}
+
+func (r *rejection) Unwrap() error {
+	return r.err
+}
+
+func badRequest(err error) error {
+	return &rejection{code: "400", err: err}
+}
+
+func serverError(err error) error {
+	return &rejection{code: "500", err: err}
+}
+
 type TrackedRequest struct {
 	request  *protos.Request // the request to be forward to the batcher
 	feedback *clientFeedback // the feedback path of the submitting client

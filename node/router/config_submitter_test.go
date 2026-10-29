@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package router
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -186,6 +187,32 @@ func TestConfigSubmitterReconnectionAbort(t *testing.T) {
 }
 
 // Scenario:
+//  1. Forward a config update that the consenter rejects, and expect it to be marked as a server error (500).
+//  2. Forward a config update that fails validation, and expect it to be marked as a bad request (400).
+func TestConfigSubmitterRejectionCodes(t *testing.T) {
+	setup := createConfigSubmitTestSetup(t)
+	setup.Start()
+	defer setup.Stop()
+	configSubmitter := setup.configSubmitter
+	req := tx.CreateStructuredRequest([]byte("data"))
+	feedbackChan := make(chan Response, 1)
+
+	// the stub consenter rejects every config update
+	configSubmitter.Forward(CreateTrackedRequest(req, feedbackChan, nil, nil))
+	resp := <-feedbackChan
+	var r *rejection
+	require.ErrorAs(t, resp.GetResponseError(), &r)
+	require.Equal(t, "500", r.code)
+
+	configSubmitter.configRulesVerifier.(*ordererRulesMocks.FakeOrdererRules).ValidateNewConfigReturns(errors.New("invalid config"))
+	configSubmitter.Forward(CreateTrackedRequest(req, feedbackChan, nil, nil))
+	resp = <-feedbackChan
+	require.ErrorAs(t, resp.GetResponseError(), &r)
+	require.Equal(t, "400", r.code)
+	require.EqualError(t, resp.GetResponseError(), "error in validating config rules: invalid config")
+}
+
+// Scenario:
 //  1. Create a config submitter with a queue of one and do not start it, so that
 //     nothing drains the queue.
 //  2. Forward a request, filling the queue, and expect no response.
@@ -209,6 +236,9 @@ func TestConfigSubmitterForwardRejectsWhenQueueIsFull(t *testing.T) {
 	case resp := <-feedbackChan:
 		require.ErrorContains(t, resp.GetResponseError(), "config request queue is full")
 		require.Equal(t, []byte("req2"), resp.reqID)
+		var r *rejection
+		require.ErrorAs(t, resp.GetResponseError(), &r)
+		require.Equal(t, "500", r.code)
 	case <-time.After(10 * time.Second):
 		require.FailNow(t, "Forward did not reject a config request when the queue was full")
 	}

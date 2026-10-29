@@ -690,6 +690,8 @@ func TestClientRouterBroadcastRequestsAgainstMultipleBatchers(t *testing.T) {
 // 3) Send request with empty payload, expect error.
 // 4) Send request that exceed the maximal size, expect error.
 // 5) ** Not implemented ** send request with bad signature, expect error.
+// 6) Expect the two rejected requests to be counted as bad requests.
+// 7) Send a request with an empty payload on SubmitStream, expect error, and expect it counted as a bad request.
 func TestRequestFilters(t *testing.T) {
 	// 1) Start a client, router and stub batcher
 	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
@@ -728,6 +730,50 @@ func TestRequestFilters(t *testing.T) {
 	require.Equal(t, "request verification error: the request's size exceeds the maximum size: actual = 3000, limit = 1024", resp.Error)
 
 	// 5) send request with invalid signature. Not implemented
+
+	// 6) the two rejected requests are counted as bad requests
+	URL := testSetup.router.MonitoringServiceAddress()
+	rejected400 := regexp.MustCompile(fmt.Sprintf(`router_requests_rejected\{code="400",party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, rejected400, URL) == 2
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// 7) a request with an empty payload sent with SubmitStream is counted as a bad request too
+	stream, err := cl.SubmitStream(ctx)
+	require.NoError(t, err)
+	require.NoError(t, stream.Send(&protos.Request{Payload: nil}))
+	streamResp, err := stream.Recv()
+	require.NoError(t, err)
+	require.Equal(t, "request verification error: empty payload field", streamResp.Error)
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, rejected400, URL) == 3
+	}, 10*time.Second, 100*time.Millisecond)
+}
+
+// Scenario:
+//  1. Start a client, router and stub batcher, and make the batcher reject every request with an error.
+//  2. Submit a valid request and expect the client to get the batcher's error.
+//  3. Expect the request to be counted as rejected with code 500.
+func TestRouterCountsABatcherErrorAsServerError(t *testing.T) {
+	testSetup := createRouterTestSetup(t, types.PartyID(1), 1, true, false)
+	err := createServerTLSClientConnection(testSetup, testSetup.ca)
+	require.NoError(t, err)
+	require.NotNil(t, testSetup.clientConn)
+	defer testSetup.Close()
+
+	testSetup.batchers[0].SetResponseError("request already exists")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	resp, err := protos.NewRequestTransmitClient(testSetup.clientConn).Submit(ctx, tx.CreateStructuredRequest(make([]byte, 300)))
+	require.NoError(t, err)
+	require.Equal(t, "request already exists", resp.Error)
+
+	URL := testSetup.router.MonitoringServiceAddress()
+	rejected500 := regexp.MustCompile(fmt.Sprintf(`router_requests_rejected\{code="500",party_id="%d"\} \d+`, types.PartyID(1)))
+	require.Eventually(t, func() bool {
+		return testutil.FetchPrometheusMetricValue(t, rejected500, URL) == 1
+	}, 10*time.Second, 100*time.Millisecond)
 }
 
 // Scenario:
