@@ -284,6 +284,7 @@ A rule marked **no** is not enforced: the TX is accepted, so you must keep the c
 | The set of parties (add / remove)              | `consenter_mapping`, the orderer org under `Orderer.groups`, **and** the `BlockValidation` policy (BFT quorum over the consenters) | yes       |
 | A party's `TLSCACerts`                         | The org MSP `tls_root_certs` under `Orderer.groups.<org>`                                                                        | yes       |
 | A party's `CACerts`                            | The org MSP `root_certs` under `Orderer.groups.<org>`                                                                            | **no**    |
+| MSP `fabric_node_ous` (when enabled) | NodeOU CA certificates must be in the party's `CACerts`, and node `sign_cert`s must pass MSP validation | yes |
 | A router `host`/`port` or assembler `host`/`port` | The org `Endpoints` (`broadcast` = router, `deliver` = assembler) under `Orderer.groups.<org>`, unless clients reach the node at a different (external) address; see below | **no** (a mismatch is only logged as a warning) |
 | `BatchingConfig.BatchSize.AbsoluteMaxBytes`    | `Orderer.values.BatchSize.value.absolute_max_bytes` must be equal. If you lower it, `Orderer.values.BatchSize.value.preferred_max_bytes` must stay `<=` it | yes |
 | `BatchingConfig.RequestMaxBytes`               | `ConsensusConfig.SmartBFTConfig.RequestMaxBytes` must stay `>=` it                                                               | yes       |
@@ -780,6 +781,9 @@ The router returns these errors to the submitter. The network is unchanged; fix 
 | `smartbft config validation failed`                                                               | An invalid SmartBFT value (for example `LeaderHeartbeatCount = 0`)                                |
 | `missing broadcast endpoint` / `missing deliver endpoint`                                         | Every orderer org's `Endpoints` must list a `broadcast` (router) and a `deliver` (assembler) address |
 | `x509: certificate signed by unknown authority`, `certificate validation failed for ... party ID N` | A certificate does not chain to the party's CAs, or a CA was removed while still in use ([5.5](#55-rotate-a-partys-ca-certificates)) |
+| `the certificate of node OU "X" is not one of the party's signing CA certificates` | The NodeOU CA must be in the party's `CACerts`. |
+| `certifiersIdentifier does not match` | The node's `sign_cert` does not match its MSP node OU CA. |
+| `does not have an OU that resolves to client, peer, orderer, or admin role` | The node's `sign_cert` has no valid MSP node OU role. |
 | `Failed adding OU`                                                                                | The org's `fabric_node_ous` point at a CA that is no longer in `root_certs` ([5.5](#55-rotate-a-partys-ca-certificates), Step 2) |
 | `channel ID cannot change in the proposed config`                                                 | Do not change the channel ID                                                                       |
 
