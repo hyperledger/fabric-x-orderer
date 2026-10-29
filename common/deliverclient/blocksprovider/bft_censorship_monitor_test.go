@@ -79,6 +79,20 @@ func TestBFTCensorshipMonitor_StopWithErrors(t *testing.T) {
 }
 
 // Scenario:
+// - stop the monitor before it starts, as when Stop() is called before the Monitor() goroutine runs
+// - the monitor reports the stop without connecting to any source, so no header receiver outlives it.
+func TestBFTCensorshipMonitor_StopBeforeMonitor(t *testing.T) {
+	s := newMonitorTestSetup(t, 4)
+	mon := blocksprovider.NewBFTCensorshipMonitor(s.channelID, s.fakeUpdatableBlockVerifier, s.fakeRequester, s.fakeProgressReporter, s.sources, 0, blocksprovider.TimeoutConfig{}, &utils.CommonConfigBlockOperations{})
+	require.NotNil(t, mon)
+
+	mon.Stop()
+	mon.Monitor()
+	require.EqualError(t, <-mon.ErrorsChannel(), "received a stop signal")
+	require.Zero(t, s.fakeRequester.ConnectCallCount())
+}
+
+// Scenario:
 // - start the monitor, with no sources
 // - monitor exits, ensure error channel contains an error
 func TestBFTCensorshipMonitor_NoSources(t *testing.T) {
@@ -100,7 +114,7 @@ func TestBFTCensorshipMonitor_NoSources(t *testing.T) {
 		wg.Done()
 	}()
 
-	mon.Stop()
+	// No Stop() here: with no endpoints the monitor fails and stops by itself; an external stop would race with it.
 	wg.Wait()
 	require.EqualError(t, err, "no endpoints")
 }
