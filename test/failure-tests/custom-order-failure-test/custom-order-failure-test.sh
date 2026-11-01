@@ -18,7 +18,7 @@ source test/failure-tests/failure-test-lib/run-failure-test.sh
 TEST_NAME="Custom Order Failure Test"
 STATUS_RULE="after each round of the kill order"
 
-# Reproduces the assembler crash of #1353 on party 3 (see README)
+# Kill order that crashed assembler 3 before the decision-replay fix (see README)
 KILL_ORDER=${KILL_ORDER:-C -> A -> R -> C -> C -> B1 -> B2}
 EXTRA_SUMMARY="Order     : ${KILL_ORDER}"
 
@@ -59,7 +59,7 @@ parse_kill_order() {
 # add_kill <C|A|R|B<shard>> <party>: checks one kill and appends it to KILLS
 add_kill() {
   local name=$1 party=$2
-  if ! [[ "$party" =~ ^[0-9]+$ ]] || [ "$party" -lt 1 ] || [ "$party" -gt "$NUM_PARTIES" ]; then
+  if ! [[ "$party" =~ ^[1-9][0-9]*$ ]] || [ "$party" -gt "$NUM_PARTIES" ]; then
     startup_failed "KILL_ORDER: party '${party}' must be between 1 and NUM_PARTIES (${NUM_PARTIES})"
   fi
   case "$name" in
@@ -68,7 +68,7 @@ add_kill() {
     R) KILLS+=("router $party") ;;
     B[0-9]*)
       local shard=${name#B}
-      if ! [[ "$shard" =~ ^[0-9]+$ ]] || [ "$shard" -lt 1 ] || [ "$shard" -gt "$NUM_SHARDS" ]; then
+      if ! [[ "$shard" =~ ^[1-9][0-9]*$ ]] || [ "$shard" -gt "$NUM_SHARDS" ]; then
         startup_failed "KILL_ORDER: '${name}' must name a shard between 1 and NUM_SHARDS (${NUM_SHARDS})"
       fi
       KILLS+=("batcher $party $shard")

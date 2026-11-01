@@ -180,32 +180,32 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           REASON: ${{ steps.failure_reason.outputs.reason }}
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$SLACK_WEBHOOK_URL" ]; then
             echo "SLACK_WEBHOOK_URL is not set — skipping notification"
             exit 0
           fi
-          if [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "$EVENT_NAME" = "schedule" ]; then
             RUN_TYPE="scheduled run"
           else
-            RUN_TYPE="manual run by ${{ github.actor }}"
+            RUN_TYPE="manual run by ${ACTOR}"
           fi
-          TEXT=":red_circle: *Deterministic Failure Test FAILED* (${RUN_TYPE}) — Run #${{ github.run_number }}\n>$REASON"
+          # jq escapes each value, so a quote or backslash in the reason can't break the JSON
+          PAYLOAD=$(jq -n \
+            --arg text ":red_circle: *Deterministic Failure Test FAILED* (${RUN_TYPE}) — Run #${{ github.run_number }}"$'\n'">${REASON}" \
+            --arg repo "${{ github.repository }}" \
+            --arg branch "$BRANCH" \
+            --arg run_type "$RUN_TYPE" \
+            --arg url "$RUN_URL" \
+            '{text: $text, attachments: [{color: "danger",
+              fields: [{title: "Repository", value: $repo,     short: true},
+                       {title: "Branch",     value: $branch,   short: true},
+                       {title: "Run type",   value: $run_type, short: true}],
+              actions: [{type: "button", text: "View Run", url: $url}]}]}')
           curl -s --fail -X POST "$SLACK_WEBHOOK_URL" \
             -H 'Content-type: application/json' \
-            --data "{
-              \"text\": \"$TEXT\",
-              \"attachments\": [{
-                \"color\": \"danger\",
-                \"fields\": [
-                  { \"title\": \"Repository\", \"value\": \"${{ github.repository }}\", \"short\": true },
-                  { \"title\": \"Branch\",     \"value\": \"${{ github.ref_name }}\",   \"short\": true },
-                  { \"title\": \"Run type\",   \"value\": \"${RUN_TYPE}\",              \"short\": true }
-                ],
-                \"actions\": [{
-                  \"type\": \"button\",
-                  \"text\": \"View Run\",
-                  \"url\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-                }]
-              }]
-            }" || true
+            --data "$PAYLOAD" || true

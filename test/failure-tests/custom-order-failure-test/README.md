@@ -40,19 +40,31 @@ at startup, with the reason in `test/failure-tests/test-results/startup_failure.
 
 ### The default order
 
-`C -> A -> R -> C -> C -> B1 -> B2`. With the `make` and CI defaults it reproduces the assembler crash
-of #1353 about 20 minutes in, on party 3 (`panic: block number should have been N but was M`):
+`C -> A -> R -> C -> C -> B1 -> B2`, run for at least 30 minutes (the `make` default of 5 is too short):
+
+```bash
+make custom-order-failure-test DURATION_MINUTES=30
+```
+
+It follows the assembler crash of #1353, on party 3:
 
 1. Party 2's `B1` kill moves the primary of shard 1 to party 3's batcher.
 2. Party 3's first `C` kill: after the restart, that batcher goes back to the old primary and stops
-   (it keeps logging `Created complaint with term 0`), so assembler 3 falls behind.
+   (it keeps logging `Created complaint with term 0`), so assembler 3 falls behind. #1373 fixes this.
 3. Party 3's last `C` kill, about 4 minutes later: assembler 3 reconnects to its consenter, receives
-   blocks it already has, and panics.
+   blocks it already has, and panics (`panic: block number should have been N but was M`).
 
-The order comes from the fully randomized test, which found the crash with seeds `19163133` and
-`20090328`: in both, an assembler panicked after one party's consenter was restarted a few times within
-a few minutes. `C -> C -> C -> A -> R -> B1 -> B2` did not crash: its last `C` came before assembler 3
-was behind.
+Results with `DURATION_MINUTES=30`, `FAILURE_RUNNER_STOP_DURATION=30` and `FAILURE_RUNNER_RESTART_WAIT=30`:
+
+| Machine                                  | Commit                  | Runs | Assembler 3 panicked   |
+| ---------------------------------------- | ----------------------- | ---- | ---------------------- |
+| 32-vCPU VM                               | ed36ec8b (before #1373) | 1    | 1, about 20 min in     |
+| same VM, limited to 4 CPUs (`taskset`)   | 1b579dcd (before #1373) | 3    | 3, about 20 min in     |
+| same VM, limited to 4 CPUs (`taskset`)   | 73f806cb (with #1373)   | 1    | 0, the run passed      |
+
+So since #1373 the order no longer crashes; it checks that step 2 stays fixed. The order comes from
+the fully randomized test, which hit the same panic with seeds `19163133` and `20090328`.
+`C -> C -> C -> A -> R -> B1 -> B2` did not crash: its last `C` came before assembler 3 was behind.
 
 ## Settings
 
