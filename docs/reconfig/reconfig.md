@@ -192,10 +192,9 @@ Pending admin action to apply new config
 ```
 The assembler adds: `Pending admin action to apply new config. Assembler's deliver service remains available.`
 
-**After an admin restart:** the node logs `<Node> listening on <host:port>` (the router also adds
-`PartyID: <id>`). It loads the newer of two config blocks: the last one it stored (routers and
-batchers in their config store, consenters and assemblers in their ledger) and the one in
-`General.Bootstrap.File`. For a node that was running when the config changed, the stored block is
+**After an admin restart:** the node logs `<Node> listening on <host:port>`. It loads the newer of
+two config blocks: the last one it stored (routers and batchers in their config store, consenters
+and assemblers in their ledger) and the one in `General.Bootstrap.File`. For a node that was running when the config changed, the stored block is
 the newest, so you do **not** need to change `General.Bootstrap.File`.
 
 A node that was **down** while config updates were committed also loads its stored config, which is
