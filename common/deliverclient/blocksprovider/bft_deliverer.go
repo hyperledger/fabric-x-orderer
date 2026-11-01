@@ -106,7 +106,6 @@ type BFTDeliverer struct {
 
 	fetchSources     []*orderers.Endpoint
 	fetchSourceIndex int
-	fetchErrorsC     chan error
 
 	blockReceiver     *BlockReceiver
 	censorshipMonitor CensorshipDetector
@@ -194,10 +193,11 @@ func (d *BFTDeliverer) DeliverBlocks() {
 		clonedBlockVerifier := d.UpdatableBlockVerifier.Clone()
 
 		// Start a block fetcher; a buffered channel so that the fetcher goroutine can send an error and exit w/o
-		// waiting for it to be consumed. A block receiver is created within.
-		d.fetchErrorsC = make(chan error, 1)
+		// waiting for it to be consumed. A block receiver is created within. Each round owns its channel, so a
+		// fetcher that outlives its round cannot send into the channel of the next one.
+		fetchErrC := make(chan error, 1)
 		source := d.fetchSources[d.fetchSourceIndex]
-		go d.FetchBlocks(source)
+		go d.FetchBlocks(source, fetchErrC)
 
 		// Create and start a censorship monitor.
 		d.censorshipMonitor = d.CensorshipDetectorFactory.Create(
@@ -207,7 +207,7 @@ func (d *BFTDeliverer) DeliverBlocks() {
 
 		// Wait for block fetcher & censorship monitor events, or a stop signal.
 		// Events which cause a retry return nil, non-recoverable errors return an error.
-		if stopLoop := d.handleFetchAndCensorshipEvents(); stopLoop {
+		if stopLoop := d.handleFetchAndCensorshipEvents(fetchErrC); stopLoop {
 			break
 		}
 
@@ -271,7 +271,7 @@ func (d *BFTDeliverer) retryBackoff() (stop bool) {
 // handleFetchAndCensorshipEvents waits for events from three channels - for fetch, censorship, and done events.
 // If the event is recoverable, false is returned and the main loop will switch to another block source, while
 // reassigning the header receivers. If the events are non-recoverable or the stop signal, true is returned.
-func (d *BFTDeliverer) handleFetchAndCensorshipEvents() (stopLoop bool) {
+func (d *BFTDeliverer) handleFetchAndCensorshipEvents(fetchErrC <-chan error) (stopLoop bool) {
 	d.Logger.Debug("Entry")
 
 	select {
@@ -279,8 +279,8 @@ func (d *BFTDeliverer) handleFetchAndCensorshipEvents() (stopLoop bool) {
 		d.Logger.Debug("Received the stop signal")
 		return true
 
-	case errFetch := <-d.fetchErrorsC:
-		d.Logger.Debugf("Error received from fetchErrorsC channel: %s", errFetch)
+	case errFetch := <-fetchErrC:
+		d.Logger.Debugf("Error received from the block fetcher: %s", errFetch)
 
 		switch errFetch.(type) {
 		case *ErrStopping:
@@ -347,13 +347,14 @@ func (d *BFTDeliverer) Stop() {
 	d.blockReceiver.Stop()
 }
 
-func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint) {
+// FetchBlocks fetches blocks from source until it fails or is stopped, and reports why it ended on errC.
+func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint, errC chan<- error) {
 	d.Logger.Debugf("Trying to fetch blocks from orderer: %s", source.Address)
 
 	for {
 		select {
 		case <-d.DoneC:
-			d.fetchErrorsC <- &ErrStopping{Message: "stopping"}
+			errC <- &ErrStopping{Message: "stopping"}
 			return
 		default:
 		}
@@ -361,14 +362,14 @@ func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint) {
 		seekInfoEnv, err := d.requester.SeekInfoBlocksFrom(d.getNextBlockNumber())
 		if err != nil {
 			d.Logger.Errorf("Could not create a signed Deliver SeekInfo message, something is critically wrong: %s", err)
-			d.fetchErrorsC <- &ErrFatal{Message: fmt.Sprintf("could not create a signed Deliver SeekInfo message: %s", err)}
+			errC <- &ErrFatal{Message: fmt.Sprintf("could not create a signed Deliver SeekInfo message: %s", err)}
 			return
 		}
 
 		deliverClient, cancel, err := d.requester.Connect(seekInfoEnv, source)
 		if err != nil {
 			d.Logger.Warningf("Could not connect to ordering service: %s", err)
-			d.fetchErrorsC <- errors.Wrapf(err, "could not connect to ordering service, orderer-address: %s", source.Address)
+			errC <- errors.Wrapf(err, "could not connect to ordering service, orderer-address: %s", source.Address)
 			return
 		}
 
@@ -390,7 +391,7 @@ func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint) {
 			// Stop() ran after the DoneC check above, so it could not stop this receiver.
 			d.mutex.Unlock()
 			cancel()
-			d.fetchErrorsC <- &ErrStopping{Message: "stopping"}
+			errC <- &ErrStopping{Message: "stopping"}
 			return
 		}
 		d.blockReceiver = blockRcv
@@ -407,10 +408,10 @@ func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint) {
 				d.Logger.Debugf("BlockReceiver stopped while processing incoming blocks: %s", errProc)
 			case *errRefreshEndpoint:
 				d.Logger.Infof("Endpoint refreshed while processing incoming blocks: %s", errProc)
-				d.fetchErrorsC <- errProc
+				errC <- errProc
 			default:
 				d.Logger.Warningf("Failure while processing incoming blocks: %s", errProc)
-				d.fetchErrorsC <- errProc
+				errC <- errProc
 			}
 
 			return

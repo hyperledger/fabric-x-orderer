@@ -268,28 +268,24 @@ func (s *bftDelivererTestSetup) assertEventuallyMonitorCallCount(n int) {
 // assertEventuallyMonitorSetLen waits until the factory stub has registered n monitors. The fake bumps
 // CreateCallCount before the stub runs, so the count alone does not mean s.monErrC belongs to the newest monitor;
 // sending on it under s.mutex before then would block the stub, and the deliverer with it.
-func (s *bftDelivererTestSetup) assertEventuallyMonitorSetLen(n int) {
-	s.gWithT.Eventually(
-		func() int {
-			s.mutex.Lock()
-			defer s.mutex.Unlock()
+func (s *bftDelivererTestSetup) assertEventuallyMonitorSetLen(t *testing.T, n int) {
+	require.Eventually(t, func() bool {
+		s.mutex.Lock()
+		defer s.mutex.Unlock()
 
-			return len(s.monitorSet)
-		}, eventuallyTO,
-	).Should(Equal(n))
+		return len(s.monitorSet) == n
+	}, eventuallyTO, 10*time.Millisecond, "expected %d monitors", n)
 }
 
 // assertEventuallyClientConnSetLen waits until the dialer stub has recorded n connections; like the factory, the
 // fake bumps DialCallCount before the stub runs.
-func (s *bftDelivererTestSetup) assertEventuallyClientConnSetLen(n int) {
-	s.gWithT.Eventually(
-		func() int {
-			s.mutex.Lock()
-			defer s.mutex.Unlock()
+func (s *bftDelivererTestSetup) assertEventuallyClientConnSetLen(t *testing.T, n int) {
+	require.Eventually(t, func() bool {
+		s.mutex.Lock()
+		defer s.mutex.Unlock()
 
-			return len(s.clientConnSet)
-		}, eventuallyTO,
-	).Should(Equal(n))
+		return len(s.clientConnSet) == n
+	}, eventuallyTO, 10*time.Millisecond, "expected %d client connections", n)
 }
 
 func TestBFTDeliverer_NoBlocks(t *testing.T) {
@@ -786,8 +782,8 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 		addr2, _ := setup.fakeDialer.DialArgsForCall(1)
 		require.NotEqual(t, addr1, addr2)
 
-		setup.assertEventuallyClientConnSetLen(2)
-		setup.assertEventuallyMonitorSetLen(2)
+		setup.assertEventuallyClientConnSetLen(t, 2)
+		setup.assertEventuallyMonitorSetLen(t, 2)
 
 		t.Log("does not handle the block")
 		require.Equal(t, 0, setup.fakeBlockHandler.HandleBlockCallCount())
@@ -827,8 +823,8 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 		addr2, _ := setup.fakeDialer.DialArgsForCall(1)
 		require.NotEqual(t, addr1, addr2)
 
-		setup.assertEventuallyClientConnSetLen(2)
-		setup.assertEventuallyMonitorSetLen(2)
+		setup.assertEventuallyClientConnSetLen(t, 2)
+		setup.assertEventuallyMonitorSetLen(t, 2)
 
 		t.Log("handle the block")
 		require.Equal(t, 1, setup.fakeBlockHandler.HandleBlockCallCount())
@@ -1201,7 +1197,7 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 
 			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(1))
 			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(1))
-			setup.assertEventuallyMonitorSetLen(1)
+			setup.assertEventuallyMonitorSetLen(t, 1)
 
 			t.Logf("monitor error channel returns unexpected value: %v", errVal)
 			func() {
@@ -1226,7 +1222,7 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 
 		setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(1))
 		setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(1))
-		setup.assertEventuallyMonitorSetLen(1)
+		setup.assertEventuallyMonitorSetLen(t, 1)
 
 		t.Log("monitor error channel returns censorship error")
 		func() {
@@ -1253,7 +1249,7 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 		for n := 1; n <= 40; n++ {
 			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(n))
 			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(n))
-			setup.assertEventuallyMonitorSetLen(n)
+			setup.assertEventuallyMonitorSetLen(t, n)
 
 			t.Logf("monitor error channel returns censorship error num: %d", n)
 			func() {
@@ -1263,7 +1259,7 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 				setup.monErrC <- &blocksprovider.ErrCensorship{Message: fmt.Sprintf("censorship %d", n)}
 			}()
 
-			setup.assertEventuallyMonitorSetLen(n + 1)
+			setup.assertEventuallyMonitorSetLen(t, n+1)
 
 			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(n + 1))
 			setup.gWithT.Expect(setup.fakeSleeper.SleepCallCount()).To(Equal(n))

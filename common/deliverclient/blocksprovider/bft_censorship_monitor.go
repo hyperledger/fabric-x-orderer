@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
@@ -64,7 +63,7 @@ type BFTCensorshipMonitor struct {
 	suspicionBlockNumber uint64                // The block number of the header that is ahead of the block receiver
 
 	mutex          sync.Mutex
-	stopFlag       atomic.Bool // set under mutex, so checks made while holding the mutex cannot race with Stop()
+	stopFlag       bool
 	stopCh         chan struct{}
 	errorCh        chan error
 	hdrRcvTrackers map[string]*headerReceiverTracker
@@ -169,11 +168,6 @@ func (m *BFTCensorshipMonitor) Monitor() {
 	m.mutex.Unlock()
 
 	for {
-		if m.isStopped() {
-			m.errorCh <- &ErrStopping{Message: "received a stop signal"}
-			return
-		}
-
 		if err := m.launchHeaderReceivers(); err != nil {
 			m.logger.Warningf("Failure while launching header receivers: %s", err)
 			m.errorCh <- &ErrFatal{Message: err.Error()}
@@ -186,8 +180,7 @@ func (m *BFTCensorshipMonitor) Monitor() {
 			m.errorCh <- &ErrStopping{Message: "received a stop signal"}
 			return
 		case <-time.After(m.timeoutConfig.BlockCensorshipTimeout / 100):
-			// The timer may fire just before Stop(); the stop is then reported at the top of the loop.
-			if !m.isStopped() && m.detectBlockCensorship() {
+			if m.detectBlockCensorship() {
 				m.logger.Warningf("Block censorship detected, block source endpoint: %s", m.fetchSources[m.blockSourceIndex])
 				m.errorCh <- &ErrCensorship{Message: fmt.Sprintf("block censorship detected, endpoint: %s", m.fetchSources[m.blockSourceIndex])}
 				m.Stop()
@@ -205,11 +198,11 @@ func (m *BFTCensorshipMonitor) Stop() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	if m.stopFlag.Load() {
+	if m.stopFlag {
 		return
 	}
 
-	m.stopFlag.Store(true)
+	m.stopFlag = true
 	close(m.stopCh)
 	for _, hRcvMon := range m.hdrRcvTrackers {
 		if hRcvMon.headerReceiver != nil {
@@ -218,13 +211,16 @@ func (m *BFTCensorshipMonitor) Stop() {
 	}
 }
 
-func (m *BFTCensorshipMonitor) isStopped() bool {
-	return m.stopFlag.Load()
-}
-
 func (m *BFTCensorshipMonitor) detectBlockCensorship() bool {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+
+	// The timer may fire just before Stop(); the next pass of Monitor() then reports the stop. This check is
+	// best-effort: Stop() may still run after it, in which case the caller reports a censorship event of a stopped
+	// monitor, which the deliverer no longer reads.
+	if m.stopFlag {
+		return false
+	}
 
 	now := time.Now()
 	lastBlockNumber, lastBlockTime := m.progressReporter.BlockProgress()
@@ -327,9 +323,9 @@ func (m *BFTCensorshipMonitor) launchHeaderReceivers() error {
 		return errors.New("no endpoints")
 	}
 
-	// Monitor() checks for a stop before calling this, but Stop() may run in between. It takes the mutex held
-	// here, so this check guarantees no receiver is launched after Stop() has stopped the existing ones.
-	if m.isStopped() {
+	// Stop() takes the mutex held here while it stops the existing receivers, so this check guarantees that no
+	// receiver is launched after Stop(). Monitor() then reports the stop through stopCh.
+	if m.stopFlag {
 		return nil
 	}
 
