@@ -236,11 +236,11 @@ func (m *BatcherMetrics) trackMetrics() {
 	prevP := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
 	prevR := float64(0)
 	prevBytes := monitoring.GetMetricValue(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)
-	prevMempoolSum, prevMempoolCount := monitoring.GetHistogramSumAndCount(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger)
-	prevVerifySum, prevVerifyCount := monitoring.GetHistogramSumAndCount(m.batchVerifyLatency.(prometheus.Metric), m.logger)
-	prevHashingSum, prevHashingCount := monitoring.GetHistogramSumAndCount(m.batchHashingLatency.(prometheus.Metric), m.logger)
-	prevHeaderHashingSum, prevHeaderHashingCount := monitoring.GetHistogramSumAndCount(m.ledgerMetrics.HeaderHashingLatency.(prometheus.Metric), m.logger)
-	prevAppendSum, prevAppendCount := monitoring.GetHistogramSumAndCount(m.ledgerMetrics.AppendLatency.(prometheus.Metric), m.logger)
+	mempoolLatency := monitoring.NewHistogramInterval(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger)
+	verifyLatency := monitoring.NewHistogramInterval(m.batchVerifyLatency.(prometheus.Metric), m.logger)
+	hashingLatency := monitoring.NewHistogramInterval(m.batchHashingLatency.(prometheus.Metric), m.logger)
+	headerHashingLatency := monitoring.NewHistogramInterval(m.ledgerMetrics.HeaderHashingLatency.(prometheus.Metric), m.logger)
+	appendLatency := monitoring.NewHistogramInterval(m.ledgerMetrics.AppendLatency.(prometheus.Metric), m.logger)
 	sec := m.interval.Seconds()
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
@@ -252,11 +252,6 @@ func (m *BatcherMetrics) trackMetrics() {
 			pulled := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
 			resends := monitoring.GetMetricValue(m.firstResendsTotal.(prometheus.Metric), m.logger)
 			bytes := monitoring.GetMetricValue(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)
-			mempoolSum, mempoolCount := monitoring.GetHistogramSumAndCount(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger)
-			verifySum, verifyCount := monitoring.GetHistogramSumAndCount(m.batchVerifyLatency.(prometheus.Metric), m.logger)
-			hashingSum, hashingCount := monitoring.GetHistogramSumAndCount(m.batchHashingLatency.(prometheus.Metric), m.logger)
-			headerHashingSum, headerHashingCount := monitoring.GetHistogramSumAndCount(m.ledgerMetrics.HeaderHashingLatency.(prometheus.Metric), m.logger)
-			appendSum, appendCount := monitoring.GetHistogramSumAndCount(m.ledgerMetrics.AppendLatency.(prometheus.Metric), m.logger)
 
 			// the average size of the batches appended in this interval only
 			batchSizeAvg := uint64(monitoring.Average(bytes-prevBytes, uint64(created-prevC)))
@@ -276,19 +271,14 @@ func (m *BatcherMetrics) trackMetrics() {
 				uint64(monitoring.GetMetricValue(m.routerTxsTotal.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.roleChangesTotal.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.complaintsTotal.(prometheus.Metric), m.logger)),
-				monitoring.Average(mempoolSum-prevMempoolSum, mempoolCount-prevMempoolCount),
-				monitoring.Average(verifySum-prevVerifySum, verifyCount-prevVerifyCount),
-				monitoring.Average(hashingSum-prevHashingSum, hashingCount-prevHashingCount),
-				monitoring.Average(headerHashingSum-prevHeaderHashingSum, headerHashingCount-prevHeaderHashingCount),
-				monitoring.Average(appendSum-prevAppendSum, appendCount-prevAppendCount),
+				mempoolLatency.Next(m.logger),
+				verifyLatency.Next(m.logger),
+				hashingLatency.Next(m.logger),
+				headerHashingLatency.Next(m.logger),
+				appendLatency.Next(m.logger),
 				batchSizeAvg,
 			)
 			prevC, prevP, prevR, prevBytes = created, pulled, resends, bytes
-			prevMempoolSum, prevMempoolCount = mempoolSum, mempoolCount
-			prevVerifySum, prevVerifyCount = verifySum, verifyCount
-			prevHashingSum, prevHashingCount = hashingSum, hashingCount
-			prevHeaderHashingSum, prevHeaderHashingCount = headerHashingSum, headerHashingCount
-			prevAppendSum, prevAppendCount = appendSum, appendCount
 
 		case <-m.stopChan:
 			return

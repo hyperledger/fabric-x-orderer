@@ -161,9 +161,9 @@ func (m *Metrics) StopMetricsTracker() {
 func (m *Metrics) trackMetrics() {
 	lastTxCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionCount.(prometheus.Counter), m.logger))
 	lastBlocksCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksCount.(prometheus.Counter), m.logger))
-	lastFetchSum, lastFetchCount := monitoring.GetHistogramSumAndCount(m.batchUnaryFetchLatency.(prometheus.Metric), m.logger)
-	lastCollationSum, lastCollationCount := monitoring.GetHistogramSumAndCount(m.attestationToBatchCollationLatency.(prometheus.Metric), m.logger)
-	lastAppendSum, lastAppendCount := monitoring.GetHistogramSumAndCount(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
+	fetchLatency := monitoring.NewHistogramInterval(m.batchUnaryFetchLatency.(prometheus.Metric), m.logger)
+	collationLatency := monitoring.NewHistogramInterval(m.attestationToBatchCollationLatency.(prometheus.Metric), m.logger)
+	appendLatency := monitoring.NewHistogramInterval(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
 	lastBlocksSizeCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksSize.(prometheus.Counter), m.logger))
 	lastTransactionsSizeCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionsSize.(prometheus.Counter), m.logger))
 	sec := m.interval.Seconds()
@@ -195,18 +195,12 @@ func (m *Metrics) trackMetrics() {
 			m.blockSizeAvg.Set(float64(blockSizeAvg))
 			m.txSizeAvg.Set(float64(txSizeAvg))
 
-			fetchSum, fetchCount := monitoring.GetHistogramSumAndCount(m.batchUnaryFetchLatency.(prometheus.Metric), m.logger)
-			collationSum, collationCount := monitoring.GetHistogramSumAndCount(m.attestationToBatchCollationLatency.(prometheus.Metric), m.logger)
-			appendSum, appendCount := monitoring.GetHistogramSumAndCount(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
-			batchUnaryFetchLatencyAvg := monitoring.Average(fetchSum-lastFetchSum, fetchCount-lastFetchCount)
-			attestationToBatchCollationLatencyAvg := monitoring.Average(collationSum-lastCollationSum, collationCount-lastCollationCount)
-			batchLedgerAppendLatencyAvg := monitoring.Average(appendSum-lastAppendSum, appendCount-lastAppendCount)
+			batchUnaryFetchLatencyAvg := fetchLatency.Next(m.logger)
+			attestationToBatchCollationLatencyAvg := collationLatency.Next(m.logger)
+			batchLedgerAppendLatencyAvg := appendLatency.Next(m.logger)
 
 			m.logger.Infof("ASSEMBLER_METRICS: party_id=%d, interval_s=%.2f, txs_total=%d, blocks_total=%d, estimated_block_size=%d, prefetch_index_cache_evictions=%d, txs_interval=%d, blocks_interval=%d, batch_unary_fetch_latency_interval_avg_seconds=%.6f, attestation_to_batch_collation_latency_interval_avg_seconds=%.6f, batch_ledger_append_latency_interval_avg_seconds=%.6f, block_size_interval_avg_bytes=%d, tx_size_interval_avg_bytes=%d", m.partyID, sec, txCommitted, blocksCommitted, blocksSizeCommitted, prefetchIndexCacheEvictions, newTXs, newBlocks, batchUnaryFetchLatencyAvg, attestationToBatchCollationLatencyAvg, batchLedgerAppendLatencyAvg, blockSizeAvg, txSizeAvg)
 			lastTxCommitted, lastBlocksCommitted = txCommitted, blocksCommitted
-			lastFetchSum, lastFetchCount = fetchSum, fetchCount
-			lastCollationSum, lastCollationCount = collationSum, collationCount
-			lastAppendSum, lastAppendCount = appendSum, appendCount
 			lastBlocksSizeCommitted, lastTransactionsSizeCommitted = blocksSizeCommitted, transactionsSizeCommitted
 		case <-m.stopChan:
 			return
