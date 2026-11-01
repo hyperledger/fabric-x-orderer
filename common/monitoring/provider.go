@@ -181,6 +181,30 @@ func GetMetricValue(m prometheus.Metric, logger *flogging.FabricLogger) float64 
 	}
 }
 
+// HistogramInterval tracks histogram averages between reads.
+type HistogramInterval struct {
+	m     prometheus.Metric
+	sum   float64
+	count uint64
+}
+
+// NewHistogramInterval initializes the interval with the current histogram values.
+func NewHistogramInterval(m prometheus.Metric, logger *flogging.FabricLogger) *HistogramInterval {
+	sum, count := GetHistogramSumAndCount(m, logger)
+	return &HistogramInterval{m: m, sum: sum, count: count}
+}
+
+// Next returns the average since the previous successful read.
+func (h *HistogramInterval) Next(logger *flogging.FabricLogger) float64 {
+	sum, count := GetHistogramSumAndCount(h.m, logger)
+	if count < h.count {
+		return 0
+	}
+	avg := Average(sum-h.sum, count-h.count)
+	h.sum, h.count = sum, count
+	return avg
+}
+
 func GetHistogramAverage(m prometheus.Metric, logger *flogging.FabricLogger) float64 {
 	return Average(GetHistogramSumAndCount(m, logger))
 }
