@@ -215,6 +215,13 @@ func (m *BFTCensorshipMonitor) detectBlockCensorship() bool {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
+	// The timer may fire just before Stop(); the next pass of Monitor() then reports the stop. This check is
+	// best-effort: Stop() may still run after it, in which case the caller reports a censorship event of a stopped
+	// monitor, which the deliverer no longer reads.
+	if m.stopFlag {
+		return false
+	}
+
 	now := time.Now()
 	lastBlockNumber, lastBlockTime := m.progressReporter.BlockProgress()
 
@@ -314,6 +321,12 @@ func (m *BFTCensorshipMonitor) launchHeaderReceivers() error {
 	numEP := len(m.fetchSources)
 	if numEP <= 0 {
 		return errors.New("no endpoints")
+	}
+
+	// Stop() takes the mutex held here while it stops the existing receivers, so this check guarantees that no
+	// receiver is launched after Stop(). Monitor() then reports the stop through stopCh.
+	if m.stopFlag {
+		return nil
 	}
 
 	hRcvToCreate := make([]*orderers.Endpoint, 0)
