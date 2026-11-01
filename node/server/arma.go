@@ -216,7 +216,7 @@ func launchRouter(stop chan struct{}) func(configFile *os.File) {
 
 		utils.StopSignalListen(r, routerLogger, r.Address())
 
-		routerLogger.Infof("Router listening on %s, PartyID: %d", r.Address(), routerConf.PartyID)
+		routerLogger.Infof("Router listening on %s", r.Address())
 	}
 }
 
