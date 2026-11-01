@@ -23,6 +23,14 @@ func TestPruneInfoMarshalUnmarshal(t *testing.T) {
 		{firstReadableBlockNum: 1, firstStoredBlockfileNum: 1},
 		{firstReadableBlockNum: 20, firstStoredBlockfileNum: 2},
 		{firstReadableBlockNum: 1 << 40, firstStoredBlockfileNum: 1 << 20},
+		{
+			firstReadableBlockNum: 20, firstStoredBlockfileNum: 2,
+			retained: retainedConfig{blockNum: 5, present: true},
+		},
+		{
+			firstReadableBlockNum: 20, firstStoredBlockfileNum: 2,
+			retained: retainedConfig{blockNum: 0, present: true},
+		},
 	} {
 		t.Run(info.String(), func(t *testing.T) {
 			decoded := &pruneInfo{}
@@ -35,13 +43,27 @@ func TestPruneInfoMarshalUnmarshal(t *testing.T) {
 // Scenario:
 //  1. Unmarshal a record carrying only the first field, as one written before the second field existed
 //     would, and expect the first field to be read and the second to be zero.
-//  2. Unmarshal an empty record and a record whose varint claims more continuation bytes than are present,
+//  2. Unmarshal a record carrying a retained config block number but not the flag that makes it meaningful,
+//     and expect it to read as nothing retained rather than as block 0 retained.
+//  3. Unmarshal an empty record and a record whose varint claims more continuation bytes than are present,
 //     and expect both to fail.
 func TestPruneInfoUnmarshalIncompleteRecord(t *testing.T) {
 	t.Run("a field missing from the end reads as zero", func(t *testing.T) {
 		decoded := &pruneInfo{}
 		require.NoError(t, decoded.unmarshal(protowire.AppendVarint(nil, 7)))
 		require.Equal(t, &pruneInfo{firstReadableBlockNum: 7, firstStoredBlockfileNum: 0}, decoded)
+	})
+
+	t.Run("a retained block number without its flag reads as nothing retained", func(t *testing.T) {
+		var b []byte
+		for _, v := range []uint64{20, 2, 0} {
+			b = protowire.AppendVarint(b, v)
+		}
+
+		decoded := &pruneInfo{}
+		require.NoError(t, decoded.unmarshal(b))
+		require.False(t, decoded.retains(0))
+		require.Equal(t, retainedConfig{}, decoded.retained)
 	})
 
 	t.Run("a truncated field is an error", func(t *testing.T) {

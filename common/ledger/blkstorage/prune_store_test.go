@@ -9,6 +9,7 @@ package blkstorage
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -180,4 +181,67 @@ func TestPruneStoreIgnoresOtherBaseNames(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, info, got)
 	require.FileExists(t, otherPath)
+}
+
+// retainedConfigNames returns the base names of the config blocks the store holds, so that a test can assert
+// what a save and its tidy-up left behind.
+func retainedConfigNames(t *testing.T, rootDir string) []string {
+	names := []string{}
+	for _, name := range pruneStoreFileNames(t, rootDir) {
+		if strings.HasPrefix(name, pruneConfigPrefix) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// Scenario:
+//  1. Save two config blocks, under block numbers 0 and 5, and expect both to read back.
+//  2. Save block 5 again, as a retried prune would, and expect no error and the same bytes back.
+//  3. Save block 9, as a prune that crashed before recording it would, then drop every config block but block
+//     5 and expect only block 5 to remain: the older one and the newer stray both go.
+//  4. Drop every config block, as when nothing is retained, and expect none to remain.
+func TestPruneStoreSaveAndGetConfigBlock(t *testing.T) {
+	rootDir := t.TempDir()
+	s := newPruneStore(rootDir)
+
+	require.NoError(t, s.saveConfigBlock(0, []byte("genesis config")))
+	require.NoError(t, s.saveConfigBlock(5, []byte("reconfiguration")))
+
+	for blockNum, want := range map[uint64]string{0: "genesis config", 5: "reconfiguration"} {
+		b, err := s.getConfigBlock(blockNum)
+		require.NoError(t, err)
+		require.Equal(t, want, string(b))
+	}
+
+	require.NoError(t, s.saveConfigBlock(5, []byte("reconfiguration")))
+	b, err := s.getConfigBlock(5)
+	require.NoError(t, err)
+	require.Equal(t, "reconfiguration", string(b))
+
+	require.NoError(t, s.saveConfigBlock(9, []byte("never recorded")))
+	s.dropConfigBlocksExcept(retainedConfig{blockNum: 5, present: true})
+	require.Equal(t, []string{baseName(pruneConfigPrefix, 5) + "." + pruneStoreFileSuffix},
+		retainedConfigNames(t, rootDir))
+
+	s.dropConfigBlocksExcept(retainedConfig{})
+	require.Empty(t, retainedConfigNames(t, rootDir))
+}
+
+// Scenario:
+//  1. Prepare a prune store over an empty ledger directory.
+//  2. Drop the config blocks and expect no directory to have been created for it, since a ledger that has
+//     never been pruned has nothing to remove.
+//  3. Expect reading a config block that was never saved to fail.
+func TestPruneStoreConfigBlockAbsent(t *testing.T) {
+	rootDir := t.TempDir()
+	s := newPruneStore(rootDir)
+
+	s.dropConfigBlocksExcept(retainedConfig{})
+	exists, err := s.dirExists()
+	require.NoError(t, err)
+	require.False(t, exists)
+
+	_, err = s.getConfigBlock(5)
+	require.ErrorContains(t, err, "error reading retained config block")
 }

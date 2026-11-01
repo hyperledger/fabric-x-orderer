@@ -8,6 +8,7 @@ package blkstorage
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -26,7 +27,11 @@ const (
 	// pruneInfoPrefix makes the prune info's first file prune/info-00000000000000000001.prune. The sequence
 	// number is zero padded so that the directory reads in order.
 	pruneInfoPrefix = "info-"
-	seqFormat       = "%020d"
+	// pruneConfigPrefix makes a retained config block's file prune/config-00000000000000000042.prune. Its
+	// sequence number is the block's own number rather than a counter, so the file the prune info names can
+	// be read straight back without searching, and superseded ones sort below it.
+	pruneConfigPrefix = "config-"
+	seqFormat         = "%020d"
 )
 
 // pruneStore keeps the state that has to outlive the blocks pruning removes. It sits beside the block files,
@@ -35,7 +40,7 @@ const (
 // way, since pruning removes whole block files and the readable bound may fall inside the oldest surviving
 // one.
 //
-// It is not safe for concurrent use; the prune operation above it serializes access.
+// It is not safe for concurrent use; the prune operation above it serializes access. Readers never reach it.
 type pruneStore struct {
 	rootDir string
 	// repo is nil until the store's directory is opened, which the first save does if it is absent.
@@ -117,8 +122,76 @@ func (s *pruneStore) saveInfo(info *pruneInfo) error {
 	return nil
 }
 
+// saveConfigBlock stores one config block's bytes under its own block number, and returns once they are on
+// disk. It is called before the prune info that names the block, so that the info never points at bytes that
+// are not there.
+//
+// A file already under that name is left alone rather than treated as a conflict: base names are written
+// once, and this one is derived from the block, so an existing file is the same block's bytes written by a
+// prune that did not get as far as recording them. Retrying that prune must not fail on its own progress.
+func (s *pruneStore) saveConfigBlock(blockNum uint64, blockBytes []byte) error {
+	if err := s.open(); err != nil {
+		return err
+	}
+
+	name := baseName(pruneConfigPrefix, blockNum)
+	if err := s.repo.Save(name, blockBytes); err != nil && !errors.Is(err, os.ErrExist) {
+		return errors.WithMessagef(err, "error saving retained config block [%s]", name)
+	}
+	return nil
+}
+
+// getConfigBlock reads back the bytes of the retained config block with the given number. It runs only while
+// the ledger opens. The caller has the number from the prune info, so a missing file is a broken store rather
+// than an ordinary absence.
+func (s *pruneStore) getConfigBlock(blockNum uint64) ([]byte, error) {
+	if err := s.open(); err != nil {
+		return nil, err
+	}
+
+	name := baseName(pruneConfigPrefix, blockNum)
+	b, err := s.repo.Read(name)
+	if err != nil {
+		return nil, errors.WithMessagef(err, "error reading retained config block [%s]", name)
+	}
+	return b, nil
+}
+
+// dropConfigBlocksExcept removes every config block but the retained one, or every one when none is retained:
+// superseded copies, and copies a prune saved but never recorded. Like drop, it only tidies up, and it must
+// run after the prune info naming the survivor is durable: until then the info still names one of the files it
+// would remove.
+func (s *pruneStore) dropConfigBlocksExcept(retained retainedConfig) {
+	if s.repo == nil {
+		exists, err := s.dirExists()
+		if err != nil || !exists {
+			return
+		}
+		if err := s.open(); err != nil {
+			logger.Warnf("Could not open the prune store to remove stale config blocks: %s", err)
+			return
+		}
+	}
+
+	seqs, err := s.seqs(pruneConfigPrefix)
+	if err != nil {
+		logger.Warnf("Could not list the retained config blocks to remove stale ones: %s", err)
+		return
+	}
+
+	stale := make([]uint64, 0, len(seqs))
+	for _, seq := range seqs {
+		if retained.present && seq == retained.blockNum {
+			continue
+		}
+		stale = append(stale, seq)
+	}
+	s.drop(pruneConfigPrefix, stale)
+}
+
 // open opens the store's directory, creating it if absent, and clears any transient file left mid-save. It
-// is idempotent, so every entry point that needs the directory can call it.
+// is idempotent, so every entry point that needs the directory can call it. Like the other helpers below, it
+// runs under the caller's lock and takes none of its own.
 func (s *pruneStore) open() error {
 	if s.repo != nil {
 		return nil
