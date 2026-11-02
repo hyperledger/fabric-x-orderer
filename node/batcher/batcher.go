@@ -431,7 +431,7 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, newBatcher
 	b.logger.Infof("Applying new config with sequence %d (current: %d), batcher will be restarted dynamically", newConfigSeq, currentConfigSeq)
 	b.config = newBatcherConfig
 	b.fullConfig = newConfig
-	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum)
+	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum, nil)
 	b.status.Set(node_utils.StateInitializing, newConfigSeq)
 	b.lock.Unlock()
 

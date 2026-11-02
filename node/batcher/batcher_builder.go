@@ -46,7 +46,8 @@ func CreateBatcher(nodeConfig *node_config.BatcherNodeConfig, fullConfig *config
 	if err != nil {
 		logger.Panicf("Failed creating WAL: %s", err.Error())
 	}
-	lastKnownDecisionNum := getLastKnownDecisionNum(walInitState, configStore, logger)
+	lastHeader := lastWALHeader(walInitState, logger)
+	lastKnownDecisionNum := getLastKnownDecisionNum(lastHeader, configStore, logger)
 
 	b := &Batcher{
 		config:                             nodeConfig,
@@ -63,11 +64,22 @@ func CreateBatcher(nodeConfig *node_config.BatcherNodeConfig, fullConfig *config
 		},
 	}
 
-	b.configureBatcher(senderCreator, nil, lastKnownDecisionNum)
+	var lastKnownState *state.State
+	if lastHeader != nil {
+		lastKnownState = lastHeader.State
+	}
+	b.configureBatcher(senderCreator, nil, lastKnownDecisionNum, lastKnownState)
 	return b
 }
 
-func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCreator, memPool MemPool, lastKnownDecisionNum types.DecisionNum) {
+// configureBatcher starts the batcher in the term of lastKnownState, or in term 0 if it is nil or does not
+// match the current config.
+func (b *Batcher) configureBatcher(
+	senderCreator ConsenterControlEventSenderCreator,
+	memPool MemPool,
+	lastKnownDecisionNum types.DecisionNum,
+	lastKnownState *state.State,
+) {
 	var parties []types.PartyID
 	for shIdx, sh := range b.config.Shards {
 		if sh.ShardId != b.config.ShardId {
@@ -126,7 +138,7 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 		b.controlEventSenders[i] = senderCreator.CreateConsenterControlEventSender(b.config.TLSPrivateKeyFile, b.config.TLSCertificateFile, consenterInfo)
 	}
 
-	initState := computeZeroState(b.config)
+	initState := b.computeInitState(lastKnownState)
 
 	b.primaryID, b.term = b.getPrimaryIDAndTerm(&initState)
 
@@ -185,6 +197,7 @@ func (b *Batcher) configureBatcher(senderCreator ConsenterControlEventSenderCrea
 		MemPool:                 memPool,
 		BatchSequenceGap:        b.config.BatchSequenceGap,
 		Metrics:                 b.metrics,
+		term:                    b.term,
 	}
 }
 
@@ -218,6 +231,28 @@ func batchersFromConfig(config *node_config.BatcherNodeConfig) []node_config.Bat
 	return batchers
 }
 
+// computeInitState returns lastKnownState if it matches the current config, so a restarted batcher
+// starts in the term it last knew of rather than in term 0; otherwise it returns the zero state.
+func (b *Batcher) computeInitState(lastKnownState *state.State) state.State {
+	zeroState := computeZeroState(b.config)
+	if lastKnownState == nil {
+		return zeroState
+	}
+	if lastKnownState.N != zeroState.N {
+		b.logger.Warnf("Last known state has N=%d but the config has %d consenters; starting in term 0",
+			lastKnownState.N, zeroState.N)
+		return zeroState
+	}
+	for _, shard := range lastKnownState.Shards {
+		if shard.Shard == b.config.ShardId {
+			b.logger.Infof("Starting in term %d of the last known state", shard.Term)
+			return *lastKnownState
+		}
+	}
+	b.logger.Warnf("Last known state has no term for our shard (%d); starting in term 0", b.config.ShardId)
+	return zeroState
+}
+
 func computeZeroState(config *node_config.BatcherNodeConfig) state.State {
 	var s state.State
 	for _, shard := range config.Shards {
@@ -246,15 +281,26 @@ func indexTLSCerts(batchers []node_config.BatcherInfo, logger *flogging.FabricLo
 	return batcherCertToID
 }
 
-func getLastKnownDecisionNum(walInitState [][]byte, configStore *configstore.Store, logger *flogging.FabricLogger) types.DecisionNum {
-	if len(walInitState) > 0 {
-		header := &state.Header{}
-		if err := header.Deserialize(walInitState[len(walInitState)-1]); err != nil {
-			logger.Panicf("Could not read header from WAL: %s", err.Error())
-		}
-		logger.Infof("Last known decision number in wal is %d", header.Num)
-		if header.Num > 0 {
-			return header.Num
+func lastWALHeader(walInitState [][]byte, logger *flogging.FabricLogger) *state.Header {
+	if len(walInitState) == 0 {
+		return nil
+	}
+	header := &state.Header{}
+	if err := header.Deserialize(walInitState[len(walInitState)-1]); err != nil {
+		logger.Panicf("Could not read header from WAL: %s", err.Error())
+	}
+	return header
+}
+
+func getLastKnownDecisionNum(
+	lastHeader *state.Header,
+	configStore *configstore.Store,
+	logger *flogging.FabricLogger,
+) types.DecisionNum {
+	if lastHeader != nil {
+		logger.Infof("Last known decision number in wal is %d", lastHeader.Num)
+		if lastHeader.Num > 0 {
+			return lastHeader.Num
 		}
 	}
 
