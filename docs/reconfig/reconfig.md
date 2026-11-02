@@ -169,8 +169,7 @@ The reconfiguration still proceeds.
 
 **Dynamic restart (no action needed):**
 ```
-Applying new config with sequence <N> (current: <N-1>), <node> will be restarted dynamically   # router, consensus, assembler
-Reconfiguring batcher                                                                          # batcher
+Applying new config with sequence <N> (current: <N-1>), <node> will be restarted dynamically   # all nodes
 <Node> started with new config sequence <N>, listening on <host:port>                          # all nodes
 ```
 

@@ -305,8 +305,8 @@ func (b *Batcher) replicateDecision() {
 }
 
 func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
+	b.logger.Infof("Processing new config block number %d", configBlock.Header.Number)
 	b.SoftStop()
-	b.logger.Infof("Apply config")
 
 	isAdminOperationRequired, err := b.ApplyConfig(configBlock)
 	if err != nil {
@@ -426,11 +426,12 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, newBatcher
 	b.Ledger.Close()
 
 	// update batcher config and re-configure the batcher with the same mempool
-	b.logger.Infof("Reconfiguring batcher")
+	newConfigSeq := newBatcherConfig.Bundle.ConfigtxValidator().Sequence()
+	currentConfigSeq := b.config.Bundle.ConfigtxValidator().Sequence()
+	b.logger.Infof("Applying new config with sequence %d (current: %d), batcher will be restarted dynamically", newConfigSeq, currentConfigSeq)
 	b.config = newBatcherConfig
 	b.fullConfig = newConfig
 	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum)
-	newConfigSeq := newBatcherConfig.Bundle.ConfigtxValidator().Sequence()
 	b.status.Set(node_utils.StateInitializing, newConfigSeq)
 	b.lock.Unlock()
 
