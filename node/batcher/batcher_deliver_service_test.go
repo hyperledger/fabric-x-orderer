@@ -172,6 +172,50 @@ func TestBatcherDeliverServiceRefusesAnExpiredCertificate(t *testing.T) {
 	require.Nil(t, response.GetBlock())
 }
 
+// Scenario:
+//  1. Let the policy of the configuration admit every request, so that signatures are out of scope,
+//     and let its MSPs resolve the certificate ID of a signer whose certificate is valid and of one
+//     whose certificate has expired.
+//  2. Serve the batcher deliver service of shard 1 over a batch ledger holding one batch, with the
+//     access control a batcher builds from that configuration.
+//  3. Pull with a request sent by the certificate ID of the valid signer, and expect the batch.
+//  4. Pull with a request sent by the certificate ID of the expired signer, and expect it to be
+//     refused as forbidden, with no batch delivered.
+func TestBatcherDeliverServiceRefusesAnExpiredIdentitySentByCertificateID(t *testing.T) {
+	shardID := types.ShardID(1)
+	partyID := types.PartyID(1)
+	channelID := "arma"
+
+	valid, validCert := signutil.NewSelfSignedSigner(t, "org")
+	expired, expiredCert := signutil.NewExpiredSigner(t, "org")
+
+	bundle := &mocks.FakeConfigResources{}
+	configutil.AdmitSigners(bundle)
+	configutil.ResolveCertIDs(t, bundle, "org", validCert, expiredCert)
+
+	accessControl, err := deliver.NewAccessControl(bundle, policies.ChannelOrdererReaders)
+	require.NoError(t, err)
+
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	endpoint := serveBatcherDeliverService(t, shardID, partyID, channelID, accessControl, ca)
+	channelName := node_ledger.ShardPartyChannelIDToChannelName(shardID, partyID, channelID)
+
+	t.Run("a valid identity", func(t *testing.T) {
+		response, err := pullBatch(t, endpoint, channelName, valid.ByCertID(t), tlsutil.NewClient(t, ca))
+		require.NoError(t, err)
+		require.NotNil(t, response.GetBlock())
+	})
+
+	t.Run("an expired identity", func(t *testing.T) {
+		response, err := pullBatch(t, endpoint, channelName, expired.ByCertID(t), tlsutil.NewClient(t, ca))
+		require.NoError(t, err)
+		require.Equal(t, common.Status_FORBIDDEN, response.GetStatus())
+		require.Nil(t, response.GetBlock())
+	})
+}
+
 // serveBatcherDeliverService serves a batcher deliver service over a ledger holding a single batch,
 // and returns the endpoint it listens on.
 func serveBatcherDeliverService(t *testing.T, shardID types.ShardID, partyID types.PartyID, channelID string, accessControl *deliver.AccessControl, ca tlsgen.CA) string {
