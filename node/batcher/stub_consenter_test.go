@@ -170,6 +170,19 @@ func (sc *stubConsenter) ComplaintCount() int {
 	return sc.complaints
 }
 
+// Returns the received complaints
+func (sc *stubConsenter) Complaints() []*state.Complaint {
+	sc.receivedEventsLock.RLock()
+	defer sc.receivedEventsLock.RUnlock()
+	var complaints []*state.Complaint
+	for _, ce := range sc.receivedEvents {
+		if ce.Complaint != nil {
+			complaints = append(complaints, ce.Complaint)
+		}
+	}
+	return complaints
+}
+
 func (sc *stubConsenter) UpdateState(newState *state.State) {
 	header := &state.Header{
 		State: newState,

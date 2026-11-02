@@ -278,18 +278,22 @@ func (b *Batcher) replicateDecision() {
 			// channel is buffer-1 and can coalesce states, which would miss the single-decision window
 			// StaleConfigBAFs lives for.
 			b.batcher.ResubmitStaleConfigBAFs(state)
-			b.stateChan <- state
+			// Update the term before sending the state, since the send can block while the role
+			// is busy, and complaints sent in that time would be signed with the old term.
 			primaryID, term := b.getPrimaryIDAndTerm(state)
 			changed := false
 			b.primaryLock.Lock()
+			// The term can change while the primary stays the same, e.g., when term N has the same
+			// primary as term 0, so it is updated on every decision, not only on a primary change.
+			b.term = term
 			if b.primaryID != primaryID {
 				b.logger.Infof("Primary changed from %d to %d", b.primaryID, primaryID)
 				b.primaryID = primaryID
-				b.term = term
 				changed = true
 				b.metrics.roleChangesTotal.Add(1)
 			}
 			b.primaryLock.Unlock()
+			b.stateChan <- state
 			if changed {
 				b.primaryAckConnector.ConnectToNewPrimary(primaryID)
 				b.primaryReqConnector.ConnectToNewPrimary(primaryID)
