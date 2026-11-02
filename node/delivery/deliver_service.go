@@ -55,7 +55,7 @@ func (d *DeliverService) Deliver(stream orderer.AtomicBroadcast_DeliverServer) e
 		time.Hour,
 		true, // mutualTLS
 		deliver.NewMetrics(&disabled.Provider{}),
-		false, // expirationCheckDisabled
+		d.accessControl.ExpiresAt,
 		&state.ConsenterConfigBlockOperations{},
 	)
 

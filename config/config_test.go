@@ -21,6 +21,7 @@ import (
 	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	protosorderer "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/api/ordererpb"
 	"google.golang.org/protobuf/proto"
 
@@ -833,6 +834,8 @@ func ChangeExpirationTimeOfCert(t *testing.T, cert []byte, caCert []byte, caPriv
 //     client from the same org.
 //  6. Check the identity no party issued, and a request that carries the certificate of a node but
 //     the signature of the client, and expect both to be refused.
+//  7. Ask both for the expiry of every node of party 2 and of its client, and expect the NotAfter of
+//     its certificate. Ask for the expiry of the identity no party issued, and expect an error.
 func TestExtractedBundleAuthorizesInternalDeliver(t *testing.T) {
 	dir := t.TempDir()
 	numOfParties := 4
@@ -886,8 +889,35 @@ func TestExtractedBundleAuthorizesInternalDeliver(t *testing.T) {
 			require.ErrorContains(t, err, "the request does not satisfy /Channel/Orderer/Readers")
 			err = accessControl.CheckPolicy(forged, "arma")
 			require.ErrorContains(t, err, "the request does not satisfy /Channel/Orderer/Readers")
+
+			for name, signer := range nodes {
+				requireExpiresWithItsCertificate(t, accessControl, signer, name)
+			}
+			requireExpiresWithItsCertificate(t, accessControl, client, "client")
+
+			_, err = accessControl.ExpiresAt(requestIdentity(t, foreign))
+			require.Error(t, err)
 		})
 	}
+}
+
+// requireExpiresWithItsCertificate checks that the access control expires the identity of the signer
+// with the certificate the identity carries.
+func requireExpiresWithItsCertificate(t *testing.T, accessControl *deliver.AccessControl, signer *signutil.TestSigner, name string) {
+	identity := requestIdentity(t, signer)
+	cert, err := utils.Parsex509Cert(identity.GetCertificate())
+	require.NoError(t, err, name)
+
+	expiresAt, err := accessControl.ExpiresAt(identity)
+	require.NoError(t, err, name)
+	require.Equal(t, cert.NotAfter, expiresAt, name)
+}
+
+// requestIdentity returns the identity a request the signer signs carries.
+func requestIdentity(t *testing.T, signer *signutil.TestSigner) *msppb.Identity {
+	signedData, err := protoutil.EnvelopeAsSignedData(signedDeliverRequest(t, signer))
+	require.NoError(t, err)
+	return signedData[0].Identity
 }
 
 // signerOfUser builds a signer from the signing material of a user of a party of a generated network.

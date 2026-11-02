@@ -17,6 +17,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics/metricsfakes"
 	cb "github.com/hyperledger/fabric-protos-go-apiv2/common"
 	ab "github.com/hyperledger/fabric-protos-go-apiv2/orderer"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
 	"github.com/hyperledger/fabric-x-common/common/crypto/tlsgen"
 	"github.com/hyperledger/fabric-x-common/common/util"
 	"github.com/hyperledger/fabric-x-common/protoutil"
@@ -66,7 +67,7 @@ var _ = Describe("Deliver", func() {
 				time.Second,
 				false,
 				deliver.NewMetrics(&disabled.Provider{}),
-				false,
+				deliver.NewExpiresAtFunc(nil),
 				&utils.CommonConfigBlockOperations{},
 			)
 			Expect(handler).NotTo(BeNil())
@@ -84,11 +85,11 @@ var _ = Describe("Deliver", func() {
 					time.Second,
 					false,
 					deliver.NewMetrics(&disabled.Provider{}),
-					false,
+					deliver.NewExpiresAtFunc(nil),
 					&utils.CommonConfigBlockOperations{},
 				)
 
-				Expect(handler.ExpirationCheckFunc(certBytes)).To(Equal(cert.NotAfter))
+				Expect(handler.ExpirationCheckFunc(msppb.NewIdentity("org", certBytes))).To(Equal(cert.NotAfter))
 			})
 		})
 
@@ -99,11 +100,11 @@ var _ = Describe("Deliver", func() {
 					time.Second,
 					false,
 					deliver.NewMetrics(&disabled.Provider{}),
-					true,
+					deliver.NoExpiration,
 					&utils.CommonConfigBlockOperations{},
 				)
 
-				Expect(handler.ExpirationCheckFunc(certBytes)).NotTo(Equal(cert.NotAfter))
+				Expect(handler.ExpirationCheckFunc(msppb.NewIdentity("org", certBytes))).NotTo(Equal(cert.NotAfter))
 			})
 		})
 	})
@@ -211,8 +212,8 @@ var _ = Describe("Deliver", func() {
 				TimeWindow:       time.Second,
 				BindingInspector: fakeInspector,
 				Metrics:          deliverMetrics,
-				ExpirationCheckFunc: func([]byte) time.Time {
-					return time.Time{}
+				ExpirationCheckFunc: func(*msppb.Identity) (time.Time, error) {
+					return time.Time{}, nil
 				},
 				ConfigBlockOps: &utils.CommonConfigBlockOperations{},
 			}
