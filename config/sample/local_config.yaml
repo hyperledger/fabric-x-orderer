@@ -237,6 +237,19 @@ Operations:
     # Paths to PEM encoded ca certificates to trust for client authentication
     ClientRootCAs: []
 
+  # Profile: Go "pprof" profiling endpoints under /debug/pprof/ on the operations
+  # server, as documented at https://pkg.go.dev/net/http/pprof
+  # When TLS is enabled they require a client certificate, like /metrics.
+  Profile:
+    # Enabled serves the profiling endpoints.
+    Enabled: false
+    # BlockProfileRate samples one goroutine blocking event (channel, select)
+    # per this many nanoseconds spent blocked. 0 turns the block profile off.
+    BlockProfileRate: 0
+    # MutexProfileFraction samples one in this many mutex contention events.
+    # 0 turns the mutex profile off.
+    MutexProfileFraction: 0
+
 ################################################################################
 #
 #   Metrics Configuration

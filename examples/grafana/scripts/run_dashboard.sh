@@ -35,6 +35,9 @@ for config in "${SAMPLE_DIR}"/config/party*/local_config_*.yaml; do
       print "    ListenPort: " port
       next
     }
+    # Enable the pprof profiling endpoints on the operations server.
+    /^    Profile:/ { profile = 1 }
+    profile && /Enabled: false/ { sub(/false/, "true"); profile = 0 }
     { print }
   ' "${config}" > "${config}.new"
   mv "${config}.new" "${config}"
