@@ -14,12 +14,18 @@ make binary
 
 ./bin/armageddon generate --config="${EXAMPLE_DIR}/config/example-deployment.yaml" --output="/tmp/arma-sample"
 
-# Fix the operations port so the compose healthcheck can reach /healthz.
+# Fix the operations port so the compose healthcheck can reach /healthz,
+# and enable the pprof profiling endpoints on the operations server.
 for config in /tmp/arma-sample/config/party*/local_config_*.yaml; do
-  sed -i "/^Operations:/,/^Metrics:/ {/^[[:space:]]*ListenPort:/d;}" "${config}"
-  sed -i "/^Operations:/ a\\    ListenPort: 8080" "${config}"
-  # Enable the pprof profiling endpoints on the operations server.
-  sed -i "/^    Profile:/,/Enabled:/ s/Enabled: false/Enabled: true/" "${config}"
+  awk '
+    /^Operations:/ { print; print "    ListenPort: 8080"; ops = 1; next }
+    /^[^ ]/ { ops = 0; profile = 0 }
+    ops && /^[[:space:]]*ListenPort:/ { next }
+    ops && /^    Profile:/ { profile = 1 }
+    profile && /Enabled: false/ { sub(/false/, "true"); profile = 0 }
+    { print }
+  ' "${config}" > "${config}.new"
+  mv "${config}.new" "${config}"
 done
 
 cd "${EXAMPLE_DIR}" && docker compose up -d --wait

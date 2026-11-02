@@ -214,7 +214,7 @@ For example, slow assembler fetches may indicate missing or slow batcher data, w
 
 ### Profiling
 
-Each node can serve Go [pprof](https://pkg.go.dev/net/http/pprof) profiles, like the Fabric orderer. Set `Operations.Profile.Enabled: true` in the node's local config; the profiles are then served under `/debug/pprof/` on the operations server, next to `/metrics`, and require a client certificate when operations TLS is enabled. In the commands below, replace `<operations>` with the node's operations address (`Operations.ListenAddress:Operations.ListenPort`):
+Each node can serve Go [pprof](https://pkg.go.dev/net/http/pprof) profiles, like the Fabric orderer. Set `Operations.Profile.Enabled: true` in the node's local config; the profiles are then served under `/debug/pprof/` on the operations server, next to `/metrics`, and require a client certificate when operations TLS is enabled. Anyone who can reach them can start CPU profiles and traces, so in real deployments keep the operations server on localhost or behind operations TLS. In the commands below, replace `<operations>` with the node's operations address (`Operations.ListenAddress:Operations.ListenPort`):
 
 ```bash
 # CPU: where the node spends its time over 30 seconds, as a flame graph in the browser
@@ -223,6 +223,13 @@ go tool pprof -http=:8081 'http://<operations>/debug/pprof/profile?seconds=30'
 go tool pprof -top http://<operations>/debug/pprof/heap
 # A stuck node: the stack of every goroutine
 curl -s 'http://<operations>/debug/pprof/goroutine?debug=2'
+```
+
+With operations TLS on, `go tool pprof` can't send a client certificate, so download the profile with `curl` and open the file:
+
+```bash
+curl --cacert <ca.crt> --cert <client.crt> --key <client.key> -o cpu.pb.gz 'https://<operations>/debug/pprof/profile?seconds=30'
+go tool pprof -http=:8081 cpu.pb.gz
 ```
 
 The lock and channel wait profiles (`/debug/pprof/mutex`, `/debug/pprof/block`) are off by default because they slow every lock and channel a little; set `MutexProfileFraction` or `BlockProfileRate` above 0 to turn them on.

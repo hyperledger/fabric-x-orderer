@@ -105,6 +105,10 @@ func (s *Server) initializeServer() {
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 2 * time.Minute,
 	}
+	// Cancel the requests still running on shutdown, so long requests such as a pprof profile don't delay Stop.
+	ctx, cancel := context.WithCancel(context.Background())
+	s.httpServer.BaseContext = func(net.Listener) context.Context { return ctx }
+	s.httpServer.RegisterOnShutdown(cancel)
 }
 
 // SecureHandlerChain wraps the provided handler with middleware including certificate requirement.

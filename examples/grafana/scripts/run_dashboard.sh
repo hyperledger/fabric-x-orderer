@@ -35,11 +35,12 @@ for config in "${SAMPLE_DIR}"/config/party*/local_config_*.yaml; do
       print "    ListenPort: " port
       next
     }
+    # Enable the pprof profiling endpoints on the operations server.
+    /^    Profile:/ { profile = 1 }
+    profile && /Enabled: false/ { sub(/false/, "true"); profile = 0 }
     { print }
   ' "${config}" > "${config}.new"
   mv "${config}.new" "${config}"
-  # Enable the pprof profiling endpoints on the operations server.
-  sed -i "/^    Profile:/,/Enabled:/ s/Enabled: false/Enabled: true/" "${config}"
 done
 
 # Optionally throttle party 1's router, so the router throttling panels have data to show.

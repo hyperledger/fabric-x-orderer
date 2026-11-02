@@ -15,11 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// client does not keep connections open, so Stop never waits for an idle connection.
+var client = &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+
 func TestOperationsSystemServesPprofWhenEnabled(t *testing.T) {
 	system := startOperationsSystem(t, operations.Profile{Enabled: true})
 
 	for _, page := range []string{"/debug/pprof/", "/debug/pprof/heap"} {
-		resp, err := http.Get("http://" + system.Addr() + page)
+		resp, err := client.Get("http://" + system.Addr() + page)
 		require.NoError(t, err)
 		require.NoError(t, resp.Body.Close())
 		require.Equal(t, http.StatusOK, resp.StatusCode, page)
@@ -29,7 +32,7 @@ func TestOperationsSystemServesPprofWhenEnabled(t *testing.T) {
 func TestOperationsSystemDoesNotServePprofWhenDisabled(t *testing.T) {
 	system := startOperationsSystem(t, operations.Profile{Enabled: false})
 
-	resp, err := http.Get("http://" + system.Addr() + "/debug/pprof/")
+	resp, err := client.Get("http://" + system.Addr() + "/debug/pprof/")
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)

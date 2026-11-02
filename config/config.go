@@ -296,11 +296,7 @@ func (config *Configuration) ExtractRouterConfig(configBlock *common.Block) *nod
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
 				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
-			Profile: operations.Profile{
-				Enabled:              config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.Enabled,
-				BlockProfileRate:     config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.BlockProfileRate,
-				MutexProfileFraction: config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.MutexProfileFraction,
-			},
+			Profile: extractOperationsProfile(config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile),
 		},
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
@@ -320,6 +316,15 @@ func extractRouterThrottlingConfig(t *ThrottlingParams) nodeconfig.RouterThrottl
 		Policy: t.Policy,
 		Rate:   t.Rate,
 		Burst:  t.Burst,
+	}
+}
+
+// extractOperationsProfile maps the local Operations.Profile YAML into the operations server config.
+func extractOperationsProfile(p *Profile) operations.Profile {
+	return operations.Profile{
+		Enabled:              p.Enabled,
+		BlockProfileRate:     p.BlockProfileRate,
+		MutexProfileFraction: p.MutexProfileFraction,
 	}
 }
 
@@ -382,11 +387,7 @@ func (config *Configuration) ExtractBatcherConfig(configBlock *common.Block) *no
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
 				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
-			Profile: operations.Profile{
-				Enabled:              config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.Enabled,
-				BlockProfileRate:     config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.BlockProfileRate,
-				MutexProfileFraction: config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.MutexProfileFraction,
-			},
+			Profile: extractOperationsProfile(config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile),
 		},
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
@@ -467,11 +468,7 @@ func (config *Configuration) ExtractConsenterConfig(configBlock *common.Block) *
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
 				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
-			Profile: operations.Profile{
-				Enabled:              config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.Enabled,
-				BlockProfileRate:     config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.BlockProfileRate,
-				MutexProfileFraction: config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.MutexProfileFraction,
-			},
+			Profile: extractOperationsProfile(config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile),
 		},
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
@@ -537,11 +534,7 @@ func (config *Configuration) ExtractAssemblerConfig(configBlock *common.Block) *
 				ClientAuthRequired: config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientAuthRequired,
 				ClientRootCAs:      config.LocalConfig.NodeLocalConfig.OperationsConfig.TLSConfig.ClientRootCAs,
 			},
-			Profile: operations.Profile{
-				Enabled:              config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.Enabled,
-				BlockProfileRate:     config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.BlockProfileRate,
-				MutexProfileFraction: config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile.MutexProfileFraction,
-			},
+			Profile: extractOperationsProfile(config.LocalConfig.NodeLocalConfig.OperationsConfig.Profile),
 		},
 		Metrics: &operations.Metrics{
 			Provider:           config.LocalConfig.NodeLocalConfig.MetricsConfig.Provider,
