@@ -365,6 +365,8 @@ func TestBatcherComplainsInTermWithSamePrimary(t *testing.T) {
 		return batchers[1].GetTerm() == term && batchers[2].GetTerm() == term
 	}, 30*time.Second, 10*time.Millisecond)
 
+	// the primary is party 1 in both term 0 and term N, so this only checks that it did not change;
+	// the GetTerm wait above is what checks that the term was applied
 	for i := 0; i < numParties; i++ {
 		require.Equal(t, types.PartyID(1), batchers[i].GetPrimaryID())
 	}
@@ -381,8 +383,11 @@ func TestBatcherComplainsInTermWithSamePrimary(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return stubConsenters[1].ComplaintCount() == 2 && stubConsenters[2].ComplaintCount() == 2
 	}, 60*time.Second, 10*time.Millisecond)
-	require.Equal(t, term, stubConsenters[1].LastControlEvent().Complaint.Term)
-	require.Equal(t, term, stubConsenters[2].LastControlEvent().Complaint.Term)
+	for _, sc := range stubConsenters[1:3] {
+		for _, c := range sc.Complaints() {
+			require.Equal(t, term, c.Term)
+		}
+	}
 }
 
 func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
