@@ -183,6 +183,19 @@ func (sc *stubConsenter) Complaints() []*state.Complaint {
 	return complaints
 }
 
+// Returns the received batch attestation fragments
+func (sc *stubConsenter) BAFs() []types.BatchAttestationFragment {
+	sc.receivedEventsLock.RLock()
+	defer sc.receivedEventsLock.RUnlock()
+	var bafs []types.BatchAttestationFragment
+	for _, ce := range sc.receivedEvents {
+		if ce.BAF != nil {
+			bafs = append(bafs, ce.BAF)
+		}
+	}
+	return bafs
+}
+
 func (sc *stubConsenter) UpdateState(newState *state.State) {
 	header := &state.Header{
 		State: newState,

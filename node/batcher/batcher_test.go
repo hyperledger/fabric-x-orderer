@@ -391,7 +391,7 @@ func TestBatcherComplainsInTermWithSamePrimary(t *testing.T) {
 }
 
 // TestBatcherRestartsInLastKnownTerm checks that a restarted batcher starts in the term of the last
-// decision in its WAL, before any new decision arrives, and complains in that term.
+// decision in its WAL, before any new decision arrives, and that its role acts in that term.
 func TestBatcherRestartsInLastKnownTerm(t *testing.T) {
 	shardID := types.ShardID(0)
 	numParties := 4
@@ -426,36 +426,25 @@ func TestBatcherRestartsInLastKnownTerm(t *testing.T) {
 		return true
 	}, 30*time.Second, 10*time.Millisecond)
 
-	// restart the secondary of party 3 without sending it a new decision
-	batchers[2].Stop()
-	batchers[2] = recoverBatcher(t, ca, loggers[2], configs[2], routerKeyPairs, batcherNodes[2], stubConsenters[2])
-
-	require.Equal(t, term, batchers[2].GetTerm())
-	require.Equal(t, types.PartyID(2), batchers[2].GetPrimaryID())
-
-	// stop the primary
+	// restart the primary of term 1, party 2, without sending it a new decision
 	batchers[1].Stop()
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], routerKeyPairs, batcherNodes[1], stubConsenters[1])
 
-	// submit request to the restarted batcher
-	batchers[2].Submit(routerContext(t, routerKeyPairs[2]), tx.CreateStructuredRequest([]byte{1}))
+	require.Equal(t, term, batchers[1].GetTerm())
+	require.Equal(t, types.PartyID(2), batchers[1].GetPrimaryID())
 
-	// wait for a complaint from the restarted batcher, and check it is in term 1
+	// a request submitted to it is batched only if its role starts as the primary of term 1; in term 0
+	// it would be a secondary of party 1 and never cut a batch
+	batchers[1].Submit(routerContext(t, routerKeyPairs[1]), tx.CreateStructuredRequest([]byte{1}))
+
 	require.Eventually(t, func() bool {
-		return len(complaintsFrom(stubConsenters[0], types.PartyID(3))) > 0
-	}, 60*time.Second, 10*time.Millisecond)
-	for _, c := range complaintsFrom(stubConsenters[0], types.PartyID(3)) {
-		require.Equal(t, term, c.Term)
-	}
-}
-
-func complaintsFrom(sc *stubConsenter, signer types.PartyID) []*state.Complaint {
-	var complaints []*state.Complaint
-	for _, c := range sc.Complaints() {
-		if c.Signer == signer {
-			complaints = append(complaints, c)
+		for _, baf := range stubConsenters[0].BAFs() {
+			if baf.Signer() == types.PartyID(2) && baf.Primary() == types.PartyID(2) {
+				return true
+			}
 		}
-	}
-	return complaints
+		return false
+	}, 30*time.Second, 10*time.Millisecond)
 }
 
 func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
