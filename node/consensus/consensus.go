@@ -1400,7 +1400,8 @@ func (c *Consensus) verifyControlEvent(req []byte, proposalNum arma_types.Decisi
 		if report.ConfigSeq != configSeq {
 			return reqID, ce, errors.Errorf(
 				"mismatch config sequence; the assembler decision report's config seq is %d while the config seq should be %d",
-				report.ConfigSeq, configSeq)
+				report.ConfigSeq, configSeq,
+			)
 		}
 		if len(report.Signature) == 0 {
 			return reqID, ce, errors.New("missing assembler decision report signature")
