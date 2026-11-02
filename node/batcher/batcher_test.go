@@ -334,6 +334,57 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	}
 }
 
+// TestBatcherComplainsInTermWithSamePrimary checks that a term change that keeps the primary
+// (term N has the same primary as term 0) is still reflected in the term complaints are signed with.
+func TestBatcherComplainsInTermWithSamePrimary(t *testing.T) {
+	shardID := types.ShardID(0)
+	numParties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties)
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties)
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
+	defer cleanConsenters()
+
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, _, _, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters)
+	defer cleanBatchers()
+
+	// move to term N, whose primary is the same as term 0's
+	term := uint64(numParties)
+	samePrimaryState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: term}}}
+	for i := 0; i < numParties; i++ {
+		stubConsenters[i].UpdateState(samePrimaryState)
+	}
+
+	require.Eventually(t, func() bool {
+		return batchers[1].GetTerm() == term && batchers[2].GetTerm() == term
+	}, 30*time.Second, 10*time.Millisecond)
+
+	for i := 0; i < numParties; i++ {
+		require.Equal(t, types.PartyID(1), batchers[i].GetPrimaryID())
+	}
+
+	// stop the primary
+	batchers[0].Stop()
+
+	// submit request to other batchers
+	req := tx.CreateStructuredRequest([]byte{1})
+	batchers[1].Submit(routerContext(t, routerKeyPairs[1]), req)
+	batchers[2].Submit(routerContext(t, routerKeyPairs[2]), req)
+
+	// wait for complaints
+	require.Eventually(t, func() bool {
+		return stubConsenters[1].ComplaintCount() == 2 && stubConsenters[2].ComplaintCount() == 2
+	}, 60*time.Second, 10*time.Millisecond)
+	require.Equal(t, term, stubConsenters[1].LastControlEvent().Complaint.Term)
+	require.Equal(t, term, stubConsenters[2].LastControlEvent().Complaint.Term)
+}
+
 func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	shardID := types.ShardID(0)
 	numParties := 4

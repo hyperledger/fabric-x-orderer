@@ -282,10 +282,12 @@ func (b *Batcher) replicateDecision() {
 			primaryID, term := b.getPrimaryIDAndTerm(state)
 			changed := false
 			b.primaryLock.Lock()
+			// The term can change while the primary stays the same, e.g., when term N has the same
+			// primary as term 0, so it is updated on every decision, not only on a primary change.
+			b.term = term
 			if b.primaryID != primaryID {
 				b.logger.Infof("Primary changed from %d to %d", b.primaryID, primaryID)
 				b.primaryID = primaryID
-				b.term = term
 				changed = true
 				b.metrics.roleChangesTotal.Add(1)
 			}
