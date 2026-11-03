@@ -270,26 +270,26 @@ func (b *Batcher) replicateDecision() {
 			// behind. Done per decision, since StaleConfigBAFs lives for a single decision.
 			b.batcher.ResubmitStaleConfigBAFs(state)
 			primaryID, term := b.getPrimaryIDAndTerm(state)
-			changed := false
 			b.primaryTermLock.Lock()
 			prevPrimaryID, prevTerm := b.primaryID, b.term
+			b.primaryID, b.term = primaryID, term
+			b.primaryTermLock.Unlock()
 			// The term can change while the primary stays the same, e.g., when term N has the same
 			// primary as term 0, so it is compared on its own, not only through the primary.
-			b.term = term
-			if b.primaryID != primaryID {
-				b.logger.Infof("Primary changed from %d to %d", b.primaryID, primaryID)
-				b.primaryID = primaryID
-				changed = true
+			if term == prevTerm {
+				continue
+			}
+			b.batcher.NotifyTermChange()
+			// Switch the connectors before resubmitting, since the role, already notified, restarts
+			// as a secondary of the new primary and acks its batches, and an ack to a primary the
+			// connector does not have yet is dropped.
+			if primaryID != prevPrimaryID {
+				b.logger.Infof("Primary changed from %d to %d", prevPrimaryID, primaryID)
 				b.metrics.roleChangesTotal.Add(1)
-			}
-			b.primaryTermLock.Unlock()
-			if term != prevTerm {
-				b.batcher.NotifyTermChange(state, prevPrimaryID)
-			}
-			if changed {
 				b.primaryAckConnector.ConnectToNewPrimary(primaryID)
 				b.primaryReqConnector.ConnectToNewPrimary(primaryID)
 			}
+			b.batcher.ResubmitOnTermChange(state, prevPrimaryID)
 		case <-b.stopChan:
 			return
 		}

@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -860,11 +861,6 @@ func TestVerifyBatch(t *testing.T) {
 	require.Equal(t, 2, ledger.AppendCallCount())
 }
 
-// TestResubmitPendingBAFsReverifiesOnConfigChange covers the reconfiguration case:
-// requests taken from a BAF created under an older config are re-verified under the
-// current policy before being resubmitted to the pool, and any request that fails
-// the current policy is dropped rather than reinserted (so it never becomes eligible
-// for the secondary pull-path verification shortcut).
 // TestComplainInTermFaultSeenIn checks that a secondary complains in the term it saw the faulty batch
 // in, even if the term changes before the complaint is sent.
 func TestComplainInTermFaultSeenIn(t *testing.T) {
@@ -956,13 +952,173 @@ func TestRoleTermIsTheTermItActsIn(t *testing.T) {
 		return secondaryBatcher.Term() != 0
 	}, 500*time.Millisecond, 10*time.Millisecond)
 
-	// once the role is told, it restarts in term 1
+	// once the role is told of a change to term 2, it restarts in term 2
 	termProvider.setState(secondaryBatcher, &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 2}}})
 	require.Eventually(t, func() bool {
 		return secondaryBatcher.Term() == 2 && pool.RestartCallCount() == 2
 	}, 10*time.Second, 10*time.Millisecond)
 }
 
+// TestRoleTermIsSetAfterThePoolRestarts checks that the role sets its term only once the pool is restarted
+// in it, so that a second-strike complaint about a request of the previous term is not sent in the new term.
+func TestRoleTermIsSetAfterThePoolRestarts(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := 3
+	shardID := 0
+	logger := testutil.CreateLogger(t, batcherID)
+	secondaryBatcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	secondaryBatcher.TermProvider = termProvider
+
+	batchPuller := &mocks.FakeBatchesPuller{}
+	batchPuller.PullBatchesReturns(make(chan arma_types.Batch))
+	secondaryBatcher.BatchPuller = batchPuller
+
+	// the second restart of the pool, in term 1, blocks until released, and records the role's term then
+	restarting := make(chan struct{})
+	release := make(chan struct{})
+	var termDuringRestart atomic.Uint64
+	pool := &mocks.FakeMemPool{}
+	pool.RestartCalls(func(bool) {
+		if pool.RestartCallCount() == 2 {
+			termDuringRestart.Store(secondaryBatcher.Term())
+			close(restarting)
+			<-release
+		}
+	})
+	secondaryBatcher.MemPool = pool
+
+	secondaryBatcher.Start()
+	defer secondaryBatcher.Stop()
+	// release the blocked restart before stopping, also if an assertion below fails
+	var releaseOnce sync.Once
+	releaseRestart := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseRestart()
+
+	require.Eventually(t, func() bool {
+		return pool.RestartCallCount() == 1 && secondaryBatcher.Term() == 0
+	}, 10*time.Second, 10*time.Millisecond)
+
+	termProvider.setState(secondaryBatcher, &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}})
+
+	// while the pool is restarting in term 1, the role still acts in term 0
+	<-restarting
+	require.Equal(t, uint64(0), termDuringRestart.Load())
+	require.Equal(t, uint64(0), secondaryBatcher.Term())
+	releaseRestart()
+
+	require.Eventually(t, func() bool {
+		return secondaryBatcher.Term() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// TestRoleDoesNotRestartInTheSameTerm checks that a notification of a term change that the role already
+// acts in does not restart the role.
+func TestRoleDoesNotRestartInTheSameTerm(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := 3
+	shardID := 0
+	logger := testutil.CreateLogger(t, batcherID)
+	secondaryBatcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	secondaryBatcher.TermProvider = termProvider
+
+	batchPuller := &mocks.FakeBatchesPuller{}
+	batchPuller.PullBatchesReturns(make(chan arma_types.Batch))
+	secondaryBatcher.BatchPuller = batchPuller
+
+	pool := &mocks.FakeMemPool{}
+	secondaryBatcher.MemPool = pool
+
+	secondaryBatcher.Start()
+	defer secondaryBatcher.Stop()
+
+	require.Eventually(t, func() bool {
+		return pool.RestartCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// a notification for the term the role already acts in, as when the role read the new term before
+	// the batcher sent the notification
+	secondaryBatcher.NotifyTermChange()
+	require.Never(t, func() bool {
+		return pool.RestartCallCount() != 1 || batchPuller.StopCallCount() != 0
+	}, 500*time.Millisecond, 10*time.Millisecond)
+
+	// a real term change still restarts the role
+	termProvider.setState(secondaryBatcher, &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}})
+	require.Eventually(t, func() bool {
+		return pool.RestartCallCount() == 2 && secondaryBatcher.Term() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// TestResubmitOnTermChangeDoesNotBlockTheCaller checks that the requests of pending BAFs are resubmitted
+// on the role's goroutine, so a slow resubmission does not delay the batcher's decision loop.
+func TestResubmitOnTermChangeDoesNotBlockTheCaller(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := 2
+	shardID := 0
+	logger := testutil.CreateLogger(t, batcherID)
+	secondaryBatcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	secondaryBatcher.TermProvider = termProvider
+
+	batchPuller := &mocks.FakeBatchesPuller{}
+	batchPuller.PullBatchesReturns(make(chan arma_types.Batch))
+	secondaryBatcher.BatchPuller = batchPuller
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	batch := arma_types.NewSimpleBatch(0, 1, 0, arma_types.BatchedRequests{req}, 0, nil)
+	ledger := &mocks.FakeBatchLedger{}
+	ledger.RetrieveBatchByNumberReturns(batch)
+	secondaryBatcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	secondaryBatcher.ConfigSequenceGetter = configSeqGet
+
+	// submitting the resubmitted request blocks, as on a full pool, until released
+	release := make(chan struct{})
+	pool := &mocks.FakeMemPool{}
+	pool.SubmitCalls(func([]byte) error {
+		<-release
+		return nil
+	})
+	secondaryBatcher.MemPool = pool
+
+	secondaryBatcher.Start()
+	defer secondaryBatcher.Stop()
+	defer close(release)
+
+	myBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(),
+		arma_types.PartyID(batcherID), 0, 0, nil)
+	resubmitted := make(chan struct{})
+	go func() {
+		secondaryBatcher.ResubmitOnTermChange(&state.State{Pending: []arma_types.BatchAttestationFragment{myBAF}}, 1)
+		close(resubmitted)
+	}()
+
+	select {
+	case <-resubmitted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("ResubmitOnTermChange blocked on the resubmission")
+	}
+	require.Eventually(t, func() bool {
+		return pool.SubmitCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// TestResubmitPendingBAFsReverifiesOnConfigChange covers the reconfiguration case:
+// requests taken from a BAF created under an older config are re-verified under the
+// current policy before being resubmitted to the pool, and any request that fails
+// the current policy is dropped rather than reinserted (so it never becomes eligible
+// for the secondary pull-path verification shortcut).
 func TestResubmitPendingBAFsReverifiesOnConfigChange(t *testing.T) {
 	N := uint16(4)
 	batchers := []arma_types.PartyID{1, 2, 3, 4}
@@ -1149,7 +1305,8 @@ func (tp *testTermProvider) setState(role *batcher.BatcherRole, s *state.State) 
 		}
 	}
 	if prevPrimary, changed := tp.setTerm(term); changed {
-		role.NotifyTermChange(s, prevPrimary)
+		role.NotifyTermChange()
+		role.ResubmitOnTermChange(s, prevPrimary)
 	}
 }
 
