@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package batcher_test
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"testing"
@@ -1072,4 +1073,97 @@ func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_type
 	}
 
 	return batcher
+}
+
+// TestPrimaryBAFContextPerRole checks that the primary reuses one BAF context and cancels it on a term change.
+func TestPrimaryBAFContextPerRole(t *testing.T) {
+	b := createBatcher(t, 1, 0, []arma_types.PartyID{1, 2, 3, 4}, 4, testutil.CreateLogger(t, 1))
+	pool := &mocks.FakeMemPool{}
+	pool.NextRequestsReturns(arma_types.BatchedRequests{[]byte{1}}, nil)
+	b.MemPool = pool
+	bafSender := &mocks.FakeBAFSender{}
+	// The last BAF blocks until its context is cancelled.
+	inFlightDone := make(chan struct{})
+	bafSender.SendBAFCalls(func(baf arma_types.BatchAttestationFragment, ctx context.Context) {
+		if baf.Seq() == 9 {
+			<-ctx.Done()
+			close(inFlightDone)
+		}
+	})
+	b.BAFSender = bafSender
+	b.ConfigSequenceGetter = &mocks.FakeConfigSequenceGetter{}
+	stateChan := make(chan *state.State)
+	stateProvider := &mocks.FakeStateProvider{}
+	stateProvider.GetLatestStateChanReturns(stateChan)
+	b.StateProvider = stateProvider
+
+	b.Start()
+	defer b.Stop()
+
+	// With no acks, the primary sends BatchSequenceGap (10) batches and then waits.
+	require.Eventually(t, func() bool {
+		return bafSender.SendBAFCallCount() == 10
+	}, 10*time.Second, 10*time.Millisecond)
+
+	_, ctx := bafSender.SendBAFArgsForCall(0)
+	for i := 1; i < 10; i++ {
+		_, next := bafSender.SendBAFArgsForCall(i)
+		require.Truef(t, next == ctx, "batch %d got a new BAF context", i)
+	}
+	require.NoError(t, ctx.Err())
+
+	stateChan <- &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}}
+	select {
+	case <-inFlightDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the in-flight SendBAF did not get a cancelled context")
+	}
+}
+
+// TestSecondaryBAFContextPerRole checks that the secondary reuses one BAF context and cancels it on a term change.
+func TestSecondaryBAFContextPerRole(t *testing.T) {
+	b := createBatcher(t, 2, 0, []arma_types.PartyID{1, 2, 3, 4}, 4, testutil.CreateLogger(t, 2))
+	batchChan := make(chan arma_types.Batch)
+	puller := &mocks.FakeBatchesPuller{}
+	puller.PullBatchesReturns(batchChan)
+	b.BatchPuller = puller
+	bafSender := &mocks.FakeBAFSender{}
+	// The last BAF blocks until its context is cancelled.
+	inFlightDone := make(chan struct{})
+	bafSender.SendBAFCalls(func(baf arma_types.BatchAttestationFragment, ctx context.Context) {
+		if baf.Seq() == 9 {
+			<-ctx.Done()
+			close(inFlightDone)
+		}
+	})
+	b.BAFSender = bafSender
+	b.ConfigSequenceGetter = &mocks.FakeConfigSequenceGetter{}
+	stateChan := make(chan *state.State)
+	stateProvider := &mocks.FakeStateProvider{}
+	stateProvider.GetLatestStateChanReturns(stateChan)
+	b.StateProvider = stateProvider
+
+	b.Start()
+	defer b.Stop()
+
+	for seq := 0; seq < 10; seq++ {
+		batchChan <- arma_types.NewSimpleBatch(0, 1, arma_types.BatchSequence(seq), arma_types.BatchedRequests{[]byte{1}}, 0, nil)
+	}
+	require.Eventually(t, func() bool {
+		return bafSender.SendBAFCallCount() == 10
+	}, 10*time.Second, 10*time.Millisecond)
+
+	_, ctx := bafSender.SendBAFArgsForCall(0)
+	for i := 1; i < 10; i++ {
+		_, next := bafSender.SendBAFArgsForCall(i)
+		require.Truef(t, next == ctx, "batch %d got a new BAF context", i)
+	}
+	require.NoError(t, ctx.Err())
+
+	stateChan <- &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}}
+	select {
+	case <-inFlightDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the in-flight SendBAF did not get a cancelled context")
+	}
 }
