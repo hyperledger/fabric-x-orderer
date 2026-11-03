@@ -157,18 +157,18 @@ func TestLoadStepsAndReceive(t *testing.T) {
 	txsRec := "10000"
 	txSize := "128"
 
-	var waitForTxToBeSentAndReceived sync.WaitGroup
-	waitForTxToBeSentAndReceived.Add(2)
+	loadDone := make(chan struct{})
+	receiveDone := make(chan struct{})
 	go func() {
 		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", txsSent, "--rate", rates, "--txSize", txSize})
-		waitForTxToBeSentAndReceived.Done()
+		close(loadDone)
 	}()
 
 	go func() {
 		armageddon.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", txsRec, "--output", dir})
-		waitForTxToBeSentAndReceived.Done()
+		close(receiveDone)
 	}()
-	waitForTxToBeSentAndReceived.Wait()
+	waitForLoadAndReceive(t, loadDone, receiveDone)
 }
 
 // Scenario:
@@ -262,18 +262,18 @@ func TestLoadAndReceive(t *testing.T) {
 	txs := "10000"
 	txSize := "300"
 
-	var waitForTxToBeSentAndReceived sync.WaitGroup
-	waitForTxToBeSentAndReceived.Add(2)
+	loadDone := make(chan struct{})
+	receiveDone := make(chan struct{})
 	go func() {
 		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
-		waitForTxToBeSentAndReceived.Done()
+		close(loadDone)
 	}()
 
 	go func() {
 		armageddon.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", txs, "--output", dir})
-		waitForTxToBeSentAndReceived.Done()
+		close(receiveDone)
 	}()
-	waitForTxToBeSentAndReceived.Wait()
+	waitForLoadAndReceive(t, loadDone, receiveDone)
 }
 
 // Scenario:
@@ -317,20 +317,20 @@ func TestLoadAndReceiveSignedModeAsShort(t *testing.T) {
 	txSize := "128"
 	signedMode := "short"
 
-	var waitForLoadAndReceive sync.WaitGroup
-	waitForLoadAndReceive.Add(2)
+	loadDone := make(chan struct{})
+	receiveDone := make(chan struct{})
 
 	go func() {
-		defer waitForLoadAndReceive.Done()
+		defer close(loadDone)
 		armageddonCLI.Run([]string{"load", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize, "--signedMode", signedMode})
 	}()
 
 	go func() {
-		defer waitForLoadAndReceive.Done()
+		defer close(receiveDone)
 		armageddonCLI.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", txs, "--output", dir})
 	}()
 
-	waitForLoadAndReceive.Wait()
+	waitForLoadAndReceive(t, loadDone, receiveDone)
 }
 
 // Scenario:
@@ -374,20 +374,20 @@ func TestLoadAndReceiveSignedModeAsFull(t *testing.T) {
 	txSize := "128"
 	signedMode := "full"
 
-	var waitForLoadAndReceive sync.WaitGroup
-	waitForLoadAndReceive.Add(2)
+	loadDone := make(chan struct{})
+	receiveDone := make(chan struct{})
 
 	go func() {
-		defer waitForLoadAndReceive.Done()
+		defer close(loadDone)
 		armageddonCLI.Run([]string{"load", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize, "--signedMode", signedMode})
 	}()
 
 	go func() {
-		defer waitForLoadAndReceive.Done()
+		defer close(receiveDone)
 		armageddonCLI.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", txs, "--output", dir})
 	}()
 
-	waitForLoadAndReceive.Wait()
+	waitForLoadAndReceive(t, loadDone, receiveDone)
 }
 
 // Scenario:
@@ -430,20 +430,20 @@ func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
 	txs := "10000"
 	txSize := "128"
 
-	var waitForTxToBeSentAndReceived sync.WaitGroup
+	loadDone := make(chan struct{})
+	receiveDone := make(chan struct{})
 	var waitForStartSend sync.WaitGroup
-	waitForTxToBeSentAndReceived.Add(2)
 	waitForStartSend.Add(1)
 
 	go func() {
 		armageddon.Run([]string{"receive", "--config", userConfigPath, "--pullFromPartyId", "1", "--expectedTxs", "10000", "--output", dir})
-		waitForTxToBeSentAndReceived.Done()
+		close(receiveDone)
 	}()
 
 	go func() {
 		waitForStartSend.Done()
 		armageddon.Run([]string{"load", "--config", userConfigPath, "--transactions", txs, "--rate", rate, "--txSize", txSize})
-		waitForTxToBeSentAndReceived.Done()
+		close(loadDone)
 	}()
 
 	// stop the router while txs are submitted
@@ -458,7 +458,7 @@ func TestLoadAndReceive_RouterFailsAndRecover(t *testing.T) {
 	armaNetwork.GetRouter(t, 1).RestartArmaNode(t, readyChan)
 	testutil.WaitReady(t, readyChan, 1, 10)
 
-	waitForTxToBeSentAndReceived.Wait()
+	waitForLoadAndReceive(t, loadDone, receiveDone)
 }
 
 // Scenario:
@@ -1092,4 +1092,20 @@ func TestLoadAndReceive_AssemblerFailsAndRecovers(t *testing.T) {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// waitForLoadAndReceive fails the test if load or receive does not finish within 2 minutes.
+func waitForLoadAndReceive(t *testing.T, loadDone, receiveDone chan struct{}) {
+	t.Helper()
+	timeout := time.After(2 * time.Minute)
+	select {
+	case <-loadDone:
+	case <-timeout:
+		t.Fatal("load did not finish within 2 minutes")
+	}
+	select {
+	case <-receiveDone:
+	case <-timeout:
+		t.Fatal("receive did not finish within 2 minutes")
+	}
 }

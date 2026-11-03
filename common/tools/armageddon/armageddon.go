@@ -647,6 +647,7 @@ func SendTxsToAllAvailableRouters(userConfig *UserConfig, numOfTxs int, rate int
 	}
 	rl.Stop()
 
+	broadcastClient.CloseSendToAllRouters()
 	err = broadcastClient.Stop()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to stop broadcast client, err: %v", err)
@@ -736,6 +737,8 @@ func sendTxToRouters(userConfig *UserConfig, numOfTxs int, rate int, txSize int,
 
 	logger.Infof("all %d txs were sent to the routers", numOfTxs)
 
+	// TODO: submit can drop its last txs by calling CloseSendToAllRouters before Stop,
+	// and first make the ack loop above close endOfStream on io.EOF instead of reconnecting.
 	// TODO: before stopping the broadcast client, make sure all the acks have been received.
 	// Add a WaitForAcks method on the broadcast client that does this.
 	err = broadcastClient.Stop()

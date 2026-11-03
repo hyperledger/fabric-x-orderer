@@ -9,6 +9,7 @@ package armageddon
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,6 +26,7 @@ type StreamInfo struct {
 	conn                  *grpc.ClientConn
 	stream                ab.AtomicBroadcast_BroadcastClient
 	stopChan              chan struct{}
+	endOfStream           chan struct{}
 	isBroken              bool
 	isAlreadyReconnecting bool
 	maxRetryDelay         time.Duration
@@ -49,6 +51,14 @@ func (streamInfo *StreamInfo) SetIsBroken(value bool) {
 	streamInfo.lock.Lock()
 	defer streamInfo.lock.Unlock()
 	streamInfo.isBroken = value
+}
+
+func (streamInfo *StreamInfo) CloseSend() {
+	streamInfo.lock.Lock()
+	defer streamInfo.lock.Unlock()
+	if !streamInfo.isBroken {
+		_ = streamInfo.stream.CloseSend()
+	}
 }
 
 func (streamInfo *StreamInfo) CheckIfReconnectionIsNeeded() bool {
@@ -144,6 +154,7 @@ func (c *BroadcastTxClient) InitStreams() error {
 			conn:          conn,
 			stream:        stream,
 			stopChan:      make(chan struct{}),
+			endOfStream:   make(chan struct{}),
 			maxRetryDelay: 8 * time.Second,
 			endpoint:      routerEndpoint,
 			lock:          sync.Mutex{},
@@ -178,6 +189,10 @@ func ReceiveResponseFromRouter(userConfig *UserConfig, streamInfo *StreamInfo) {
 			return
 		default:
 			_, err := streamInfo.stream.Recv()
+			if err == io.EOF {
+				close(streamInfo.endOfStream)
+				return
+			}
 			if err != nil {
 				// An error can occur if the server is faulty (Unavailable desc) or the connections is closed (Canceled desc)
 				// If the connection is closed, then the reconnection go routine is opened, but then it exits with the stopChan.
@@ -200,6 +215,25 @@ func (c *BroadcastTxClient) SendTxToAllRouters(envelope *common.Envelope) {
 				streamInfo.TryReconnect(c.userConfig)
 			} else {
 				atomic.AddUint64(&streamInfo.sentTxs, 1)
+			}
+		}
+	}
+}
+
+// CloseSendToAllRouters closes the send side of each stream and waits up to 5s for the router to end it.
+// It must be called before Stop, and relies on ReceiveResponseFromRouter closing endOfStream on io.EOF.
+func (c *BroadcastTxClient) CloseSendToAllRouters() {
+	for _, streamInfo := range c.streamsToRouters {
+		streamInfo.CloseSend()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, streamInfo := range c.streamsToRouters {
+		if !streamInfo.IsBroken() {
+			select {
+			case <-streamInfo.endOfStream:
+			case <-ctx.Done():
+				streamInfo.logger.Warnf("Router: %s did not end the stream within 5s", streamInfo.endpoint)
 			}
 		}
 	}
