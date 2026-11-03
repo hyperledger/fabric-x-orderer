@@ -232,10 +232,10 @@ func (m *BatcherMetrics) StopMetricsTracker() {
 }
 
 func (m *BatcherMetrics) trackMetrics() {
-	prevC := monitoring.GetMetricValue(m.batchesCreatedTotal.(prometheus.Metric), m.logger)
-	prevP := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
-	prevR := float64(0)
-	prevBytes := monitoring.GetMetricValue(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)
+	batchesCreated := monitoring.NewCounterInterval(m.batchesCreatedTotal.(prometheus.Metric), m.logger)
+	batchesPulled := monitoring.NewCounterInterval(m.batchesPulledTotal.(prometheus.Metric), m.logger)
+	firstResends := monitoring.NewCounterInterval(m.firstResendsTotal.(prometheus.Metric), m.logger)
+	batchesSize := monitoring.NewCounterInterval(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)
 	mempoolLatency := monitoring.NewHistogramInterval(m.batchMempoolNextRequestsLatency.(prometheus.Metric), m.logger)
 	verifyLatency := monitoring.NewHistogramInterval(m.batchVerifyLatency.(prometheus.Metric), m.logger)
 	hashingLatency := monitoring.NewHistogramInterval(m.batchHashingLatency.(prometheus.Metric), m.logger)
@@ -248,13 +248,13 @@ func (m *BatcherMetrics) trackMetrics() {
 	for {
 		select {
 		case <-t.C:
-			created := monitoring.GetMetricValue(m.batchesCreatedTotal.(prometheus.Metric), m.logger)
-			pulled := monitoring.GetMetricValue(m.batchesPulledTotal.(prometheus.Metric), m.logger)
-			resends := monitoring.GetMetricValue(m.firstResendsTotal.(prometheus.Metric), m.logger)
-			bytes := monitoring.GetMetricValue(m.ledgerMetrics.BatchesSize.(prometheus.Metric), m.logger)
+			newCreated, created := batchesCreated.Next()
+			newPulled, pulled := batchesPulled.Next()
+			newResends, resends := firstResends.Next()
+			newBytes, _ := batchesSize.Next()
 
 			// the average size of the batches appended in this interval only
-			batchSizeAvg := uint64(monitoring.Average(bytes-prevBytes, uint64(created-prevC)))
+			batchSizeAvg := uint64(monitoring.Average(newBytes, uint64(newCreated)))
 			m.batchSizeAvg.Set(float64(batchSizeAvg))
 
 			m.logger.Infof(
@@ -263,22 +263,21 @@ func (m *BatcherMetrics) trackMetrics() {
 				m.shardID,
 				m.role(),
 				sec,
-				uint64(created-prevC), (created-prevC)/sec, uint64(created),
-				uint64(pulled-prevP), (pulled-prevP)/sec, uint64(pulled),
-				uint64(resends-prevR), (resends-prevR)/sec, uint64(resends),
+				uint64(newCreated), newCreated/sec, uint64(created),
+				uint64(newPulled), newPulled/sec, uint64(pulled),
+				uint64(newResends), newResends/sec, uint64(resends),
 				uint64(monitoring.GetMetricValue(m.batchedTxsTotal.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.memPoolSize.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.routerTxsTotal.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.roleChangesTotal.(prometheus.Metric), m.logger)),
 				uint64(monitoring.GetMetricValue(m.complaintsTotal.(prometheus.Metric), m.logger)),
-				mempoolLatency.Next(m.logger),
-				verifyLatency.Next(m.logger),
-				hashingLatency.Next(m.logger),
-				headerHashingLatency.Next(m.logger),
-				appendLatency.Next(m.logger),
+				mempoolLatency.Next(),
+				verifyLatency.Next(),
+				hashingLatency.Next(),
+				headerHashingLatency.Next(),
+				appendLatency.Next(),
 				batchSizeAvg,
 			)
-			prevC, prevP, prevR, prevBytes = created, pulled, resends, bytes
 
 		case <-m.stopChan:
 			return

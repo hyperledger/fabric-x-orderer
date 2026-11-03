@@ -181,25 +181,62 @@ func GetMetricValue(m prometheus.Metric, logger *flogging.FabricLogger) float64 
 	}
 }
 
+// CounterInterval tracks counter increases between reads.
+type CounterInterval struct {
+	m      prometheus.Metric
+	logger *flogging.FabricLogger
+	total  float64
+}
+
+// NewCounterInterval initializes the interval with the current counter value.
+func NewCounterInterval(m prometheus.Metric, logger *flogging.FabricLogger) *CounterInterval {
+	return &CounterInterval{m: m, logger: logger, total: GetMetricValue(m, logger)}
+}
+
+// Next returns the counter increase and current total.
+func (c *CounterInterval) Next() (delta, total float64) {
+	gm := promgo.Metric{}
+	if err := c.m.Write(&gm); err != nil {
+		c.logger.Error(err)
+		return 0, c.total
+	}
+
+	total = gm.Counter.GetValue()
+	if total > c.total {
+		delta = total - c.total
+	}
+	c.total = total
+	return delta, total
+}
+
 // HistogramInterval tracks histogram averages between reads.
 type HistogramInterval struct {
-	m     prometheus.Metric
-	sum   float64
-	count uint64
+	m      prometheus.Metric
+	logger *flogging.FabricLogger
+	sum    float64
+	count  uint64
 }
 
 // NewHistogramInterval initializes the interval with the current histogram values.
 func NewHistogramInterval(m prometheus.Metric, logger *flogging.FabricLogger) *HistogramInterval {
 	sum, count := GetHistogramSumAndCount(m, logger)
-	return &HistogramInterval{m: m, sum: sum, count: count}
+	return &HistogramInterval{m: m, logger: logger, sum: sum, count: count}
 }
 
 // Next returns the average since the previous successful read.
-func (h *HistogramInterval) Next(logger *flogging.FabricLogger) float64 {
-	sum, count := GetHistogramSumAndCount(h.m, logger)
-	if count < h.count {
+func (h *HistogramInterval) Next() float64 {
+	gm := promgo.Metric{}
+	if err := h.m.Write(&gm); err != nil {
+		h.logger.Error(err)
 		return 0
 	}
+
+	sum, count := gm.Histogram.GetSampleSum(), gm.Histogram.GetSampleCount()
+	if count < h.count {
+		h.sum, h.count = sum, count
+		return 0
+	}
+
 	avg := Average(sum-h.sum, count-h.count)
 	h.sum, h.count = sum, count
 	return avg
