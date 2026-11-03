@@ -8,6 +8,7 @@ package batcher_test
 
 import (
 	"context"
+	"net"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -43,14 +44,16 @@ func TestPrimaryReqConnectorConnectsOnceWhenManySendersFindNoStream(t *testing.T
 	requireDone(t, &sends, "the senders did not return")
 
 	require.Eventually(t, func() bool { return primary.requests.Load() == concurrentSenders }, 10*time.Second, 10*time.Millisecond)
-	require.Equal(t, int32(1), primary.streams.Load(), "the senders opened more than one stream")
+	require.Eventually(t, func() bool {
+		return primary.streams.Load() == 1
+	}, 10*time.Second, 10*time.Millisecond, "the senders opened more than one stream")
 }
 
 // Scenario:
 //  1. Start a primary that reads the stream of forwarded requests, and connect to it.
 //  2. Forward requests from many goroutines at once, as first-strike resends do.
-//  3. Expect all the requests to reach the primary. Run with -race: concurrent sends on one gRPC stream
-//     are not allowed, and the race detector flags them.
+//  3. Expect all the requests to reach the primary. This is a smoke test for serialized sends;
+//     the race detector does not report concurrent SendMsg calls on a gRPC stream.
 func TestPrimaryReqConnectorSendsFromManyGoroutines(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
@@ -133,7 +136,56 @@ func TestPrimaryAckConnectorConnectsOnceWhenManySendersFindNoStream(t *testing.T
 	}
 	requireDone(t, &sends, "the senders did not return")
 
-	require.Equal(t, int32(1), primary.streams.Load(), "the senders opened more than one stream")
+	require.Eventually(t, func() bool {
+		return primary.streams.Load() == 1
+	}, 10*time.Second, 10*time.Millisecond, "the senders opened more than one stream")
+}
+
+func TestPrimaryReqConnectorSendTimeoutIncludesConnectionWait(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+	nodes := createNodes(t, ca, 1)
+	newUnresponsiveListener := func() net.Listener {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		t.Cleanup(func() { listener.Close() })
+		go func() {
+			for {
+				conn, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				_ = conn
+			}
+		}()
+		return listener
+	}
+	primaryOne, primaryTwo := newUnresponsiveListener(), newUnresponsiveListener()
+
+	conf := &node_config.BatcherNodeConfig{
+		PartyId:            3,
+		ShardId:            0,
+		TLSPrivateKeyFile:  nodes[0].TLSKey,
+		TLSCertificateFile: nodes[0].TLSCert,
+	}
+	batchers := map[types.PartyID]*batcher.EndpointAndCerts{
+		1: {Endpoint: primaryOne.Addr().String(), TLSCACerts: []node_config.RawBytes{ca.CertBytes()}},
+		2: {Endpoint: primaryTwo.Addr().String(), TLSCACerts: []node_config.RawBytes{ca.CertBytes()}},
+	}
+	connector := batcher.CreatePrimaryReqConnector(
+		1, testutil.CreateLogger(t, 3), conf, batchers, context.Background(),
+		100*time.Millisecond, 10*time.Millisecond, 20*time.Millisecond,
+	)
+	t.Cleanup(connector.Stop)
+
+	var sends sync.WaitGroup
+	for range 4 {
+		sends.Go(func() { connector.SendReq([]byte{1}) })
+	}
+	start := time.Now()
+	connector.ConnectToNewPrimary(2)
+	require.Less(t, time.Since(start), time.Second)
+	requireDone(t, &sends, "senders did not honor the send timeout while connecting")
 }
 
 func newReqConnector(t *testing.T, nodes []*node, batchers map[types.PartyID]*batcher.EndpointAndCerts) *batcher.PrimaryReqConnector {

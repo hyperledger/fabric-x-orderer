@@ -30,7 +30,7 @@ type PrimaryReqConnector struct {
 	connectionCtx        context.Context // used to stop the current connection
 	connectionCancelFunc context.CancelFunc
 	lock                 sync.RWMutex
-	connectLock          sync.Mutex    // lets one goroutine at a time replace the connection to the primary
+	connectSlot          chan struct{} // lets one goroutine at a time replace the connection to the primary
 	sendSlot             chan struct{} // lets one goroutine at a time send on the stream; gRPC does not allow concurrent sends
 
 	minRetryInterval time.Duration
@@ -63,7 +63,9 @@ func (p *PrimaryReqConnector) SendReq(req []byte) {
 		}
 		stream, primaryID := p.currentStream()
 		if stream == nil {
-			p.connectIfNeeded()
+			if !p.connectIfNeeded(sendTimer) {
+				return
+			}
 			stream, primaryID = p.currentStream()
 			if stream == nil { // connecting to primary failed
 				p.logger.Errorf("Failed sending req to primary %d; failed to connect", primaryID)
@@ -93,16 +95,36 @@ func (p *PrimaryReqConnector) currentStream() (protos.BatcherControlService_FwdR
 	return p.stream, p.primaryID
 }
 
-// connectIfNeeded connects to the primary unless there is a stream already. Senders that find no stream
-// together end up here at once; the first connects and the others find its stream, instead of each
-// resetting the connection the previous one just made.
-func (p *PrimaryReqConnector) connectIfNeeded() {
-	p.connectLock.Lock()
-	defer p.connectLock.Unlock()
-	if stream, _ := p.currentStream(); stream != nil {
-		return
+// connectIfNeeded connects to the primary unless there is a stream already. Only one connection attempt
+// runs at a time, while callers can stop waiting when their send timeout expires.
+func (p *PrimaryReqConnector) connectIfNeeded(sendTimer *time.Timer) bool {
+	select {
+	case p.connectSlot <- struct{}{}:
+	case <-p.connectorCtx.Done():
+		return false
+	case <-sendTimer.C:
+		return false
 	}
-	p.connect()
+
+	connected := make(chan struct{})
+	go func() {
+		defer func() {
+			<-p.connectSlot
+			close(connected)
+		}()
+		if stream, _ := p.currentStream(); stream == nil {
+			p.connect()
+		}
+	}()
+
+	select {
+	case <-connected:
+		return true
+	case <-p.connectorCtx.Done():
+		return false
+	case <-sendTimer.C:
+		return false
+	}
 }
 
 // acquireSend waits for the turn to send on the stream. It returns false if the send timed out or the
@@ -129,17 +151,21 @@ func (p *PrimaryReqConnector) ConnectToNewPrimary(primaryID types.PartyID) {
 	// Reset before waiting for the connect lock: it cancels a connect to the previous primary that is
 	// in progress, so the switch does not wait for it to give up.
 	p.ResetConnection()
-	p.connectIfNeeded()
+	// Senders connect lazily so the decision loop is not blocked by an unavailable primary.
 }
 
 // ConnectToPrimary replaces the connection to the primary with a new one.
 func (p *PrimaryReqConnector) ConnectToPrimary() {
-	p.connectLock.Lock()
-	defer p.connectLock.Unlock()
+	select {
+	case p.connectSlot <- struct{}{}:
+	case <-p.connectorCtx.Done():
+		return
+	}
+	defer func() { <-p.connectSlot }()
 	p.connect()
 }
 
-// connect replaces the connection to the primary with a new one. The caller holds connectLock.
+// connect replaces the connection to the primary with a new one. The caller holds connectSlot.
 func (p *PrimaryReqConnector) connect() {
 	p.ResetConnection()
 	var primary types.PartyID
@@ -219,6 +245,7 @@ func CreatePrimaryReqConnector(primaryID types.PartyID, logger *flogging.FabricL
 		config:           config,
 		batchers:         batchers,
 		sendSlot:         make(chan struct{}, 1),
+		connectSlot:      make(chan struct{}, 1),
 		sendTimeout:      timeout,
 		minRetryInterval: minRetryInterval,
 		maxRetryDelay:    maxRetryDelay,
