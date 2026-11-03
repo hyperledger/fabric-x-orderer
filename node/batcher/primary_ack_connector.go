@@ -31,7 +31,7 @@ type PrimaryAckConnector struct {
 	connectionCtx        context.Context // used to stop the current connection
 	connectionCancelFunc context.CancelFunc
 	lock                 sync.RWMutex
-	connectLock          sync.Mutex    // lets one goroutine at a time replace the connection to the primary
+	connectSlot          chan struct{} // lets one goroutine at a time replace the connection to the primary
 	sendSlot             chan struct{} // lets one goroutine at a time send on the stream; gRPC does not allow concurrent sends
 
 	minRetryInterval time.Duration
@@ -71,7 +71,9 @@ func (p *PrimaryAckConnector) SendAck(seq types.BatchSequence, to types.PartyID)
 			return
 		}
 		if stream == nil {
-			p.connectIfNeeded()
+			if !p.connectIfNeeded(sendTimer) {
+				return
+			}
 			stream, primaryID = p.currentStream()
 			if primaryID != to {
 				p.logger.Debugf("Dropping ack of batch %d to primary %d; the primary is now %d", seq, to, primaryID)
@@ -105,16 +107,36 @@ func (p *PrimaryAckConnector) currentStream() (protos.BatcherControlService_Noti
 	return p.stream, p.primaryID
 }
 
-// connectIfNeeded connects to the primary unless there is a stream already. Senders that find no stream
-// together end up here at once; the first connects and the others find its stream, instead of each
-// resetting the connection the previous one just made.
-func (p *PrimaryAckConnector) connectIfNeeded() {
-	p.connectLock.Lock()
-	defer p.connectLock.Unlock()
-	if stream, _ := p.currentStream(); stream != nil {
-		return
+// connectIfNeeded connects to the primary unless there is a stream already. Only one connection attempt
+// runs at a time, while callers can stop waiting when their send timeout expires.
+func (p *PrimaryAckConnector) connectIfNeeded(sendTimer *time.Timer) bool {
+	select {
+	case p.connectSlot <- struct{}{}:
+	case <-p.connectorCtx.Done():
+		return false
+	case <-sendTimer.C:
+		return false
 	}
-	p.connect()
+
+	connected := make(chan struct{})
+	go func() {
+		defer func() {
+			<-p.connectSlot
+			close(connected)
+		}()
+		if stream, _ := p.currentStream(); stream == nil {
+			p.connect()
+		}
+	}()
+
+	select {
+	case <-connected:
+		return true
+	case <-p.connectorCtx.Done():
+		return false
+	case <-sendTimer.C:
+		return false
+	}
 }
 
 // acquireSend waits for the turn to send on the stream. It returns false if the send timed out or the
@@ -144,17 +166,21 @@ func (p *PrimaryAckConnector) ConnectToNewPrimary(primaryID types.PartyID) {
 	if p.config.PartyId == primaryID {
 		return
 	}
-	p.connectIfNeeded()
+	// Senders connect lazily so the decision loop is not blocked by an unavailable primary.
 }
 
 // ConnectToPrimary replaces the connection to the primary with a new one.
 func (p *PrimaryAckConnector) ConnectToPrimary() {
-	p.connectLock.Lock()
-	defer p.connectLock.Unlock()
+	select {
+	case p.connectSlot <- struct{}{}:
+	case <-p.connectorCtx.Done():
+		return
+	}
+	defer func() { <-p.connectSlot }()
 	p.connect()
 }
 
-// connect replaces the connection to the primary with a new one. The caller holds connectLock.
+// connect replaces the connection to the primary with a new one. The caller holds connectSlot.
 func (p *PrimaryAckConnector) connect() {
 	p.ResetConnection()
 	var primary types.PartyID
@@ -240,6 +266,7 @@ func CreatePrimaryAckConnector(primaryID types.PartyID, shardID types.ShardID, l
 		config:           config,
 		batchers:         batchers,
 		sendSlot:         make(chan struct{}, 1),
+		connectSlot:      make(chan struct{}, 1),
 		sendTimeout:      timeout,
 		minRetryInterval: minRetryInterval,
 		maxRetryDelay:    maxRetryDelay,
