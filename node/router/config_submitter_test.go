@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package router
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -183,6 +184,31 @@ func TestConfigSubmitterReconnectionAbort(t *testing.T) {
 
 	err := <-errChan
 	require.EqualError(t, err, fmt.Sprintf("reconnection to consensus %s aborted, because context is done and configSubmitter stopped", configSubmitter.consensusEndpoint))
+}
+
+// Scenario:
+//  1. Forward a config update that the consenter rejects, and expect it not to be marked as a bad request (so 500).
+//  2. Forward a config update that fails validation, and expect it to be marked as a bad request (400).
+func TestConfigSubmitterRejectionCodes(t *testing.T) {
+	setup := createConfigSubmitTestSetup(t)
+	setup.Start()
+	defer setup.Stop()
+	configSubmitter := setup.configSubmitter
+	req := tx.CreateStructuredRequest([]byte("data"))
+	feedbackChan := make(chan Response, 1)
+
+	// the stub consenter rejects every config update
+	configSubmitter.Forward(CreateTrackedRequest(req, feedbackChan, nil, nil))
+	resp := <-feedbackChan
+	var badReq *badRequestError
+	require.EqualError(t, resp.GetResponseError(), "dummy submit config")
+	require.NotErrorAs(t, resp.GetResponseError(), &badReq)
+
+	configSubmitter.configRulesVerifier.(*ordererRulesMocks.FakeOrdererRules).ValidateNewConfigReturns(errors.New("invalid config"))
+	configSubmitter.Forward(CreateTrackedRequest(req, feedbackChan, nil, nil))
+	resp = <-feedbackChan
+	require.ErrorAs(t, resp.GetResponseError(), &badReq)
+	require.EqualError(t, resp.GetResponseError(), "error in validating config rules: invalid config")
 }
 
 // Scenario:

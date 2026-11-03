@@ -7,7 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 package router
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -145,6 +147,29 @@ func TestClientFeedbackDroppedErrorIsStillCountedAsRejected(t *testing.T) {
 	require.False(t, cc.reply(Response{err: errors.New("server error: batcher is unreachable")}))
 	require.Equal(t, float64(1), read(cc.metrics.rejectedTxsWithCode500))
 	require.Zero(t, read(cc.metrics.rejectedTxsWithCode400))
+}
+
+// Scenario:
+//  1. Count no error, a throttled request and a Submit whose client gave up, and expect none to be counted.
+//  2. Count a bad request and expect it to be counted with code 400.
+//  3. Count an error that is not marked, and expect it to be counted with code 500.
+func TestIncreaseErrorCountCountsEveryRejection(t *testing.T) {
+	cc, read := newTestClientFeedback(t, 1, nil, nil)
+	m := cc.metrics
+
+	m.increaseErrorCount(nil)
+	m.increaseErrorCount(ErrThrottled)
+	m.increaseErrorCount(fmt.Errorf("%w for request %x: %v", errContextDone, []byte("req1"), context.Canceled))
+	require.Zero(t, read(m.rejectedTxsWithCode400))
+	require.Zero(t, read(m.rejectedTxsWithCode500))
+
+	m.increaseErrorCount(badRequest(errors.New("request verification error: empty payload field")))
+	require.Equal(t, float64(1), read(m.rejectedTxsWithCode400))
+	require.Zero(t, read(m.rejectedTxsWithCode500))
+
+	m.increaseErrorCount(errors.New("router is stopping, cannot process request"))
+	require.Equal(t, float64(1), read(m.rejectedTxsWithCode400))
+	require.Equal(t, float64(1), read(m.rejectedTxsWithCode500))
 }
 
 // Scenario:
