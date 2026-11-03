@@ -14,6 +14,7 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/blockledger"
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
@@ -422,6 +423,59 @@ func TestAssemblerLedger_BatchFrontier(t *testing.T) {
 			assert.Len(t, bfs, 1) // only one party
 		}
 	})
+
+	// Scenario:
+	//  1. Append 64 batches that cycle over 8 shards and primaries 1-4, after the genesis block.
+	//  2. Make every read of a block below 33 take 100 ms.
+	//  3. Scan for shard 1 and parties 1-5 with a 1 s timeout; party 5 was never primary.
+	//  4. Expect shard 1 with primaries 1-4 at sequence 1, and the scan to stop long before block 0.
+	t.Run("respects the timeout after every primary that exists was found", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		logger := flogging.MustGetLogger("arma-assembler")
+
+		al := createAssemblerLedger(t, tmpDir, logger)
+		defer al.Close()
+
+		al.AppendConfig(&state.OrderingInformation{
+			CommonBlock: utils.EmptyGenesisBlock("arma"),
+			DecisionNum: 0,
+			BatchIndex:  0,
+			BatchCount:  1,
+		})
+
+		num := 64
+		batches, ordInfos := createBatchesAndOrdInfo(t, num)
+
+		for n := 0; n < num; n++ {
+			al.Append(batches[n], ordInfos[n])
+		}
+		require.Equal(t, uint64(1+num), al.Ledger.Height())
+
+		reader := &slowBlockReader{ReadWriter: al.Ledger, slowBelow: 33, delay: 100 * time.Millisecond}
+		al.Ledger = reader
+
+		bf, err := al.BatchFrontier([]types.ShardID{1}, []types.PartyID{1, 2, 3, 4, 5}, time.Second)
+		require.NoError(t, err)
+		require.Equal(t, node_ledger.BatchFrontier{1: {1: 1, 2: 1, 3: 1, 4: 1}}, bf)
+		// 32 blocks down to block 33, and at most 11 slow reads within the timeout
+		require.LessOrEqual(t, reader.reads, 43)
+	})
+}
+
+// slowBlockReader counts block reads, and delays every read of a block below slowBelow.
+type slowBlockReader struct {
+	blockledger.ReadWriter
+	slowBelow uint64
+	delay     time.Duration
+	reads     int
+}
+
+func (r *slowBlockReader) RetrieveBlockByNumber(blockNumber uint64) (*common.Block, error) {
+	r.reads++
+	if blockNumber < r.slowBelow {
+		time.Sleep(r.delay)
+	}
+	return r.ReadWriter.RetrieveBlockByNumber(blockNumber)
 }
 
 func TestAssemblerLedger_LastConfig(t *testing.T) {

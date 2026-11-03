@@ -292,6 +292,11 @@ func (l *AssemblerLedger) BatchFrontier(
 	deadline := time.Now().Add(scanTimeout)
 
 	for h := height; h > 0; h-- {
+		// Always read the last block, then stop at the deadline whether or not the blocks read so far were skipped
+		if h < height && time.Now().After(deadline) {
+			break
+		}
+
 		block, err := l.Ledger.RetrieveBlockByNumber(h - 1)
 		if err != nil {
 			return nil, err
@@ -327,10 +332,6 @@ func (l *AssemblerLedger) BatchFrontier(
 		shardParty2Seq[batchID.Shard()][batchID.Primary()] = batchID.Seq()
 		count--
 		if count == 0 {
-			break
-		}
-
-		if time.Now().After(deadline) {
 			break
 		}
 	}

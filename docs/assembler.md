@@ -342,7 +342,7 @@ Assembler:
 | Field | Default | What it controls |
 |-------|---------|------------------|
 | `PrefetchBufferMemoryBytes` | 1 GiB | The memory budget of **one partition** of the index. Raising it lets the prefetcher run further ahead of the collator; lowering it bounds memory, at the price of holding the streams back sooner. |
-| `RestartLedgerScanTimeout` | 5s | How long the backwards scan of the ledger for the batch frontier may take at startup. If it expires before every ⟨shard, primary⟩ has been found, the streams of those not found resume from the beginning. |
+| `RestartLedgerScanTimeout` | 5s | How long the backwards scan of the ledger for the batch frontier may take, at startup and when a new config is applied. If it expires before every ⟨shard, primary⟩ has been found, the streams of those not found resume from the beginning. |
 | `PrefetchEvictionTtl` | 1h | How long a streamed batch may sit in the index before it is dropped. It bounds how long batches whose BA never arrives keep occupying space. |
 | `PopWaitMonitorTimeout` | 1s | How long the collator waits for a batch to be streamed in before the index requests it on demand. Lowering it shortens the stall when a primary has failed or is censoring, at the price of fetches that the streams would have satisfied anyway. |
 | `ReplicationChannelSize` | 100 | How many batches a shard's stream may buffer ahead of the index. |
