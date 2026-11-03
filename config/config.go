@@ -165,6 +165,8 @@ func ReadConfig(configFilePath string, logger *flogging.FabricLogger) (*Configur
 		return nil, nil, fmt.Errorf("failed to read the shared configuration from block, err: %v", err)
 	}
 
+	logConfiguration(logger, conf, nodeRole, lastConfigBlock.GetHeader().GetNumber())
+
 	return conf, lastConfigBlock, nil
 }
 
