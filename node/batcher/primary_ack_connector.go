@@ -31,6 +31,8 @@ type PrimaryAckConnector struct {
 	connectionCtx        context.Context // used to stop the current connection
 	connectionCancelFunc context.CancelFunc
 	lock                 sync.RWMutex
+	connectLock          sync.Mutex    // lets one goroutine at a time replace the connection to the primary
+	sendSlot             chan struct{} // lets one goroutine at a time send on the stream; gRPC does not allow concurrent sends
 
 	minRetryInterval time.Duration
 	maxRetryDelay    time.Duration
@@ -69,7 +71,7 @@ func (p *PrimaryAckConnector) SendAck(seq types.BatchSequence, to types.PartyID)
 			return
 		}
 		if stream == nil {
-			p.ConnectToPrimary()
+			p.connectIfNeeded()
 			stream, primaryID = p.currentStream()
 			if primaryID != to {
 				p.logger.Debugf("Dropping ack of batch %d to primary %d; the primary is now %d", seq, to, primaryID)
@@ -80,9 +82,15 @@ func (p *PrimaryAckConnector) SendAck(seq types.BatchSequence, to types.PartyID)
 				continue
 			}
 		}
-		// The lock is not held across Send: a Send blocked on a full stream would otherwise keep
-		// ResetConnection from taking the lock, so the connection could never be closed to unblock it.
-		if err := stream.Send(&protos.Ack{Shard: uint32(p.shardID), Seq: uint64(seq)}); err != nil {
+		// gRPC does not allow concurrent sends on a stream, so the senders take turns. The turn is not
+		// the connector lock: a Send blocked on a full stream would otherwise keep ResetConnection from
+		// taking the lock, so the connection could never be closed to unblock it.
+		if !p.acquireSend(sendTimer) {
+			return
+		}
+		err := stream.Send(&protos.Ack{Shard: uint32(p.shardID), Seq: uint64(seq)})
+		p.releaseSend()
+		if err != nil {
 			p.logger.Errorf("Failed sending ack to primary %d; error: %v", primaryID, err)
 			continue
 		}
@@ -97,18 +105,57 @@ func (p *PrimaryAckConnector) currentStream() (protos.BatcherControlService_Noti
 	return p.stream, p.primaryID
 }
 
+// connectIfNeeded connects to the primary unless there is a stream already. Senders that find no stream
+// together end up here at once; the first connects and the others find its stream, instead of each
+// resetting the connection the previous one just made.
+func (p *PrimaryAckConnector) connectIfNeeded() {
+	p.connectLock.Lock()
+	defer p.connectLock.Unlock()
+	if stream, _ := p.currentStream(); stream != nil {
+		return
+	}
+	p.connect()
+}
+
+// acquireSend waits for the turn to send on the stream. It returns false if the send timed out or the
+// connector was stopped while waiting.
+func (p *PrimaryAckConnector) acquireSend(sendTimer *time.Timer) bool {
+	select {
+	case p.sendSlot <- struct{}{}:
+		return true
+	case <-p.connectorCtx.Done():
+		return false
+	case <-sendTimer.C:
+		return false
+	}
+}
+
+func (p *PrimaryAckConnector) releaseSend() {
+	<-p.sendSlot
+}
+
 func (p *PrimaryAckConnector) ConnectToNewPrimary(primaryID types.PartyID) {
 	p.lock.Lock()
 	p.primaryID = primaryID
 	p.lock.Unlock()
+	// Reset before waiting for the connect lock: it cancels a connect to the previous primary that is
+	// in progress, so the switch does not wait for it to give up.
+	p.ResetConnection()
 	if p.config.PartyId == primaryID {
-		p.ResetConnection()
 		return
 	}
-	p.ConnectToPrimary()
+	p.connectIfNeeded()
 }
 
+// ConnectToPrimary replaces the connection to the primary with a new one.
 func (p *PrimaryAckConnector) ConnectToPrimary() {
+	p.connectLock.Lock()
+	defer p.connectLock.Unlock()
+	p.connect()
+}
+
+// connect replaces the connection to the primary with a new one. The caller holds connectLock.
+func (p *PrimaryAckConnector) connect() {
 	p.ResetConnection()
 	var primary types.PartyID
 	var ctx context.Context
@@ -135,11 +182,16 @@ func (p *PrimaryAckConnector) ConnectToPrimary() {
 
 	conn, err := cc.Dial(primaryEndpoint) // TODO create a new DialXXX(abortContext context.Context, address string) that accepts an abort context
 	if err != nil {
-		p.logger.Errorf("Failed connecting to primary %d (endpoint %s); error: %v", p.primaryID, primaryEndpoint, err)
+		p.logger.Errorf("Failed connecting to primary %d (endpoint %s); error: %v", primary, primaryEndpoint, err)
 		return
 	}
 
 	p.lock.Lock()
+	if ctx.Err() != nil { // the connection was reset, or the connector stopped, while dialing
+		p.lock.Unlock()
+		conn.Close()
+		return
+	}
 	p.conn = conn
 	p.lock.Unlock()
 
@@ -152,6 +204,10 @@ func (p *PrimaryAckConnector) ConnectToPrimary() {
 	}
 
 	p.lock.Lock()
+	if ctx.Err() != nil { // reset while creating the stream; do not keep a stream of a closed connection
+		p.lock.Unlock()
+		return
+	}
 	p.stream = ackStream
 	p.lock.Unlock()
 
@@ -183,6 +239,7 @@ func CreatePrimaryAckConnector(primaryID types.PartyID, shardID types.ShardID, l
 		logger:           logger,
 		config:           config,
 		batchers:         batchers,
+		sendSlot:         make(chan struct{}, 1),
 		sendTimeout:      timeout,
 		minRetryInterval: minRetryInterval,
 		maxRetryDelay:    maxRetryDelay,
