@@ -8,58 +8,116 @@ package badb
 
 import (
 	"encoding/binary"
+	"sync"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/util"
+	"github.com/hyperledger/fabric-x-orderer/common/pebbledb"
 )
 
+// The first byte of a key names its keyspace.
+const (
+	digestKeyPrefix = 0 // digest -> epoch
+	epochKeyPrefix  = 1 // epoch | digest -> empty
+)
+
+// BatchAttestationDB records the digests of the batches that consensus has ordered, so the consenter can
+// reject a batch attestation fragment for a batch that is already ordered. It is safe for concurrent use.
 type BatchAttestationDB struct {
-	db     *leveldb.DB
+	// lock guards closed. Pebble panics when a closed database is used, so every method holds it for
+	// reading while it uses db, and Close holds it for writing.
+	lock   sync.RWMutex
+	closed bool
+	db     *pebble.DB
 	logger *flogging.FabricLogger
 }
 
+// NewBatchAttestationDB opens the database in the directory at path, creating it if it does not exist.
 func NewBatchAttestationDB(path string, logger *flogging.FabricLogger) (*BatchAttestationDB, error) {
-	db, err := leveldb.OpenFile(path, nil)
-	return &BatchAttestationDB{db: db, logger: logger}, err
+	return openBatchAttestationDB(path, nil, logger)
 }
 
+// openBatchAttestationDB is NewBatchAttestationDB with Pebble options, such as a file system for tests.
+func openBatchAttestationDB(path string, opts *pebble.Options, logger *flogging.FabricLogger) (*BatchAttestationDB, error) {
+	db, err := pebbledb.Open(path, opts, logger)
+	if err != nil {
+		return nil, err
+	}
+	return &BatchAttestationDB{db: db, logger: logger}, nil
+}
+
+// Close closes the database. Closing it again does nothing. Afterwards Exists reports every digest as
+// absent and List returns nothing, while Put and Clean panic.
 func (db *BatchAttestationDB) Close() {
-	db.db.Close()
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	if db.closed {
+		return
+	}
+	db.closed = true
+	if err := db.db.Close(); err != nil {
+		db.logger.Errorf("Failed closing database: %v", err)
+	}
 }
 
+// List returns every stored digest and, at the same index, its epoch, in digest order. It panics on a
+// read error.
 func (db *BatchAttestationDB) List() ([][]byte, []uint64) {
-	iter := db.db.NewIterator(&util.Range{}, nil)
-	defer iter.Release()
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+	if db.closed {
+		return nil, nil
+	}
+
+	iter, err := db.db.NewIter(prefixBounds(digestKeyPrefix))
+	if err != nil {
+		db.logger.Panicf("Failed iterating over database: %v", err)
+	}
 
 	var digests [][]byte
 	var epochs []uint64
 
-	for iter.Next() {
-		key := iter.Key()
-		if key[0] == 0 {
-			digestCopy := make([]byte, len(key[1:]))
-			copy(digestCopy, key[1:])
-
-			digests = append(digests, digestCopy)
-			epochs = append(epochs, binary.BigEndian.Uint64(iter.Value()))
+	for iter.First(); iter.Valid(); iter.Next() {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			db.logger.Panicf("Failed iterating over database: %v", err)
 		}
+
+		key := iter.Key()
+		digestCopy := make([]byte, len(key[1:]))
+		copy(digestCopy, key[1:])
+
+		digests = append(digests, digestCopy)
+		epochs = append(epochs, binary.BigEndian.Uint64(value))
+	}
+
+	if err := iter.Close(); err != nil {
+		db.logger.Panicf("Failed iterating over database: %v", err)
 	}
 
 	return digests, epochs
 }
 
+// Exists reports whether digest is stored. It returns false on a closed database and panics on a read
+// error.
 func (db *BatchAttestationDB) Exists(digest []byte) bool {
-	_, err := db.db.Get(makeDigestKey(digest), nil)
-	switch err {
-	case nil:
-		return true
-	case leveldb.ErrNotFound:
-		return false
-	case leveldb.ErrClosed:
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+	if db.closed {
 		// The DB may be closed while the consenter is soft-stopping (the BFT
 		// engine can still drive Exists via SimulateStateTransition). Treat a
 		// closed DB as "digest absent" rather than fail-stopping.
+		return false
+	}
+
+	_, closer, err := db.db.Get(makeDigestKey(digest))
+	switch err {
+	case nil:
+		if err := closer.Close(); err != nil {
+			db.logger.Panicf("Failed reading from database: %v", err)
+		}
+		return true
+	case pebble.ErrNotFound:
 		return false
 	default:
 		// A corruption/IO error must not be silently reported as absence; match
@@ -69,28 +127,54 @@ func (db *BatchAttestationDB) Exists(digest []byte) bool {
 	}
 }
 
+// Put stores each digest with the epoch at the same index, in one atomic write synced to disk. Storing a
+// digest again overwrites its epoch. It panics on a write error or a closed database.
 func (db *BatchAttestationDB) Put(digest [][]byte, epoch []uint64) {
-	batch := new(leveldb.Batch)
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+	if db.closed {
+		db.logger.Panicf("Failed updating database: %v", pebble.ErrClosed)
+	}
+
+	batch := db.db.NewBatch()
+	defer batch.Close()
 	for i := 0; i < len(digest); i++ {
 		epochBuff := make([]byte, 8)
 		binary.BigEndian.PutUint64(epochBuff, epoch[i])
 
-		batch.Put(makeDigestKey(digest[i]), epochBuff)
-		batch.Put(makeEpochKey(digest[i], epochBuff), []byte{0})
+		if err := batch.Set(makeDigestKey(digest[i]), epochBuff, nil); err != nil {
+			db.logger.Panicf("Failed updating database: %v", err)
+		}
+		if err := batch.Set(makeEpochKey(digest[i], epochBuff), []byte{0}, nil); err != nil {
+			db.logger.Panicf("Failed updating database: %v", err)
+		}
 	}
 
-	if err := db.db.Write(batch, nil); err != nil {
+	// Synced, because the consenter indexes a decision before appending it to its ledger, and an unsynced
+	// Pebble write is lost on a process crash.
+	if err := batch.Commit(pebble.Sync); err != nil {
 		db.logger.Panicf("Failed updating database: %v", err)
 	}
 }
 
+// Clean deletes every digest whose epoch is lower than epochToDelete, in one atomic write synced to
+// disk. It panics on a read or write error, or on a closed database.
 func (db *BatchAttestationDB) Clean(epochToDelete uint64) {
-	iter := db.db.NewIterator(util.BytesPrefix([]byte{1}), nil)
-	defer iter.Release()
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+	if db.closed {
+		db.logger.Panicf("Failed updating database: %v", pebble.ErrClosed)
+	}
 
-	batch := new(leveldb.Batch)
+	iter, err := db.db.NewIter(prefixBounds(epochKeyPrefix))
+	if err != nil {
+		db.logger.Panicf("Failed iterating over database: %v", err)
+	}
 
-	for iter.Next() {
+	batch := db.db.NewBatch()
+	defer batch.Close()
+
+	for iter.First(); iter.Valid(); iter.Next() {
 		epochKey := iter.Key()
 		epochBuff := epochKey[1:]
 		epoch := binary.BigEndian.Uint64(epochBuff[:8])
@@ -99,31 +183,45 @@ func (db *BatchAttestationDB) Clean(epochToDelete uint64) {
 			continue
 		}
 
-		batch.Delete(makeDigestKey(digest))
-		batch.Delete(epochKey)
+		// The batch copies the keys, so the iterator may reuse its buffer afterwards.
+		if err := batch.Delete(makeDigestKey(digest), nil); err != nil {
+			db.logger.Panicf("Failed updating database: %v", err)
+		}
+		if err := batch.Delete(epochKey, nil); err != nil {
+			db.logger.Panicf("Failed updating database: %v", err)
+		}
 	}
 
-	// Next stops returning pairs on error; the error is retrieved via Error().
-	// Without this check Clean could write a partial/empty delete batch and
-	// mask an underlying corruption/IO fault.
-	if err := iter.Error(); err != nil {
+	// Iteration stops on error, and the error is returned by Close. Without
+	// this check Clean could write a partial/empty delete batch and mask an
+	// underlying corruption/IO fault.
+	if err := iter.Close(); err != nil {
 		db.logger.Panicf("Failed iterating over database: %v", err)
 	}
 
-	if err := db.db.Write(batch, nil); err != nil {
+	if err := batch.Commit(pebble.Sync); err != nil {
 		db.logger.Panicf("Failed updating database: %v", err)
 	}
 }
 
+// prefixBounds returns iterator bounds that cover exactly the keys starting with prefix.
+func prefixBounds(prefix byte) *pebble.IterOptions {
+	return &pebble.IterOptions{LowerBound: []byte{prefix}, UpperBound: []byte{prefix + 1}}
+}
+
+// makeDigestKey returns the key of digest in the digest keyspace.
 func makeDigestKey(digest []byte) []byte {
 	buff := make([]byte, len(digest)+1)
+	buff[0] = digestKeyPrefix
 	copy(buff[1:], digest)
 	return buff
 }
 
+// makeEpochKey returns the key of digest in the epoch keyspace. The 8-byte big-endian epoch comes first,
+// so the keys sort by epoch.
 func makeEpochKey(digest []byte, epoch []byte) []byte {
 	buff := make([]byte, len(digest)+len(epoch)+1)
-	buff[0] = 1
+	buff[0] = epochKeyPrefix
 	copy(buff[1:], epoch)
 	copy(buff[len(epoch)+1:], digest)
 	return buff
