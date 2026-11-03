@@ -390,6 +390,63 @@ func TestBatcherComplainsInTermWithSamePrimary(t *testing.T) {
 	}
 }
 
+// TestBatcherRestartsInLastKnownTerm checks that a restarted batcher starts in the term of the last
+// decision in its WAL, before any new decision arrives, and that its role acts in that term.
+func TestBatcherRestartsInLastKnownTerm(t *testing.T) {
+	shardID := types.ShardID(0)
+	numParties := 4
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	batcherNodes := createNodes(t, ca, numParties)
+	batchersInfo := createBatchersInfo(numParties, batcherNodes, ca)
+	consenterNodes := createNodes(t, ca, numParties)
+	consentersInfo := createConsentersInfo(numParties, consenterNodes, ca)
+
+	stubConsenters, cleanConsenters := createConsenterStubs(t, consenterNodes, numParties)
+	defer cleanConsenters()
+
+	routerKeyPairs := pinning.CreateRouterKeyPairs(t, ca, numParties)
+	batchers, loggers, configs, cleanBatchers := createBatchers(t, numParties, shardID, batcherNodes, batchersInfo, consentersInfo, routerKeyPairs, stubConsenters)
+	defer cleanBatchers()
+
+	// move to term 1, whose primary is party 2
+	term := uint64(1)
+	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: term}}}
+	for i := 0; i < numParties; i++ {
+		stubConsenters[i].UpdateState(termChangeState)
+	}
+
+	require.Eventually(t, func() bool {
+		for i := 0; i < numParties; i++ {
+			if batchers[i].GetTerm() != term || batchers[i].GetPrimaryID() != types.PartyID(2) {
+				return false
+			}
+		}
+		return true
+	}, 30*time.Second, 10*time.Millisecond)
+
+	// restart the primary of term 1, party 2, without sending it a new decision
+	batchers[1].Stop()
+	batchers[1] = recoverBatcher(t, ca, loggers[1], configs[1], routerKeyPairs, batcherNodes[1], stubConsenters[1])
+
+	require.Equal(t, term, batchers[1].GetTerm())
+	require.Equal(t, types.PartyID(2), batchers[1].GetPrimaryID())
+
+	// a request submitted to it is batched only if its role starts as the primary of term 1; in term 0
+	// it would be a secondary of party 1 and never cut a batch
+	batchers[1].Submit(routerContext(t, routerKeyPairs[1]), tx.CreateStructuredRequest([]byte{1}))
+
+	require.Eventually(t, func() bool {
+		for _, baf := range stubConsenters[0].BAFs() {
+			if baf.Signer() == types.PartyID(2) && baf.Primary() == types.PartyID(2) {
+				return true
+			}
+		}
+		return false
+	}, 30*time.Second, 10*time.Millisecond)
+}
+
 func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	shardID := types.ShardID(0)
 	numParties := 4
