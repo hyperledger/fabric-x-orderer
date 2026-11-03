@@ -11,15 +11,6 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 )
 
-func GetBatchersIDs(batchers []config.BatcherInfo) []types.PartyID {
-	var parties []types.PartyID
-	for _, batcher := range batchers {
-		parties = append(parties, batcher.PartyID)
-	}
-
-	return parties
-}
-
 type EndpointAndCerts struct {
 	Endpoint   string
 	TLSCACerts []config.RawBytes

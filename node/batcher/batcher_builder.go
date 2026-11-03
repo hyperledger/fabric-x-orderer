@@ -176,7 +176,6 @@ func (b *Batcher) configureBatcher(
 	b.configAcker = configack.NewSender(connInfo, b.logger)
 
 	b.batcher = &BatcherRole{
-		Batchers:                GetBatchersIDs(b.batchers),
 		BatchPuller:             batchPuller,
 		Threshold:               int(f + 1),
 		N:                       initState.N,
@@ -185,7 +184,7 @@ func (b *Batcher) configureBatcher(
 		ID:                      b.config.PartyId,
 		Shard:                   b.config.ShardId,
 		Logger:                  b.logger,
-		StateProvider:           b,
+		TermProvider:            b,
 		ConfigSequenceGetter:    b,
 		RequestInspector:        b.requestsInspectorVerifier,
 		BAFCreator:              b,
@@ -197,7 +196,6 @@ func (b *Batcher) configureBatcher(
 		MemPool:                 memPool,
 		BatchSequenceGap:        b.config.BatchSequenceGap,
 		Metrics:                 b.metrics,
-		term:                    b.term,
 	}
 }
 
