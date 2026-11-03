@@ -159,13 +159,13 @@ func (m *Metrics) StopMetricsTracker() {
 }
 
 func (m *Metrics) trackMetrics() {
-	lastTxCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionCount.(prometheus.Counter), m.logger))
-	lastBlocksCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksCount.(prometheus.Counter), m.logger))
+	transactionCount := monitoring.NewCounterInterval(m.ledgerMetrics.TransactionCount.(prometheus.Counter), m.logger)
+	blocksCount := monitoring.NewCounterInterval(m.ledgerMetrics.BlocksCount.(prometheus.Counter), m.logger)
 	fetchLatency := monitoring.NewHistogramInterval(m.batchUnaryFetchLatency.(prometheus.Metric), m.logger)
 	collationLatency := monitoring.NewHistogramInterval(m.attestationToBatchCollationLatency.(prometheus.Metric), m.logger)
 	appendLatency := monitoring.NewHistogramInterval(m.batchLedgerAppendLatency.(prometheus.Metric), m.logger)
-	lastBlocksSizeCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksSize.(prometheus.Counter), m.logger))
-	lastTransactionsSizeCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionsSize.(prometheus.Counter), m.logger))
+	blocksSize := monitoring.NewCounterInterval(m.ledgerMetrics.BlocksSize.(prometheus.Counter), m.logger)
+	transactionsSize := monitoring.NewCounterInterval(m.ledgerMetrics.TransactionsSize.(prometheus.Counter), m.logger)
 	sec := m.interval.Seconds()
 	t := time.NewTicker(m.interval)
 	defer t.Stop()
@@ -173,35 +173,23 @@ func (m *Metrics) trackMetrics() {
 	for {
 		select {
 		case <-t.C:
-			txCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionCount.(prometheus.Counter), m.logger))
-			blocksCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksCount.(prometheus.Counter), m.logger))
-			blocksSizeCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.BlocksSize.(prometheus.Counter), m.logger))
-			transactionsSizeCommitted := uint64(monitoring.GetMetricValue(m.ledgerMetrics.TransactionsSize.(prometheus.Counter), m.logger))
+			newTXs, txCommitted := transactionCount.Next()
+			newBlocks, blocksCommitted := blocksCount.Next()
+			newBlocksSize, blocksSizeCommitted := blocksSize.Next()
+			newTransactionsSize, _ := transactionsSize.Next()
 			prefetchIndexCacheEvictions := uint64(monitoring.GetMetricValue(m.prefetchIndexCacheEvictionsTotal.(prometheus.Counter), m.logger))
 
-			newBlocks := uint64(0)
-			if blocksCommitted > lastBlocksCommitted {
-				newBlocks = blocksCommitted - lastBlocksCommitted
-			}
-
-			newTXs := uint64(0)
-			if txCommitted > lastTxCommitted {
-				newTXs = txCommitted - lastTxCommitted
-			}
-
 			// the average sizes of what was committed in this interval only
-			blockSizeAvg := uint64(monitoring.Average(float64(blocksSizeCommitted-lastBlocksSizeCommitted), newBlocks))
-			txSizeAvg := uint64(monitoring.Average(float64(transactionsSizeCommitted-lastTransactionsSizeCommitted), newTXs))
+			blockSizeAvg := uint64(monitoring.Average(newBlocksSize, uint64(newBlocks)))
+			txSizeAvg := uint64(monitoring.Average(newTransactionsSize, uint64(newTXs)))
 			m.blockSizeAvg.Set(float64(blockSizeAvg))
 			m.txSizeAvg.Set(float64(txSizeAvg))
 
-			batchUnaryFetchLatencyAvg := fetchLatency.Next(m.logger)
-			attestationToBatchCollationLatencyAvg := collationLatency.Next(m.logger)
-			batchLedgerAppendLatencyAvg := appendLatency.Next(m.logger)
+			batchUnaryFetchLatencyAvg := fetchLatency.Next()
+			attestationToBatchCollationLatencyAvg := collationLatency.Next()
+			batchLedgerAppendLatencyAvg := appendLatency.Next()
 
-			m.logger.Infof("ASSEMBLER_METRICS: party_id=%d, interval_s=%.2f, txs_total=%d, blocks_total=%d, estimated_block_size=%d, prefetch_index_cache_evictions=%d, txs_interval=%d, blocks_interval=%d, batch_unary_fetch_latency_interval_avg_seconds=%.6f, attestation_to_batch_collation_latency_interval_avg_seconds=%.6f, batch_ledger_append_latency_interval_avg_seconds=%.6f, block_size_interval_avg_bytes=%d, tx_size_interval_avg_bytes=%d", m.partyID, sec, txCommitted, blocksCommitted, blocksSizeCommitted, prefetchIndexCacheEvictions, newTXs, newBlocks, batchUnaryFetchLatencyAvg, attestationToBatchCollationLatencyAvg, batchLedgerAppendLatencyAvg, blockSizeAvg, txSizeAvg)
-			lastTxCommitted, lastBlocksCommitted = txCommitted, blocksCommitted
-			lastBlocksSizeCommitted, lastTransactionsSizeCommitted = blocksSizeCommitted, transactionsSizeCommitted
+			m.logger.Infof("ASSEMBLER_METRICS: party_id=%d, interval_s=%.2f, txs_total=%d, blocks_total=%d, estimated_block_size=%d, prefetch_index_cache_evictions=%d, txs_interval=%d, blocks_interval=%d, batch_unary_fetch_latency_interval_avg_seconds=%.6f, attestation_to_batch_collation_latency_interval_avg_seconds=%.6f, batch_ledger_append_latency_interval_avg_seconds=%.6f, block_size_interval_avg_bytes=%d, tx_size_interval_avg_bytes=%d", m.partyID, sec, uint64(txCommitted), uint64(blocksCommitted), uint64(blocksSizeCommitted), prefetchIndexCacheEvictions, uint64(newTXs), uint64(newBlocks), batchUnaryFetchLatencyAvg, attestationToBatchCollationLatencyAvg, batchLedgerAppendLatencyAvg, blockSizeAvg, txSizeAvg)
 		case <-m.stopChan:
 			return
 		}
