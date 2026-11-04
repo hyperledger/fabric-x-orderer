@@ -136,6 +136,12 @@ func (br *BatchFetcher) Replicate(shardID types.ShardID) <-chan types.Batch {
 }
 
 func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom config.BatcherInfo, primaryID types.PartyID, resultChan chan types.Batch, wg *sync.WaitGroup) {
+	// seq is where the next connection starts: the batch frontier until a batch is handed over, then the
+	// batch after the last one handed over, so a reconnect does not pull the batches since the start
+	// again. It advances only when the batch handed over is the one expected next. A batch the prefetcher
+	// drops after the hand-over is fetched on demand, like any batch missing from the index. It is kept
+	// in memory only; after a restart the assembler seeks from its batch frontier.
+	// Pull calls both the request factory and the block handler from its goroutine; nothing else uses seq.
 	seq := br.initialBatchFrontier[shardID][primaryID]
 
 	endpoint := func() string {
@@ -170,12 +176,19 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 		}
 		br.logger.Infof("Assembler pulled from %s batch %s", batcherToPullFrom.Endpoint, types.BatchIDToString(fb))
 		resultChan <- fb
+		if fb.Seq() != seq {
+			br.logger.Warnf("Assembler pulled batch %d of channel %s from %s, but expected batch %d; a reconnect seeks from %d",
+				fb.Seq(), channelName, batcherToPullFrom.Endpoint, seq, seq)
+			return
+		}
+		seq++
 	}
 
 	onClose := func() {
 		wg.Done()
 	}
 
+	br.logger.Infof("Started pulling from: %s, sqn=%d", channelName, seq)
 	go delivery.Pull(
 		br.cancelCtx,
 		channelName,
@@ -186,7 +199,6 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 		blockHandlerFunc,
 		onClose,
 	)
-	br.logger.Infof("Started pulling from: %s, sqn=%d", channelName, seq)
 }
 
 func (br *BatchFetcher) findShardID(shardID types.ShardID) config.BatcherInfo {
