@@ -193,11 +193,13 @@ func (d *BFTDeliverer) DeliverBlocks() {
 		clonedBlockVerifier := d.UpdatableBlockVerifier.Clone()
 
 		// Start a block fetcher; a buffered channel so that the fetcher goroutine can send an error and exit w/o
-		// waiting for it to be consumed. A block receiver is created within. Each round owns its channel, so a
-		// fetcher that outlives its round cannot send into the channel of the next one.
+		// waiting for it to be consumed. A block receiver is created within. Each round owns its channels, so a
+		// fetcher that outlives its round cannot send into the channel of the next one, and is told by roundDoneC
+		// not to start a block receiver.
 		fetchErrC := make(chan error, 1)
+		roundDoneC := make(chan struct{})
 		source := d.fetchSources[d.fetchSourceIndex]
-		go d.FetchBlocks(source, fetchErrC)
+		go d.FetchBlocks(source, fetchErrC, roundDoneC)
 
 		// Create and start a censorship monitor.
 		d.censorshipMonitor = d.CensorshipDetectorFactory.Create(
@@ -206,20 +208,14 @@ func (d *BFTDeliverer) DeliverBlocks() {
 		go d.censorshipMonitor.Monitor()
 
 		// Wait for block fetcher & censorship monitor events, or a stop signal.
-		// Events which cause a retry return nil, non-recoverable errors return an error.
-		if stopLoop := d.handleFetchAndCensorshipEvents(fetchErrC); stopLoop {
+		// Events which cause a retry return false, non-recoverable errors and the stop signal return true.
+		// Either way the round is over, so stop its block fetcher and censorship monitor.
+		stopLoop := d.handleFetchAndCensorshipEvents(fetchErrC)
+		d.endRound(roundDoneC)
+		d.censorshipMonitor.Stop()
+		if stopLoop {
 			break
 		}
-
-		d.censorshipMonitor.Stop()
-	}
-
-	// Clean up everything because we are closing
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-	d.blockReceiver.Stop()
-	if d.censorshipMonitor != nil {
-		d.censorshipMonitor.Stop()
 	}
 }
 
@@ -310,9 +306,6 @@ func (d *BFTDeliverer) handleFetchAndCensorshipEvents(fetchErrC <-chan error) (s
 			return true
 		case *ErrCensorship:
 			d.Logger.Warningf("Censorship suspicion: %s; going to retry fetching blocks from another orderer", errMonitor)
-			d.mutex.Lock()
-			d.blockReceiver.Stop()
-			d.mutex.Unlock()
 			d.fetchSourceIndex = (d.fetchSourceIndex + 1) % len(d.fetchSources)
 			d.incFetchFailureCounter()
 			return false
@@ -324,6 +317,17 @@ func (d *BFTDeliverer) handleFetchAndCensorshipEvents(fetchErrC <-chan error) (s
 			return true
 		}
 	}
+}
+
+// endRound stops the block fetcher of the round that roundDoneC belongs to. Only the current round's fetcher can set
+// d.blockReceiver, so it is either this round's receiver, or an earlier one that is already stopped. If the fetcher is
+// still connecting, closing roundDoneC tells it not to start a receiver once connected.
+func (d *BFTDeliverer) endRound(roundDoneC chan struct{}) {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	close(roundDoneC)
+	d.blockReceiver.Stop()
 }
 
 func (d *BFTDeliverer) refreshSources() {
@@ -347,14 +351,18 @@ func (d *BFTDeliverer) Stop() {
 	d.blockReceiver.Stop()
 }
 
-// FetchBlocks fetches blocks from source until it fails or is stopped, and reports why it ended on errC.
-func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint, errC chan<- error) {
+// FetchBlocks fetches blocks from source until it fails, is stopped, or its round ends (roundDoneC is closed), and
+// reports why it ended on errC.
+func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint, errC chan<- error, roundDoneC <-chan struct{}) {
 	d.Logger.Debugf("Trying to fetch blocks from orderer: %s", source.Address)
 
 	for {
 		select {
 		case <-d.DoneC:
 			errC <- &ErrStopping{Message: "stopping"}
+			return
+		case <-roundDoneC:
+			errC <- &ErrStopping{Message: "round ended"}
 			return
 		default:
 		}
@@ -387,8 +395,14 @@ func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint, errC chan<- error)
 		}
 
 		d.mutex.Lock()
-		if d.stopFlag {
-			// Stop() ran after the DoneC check above, so it could not stop this receiver.
+		roundEnded := false
+		select {
+		case <-roundDoneC:
+			roundEnded = true
+		default:
+		}
+		if d.stopFlag || roundEnded {
+			// Stop() or endRound() ran after the check above, so it could not stop this receiver.
 			d.mutex.Unlock()
 			cancel()
 			errC <- &ErrStopping{Message: "stopping"}
