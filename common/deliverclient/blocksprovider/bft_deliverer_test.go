@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -68,6 +69,7 @@ type bftDelivererTestSetup struct {
 	monErrC       chan error                 // the monitor errors channel, where it emits (fake) censorship events
 	monDoneC      chan struct{}              // signal the monitor to stop
 	monEndC       chan struct{}              // when the monitor stops, it closes this channel
+	streams       []*perStreamDeliverClient  // every deliver stream opened, in order
 }
 
 func newBFTDelivererTestSetup(t *testing.T) *bftDelivererTestSetup {
@@ -583,11 +585,7 @@ func TestBFTDeliverer_DialRetries(t *testing.T) {
 		for i, mon := range monSet {
 			<-setup.monEndCSet[i]
 			require.Equal(t, 1, mon.MonitorCallCount(), fmt.Sprintf("i=%d", i))
-			if i == 82 {
-				require.Equal(t, 2, mon.StopCallCount(), fmt.Sprintf("i=%d", i))
-			} else {
-				require.Equal(t, 1, mon.StopCallCount(), fmt.Sprintf("i=%d", i))
-			}
+			require.Equal(t, 1, mon.StopCallCount(), fmt.Sprintf("i=%d", i))
 		}
 	})
 }
@@ -1301,6 +1299,99 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 	})
 }
 
+// TestBFTDeliverer_RoundEndsWhileConnecting ends a round while its fetcher is still connecting, and checks that the
+// fetcher, once connected, releases the stream instead of starting a block receiver that nothing would stop.
+func TestBFTDeliverer_RoundEndsWhileConnecting(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		event    error
+		stopLoop bool
+	}{
+		{name: "censorship", event: &blocksprovider.ErrCensorship{Message: "censorship"}},
+		{name: "monitor fatal error", event: &blocksprovider.ErrFatal{Message: "fatal"}, stopLoop: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setup := newBFTDelivererTestSetup(t)
+			setup.initialize(t)
+
+			t.Log("the first dial blocks until released")
+			releaseC := make(chan struct{})
+			staleConnC := make(chan *grpc.ClientConn, 1)
+			var dials atomic.Int32
+			dial := setup.fakeDialer.DialStub
+			setup.fakeDialer.DialStub = func(address string, rootCerts [][]byte) (*grpc.ClientConn, error) {
+				if dials.Add(1) > 1 {
+					return dial(address, rootCerts)
+				}
+				<-releaseC
+				cc, err := dial(address, rootCerts)
+				staleConnC <- cc
+				return cc, err
+			}
+
+			setup.start()
+			require.Eventually(t, func() bool { return setup.fakeDialer.DialCallCount() == 1 }, eventuallyTO, 10*time.Millisecond)
+			setup.assertEventuallyMonitorSetLen(t, 1)
+
+			t.Logf("the monitor ends the round while the fetcher is connecting: %v", tc.event)
+			func() {
+				setup.mutex.Lock()
+				defer setup.mutex.Unlock()
+
+				setup.monErrC <- tc.event
+			}()
+
+			if tc.stopLoop {
+				select {
+				case <-setup.endC:
+				case <-time.After(eventuallyTO):
+					require.Fail(t, "DeliverBlocks did not exit")
+				}
+			} else {
+				t.Log("the deliverer moves on to the next source")
+				setup.assertEventuallyMonitorSetLen(t, 2)
+				setup.assertEventuallyClientConnSetLen(t, 1)
+			}
+
+			t.Log("the stale fetcher finishes connecting")
+			close(releaseC)
+			staleConn := <-staleConnC
+
+			var staleStream *perStreamDeliverClient
+			require.Eventually(t, func() bool {
+				setup.mutex.Lock()
+				defer setup.mutex.Unlock()
+
+				for _, stream := range setup.streams {
+					if stream.cc == staleConn {
+						staleStream = stream
+						return true
+					}
+				}
+				return false
+			}, eventuallyTO, 10*time.Millisecond, "no stream on the stale connection")
+
+			t.Log("the stale connection is released, and no block receiver reads from it")
+			require.Eventually(t, func() bool {
+				return staleConn.GetState() == connectivity.Shutdown
+			}, eventuallyTO, 10*time.Millisecond, "stale connection was not closed")
+			require.Zero(t, staleStream.recvCalls.Load(), "a block receiver was started on the stale stream")
+
+			if !tc.stopLoop {
+				t.Log("the current source's connection is still active")
+				func() {
+					setup.mutex.Lock()
+					defer setup.mutex.Unlock()
+
+					require.NotEqual(t, connectivity.Shutdown, setup.clientConnSet[0].GetState())
+				}()
+			}
+
+			setup.stop()
+		})
+	}
+}
+
 func TestBFTDeliverer_RefreshEndpoints(t *testing.T) {
 	setup := newBFTDelivererTestSetup(t)
 	setup.initialize(t)
@@ -1412,17 +1503,26 @@ func (ds *perStreamDeliverStreamer) Deliver(
 	if err != nil {
 		return nil, err
 	}
-	return &perStreamDeliverClient{AtomicBroadcast_DeliverClient: client, ctx: ctx, s: ds.s}, nil
+	stream := &perStreamDeliverClient{AtomicBroadcast_DeliverClient: client, ctx: ctx, cc: cc, s: ds.s}
+
+	ds.s.mutex.Lock()
+	defer ds.s.mutex.Unlock()
+	ds.s.streams = append(ds.s.streams, stream)
+
+	return stream, nil
 }
 
 type perStreamDeliverClient struct {
 	orderer.AtomicBroadcast_DeliverClient
-	ctx context.Context //nolint:containedctx // the stream's lifetime is bound to it.
-	s   *bftDelivererTestSetup
+	ctx       context.Context //nolint:containedctx // the stream's lifetime is bound to it.
+	cc        *grpc.ClientConn
+	recvCalls atomic.Int32
+	s         *bftDelivererTestSetup
 }
 
 // Recv records the call on the shared fake, ignoring its stubs and return values; responses come from recvStepC.
 func (c *perStreamDeliverClient) Recv() (*orderer.DeliverResponse, error) {
+	c.recvCalls.Add(1)
 	_, _ = c.AtomicBroadcast_DeliverClient.Recv()
 
 	select {
