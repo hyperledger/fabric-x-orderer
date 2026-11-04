@@ -10,12 +10,21 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/sha256"
+	"encoding/hex"
+	"testing"
+	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp"
+	"github.com/hyperledger/fabric-x-common/api/msppb"
+	"github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-common/utils/certificate"
+	mspMocks "github.com/hyperledger/fabric-x-orderer/common/msputils/mock"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/test/mocks"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 )
 
 // AdmitSigners makes every policy of the bundle admit a request signed with one of the given
@@ -67,4 +76,42 @@ func signedByOneOf(data *protoutil.SignedData, signCerts [][]byte) bool {
 	}
 
 	return false
+}
+
+// ResolveCertIDs makes the MSPs of the bundle resolve the certificate ID of each of the given
+// certificates, under mspID, to an identity that expires with that certificate. Any other identity
+// does not resolve.
+func ResolveCertIDs(t *testing.T, bundle *mocks.FakeConfigResources, mspID string, certs ...[]byte) {
+	t.Helper()
+
+	known := make(map[msp.IdentityIdentifier]time.Time, len(certs))
+	for _, cert := range certs {
+		digest, err := certificate.DigestPemContent(cert, bccsp.SHA256)
+		require.NoError(t, err)
+		parsed, err := utils.Parsex509Cert(cert)
+		require.NoError(t, err)
+
+		known[msp.IdentityIdentifier{Mspid: mspID, Id: hex.EncodeToString(digest)}] = parsed.NotAfter
+	}
+
+	identities := &mspMocks.MSPManager{}
+	identities.DeserializeIdentityStub = func(identity *msppb.Identity) (msp.Identity, error) {
+		expiry, ok := known[msp.IdentityIdentifier{Mspid: identity.GetMspId(), Id: identity.GetCertificateId()}]
+		if !ok {
+			return nil, errors.New("identity is unknown")
+		}
+
+		return &expiringIdentity{expiresAt: expiry}, nil
+	}
+	bundle.MSPManagerReturns(identities)
+}
+
+// expiringIdentity is an identity of which only the expiry is known.
+type expiringIdentity struct {
+	msp.Identity
+	expiresAt time.Time
+}
+
+func (i *expiringIdentity) ExpiresAt() time.Time {
+	return i.expiresAt
 }
