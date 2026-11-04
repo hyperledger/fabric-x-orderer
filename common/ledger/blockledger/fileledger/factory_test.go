@@ -143,6 +143,10 @@ func TestMultiReinitialization(t *testing.T) {
 }
 
 func TestNewErrors(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores permission bits, so filesystem permission errors cannot be tested")
+	}
+
 	metricsProvider := &disabled.Provider{}
 
 	t.Run("creation of filerepo fails", func(t *testing.T) {
