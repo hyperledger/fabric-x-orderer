@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package delivery_test
 
 import (
+	"runtime"
+	"strings"
 	"testing"
 
 	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
@@ -94,4 +96,10 @@ func (ds *decisionServer) start(t *testing.T) {
 func (ds *decisionServer) restart(t *testing.T) {
 	ds.server.Stop()
 	ds.start(t)
+}
+
+// pullIsRunning reports whether a goroutine of delivery.Pull is still running.
+func pullIsRunning() bool {
+	buf := make([]byte, 1<<20)
+	return strings.Contains(string(buf[:runtime.Stack(buf, true)]), "delivery.Pull(")
 }

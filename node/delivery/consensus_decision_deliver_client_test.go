@@ -120,6 +120,39 @@ func TestConsensusDecisionReplicatorResumesAfterTheLastDecisionOnReconnect(t *te
 	require.Never(t, func() bool { return len(headers) > 0 }, time.Second, 100*time.Millisecond)
 }
 
+// Scenario:
+//  1. Serve the consensus deliver service over TLS, over a decision ledger holding more decisions than the
+//     channel of the replicator holds.
+//  2. Replicate decisions without consuming them, until the channel is full.
+//  3. Stop the replicator.
+//  4. Expect the replicator to stop pulling, with the channel still full.
+func TestConsensusDecisionReplicatorStopsWhileItsChannelIsFull(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	signer, cert := signutil.NewSelfSignedSigner(t, "org")
+	bundle := &mocks.FakeConfigResources{}
+	configutil.AdmitSigners(bundle, cert)
+
+	server := serveDecisionsOverTLS(t, "arma", bundle, ca)
+	server.appendDecisions(t, 120)
+
+	clientKeyPair, err := ca.NewClientCertKeyPair()
+	require.NoError(t, err)
+	replicator := delivery.NewConsensusDecisionReplicator(
+		"arma", []config.RawBytes{ca.CertBytes()}, clientKeyPair.Key, clientKeyPair.Cert, server.endpoint, signer,
+		testutil.CreateLogger(t, 1), delivery.NextSeekInfo(1),
+	)
+	t.Cleanup(replicator.Stop)
+	headers := replicator.ReplicateDecision()
+	require.Eventually(t, func() bool { return len(headers) == cap(headers) }, 10*time.Second, 10*time.Millisecond)
+
+	replicator.Stop()
+
+	require.Eventually(t, func() bool { return !pullIsRunning() }, 10*time.Second, 10*time.Millisecond,
+		"the replicator did not stop pulling while its channel was full")
+}
+
 func nextHeader(t *testing.T, headers <-chan *state.Header) *state.Header {
 	select {
 	case header := <-headers:

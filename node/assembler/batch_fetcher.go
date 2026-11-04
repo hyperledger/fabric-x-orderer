@@ -175,7 +175,13 @@ func (br *BatchFetcher) pullFromParty(shardID types.ShardID, batcherToPullFrom c
 			return
 		}
 		br.logger.Infof("Assembler pulled from %s batch %s", batcherToPullFrom.Endpoint, types.BatchIDToString(fb))
-		resultChan <- fb
+		// Stop cancels br.cancelCtx while the prefetcher may have stopped reading; giving up the hand-over
+		// then lets Pull see the cancellation and return.
+		select {
+		case resultChan <- fb:
+		case <-br.cancelCtx.Done():
+			return
+		}
 		if fb.Seq() != seq {
 			br.logger.Warnf("Assembler pulled batch %d of channel %s from %s, but expected batch %d; a reconnect seeks from %d",
 				fb.Seq(), channelName, batcherToPullFrom.Endpoint, seq, seq)
