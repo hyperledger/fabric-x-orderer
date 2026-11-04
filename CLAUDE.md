@@ -141,7 +141,8 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
   built-in `errors` and `fmt` instead, or `github.com/cockroachdb/errors` if stack traces and
   richer diagnostics are required.
 - `.golangci.yml` enables a wider linter set than `make linter` (`gosec`, `gocritic`, `revive`,
-  `ireturn`, `lll`, `gocognit`, …), run via `make linter-extra`; keep new code clean under it.
+  `ireturn`, `lll`, `gocognit`, …), run only by `make linter-extra`; keep new code clean under it.
+  CI does not run it, and the config is in golangci-lint v1 format, so it needs a v1 binary.
   `golangci-lint run --fix --new-from-rev=main` fixes the auto-fixable ones.
 - CLI help text is checked against `docs/cli/` (`make check-help-docs`); if you change a command's
   flags/help, run `./scripts/help_docs.sh generate` to regenerate the docs.
