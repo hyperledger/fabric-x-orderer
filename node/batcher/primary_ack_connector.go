@@ -187,6 +187,11 @@ func (p *PrimaryAckConnector) connect() {
 	primary = p.primaryID
 	p.lock.Unlock()
 
+	// A batcher does not ack to itself. The primary can change to this batcher after a sender checked it.
+	if primary == p.config.PartyId {
+		return
+	}
+
 	primaryEndpoint := p.batchers[primary].Endpoint
 	primaryTLSCACerts := p.batchers[primary].TLSCACerts
 
