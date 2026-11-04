@@ -229,7 +229,7 @@ Prefetching rests on two properties of the batchers: a primary creates batches w
 sequence numbers, and a batch is replicated among the batchers of its shard. The prefetcher
 therefore asks the batcher of its own party in each shard for a stream of the batches of every
 potential primary — one stream per party, of which one is active in steady state, carrying the
-batches of the shard's current primary. Each stream starts at the batch frontier, so a restarted
+batches of the shard's current primary. Each stream starts after the batch frontier, so a restarted
 assembler does not receive batches it has already committed, and every batch that arrives is put
 into the index.
 
