@@ -22,7 +22,7 @@ The `run_dashboard.sh` script performs the following tasks:
 - Starts the Arma network together with Prometheus and Grafana.
 - Submits transactions using `armageddon submit`, which processes 300000 transactions at a rate of 1000 per second.
 - Prints the dashboard link and opens it in a browser.
-- Enables the Go [pprof](../../docs/architecture.md#profiling) profiling endpoints in every node, on its operations port 8080 inside its container.
+- With `PROFILING=true`, enables the Go [pprof](../../docs/architecture.md#profiling) profiling endpoints in every node, on its operations port 8080 inside its container.
 
 To change the defaults, set `RATE`, `TX_SIZE`, `DURATION_SECONDS` or `OPEN_BROWSER=false`, for example:
 ```
@@ -32,6 +32,11 @@ RATE=500 DURATION_SECONDS=60 ./examples/grafana/scripts/run_dashboard.sh
 To see the router throttling panels, set `THROTTLE_RATE` to throttle party 1's router to that many requests per second, for example:
 ```
 THROTTLE_RATE=500 ./examples/grafana/scripts/run_dashboard.sh
+```
+
+To see the flame graphs in the dashboard's Profiling row, set `PROFILING=true`. It also starts Pyroscope and Grafana Alloy, which collects the pprof profiles of every node every 15 seconds. This keeps each node under CPU profiling most of the time and lowers its throughput, so it is off by default. For example:
+```
+PROFILING=true ./examples/grafana/scripts/run_dashboard.sh
 ```
 
 ### Clean Up Sample

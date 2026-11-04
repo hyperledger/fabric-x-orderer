@@ -13,6 +13,7 @@ DURATION_SECONDS=${DURATION_SECONDS:-300}
 OPEN_BROWSER=${OPEN_BROWSER:-auto}
 DOCKER_CMD=${DOCKER_CMD:-docker}
 THROTTLE_RATE=${THROTTLE_RATE:-0}
+PROFILING=${PROFILING:-false}
 
 SAMPLE_DIR=/tmp/arma-sample
 OPERATIONS_PORT=8080
@@ -29,14 +30,14 @@ rm -rf "${SAMPLE_DIR}"
 
 # Expose a fixed operations port so Prometheus can scrape the nodes.
 for config in "${SAMPLE_DIR}"/config/party*/local_config_*.yaml; do
-  awk -v port="${OPERATIONS_PORT}" '
+  awk -v port="${OPERATIONS_PORT}" -v profiling="${PROFILING}" '
     /ListenAddress: 127.0.0.1/ {
       print "    ListenAddress: 0.0.0.0"
       print "    ListenPort: " port
       next
     }
-    # Enable the pprof profiling endpoints on the operations server.
-    /^    Profile:/ { profile = 1 }
+    # With PROFILING=true, enable the pprof profiling endpoints on the operations server.
+    profiling == "true" && /^    Profile:/ { profile = 1 }
     profile && /Enabled: false/ { sub(/false/, "true"); profile = 0 }
     { print }
   ' "${config}" > "${config}.new"
@@ -72,8 +73,29 @@ hosts=$(grep -oE '"[a-z0-9.]+:[0-9]+"' "${DEPLOYMENT}" | tr -d '"' | cut -d: -f1
   done
 } > "${SAMPLE_DIR}/prometheus.yml"
 
-chmod -R a+rX "${EXAMPLE_DIR}/grafana" "${SAMPLE_DIR}/prometheus.yml"
+# Collect the pprof profiles of every node into Pyroscope, for the dashboard's Profiling row.
+{
+  echo "pyroscope.scrape \"arma\" {"
+  echo "  targets = ["
+  for host in ${hosts}; do
+    echo "    {\"__address__\" = \"${host}:${OPERATIONS_PORT}\", \"service_name\" = \"${host}\"},"
+  done
+  echo "  ]"
+  echo "  forward_to = [pyroscope.write.arma.receiver]"
+  echo "}"
+  echo
+  echo "pyroscope.write \"arma\" {"
+  echo "  endpoint {"
+  echo "    url = \"http://pyroscope:4040\""
+  echo "  }"
+  echo "}"
+} > "${SAMPLE_DIR}/config.alloy"
 
+chmod -R a+rX "${EXAMPLE_DIR}/grafana" "${SAMPLE_DIR}/prometheus.yml" "${SAMPLE_DIR}/config.alloy"
+
+if [ "${PROFILING}" = true ]; then
+  COMPOSE+=(--profile profiling)
+fi
 "${COMPOSE[@]}" up -d
 
 PROMETHEUS_URL=http://localhost:$("${COMPOSE[@]}" port prometheus 9090 | cut -d: -f2)
@@ -108,5 +130,6 @@ Submitting ${TRANSACTIONS} transactions of ${TX_SIZE}B at ${RATE} tx/s.
 
   Dashboard  : ${DASHBOARD_URL}
   Prometheus : ${PROMETHEUS_URL}
+  Profiling  : ${PROFILING} (flame graphs in the dashboard's Profiling row)
   Clean up   : bash ${EXAMPLE_DIR}/scripts/clean_dashboard.sh
 INFO
