@@ -10,6 +10,8 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -53,14 +55,7 @@ func TestPrimaryBatcherSimple(t *testing.T) {
 	configSeqGet.ConfigSequenceReturns(0)
 	batcher.ConfigSequenceGetter = configSeqGet
 
-	stateProvider := &mocks.FakeStateProvider{}
-	batcher.StateProvider = stateProvider
-
 	batcher.Start()
-
-	require.Eventually(t, func() bool {
-		return stateProvider.GetLatestStateChanCallCount() == 1
-	}, 10*time.Second, 10*time.Millisecond)
 
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 1
@@ -110,14 +105,7 @@ func TestSecondaryBatcherSimple(t *testing.T) {
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
-	stateProvider := &mocks.FakeStateProvider{}
-	batcher.StateProvider = stateProvider
-
 	batcher.Start()
-
-	require.Eventually(t, func() bool {
-		return stateProvider.GetLatestStateChanCallCount() == 1
-	}, 10*time.Second, 10*time.Millisecond)
 
 	batchChan <- batch
 	require.Eventually(t, func() bool {
@@ -179,9 +167,6 @@ func TestSecondaryBatcherPullsLowerConfigSeqBatch(t *testing.T) {
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
-	stateProvider := &mocks.FakeStateProvider{}
-	batcher.StateProvider = stateProvider
-
 	// the pulled batch: primary 1, seq 0 (matching the secondary's initial ledger height), stamped with the older
 	// config sequence K-1
 	req := make([]byte, 8)
@@ -196,10 +181,6 @@ func TestSecondaryBatcherPullsLowerConfigSeqBatch(t *testing.T) {
 
 	batcher.Start()
 	defer batcher.Stop()
-
-	require.Eventually(t, func() bool {
-		return stateProvider.GetLatestStateChanCallCount() == 1
-	}, 10*time.Second, 10*time.Millisecond)
 
 	batchChan <- batch
 
@@ -248,10 +229,8 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 	configSeqGet.ConfigSequenceReturns(0)
 	batcher.ConfigSequenceGetter = configSeqGet
 
-	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *state.State)
-	stateProvider.GetLatestStateChanReturns(stateChan)
-	batcher.StateProvider = stateProvider
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	batcher.TermProvider = termProvider
 
 	batch := arma_types.NewSimpleBatch(0, 2, 0, reqs, 0, nil)
 
@@ -262,18 +241,14 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 
 	batcher.Start()
 
-	require.Eventually(t, func() bool {
-		return stateProvider.GetLatestStateChanCallCount() == 1
-	}, 10*time.Second, 10*time.Millisecond)
-
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
 			},
 		},
-	}
+	})
 
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 1
@@ -281,14 +256,14 @@ func TestPrimaryChangeToSecondary(t *testing.T) {
 
 	require.NotZero(t, pool.NextRequestsCallCount())
 
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  1,
 			},
 		},
-	}
+	})
 
 	require.Eventually(t, func() bool {
 		return pool.RestartCallCount() == 2
@@ -334,10 +309,8 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 	configSeqGet.ConfigSequenceReturns(0)
 	batcher.ConfigSequenceGetter = configSeqGet
 
-	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *state.State)
-	stateProvider.GetLatestStateChanReturns(stateChan)
-	batcher.StateProvider = stateProvider
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	batcher.TermProvider = termProvider
 
 	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0, nil)
 
@@ -348,18 +321,14 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 
 	batcher.Start()
 
-	require.Eventually(t, func() bool {
-		return stateProvider.GetLatestStateChanCallCount() == 1
-	}, 10*time.Second, 10*time.Millisecond)
-
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
 			},
 		},
-	}
+	})
 
 	batchChan <- batch
 	require.Eventually(t, func() bool {
@@ -368,14 +337,14 @@ func TestSecondaryChangeToPrimary(t *testing.T) {
 
 	require.Zero(t, pool.NextRequestsCallCount())
 
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  1,
 			},
 		},
-	}
+	})
 
 	require.Eventually(t, func() bool {
 		return pool.RestartCallCount() == 2
@@ -434,25 +403,19 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 	pool := &mocks.FakeMemPool{}
 	batcher.MemPool = pool
 
-	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *state.State)
-	stateProvider.GetLatestStateChanReturns(stateChan)
-	batcher.StateProvider = stateProvider
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	batcher.TermProvider = termProvider
 
 	batcher.Start()
 
-	require.Eventually(t, func() bool {
-		return stateProvider.GetLatestStateChanCallCount() == 1
-	}, 10*time.Second, 10*time.Millisecond)
-
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
 			},
 		},
-	}
+	})
 
 	batchChan <- batch
 	require.Eventually(t, func() bool {
@@ -462,14 +425,14 @@ func TestSecondaryChangeToSecondary(t *testing.T) {
 		return pool.RemoveRequestsCallCount() == 1
 	}, 10*time.Second, 10*time.Millisecond)
 
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  1,
 			},
 		},
-	}
+	})
 
 	require.Eventually(t, func() bool {
 		return pool.RestartCallCount() == 2
@@ -529,25 +492,19 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 	configSeqGet.ConfigSequenceReturns(0)
 	batcher.ConfigSequenceGetter = configSeqGet
 
-	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *state.State)
-	stateProvider.GetLatestStateChanReturns(stateChan)
-	batcher.StateProvider = stateProvider
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	batcher.TermProvider = termProvider
 
 	batcher.Start()
 
-	require.Eventually(t, func() bool {
-		return stateProvider.GetLatestStateChanCallCount() == 1
-	}, 10*time.Second, 10*time.Millisecond)
-
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
 			},
 		},
-	}
+	})
 
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 1
@@ -555,14 +512,14 @@ func TestPrimaryChangeToPrimary(t *testing.T) {
 
 	require.NotZero(t, pool.NextRequestsCallCount())
 
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  4,
 			},
 		},
-	}
+	})
 
 	require.Eventually(t, func() bool {
 		return pool.RestartCallCount() == 2
@@ -646,10 +603,8 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 	configSeqGet.ConfigSequenceReturns(0)
 	batcher.ConfigSequenceGetter = configSeqGet
 
-	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *state.State)
-	stateProvider.GetLatestStateChanReturns(stateChan)
-	batcher.StateProvider = stateProvider
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	batcher.TermProvider = termProvider
 
 	batch := arma_types.NewSimpleBatch(0, 2, 0, reqs, 0, nil)
 
@@ -660,14 +615,14 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 
 	batcher.Start()
 
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
 			},
 		},
-	}
+	})
 
 	require.Eventually(t, func() bool {
 		return ledger.AppendCallCount() == 10
@@ -677,14 +632,14 @@ func TestPrimaryWaitingAndTermChange(t *testing.T) {
 		return pool.NextRequestsCallCount() == 10
 	}, 10*time.Second, 10*time.Millisecond)
 
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  1,
 			},
 		},
-	}
+	})
 
 	require.Eventually(t, func() bool {
 		return pool.RestartCallCount() == 2
@@ -730,10 +685,8 @@ func TestResubmitPending(t *testing.T) {
 	configSeqGet.ConfigSequenceReturns(0)
 	batcher.ConfigSequenceGetter = configSeqGet
 
-	stateProvider := &mocks.FakeStateProvider{}
-	stateChan := make(chan *state.State)
-	stateProvider.GetLatestStateChanReturns(stateChan)
-	batcher.StateProvider = stateProvider
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	batcher.TermProvider = termProvider
 
 	batch := arma_types.NewSimpleBatch(0, 1, 0, reqs, 0, nil)
 
@@ -744,18 +697,14 @@ func TestResubmitPending(t *testing.T) {
 
 	batcher.Start()
 
-	require.Eventually(t, func() bool {
-		return stateProvider.GetLatestStateChanCallCount() == 1
-	}, 10*time.Second, 10*time.Millisecond)
-
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
 				Term:  0,
 			},
 		},
-	}
+	})
 
 	batchChan <- batch
 	require.Eventually(t, func() bool {
@@ -772,7 +721,7 @@ func TestResubmitPending(t *testing.T) {
 	notMyBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID+1), 0, 0, nil)
 	myBAFWithOtherPrimary := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary()+1, batch.Seq(), batch.Digest(), arma_types.PartyID(batcherID), 0, 0, nil)
 
-	stateChan <- &state.State{
+	termProvider.setState(batcher, &state.State{
 		Shards: []state.ShardTerm{
 			{
 				Shard: 0,
@@ -780,7 +729,7 @@ func TestResubmitPending(t *testing.T) {
 			},
 		},
 		Pending: []arma_types.BatchAttestationFragment{myBAF, notMyBAF, myBAFWithOtherPrimary},
-	}
+	})
 
 	require.Eventually(t, func() bool {
 		return pool.SubmitCallCount() == 1
@@ -912,6 +861,259 @@ func TestVerifyBatch(t *testing.T) {
 	require.Equal(t, 2, ledger.AppendCallCount())
 }
 
+// TestComplainInTermFaultSeenIn checks that a secondary complains in the term it saw the faulty batch
+// in, even if the term changes before the complaint is sent.
+func TestComplainInTermFaultSeenIn(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := 3
+	shardID := 0
+	logger := testutil.CreateLogger(t, batcherID)
+	secondaryBatcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	secondaryBatcher.TermProvider = termProvider
+
+	// the verification of the pulled batch blocks until the term changed, and then fails
+	verifying := make(chan struct{})
+	termChanged := make(chan struct{})
+	verifier := &mocks.FakeBatchedRequestsVerifier{}
+	verifier.VerifyBatchedRequestsCalls(func(arma_types.BatchedRequests) ([]string, error) {
+		close(verifying)
+		<-termChanged
+		return nil, errors.New("invalid request")
+	})
+	secondaryBatcher.BatchedRequestsVerifier = verifier
+	complainer := &mocks.FakeComplainer{}
+	secondaryBatcher.Complainer = complainer
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	batch := arma_types.NewSimpleBatch(0, 1, 0, arma_types.BatchedRequests{req}, 0, nil)
+
+	batchPuller := &mocks.FakeBatchesPuller{}
+	batchChan := make(chan arma_types.Batch, 1)
+	batchPuller.PullBatchesReturns(batchChan)
+	secondaryBatcher.BatchPuller = batchPuller
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	secondaryBatcher.ConfigSequenceGetter = configSeqGet
+
+	secondaryBatcher.Start()
+	defer secondaryBatcher.Stop()
+
+	// pull a batch from the primary of term 0
+	batchChan <- batch
+	<-verifying
+
+	// the term changes while the batch is verified
+	termProvider.setState(secondaryBatcher, &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}})
+	close(termChanged)
+
+	require.Eventually(t, func() bool {
+		return complainer.ComplainCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+	term, _ := complainer.ComplainArgsForCall(0)
+	require.Equal(t, uint64(0), term)
+}
+
+// TestRoleTermIsTheTermItActsIn checks that the role's term, which the second-strike complaint is sent in,
+// is the term the role acts in: it does not move with the batcher's term until the role restarts in it.
+func TestRoleTermIsTheTermItActsIn(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := 3
+	shardID := 0
+	logger := testutil.CreateLogger(t, batcherID)
+	secondaryBatcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	secondaryBatcher.TermProvider = termProvider
+
+	batchPuller := &mocks.FakeBatchesPuller{}
+	batchPuller.PullBatchesReturns(make(chan arma_types.Batch))
+	secondaryBatcher.BatchPuller = batchPuller
+
+	pool := &mocks.FakeMemPool{}
+	secondaryBatcher.MemPool = pool
+
+	secondaryBatcher.Start()
+	defer secondaryBatcher.Stop()
+
+	require.Eventually(t, func() bool {
+		return pool.RestartCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+	require.Equal(t, uint64(0), secondaryBatcher.Term())
+
+	// the batcher's term moves on, but the role is not told yet, so it still acts in term 0
+	termProvider.setTerm(1)
+	require.Never(t, func() bool {
+		return secondaryBatcher.Term() != 0
+	}, 500*time.Millisecond, 10*time.Millisecond)
+
+	// once the role is told of a change to term 2, it restarts in term 2
+	termProvider.setState(secondaryBatcher, &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 2}}})
+	require.Eventually(t, func() bool {
+		return secondaryBatcher.Term() == 2 && pool.RestartCallCount() == 2
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// TestRoleTermIsSetAfterThePoolRestarts checks that the role sets its term only once the pool is restarted
+// in it, so that a second-strike complaint about a request of the previous term is not sent in the new term.
+func TestRoleTermIsSetAfterThePoolRestarts(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := 3
+	shardID := 0
+	logger := testutil.CreateLogger(t, batcherID)
+	secondaryBatcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	secondaryBatcher.TermProvider = termProvider
+
+	batchPuller := &mocks.FakeBatchesPuller{}
+	batchPuller.PullBatchesReturns(make(chan arma_types.Batch))
+	secondaryBatcher.BatchPuller = batchPuller
+
+	// the second restart of the pool, in term 1, blocks until released, and records the role's term then
+	restarting := make(chan struct{})
+	release := make(chan struct{})
+	var termDuringRestart atomic.Uint64
+	pool := &mocks.FakeMemPool{}
+	pool.RestartCalls(func(bool) {
+		if pool.RestartCallCount() == 2 {
+			termDuringRestart.Store(secondaryBatcher.Term())
+			close(restarting)
+			<-release
+		}
+	})
+	secondaryBatcher.MemPool = pool
+
+	secondaryBatcher.Start()
+	defer secondaryBatcher.Stop()
+	// release the blocked restart before stopping, also if an assertion below fails
+	var releaseOnce sync.Once
+	releaseRestart := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseRestart()
+
+	require.Eventually(t, func() bool {
+		return pool.RestartCallCount() == 1 && secondaryBatcher.Term() == 0
+	}, 10*time.Second, 10*time.Millisecond)
+
+	termProvider.setState(secondaryBatcher, &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}})
+
+	// while the pool is restarting in term 1, the role still acts in term 0
+	<-restarting
+	require.Equal(t, uint64(0), termDuringRestart.Load())
+	require.Equal(t, uint64(0), secondaryBatcher.Term())
+	releaseRestart()
+
+	require.Eventually(t, func() bool {
+		return secondaryBatcher.Term() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// TestRoleDoesNotRestartInTheSameTerm checks that a notification of a term change that the role already
+// acts in does not restart the role.
+func TestRoleDoesNotRestartInTheSameTerm(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := 3
+	shardID := 0
+	logger := testutil.CreateLogger(t, batcherID)
+	secondaryBatcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	secondaryBatcher.TermProvider = termProvider
+
+	batchPuller := &mocks.FakeBatchesPuller{}
+	batchPuller.PullBatchesReturns(make(chan arma_types.Batch))
+	secondaryBatcher.BatchPuller = batchPuller
+
+	pool := &mocks.FakeMemPool{}
+	secondaryBatcher.MemPool = pool
+
+	secondaryBatcher.Start()
+	defer secondaryBatcher.Stop()
+
+	require.Eventually(t, func() bool {
+		return pool.RestartCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// a notification for the term the role already acts in, as when the role read the new term before
+	// the batcher sent the notification
+	secondaryBatcher.NotifyTermChange()
+	require.Never(t, func() bool {
+		return pool.RestartCallCount() != 1 || batchPuller.StopCallCount() != 0
+	}, 500*time.Millisecond, 10*time.Millisecond)
+
+	// a real term change still restarts the role
+	termProvider.setState(secondaryBatcher, &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}})
+	require.Eventually(t, func() bool {
+		return pool.RestartCallCount() == 2 && secondaryBatcher.Term() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
+// TestResubmitOnTermChangeDoesNotBlockTheCaller checks that the requests of pending BAFs are resubmitted
+// on the role's goroutine, so a slow resubmission does not delay the batcher's decision loop.
+func TestResubmitOnTermChangeDoesNotBlockTheCaller(t *testing.T) {
+	N := uint16(4)
+	batchers := []arma_types.PartyID{1, 2, 3, 4}
+	batcherID := 2
+	shardID := 0
+	logger := testutil.CreateLogger(t, batcherID)
+	secondaryBatcher := createBatcher(t, arma_types.PartyID(batcherID), arma_types.ShardID(shardID), batchers, N, logger)
+
+	termProvider := newTestTermProvider(batchers, arma_types.ShardID(shardID), N)
+	secondaryBatcher.TermProvider = termProvider
+
+	batchPuller := &mocks.FakeBatchesPuller{}
+	batchPuller.PullBatchesReturns(make(chan arma_types.Batch))
+	secondaryBatcher.BatchPuller = batchPuller
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint64(req, uint64(1))
+	batch := arma_types.NewSimpleBatch(0, 1, 0, arma_types.BatchedRequests{req}, 0, nil)
+	ledger := &mocks.FakeBatchLedger{}
+	ledger.RetrieveBatchByNumberReturns(batch)
+	secondaryBatcher.Ledger = ledger
+
+	configSeqGet := &mocks.FakeConfigSequenceGetter{}
+	configSeqGet.ConfigSequenceReturns(0)
+	secondaryBatcher.ConfigSequenceGetter = configSeqGet
+
+	// submitting the resubmitted request blocks, as on a full pool, until released
+	release := make(chan struct{})
+	pool := &mocks.FakeMemPool{}
+	pool.SubmitCalls(func([]byte) error {
+		<-release
+		return nil
+	})
+	secondaryBatcher.MemPool = pool
+
+	secondaryBatcher.Start()
+	defer secondaryBatcher.Stop()
+	defer close(release)
+
+	myBAF := arma_types.NewSimpleBatchAttestationFragment(batch.Shard(), batch.Primary(), batch.Seq(), batch.Digest(),
+		arma_types.PartyID(batcherID), 0, 0, nil)
+	resubmitted := make(chan struct{})
+	go func() {
+		secondaryBatcher.ResubmitOnTermChange(&state.State{Pending: []arma_types.BatchAttestationFragment{myBAF}}, 1)
+		close(resubmitted)
+	}()
+
+	select {
+	case <-resubmitted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("ResubmitOnTermChange blocked on the resubmission")
+	}
+	require.Eventually(t, func() bool {
+		return pool.SubmitCallCount() == 1
+	}, 10*time.Second, 10*time.Millisecond)
+}
+
 // TestResubmitPendingBAFsReverifiesOnConfigChange covers the reconfiguration case:
 // requests taken from a BAF created under an older config are re-verified under the
 // current policy before being resubmitted to the pool, and any request that fails
@@ -1041,7 +1243,6 @@ func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_type
 	ledger := &mocks.FakeBatchLedger{}
 
 	batcher := &batcher.BatcherRole{
-		Batchers:                batchers,
 		BatchTimeout:            time.Millisecond * 500,
 		RequestInspector:        &mocks.FakeRequestInspector{},
 		ID:                      batcherID,
@@ -1051,7 +1252,7 @@ func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_type
 		Logger:                  logger,
 		Ledger:                  ledger,
 		BatchPuller:             &mocks.FakeBatchesPuller{},
-		StateProvider:           &mocks.FakeStateProvider{},
+		TermProvider:            newTestTermProvider(batchers, shardID, N),
 		BAFCreator:              bafCreator,
 		BAFSender:               &mocks.FakeBAFSender{},
 		BatchAcker:              &mocks.FakeBatchAcker{},
@@ -1075,6 +1276,54 @@ func createBatcher(t *testing.T, batcherID arma_types.PartyID, shardID arma_type
 	return batcher
 }
 
+// testTermProvider stands in for the batcher as the source of the shard's primary and term.
+type testTermProvider struct {
+	lock     sync.Mutex
+	batchers []arma_types.PartyID
+	shard    arma_types.ShardID
+	n        uint16
+	term     uint64
+}
+
+func newTestTermProvider(batchers []arma_types.PartyID, shard arma_types.ShardID, n uint16) *testTermProvider {
+	return &testTermProvider{batchers: batchers, shard: shard, n: n}
+}
+
+func (tp *testTermProvider) CurrentPrimaryAndTerm() (arma_types.PartyID, uint64) {
+	tp.lock.Lock()
+	defer tp.lock.Unlock()
+	return tp.primary(tp.term), tp.term
+}
+
+// setState moves the provider to the term of its shard in s and, if the term changed, notifies role, as
+// the batcher's decision loop does.
+func (tp *testTermProvider) setState(role *batcher.BatcherRole, s *state.State) {
+	var term uint64
+	for _, shard := range s.Shards {
+		if shard.Shard == tp.shard {
+			term = shard.Term
+		}
+	}
+	if prevPrimary, changed := tp.setTerm(term); changed {
+		role.NotifyTermChange()
+		role.ResubmitOnTermChange(s, prevPrimary)
+	}
+}
+
+// setTerm moves the provider to term without notifying the role, and returns the primary of the
+// previous term and whether the term changed.
+func (tp *testTermProvider) setTerm(term uint64) (arma_types.PartyID, bool) {
+	tp.lock.Lock()
+	defer tp.lock.Unlock()
+	prevPrimary, prevTerm := tp.primary(tp.term), tp.term
+	tp.term = term
+	return prevPrimary, term != prevTerm
+}
+
+func (tp *testTermProvider) primary(term uint64) arma_types.PartyID {
+	return tp.batchers[(uint64(tp.shard)+term)%uint64(tp.n)]
+}
+
 // TestPrimaryBAFContextPerRole checks that the primary reuses one BAF context and cancels it on a term change.
 func TestPrimaryBAFContextPerRole(t *testing.T) {
 	b := createBatcher(t, 1, 0, []arma_types.PartyID{1, 2, 3, 4}, 4, testutil.CreateLogger(t, 1))
@@ -1092,10 +1341,8 @@ func TestPrimaryBAFContextPerRole(t *testing.T) {
 	})
 	b.BAFSender = bafSender
 	b.ConfigSequenceGetter = &mocks.FakeConfigSequenceGetter{}
-	stateChan := make(chan *state.State)
-	stateProvider := &mocks.FakeStateProvider{}
-	stateProvider.GetLatestStateChanReturns(stateChan)
-	b.StateProvider = stateProvider
+	termProvider := newTestTermProvider([]arma_types.PartyID{1, 2, 3, 4}, 0, 4)
+	b.TermProvider = termProvider
 
 	b.Start()
 	defer b.Stop()
@@ -1112,7 +1359,7 @@ func TestPrimaryBAFContextPerRole(t *testing.T) {
 	}
 	require.NoError(t, ctx.Err())
 
-	stateChan <- &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}}
+	termProvider.setState(b, &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}})
 	select {
 	case <-inFlightDone:
 	case <-time.After(10 * time.Second):
@@ -1138,10 +1385,8 @@ func TestSecondaryBAFContextPerRole(t *testing.T) {
 	})
 	b.BAFSender = bafSender
 	b.ConfigSequenceGetter = &mocks.FakeConfigSequenceGetter{}
-	stateChan := make(chan *state.State)
-	stateProvider := &mocks.FakeStateProvider{}
-	stateProvider.GetLatestStateChanReturns(stateChan)
-	b.StateProvider = stateProvider
+	termProvider := newTestTermProvider([]arma_types.PartyID{1, 2, 3, 4}, 0, 4)
+	b.TermProvider = termProvider
 
 	b.Start()
 	defer b.Stop()
@@ -1160,7 +1405,7 @@ func TestSecondaryBAFContextPerRole(t *testing.T) {
 	}
 	require.NoError(t, ctx.Err())
 
-	stateChan <- &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}}
+	termProvider.setState(b, &state.State{Shards: []state.ShardTerm{{Shard: 0, Term: 1}}})
 	select {
 	case <-inFlightDone:
 	case <-time.After(10 * time.Second):

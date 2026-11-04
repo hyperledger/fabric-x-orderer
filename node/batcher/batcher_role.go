@@ -9,7 +9,6 @@ package batcher
 import (
 	"context"
 	"fmt"
-	"math"
 	"slices"
 	"strings"
 	"sync"
@@ -40,9 +39,11 @@ type MemPool interface {
 	Contains(reqID string) bool
 }
 
-//go:generate counterfeiter -o mocks/state_provider.go . StateProvider
-type StateProvider interface {
-	GetLatestStateChan() <-chan *state.State
+//go:generate counterfeiter -o mocks/term_provider.go . TermProvider
+
+// TermProvider provides the current primary and term of the shard, which the batcher keeps
+type TermProvider interface {
+	CurrentPrimaryAndTerm() (types.PartyID, uint64)
 }
 
 //go:generate counterfeiter -o mocks/config_sequence_getter.go . ConfigSequenceGetter
@@ -52,7 +53,8 @@ type ConfigSequenceGetter interface {
 
 //go:generate counterfeiter -o mocks/complainer.go . Complainer
 type Complainer interface {
-	Complain(string)
+	// Complain sends a complaint about the primary of the given term
+	Complain(term uint64, reason string)
 }
 
 //go:generate counterfeiter -o mocks/batched_requests_verifier.go . BatchedRequestsVerifier
@@ -106,7 +108,6 @@ type BatchLedger interface {
 }
 
 type BatcherRole struct {
-	Batchers                []types.PartyID
 	BatchTimeout            time.Duration
 	RequestInspector        RequestInspector
 	ID                      types.PartyID
@@ -116,7 +117,7 @@ type BatcherRole struct {
 	Logger                  *flogging.FabricLogger
 	Ledger                  BatchLedger
 	BatchPuller             BatchesPuller
-	StateProvider           StateProvider
+	TermProvider            TermProvider
 	ConfigSequenceGetter    ConfigSequenceGetter
 	BAFCreator              BAFCreator
 	BAFSender               BAFSender
@@ -132,8 +133,9 @@ type BatcherRole struct {
 	cancelBatch             func()
 	primary                 types.PartyID
 	seq                     types.BatchSequence
-	term                    uint64
-	termChan                chan uint64
+	term                    uint64 // the term the role acts in, set once the pool is restarted in it
+	termChan                chan struct{}
+	resubmitChan            chan termChange
 	ackerLock               sync.RWMutex
 	acker                   SeqAcker
 	Metrics                 *BatcherMetrics
@@ -147,10 +149,11 @@ func (b *BatcherRole) Start() {
 
 	b.stopChan = make(chan struct{})
 	b.stopCtx, b.cancelBatch = context.WithCancel(context.Background())
-	b.termChan = make(chan uint64, 1)
+	b.termChan = make(chan struct{}, 1)
+	b.resubmitChan = make(chan termChange, 1)
 
 	b.running.Add(2)
-	go b.getTermAndNotifyChange()
+	go b.resubmitOnTermChanges()
 	go b.run()
 }
 
@@ -163,28 +166,39 @@ func (b *BatcherRole) run() {
 		default:
 		}
 
-		term := atomic.LoadUint64(&b.term)
-		b.primary = b.getPrimaryID(term)
+		primary, term := b.TermProvider.CurrentPrimaryAndTerm()
+		b.primary = primary
 		b.seq = types.BatchSequence(b.Ledger.Height(b.primary))
 		b.Logger.Infof("ID: %d, shard: %d, primary id: %d, term: %d, seq: %d", b.ID, b.Shard, b.primary, term, b.seq)
 
 		if b.primary == b.ID {
-			b.runPrimary()
+			b.runPrimary(term)
 		} else {
-			b.runSecondary()
+			b.runSecondary(term)
 		}
 	}
 }
 
-func (b *BatcherRole) getPrimaryID(term uint64) types.PartyID {
-	primaryIndex := b.getPrimaryIndex(term)
-	return b.Batchers[primaryIndex]
+// Term returns the term the role acts in, which is the term in which the pool was last restarted.
+// It can be behind the batcher's term until the role learns of a term change and restarts in the new term.
+func (b *BatcherRole) Term() uint64 {
+	return atomic.LoadUint64(&b.term)
 }
 
-func (b *BatcherRole) getPrimaryIndex(term uint64) types.PartyID {
-	primaryIndex := types.PartyID((uint64(b.Shard) + term) % uint64(b.N))
+// restartPool restarts the pool for the role and only then sets the role's term, so that a second-strike
+// complaint about a request the pool held in the previous term is never sent in the new term.
+func (b *BatcherRole) restartPool(batching bool, term uint64) {
+	b.MemPool.Restart(batching)
+	atomic.StoreUint64(&b.term, term)
+}
 
-	return primaryIndex
+// termChangedFrom reports whether the batcher's term moved on from term, the term the role acts in.
+// A notification can arrive for the term the role already acts in: the batcher can update the term
+// after the role starts a term and before it notifies, and the role read the new term in between.
+// The role then keeps acting, rather than restarting in the same term.
+func (b *BatcherRole) termChangedFrom(term uint64) bool {
+	_, current := b.TermProvider.CurrentPrimaryAndTerm()
+	return current != term
 }
 
 func (b *BatcherRole) Stop() {
@@ -226,35 +240,42 @@ func (b *BatcherRole) SoftStop() {
 	}
 }
 
-func (b *BatcherRole) getTerm(state *state.State) uint64 {
-	term := uint64(math.MaxUint64)
-	for _, shard := range state.Shards {
-		if shard.Shard == b.Shard {
-			term = shard.Term
-		}
-	}
-	if term == math.MaxUint64 {
-		b.Logger.Panicf("Could not find our shard (%d) within the shards: %v", b.Shard, state.Shards)
-	}
-	return term
+// termChange is a term change whose pending BAFs are to be resubmitted
+type termChange struct {
+	state       *state.State
+	prevPrimary types.PartyID
 }
 
-func (b *BatcherRole) getTermAndNotifyChange() {
+// NotifyTermChange tells the role that the term of its shard changed, after the TermProvider was updated,
+// so the role stops acting in the old term and restarts in the new one.
+func (b *BatcherRole) NotifyTermChange() {
+	// The role reads the new term from the TermProvider when it restarts, so a pending
+	// notification already covers this one.
+	select {
+	case b.termChan <- struct{}{}:
+	default:
+	}
+}
+
+// ResubmitOnTermChange hands a term change to the role, which resubmits the requests of this batcher's
+// pending BAFs in state of prevPrimary, the primary of the old term. The resubmission runs on the role's
+// own goroutine, so it does not delay the caller; this blocks only while a previous one is still waiting.
+func (b *BatcherRole) ResubmitOnTermChange(state *state.State, prevPrimary types.PartyID) {
+	select {
+	case b.resubmitChan <- termChange{state: state, prevPrimary: prevPrimary}:
+	case <-b.stopChan:
+	}
+}
+
+func (b *BatcherRole) resubmitOnTermChanges() {
 	defer b.running.Done()
-	stateChan := b.StateProvider.GetLatestStateChan()
 	for {
 		select {
 		case <-b.stopChan:
 			return
-		case state := <-stateChan:
-			newTerm := b.getTerm(state)
-			currentTerm := atomic.LoadUint64(&b.term)
-			if currentTerm != newTerm {
-				atomic.StoreUint64(&b.term, newTerm)
-				b.termChan <- newTerm
-				b.ResubmitPendingBAFs(state, b.getPrimaryID(currentTerm), false)
-				b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
-			}
+		case tc := <-b.resubmitChan:
+			b.ResubmitPendingBAFs(tc.state, tc.prevPrimary, false)
+			b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
 		}
 	}
 }
@@ -343,7 +364,7 @@ func (b *BatcherRole) HandleAck(seq types.BatchSequence, from types.PartyID) {
 	}
 }
 
-func (b *BatcherRole) runPrimary() {
+func (b *BatcherRole) runPrimary(term uint64) {
 	b.Logger.Infof("Batcher %d acting as primary (shard %d)", b.ID, b.Shard)
 	b.Metrics.currentRole.Set(1)
 
@@ -357,7 +378,7 @@ func (b *BatcherRole) runPrimary() {
 	b.ackerLock.Lock()
 	b.acker = NewAcker(b.seq, b.BatchSequenceGap, b.N, uint16(b.Threshold), b.Logger)
 	b.ackerLock.Unlock()
-	b.MemPool.Restart(true)
+	b.restartPool(true, term)
 
 	sendCtx, cancelSend := context.WithCancel(b.stopCtx)
 	defer cancelSend()
@@ -372,8 +393,11 @@ func (b *BatcherRole) runPrimary() {
 			ch := b.acker.WaitForSecondaries(b.seq)
 			b.ackerLock.RUnlock()
 			select {
-			case newTerm := <-b.termChan:
-				b.Logger.Infof("Primary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+			case <-b.termChan:
+				if !b.termChangedFrom(term) {
+					continue
+				}
+				b.Logger.Infof("Primary batcher %d (shard %d) term change from term %d", b.ID, b.Shard, term)
 				return
 			case <-b.stopChan:
 				return
@@ -411,13 +435,20 @@ func (b *BatcherRole) runPrimary() {
 			b.BAFSender.SendBAF(baf, sendCtx)
 			close(sendBAFDone)
 		}()
-		select {
-		case <-sendBAFDone:
-		case newTerm := <-b.termChan:
-			b.Logger.Infof("Primary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
-			return
-		case <-b.stopChan:
-			return
+	waitBAFSent:
+		for {
+			select {
+			case <-sendBAFDone:
+				break waitBAFSent
+			case <-b.termChan:
+				if !b.termChangedFrom(term) {
+					continue
+				}
+				b.Logger.Infof("Primary batcher %d (shard %d) term change from term %d", b.ID, b.Shard, term)
+				return
+			case <-b.stopChan:
+				return
+			}
 		}
 
 		b.Metrics.batchedTxsTotal.Add(float64(len(currentBatch)))
@@ -440,9 +471,9 @@ func (b *BatcherRole) removeRequestsByIDs(reqIDs []string) {
 	b.Metrics.memPoolSize.Set(float64(b.MemPool.RequestCount()))
 }
 
-func (b *BatcherRole) runSecondary() {
+func (b *BatcherRole) runSecondary(term uint64) {
 	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
-	b.MemPool.Restart(false)
+	b.restartPool(false, term)
 	b.Metrics.currentRole.Set(2)
 
 	sendCtx, cancelSend := context.WithCancel(b.stopCtx)
@@ -456,8 +487,11 @@ func (b *BatcherRole) runSecondary() {
 			select {
 			case batch = <-out:
 				verifyStart = time.Now()
-			case newTerm := <-b.termChan:
-				b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
+			case <-b.termChan:
+				if !b.termChangedFrom(term) {
+					continue
+				}
+				b.Logger.Infof("Secondary batcher %d (shard %d) term change from term %d", b.ID, b.Shard, term)
 				b.BatchPuller.Stop()
 				return
 			case <-b.stopChan:
@@ -471,7 +505,10 @@ func (b *BatcherRole) runSecondary() {
 			if err != nil {
 				b.Logger.Warnf("Secondary batcher %d (shard %d) sending a complaint (primary %d); verify batch err: %v", b.ID, b.Shard, b.primary, err)
 				// TODO: Check that the batcher doesn’t get stuck here if quorum isn’t reached and the batcher is restarted or a term change occurs
-				b.Complainer.Complain(fmt.Sprintf("batcher %d (shard %d) complaining; primary %d; term %d; verify batch err: %v", b.ID, b.Shard, b.primary, atomic.LoadUint64(&b.term), err))
+				// complain in the term the fault was seen in, even if the term changed since
+				reason := fmt.Sprintf("batcher %d (shard %d) complaining; primary %d; term %d; verify batch err: %v",
+					b.ID, b.Shard, b.primary, term, err)
+				b.Complainer.Complain(term, reason)
 				b.BatchPuller.Stop()
 				break // TODO maybe add backoff
 			}
@@ -495,16 +532,23 @@ func (b *BatcherRole) runSecondary() {
 				b.BAFSender.SendBAF(baf, sendCtx)
 				close(sendBAFDone)
 			}()
-			select {
-			case <-sendBAFDone:
-			case newTerm := <-b.termChan:
-				b.Logger.Infof("Secondary batcher %d (shard %d) term change to term %d", b.ID, b.Shard, newTerm)
-				b.BatchPuller.Stop()
-				return
-			case <-b.stopChan:
-				b.Logger.Infof("Batcher %d stopped acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
-				b.BatchPuller.Stop()
-				return
+		waitBAFSent:
+			for {
+				select {
+				case <-sendBAFDone:
+					break waitBAFSent
+				case <-b.termChan:
+					if !b.termChangedFrom(term) {
+						continue
+					}
+					b.Logger.Infof("Secondary batcher %d (shard %d) term change from term %d", b.ID, b.Shard, term)
+					b.BatchPuller.Stop()
+					return
+				case <-b.stopChan:
+					b.Logger.Infof("Batcher %d stopped acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
+					b.BatchPuller.Stop()
+					return
+				}
 			}
 
 			b.Metrics.batchedTxsTotal.Add(float64(len(requests)))
