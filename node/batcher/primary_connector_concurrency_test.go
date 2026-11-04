@@ -141,26 +141,18 @@ func TestPrimaryAckConnectorConnectsOnceWhenManySendersFindNoStream(t *testing.T
 	}, 10*time.Second, 10*time.Millisecond, "the senders opened more than one stream")
 }
 
+// Scenario:
+//  1. Start two primaries that accept TCP connections and never answer, so connecting to either hangs.
+//  2. Forward requests from several goroutines, which leaves one of them connecting to primary 1 and the
+//     rest waiting for their turn to connect.
+//  3. Switch the connector to primary 2.
+//  4. Expect the switch to return at once, and every sender to return within about its send timeout
+//     instead of waiting for the senders ahead of it in line to give up on a connection attempt.
 func TestPrimaryReqConnectorSendTimeoutIncludesConnectionWait(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
 	nodes := createNodes(t, ca, 1)
-	newUnresponsiveListener := func() net.Listener {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
-		require.NoError(t, err)
-		t.Cleanup(func() { listener.Close() })
-		go func() {
-			for {
-				conn, err := listener.Accept()
-				if err != nil {
-					return
-				}
-				_ = conn
-			}
-		}()
-		return listener
-	}
-	primaryOne, primaryTwo := newUnresponsiveListener(), newUnresponsiveListener()
+	primaryOne, primaryTwo := newUnresponsiveListener(t), newUnresponsiveListener(t)
 
 	conf := &node_config.BatcherNodeConfig{
 		PartyId:            3,
@@ -186,6 +178,68 @@ func TestPrimaryReqConnectorSendTimeoutIncludesConnectionWait(t *testing.T) {
 	connector.ConnectToNewPrimary(2)
 	require.Less(t, time.Since(start), time.Second)
 	requireDone(t, &sends, "senders did not honor the send timeout while connecting")
+}
+
+// Scenario:
+//  1. Start two primaries that accept TCP connections and never answer, so connecting to either hangs.
+//  2. Send acks to primary 1 from several goroutines, which leaves one of them connecting to it and the
+//     rest waiting for their turn to connect.
+//  3. Switch the connector to primary 2, and send acks to it from several goroutines.
+//  4. Expect the switch to return at once, and every ack to return within about its send timeout
+//     instead of waiting for the senders ahead of it in line to give up on a connection attempt.
+func TestPrimaryAckConnectorSendTimeoutIncludesConnectionWait(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+	nodes := createNodes(t, ca, 1)
+	primaryOne, primaryTwo := newUnresponsiveListener(t), newUnresponsiveListener(t)
+
+	conf := &node_config.BatcherNodeConfig{
+		PartyId:            3,
+		ShardId:            0,
+		TLSPrivateKeyFile:  nodes[0].TLSKey,
+		TLSCertificateFile: nodes[0].TLSCert,
+	}
+	batchers := map[types.PartyID]*batcher.EndpointAndCerts{
+		1: {Endpoint: primaryOne.Addr().String(), TLSCACerts: []node_config.RawBytes{ca.CertBytes()}},
+		2: {Endpoint: primaryTwo.Addr().String(), TLSCACerts: []node_config.RawBytes{ca.CertBytes()}},
+	}
+	connector := batcher.CreatePrimaryAckConnector(
+		1, 0, testutil.CreateLogger(t, 3), conf, batchers, context.Background(),
+		100*time.Millisecond, 10*time.Millisecond, 20*time.Millisecond,
+	)
+	t.Cleanup(connector.Stop)
+
+	var sends sync.WaitGroup
+	for seq := range 4 {
+		sends.Go(func() { connector.SendAck(types.BatchSequence(seq), types.PartyID(1)) })
+	}
+	start := time.Now()
+	connector.ConnectToNewPrimary(2)
+	require.Less(t, time.Since(start), time.Second)
+	requireDone(t, &sends, "the acks to the old primary did not return")
+
+	start = time.Now()
+	for seq := range 4 {
+		sends.Go(func() { connector.SendAck(types.BatchSequence(seq), types.PartyID(2)) })
+	}
+	requireDone(t, &sends, "the acks did not honor the send timeout while connecting")
+	require.Less(t, time.Since(start), 5*time.Second)
+}
+
+// newUnresponsiveListener listens on a local port and accepts TCP connections without ever answering,
+// so a TLS handshake or a stream to it hangs until the client gives up.
+func newUnresponsiveListener(t *testing.T) net.Listener {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { listener.Close() })
+	go func() {
+		for {
+			if _, err := listener.Accept(); err != nil {
+				return
+			}
+		}
+	}()
+	return listener
 }
 
 func newReqConnector(t *testing.T, nodes []*node, batchers map[types.PartyID]*batcher.EndpointAndCerts) *batcher.PrimaryReqConnector {
