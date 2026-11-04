@@ -96,7 +96,12 @@ func (bp *BatchPuller) PullBatches(from types.PartyID) <-chan types.Batch {
 	blockHandlerFunc := func(block *common.Block) {
 		bp.logger.Infof("[%s] Fetched batch %d with %d transactions", channelName, block.Header.Number, len(block.Data.Data))
 		fb := (*node_ledger.FabricBatch)(block)
-		res <- fb
+		// Stop cancels stopCtx while the secondary may have stopped reading; giving up the hand-over then
+		// lets Pull see the cancellation and return.
+		select {
+		case res <- fb:
+		case <-stopCtx.Done():
+		}
 	}
 
 	go delivery.Pull(
