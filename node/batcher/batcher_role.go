@@ -359,6 +359,9 @@ func (b *BatcherRole) runPrimary() {
 	b.ackerLock.Unlock()
 	b.MemPool.Restart(true)
 
+	sendCtx, cancelSend := context.WithCancel(b.stopCtx)
+	defer cancelSend()
+
 	var currentBatch types.BatchedRequests
 	var reqIDs []string
 	var digest []byte
@@ -404,10 +407,8 @@ func (b *BatcherRole) runPrimary() {
 		// The digest was already computed for the BAF above.
 		b.Ledger.Append(b.ID, b.seq, b.ConfigSequenceGetter.ConfigSequence(), currentBatch, digest, baf.Signature())
 		sendBAFDone := make(chan struct{})
-		ctx, sendBafCancel := context.WithCancel(b.stopCtx)
-		defer sendBafCancel()
 		go func() {
-			b.BAFSender.SendBAF(baf, ctx)
+			b.BAFSender.SendBAF(baf, sendCtx)
 			close(sendBAFDone)
 		}()
 		select {
@@ -443,6 +444,9 @@ func (b *BatcherRole) runSecondary() {
 	b.Logger.Infof("Batcher %d acting as secondary (shard %d; primary %d)", b.ID, b.Shard, b.primary)
 	b.MemPool.Restart(false)
 	b.Metrics.currentRole.Set(2)
+
+	sendCtx, cancelSend := context.WithCancel(b.stopCtx)
+	defer cancelSend()
 
 	for {
 		out := b.BatchPuller.PullBatches(b.primary)
@@ -487,10 +491,8 @@ func (b *BatcherRole) runSecondary() {
 			baf := b.BAFCreator.CreateBAF(b.seq, b.primary, b.Shard, digest, uint64(len(requests)), batch.PrimarySignature())
 
 			sendBAFDone := make(chan struct{})
-			ctx, sendBafCancel := context.WithCancel(b.stopCtx)
-			defer sendBafCancel()
 			go func() {
-				b.BAFSender.SendBAF(baf, ctx)
+				b.BAFSender.SendBAF(baf, sendCtx)
 				close(sendBAFDone)
 			}()
 			select {
