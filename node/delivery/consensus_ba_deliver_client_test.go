@@ -81,6 +81,23 @@ func TestConsensusBAReplicatorResumesWithinADecisionOnReconnect(t *testing.T) {
 	require.Never(t, func() bool { return len(bas) > 0 }, time.Second, 100*time.Millisecond)
 }
 
+// Scenario:
+//  1. Serve the consensus deliver service over TLS, over a decision ledger holding more BAs than the channel
+//     of the replicator holds.
+//  2. Replicate BAs without consuming them, until the channel is full.
+//  3. Stop the replicator.
+//  4. Expect the replicator to stop pulling, with the channel still full.
+func TestConsensusBAReplicatorStopsWhileItsChannelIsFull(t *testing.T) {
+	_, replicator := replicateBAs(t, 60, &state.OrderingInformation{DecisionNum: 0, BatchIndex: 0, BatchCount: 1})
+	bas := replicator.Replicate()
+	require.Eventually(t, func() bool { return len(bas) == cap(bas) }, 10*time.Second, 10*time.Millisecond)
+
+	replicator.Stop()
+
+	require.Eventually(t, func() bool { return !pullIsRunning() }, 10*time.Second, 10*time.Millisecond,
+		"the replicator did not stop pulling while its channel was full")
+}
+
 // replicateBAs serves decisions 1 to count, each with 2 BAs, and returns a BA replicator whose assembler
 // ledger stays at lastInLedger.
 func replicateBAs(t *testing.T, count int, lastInLedger *state.OrderingInformation) (*decisionServer, *delivery.ConsensusBAReplicator) {
