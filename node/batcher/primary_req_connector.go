@@ -148,10 +148,9 @@ func (p *PrimaryReqConnector) ConnectToNewPrimary(primaryID types.PartyID) {
 	p.lock.Lock()
 	p.primaryID = primaryID
 	p.lock.Unlock()
-	// Reset before waiting for the connect lock: it cancels a connect to the previous primary that is
-	// in progress, so the switch does not wait for it to give up.
+	// Close the stream to the previous primary and cancel a connect to it in progress. The next sender
+	// connects to the new primary, so an unavailable primary does not block the decision loop.
 	p.ResetConnection()
-	// Senders connect lazily so the decision loop is not blocked by an unavailable primary.
 }
 
 // ConnectToPrimary replaces the connection to the primary with a new one.
