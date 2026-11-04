@@ -179,11 +179,6 @@ whose CA was removed, and logs `Mempool pruning completed: <n> transactions were
 not happen when a batcher goes to pending-admin: it is restarted by the admin with an empty mempool (see
 [5.2](#52-update-batching-parameters)).
 
-A batcher restarted dynamically also starts in its shard's term in the decision that carries the
-config block, so it knows the primary and complains in the current term before the next decision
-arrives. This matters when the config adds or removes a party, since consensus then moves every shard
-to the next term.
-
 **Pending admin (action required).** The node logs the reason first, then the warning:
 ```
 <Node>'s party <id> was evicted in the new configuration      # party removed
