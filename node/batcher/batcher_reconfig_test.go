@@ -490,10 +490,12 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
 	require.NoError(t, err)
 
-	// send the config block to the batchers by the stub consenters
-	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	// send the config block to the batchers by the stub consenters. Removing a party changes the party count, so
+	// consensus bumps the shard term in the config decision: its state has N 3 and term 1.
+	survivingParties := []types.PartyID{1, 3, 4}
+	stEvicted := &state.State{N: uint16(len(survivingParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 1}}}
 	for i := range parties {
-		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
+		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, stEvicted)
 	}
 
 	// wait for batchers to append the config tx to the config store
@@ -521,28 +523,15 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// because the party count changed, consensus bumps the shard term. After a reconfigured batcher restarts it
-	// waits for a fresh state, so deliver the post-reconfig state (N 3, term 1) to the surviving batchers.
-	survivingParties := []types.PartyID{1, 3, 4}
-	stEvicted := &state.State{N: uint16(len(survivingParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 1}}}
+	// no further decision is delivered: the surviving batchers start in the config decision's term, and with it
+	// (sorted by party ID: [1, 3, 4]) elect batchers[(shardID + term) % N] = batchers[(1 + 1) % 3] = party 4
+	newPrimary := types.PartyID(4)
 	for j := range parties {
 		if parties[j] == partyToRemove {
 			continue
 		}
-		stubConsenters[j].UpdateState(stEvicted)
-	}
-
-	// with the bumped term the surviving batchers (sorted by party ID: [1, 3, 4]) elect a new primary:
-	// batchers[(shardID + term) % N] = batchers[(1 + 1) % 3] = party 4
-	newPrimary := types.PartyID(4)
-	for j := range parties {
-		partyID := parties[j]
-		if partyID == partyToRemove {
-			continue
-		}
-		require.Eventually(t, func() bool {
-			return batchers[j].GetPrimaryID() == newPrimary
-		}, 60*time.Second, 10*time.Millisecond)
+		require.Equal(t, uint64(1), batchers[j].GetTerm())
+		require.Equal(t, newPrimary, batchers[j].GetPrimaryID())
 	}
 
 	// verify that the reconfigured shard can handle a normal tx: submit a request to the new primary and wait for
@@ -630,15 +619,16 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 	// all parties in the new configuration (1, 3, 4, 5) participate in the shard
 	allParties := []types.PartyID{1, 3, 4, 5}
 
-	// deliver the add-party config block to the surviving batchers' stub consenters. The state bundled with a
-	// config block is not used to drive the term (a reconfigured batcher restarts from a zero state), so the term
-	// carried here is irrelevant; the post-reconfig term is delivered explicitly below.
-	stAddConfig := &state.State{N: uint16(len(allParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	// deliver the add-party config block to the surviving batchers' stub consenters. Adding a party changes the
+	// party count, so consensus bumps the shard term again in the config decision: its state has N 4 and term 2.
+	// With it the parties (sorted by party ID: [1, 3, 4, 5]) elect batchers[(shardID + term) % N] =
+	// batchers[(1 + 2) % 4] = the added party (party 5) as the new primary.
+	stAdd := &state.State{N: uint16(len(allParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 2}}}
 	for j := range parties {
 		if parties[j] == partyToRemove {
 			continue
 		}
-		stubConsenters[j].UpdateStateHeaderWithConfigBlock(types.DecisionNum(2), []*common.Block{addPartyBlock}, stAddConfig)
+		stubConsenters[j].UpdateStateHeaderWithConfigBlock(types.DecisionNum(2), []*common.Block{addPartyBlock}, stAdd)
 	}
 
 	// wait for the surviving batchers to append the add-party config block and reconfigure to config sequence 2
@@ -703,16 +693,8 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 		allBatchers[parties[j]] = batchers[j]
 	}
 
-	// deliver the post-add-party state to all parties. Adding a party changes the party count, so consensus bumps
-	// the shard term again: it is now 2. With N 4 and term 2 the parties (sorted by party ID: [1, 3, 4, 5]) elect
-	// batchers[(shardID + term) % N] = batchers[(1 + 2) % 4] = the added party (party 5) as the new primary.
-	stAdd := &state.State{N: uint16(len(allParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 2}}}
-	for j := range parties {
-		if parties[j] == partyToRemove {
-			continue
-		}
-		stubConsenters[j].UpdateState(stAdd)
-	}
+	// the surviving batchers start in the add-party config decision's term. The added party bootstraps from the
+	// config block itself with an empty WAL, so it learns the term from its first decision.
 	addedStubConsenters[0].UpdateState(stAdd)
 	newPrimaryAfterAdd := addedPartyID
 
@@ -899,103 +881,6 @@ func TestBatcherReconfigPrimaryEndpointChange(t *testing.T) {
 		require.Eventually(t, func() bool {
 			status := batchers[j].GetStatus()
 			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(1)
-		}, 60*time.Second, 10*time.Millisecond)
-	}
-}
-
-// Scenario:
-//  1. Create config and crypto material for 4 parties, one shard.
-//  2. Create Batchers and stub Consenters, and verify that all batchers are running with config sequence 0.
-//  3. Have the stub consenters deliver a config block that changes party 1's endpoint, in a decision whose state
-//     has term 1 for the shard, whose primary is party 3.
-//  4. Verify that party 1 reaches pending admin state, and that the other batchers reconfigure dynamically and
-//     start in term 1 with party 3 as the primary, before any further decision arrives.
-//  5. Submit a request to party 3 and verify it is batched by party 3, which it does only if its role starts as
-//     the primary of term 1.
-func TestBatcherReconfigStartsInTermOfConfigDecision(t *testing.T) {
-	parties := []types.PartyID{1, 2, 3, 4}
-	numOfShards := 1
-
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.yaml")
-	netInfo := testutil.CreateNetwork(t, configPath, len(parties), numOfShards, "TLS", "none")
-	require.NotNil(t, netInfo)
-
-	armageddon.NewCLI().Run([]string{"generate", "--config", configPath, "--output", dir})
-
-	updateFileStorePath(t, dir, parties, numOfShards)
-
-	netInfo.CleanUp()
-	stubConsenters := createStubConsenters(t, dir, parties)
-	batchers, genesisBlock, bundle := createBatcherNodes(t, dir, parties, numOfShards, stubConsenters)
-	startBatcherNodes(batchers)
-
-	defer func() {
-		for _, sc := range stubConsenters {
-			sc.StopNet()
-		}
-		for _, b := range batchers {
-			b.Stop()
-		}
-	}()
-
-	for j := range parties {
-		require.Eventually(t, func() bool {
-			status := batchers[j].GetStatus()
-			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(0)
-		}, 60*time.Second, 10*time.Millisecond)
-	}
-
-	// change party 1's endpoint, which sends party 1 to pending admin and reconfigures the others dynamically
-	partyToChange := types.PartyID(1)
-	configUpdateBuilder := cfgutil.NewConfigUpdateBuilder(t, dir, filepath.Join(dir, "bootstrap", "bootstrap.block"))
-	configUpdatePbData := configUpdateBuilder.UpdateBatcherEndpoint(t, partyToChange, types.ShardID(1), "127.0.0.1", 8080)
-	require.NotNil(t, configUpdatePbData)
-	configUpdateEnvelope := cfgutil.CreateConfigTX(t, dir, parties, 1, configUpdatePbData)
-	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1,
-		types.DecisionNum(1), 1, 0)
-	require.NoError(t, err)
-
-	// the config decision's state has term 1 for shard 1; sorted by party ID, the primary is
-	// batchers[(shardID + term) % N] = batchers[(1 + 1) % 4] = party 3
-	term := uint64(1)
-	newPrimary := types.PartyID(3)
-	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: term}}}
-	for i := range parties {
-		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
-	}
-
-	// no further decision is delivered, so the reconfigured batchers can only know term 1 from the config decision
-	for j := range parties {
-		if parties[j] == partyToChange {
-			require.Eventually(t, func() bool {
-				return batchers[j].GetStatus().GetState() == node_utils.StatePendingAdmin
-			}, 60*time.Second, 10*time.Millisecond)
-			continue
-		}
-		require.Eventually(t, func() bool {
-			status := batchers[j].GetStatus()
-			return status.GetState() == node_utils.StateRunning && status.ConfigSequenceNumber == uint64(1)
-		}, 60*time.Second, 10*time.Millisecond)
-		require.Equal(t, term, batchers[j].GetTerm())
-		require.Equal(t, newPrimary, batchers[j].GetPrimaryID())
-	}
-
-	// a request submitted to party 3 is batched by party 3 only if its role starts as the primary of term 1; in
-	// term 0 it would be a secondary of party 2 and forward the request to it
-	newPrimaryIdx := indexOfParty(parties, newPrimary)
-	req := tx.CreateStructuredRequest([]byte{42})
-	req.ConfigSeq = 1
-	resp, err := batchers[newPrimaryIdx].Submit(routerContextForParty(t, dir, newPrimary), req)
-	require.NoError(t, err)
-	require.Empty(t, resp.Error)
-
-	for j := range parties {
-		if parties[j] == partyToChange {
-			continue
-		}
-		require.Eventually(t, func() bool {
-			return batchers[j].Ledger.Height(newPrimary) == uint64(1)
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 }

@@ -229,25 +229,26 @@ func batchersFromConfig(config *node_config.BatcherNodeConfig) []node_config.Bat
 	return batchers
 }
 
-// computeInitState returns lastKnownState if it matches the current config, so a restarted batcher
-// starts in the term it last knew of rather than in term 0; otherwise it returns the zero state.
+// computeInitState returns lastKnownState if it matches the current config, so the batcher starts in the
+// term it last knew of rather than in term 0: the last decision in the WAL on a restart, or the decision
+// that carries the config block on a reconfiguration. Otherwise it returns the zero state.
 func (b *Batcher) computeInitState(lastKnownState *state.State) state.State {
 	zeroState := computeZeroState(b.config)
 	if lastKnownState == nil {
 		return zeroState
 	}
 	if lastKnownState.N != zeroState.N {
-		b.logger.Warnf("Last known state has N=%d but the config has %d consenters; starting in term 0",
+		b.logger.Warnf("Start state has N=%d but the config has %d consenters; starting in term 0",
 			lastKnownState.N, zeroState.N)
 		return zeroState
 	}
 	for _, shard := range lastKnownState.Shards {
 		if shard.Shard == b.config.ShardId {
-			b.logger.Infof("Starting in term %d of the last known state", shard.Term)
+			b.logger.Infof("Starting in term %d of the start state", shard.Term)
 			return *lastKnownState
 		}
 	}
-	b.logger.Warnf("Last known state has no term for our shard (%d); starting in term 0", b.config.ShardId)
+	b.logger.Warnf("Start state has no term for our shard (%d); starting in term 0", b.config.ShardId)
 	return zeroState
 }
 

@@ -432,7 +432,17 @@ func (b *Batcher) stopAndReconfigure(
 	b.logger.Infof("Applying new config with sequence %d (current: %d), batcher will be restarted dynamically", newConfigSeq, currentConfigSeq)
 	b.config = newBatcherConfig
 	b.fullConfig = newConfig
+	if configState == nil {
+		b.logger.Warnf("The decision of config block %d has no state; starting in term 0", lastBlock.GetHeader().GetNumber())
+	}
+	prevPrimaryID := b.GetPrimaryID()
 	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum, configState)
+	// The decision loop stops at the config decision before it compares primaries, and the batcher now starts in
+	// the config decision's term, so a primary change that comes with the config is counted here.
+	if primaryID := b.GetPrimaryID(); primaryID != prevPrimaryID {
+		b.logger.Infof("Primary changed from %d to %d", prevPrimaryID, primaryID)
+		b.metrics.roleChangesTotal.Add(1)
+	}
 	b.status.Set(node_utils.StateInitializing, newConfigSeq)
 	b.lock.Unlock()
 
