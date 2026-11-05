@@ -31,8 +31,6 @@ services:
 
   pyroscope:
     image: grafana/pyroscope:2.4.0
-    profiles:
-      - profiling
 
   alloy:
     image: grafana/alloy:v1.20.1
