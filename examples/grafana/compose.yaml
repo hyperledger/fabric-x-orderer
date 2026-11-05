@@ -29,6 +29,16 @@ services:
       - ./grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
       - ./grafana/arma-dashboard.json:/etc/grafana/dashboards/arma-dashboard.json:ro
 
+  pyroscope:
+    image: grafana/pyroscope:2.4.0
+
+  alloy:
+    image: grafana/alloy:v1.20.1
+    profiles:
+      - profiling
+    volumes:
+      - /tmp/arma-sample/config.alloy:/etc/alloy/config.alloy:ro
+
   submitter:
     image: "arma"
     profiles:

@@ -5847,6 +5847,218 @@
             }
           }
         }
+      },
+      "panel-60": {
+        "kind": "Panel",
+        "spec": {
+          "id": 60,
+          "title": "CPU: ${node}",
+          "description": "Where the node spends its CPU time. Wider means more time.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-pyroscope-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${DS_PYROSCOPE}"
+                      },
+                      "spec": {
+                        "queryType": "profile",
+                        "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+                        "labelSelector": "{service_name=\"${node}\"}",
+                        "groupBy": []
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "flamegraph",
+            "version": "13.2.1",
+            "spec": {
+              "options": {
+                "showFlameGraphOnly": true
+              },
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-61": {
+        "kind": "Panel",
+        "spec": {
+          "id": 61,
+          "title": "Memory allocations: ${node}",
+          "description": "Which code allocates memory. Wider means more bytes allocated.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-pyroscope-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${DS_PYROSCOPE}"
+                      },
+                      "spec": {
+                        "queryType": "profile",
+                        "profileTypeId": "memory:alloc_space:bytes:space:bytes",
+                        "labelSelector": "{service_name=\"${node}\"}",
+                        "groupBy": []
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "flamegraph",
+            "version": "13.2.1",
+            "spec": {
+              "options": {
+                "showFlameGraphOnly": true
+              },
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-62": {
+        "kind": "Panel",
+        "spec": {
+          "id": 62,
+          "title": "Goroutines: ${node}",
+          "description": "What the goroutines are doing. Wider means more goroutines in that code.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-pyroscope-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${DS_PYROSCOPE}"
+                      },
+                      "spec": {
+                        "queryType": "profile",
+                        "profileTypeId": "goroutine:goroutine:count:goroutine:count",
+                        "labelSelector": "{service_name=\"${node}\"}",
+                        "groupBy": []
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "flamegraph",
+            "version": "13.2.1",
+            "spec": {
+              "options": {
+                "showFlameGraphOnly": true
+              },
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-63": {
+        "kind": "Panel",
+        "spec": {
+          "id": 63,
+          "title": "Memory in use: ${node}",
+          "description": "What the node holds in memory now. Wider means more bytes held; use it when memory keeps growing.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-pyroscope-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${DS_PYROSCOPE}"
+                      },
+                      "spec": {
+                        "queryType": "profile",
+                        "profileTypeId": "memory:inuse_space:bytes:space:bytes",
+                        "labelSelector": "{service_name=\"${node}\"}",
+                        "groupBy": []
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "flamegraph",
+            "version": "13.2.1",
+            "spec": {
+              "options": {
+                "showFlameGraphOnly": true
+              },
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -6546,6 +6758,72 @@
                 }
               }
             }
+          },
+          {
+            "kind": "RowsLayoutRow",
+            "spec": {
+              "title": "Profiling",
+              "collapse": true,
+              "layout": {
+                "kind": "GridLayout",
+                "spec": {
+                  "items": [
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 0,
+                        "width": 24,
+                        "height": 12,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-60"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 12,
+                        "width": 12,
+                        "height": 12,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-61"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 12,
+                        "y": 12,
+                        "width": 12,
+                        "height": 12,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-63"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 0,
+                        "y": 24,
+                        "width": 24,
+                        "height": 12,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-62"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           }
         ]
       }
@@ -6593,6 +6871,62 @@
           "label": "Prometheus",
           "hide": "dontHide",
           "skipUrlSync": false,
+          "allowCustomValue": false
+        }
+      },
+      {
+        "kind": "DatasourceVariable",
+        "spec": {
+          "name": "DS_PYROSCOPE",
+          "pluginId": "grafana-pyroscope-datasource",
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "label": "Pyroscope",
+          "hide": "dontHide",
+          "skipUrlSync": false,
+          "allowCustomValue": false
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "node",
+          "label": "Node",
+          "current": {
+            "text": "router.p1",
+            "value": "router.p1"
+          },
+          "hide": "dontHide",
+          "refresh": "onTimeRangeChanged",
+          "skipUrlSync": false,
+          "description": "",
+          "query": {
+            "kind": "DataQuery",
+            "group": "grafana-pyroscope-datasource",
+            "version": "v0",
+            "datasource": {
+              "name": "${DS_PYROSCOPE}"
+            },
+            "spec": {
+              "type": "labelValue",
+              "labelName": "service_name",
+              "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+              "refId": "PyroscopeVariableQueryEditor-VariableQuery"
+            }
+          },
+          "regex": "/^(?!pyroscope$).*/",
+          "sort": "alphabeticalAsc",
+          "definition": "",
+          "options": [],
+          "multi": false,
+          "includeAll": false,
           "allowCustomValue": false
         }
       }
