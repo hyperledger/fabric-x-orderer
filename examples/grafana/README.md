@@ -34,7 +34,7 @@ To see the router throttling panels, set `THROTTLE_RATE` to throttle party 1's r
 THROTTLE_RATE=500 ./examples/grafana/scripts/run_dashboard.sh
 ```
 
-To see the flame graphs in the dashboard's Profiling row, set `PROFILING=true`. It also starts Pyroscope and Grafana Alloy, which collects the pprof profiles of every node every 15 seconds. This keeps each node under CPU profiling most of the time and lowers its throughput, so it is off by default. For example:
+To see the flame graphs in the dashboard's Profiling row, set `PROFILING=true`. It also starts Grafana Alloy, which collects the pprof profiles of every node every 15 seconds into Pyroscope. This keeps each node under CPU profiling most of the time and lowers its throughput, so it is off by default. For example:
 ```
 PROFILING=true ./examples/grafana/scripts/run_dashboard.sh
 ```

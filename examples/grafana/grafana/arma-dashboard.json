@@ -6006,6 +6006,59 @@
             }
           }
         }
+      },
+      "panel-63": {
+        "kind": "Panel",
+        "spec": {
+          "id": 63,
+          "title": "Memory in use: ${node}",
+          "description": "What the node holds in memory now. Wider means more bytes held; use it when memory keeps growing.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-pyroscope-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "${DS_PYROSCOPE}"
+                      },
+                      "spec": {
+                        "queryType": "profile",
+                        "profileTypeId": "memory:inuse_space:bytes:space:bytes",
+                        "labelSelector": "{service_name=\"${node}\"}",
+                        "groupBy": []
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "flamegraph",
+            "version": "13.2.1",
+            "spec": {
+              "options": {
+                "showFlameGraphOnly": true
+              },
+              "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -6733,11 +6786,24 @@
                       "spec": {
                         "x": 0,
                         "y": 12,
-                        "width": 24,
+                        "width": 12,
                         "height": 12,
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-61"
+                        }
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "x": 12,
+                        "y": 12,
+                        "width": 12,
+                        "height": 12,
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-63"
                         }
                       }
                     },

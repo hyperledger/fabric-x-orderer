@@ -73,27 +73,27 @@ hosts=$(grep -oE '"[a-z0-9.]+:[0-9]+"' "${DEPLOYMENT}" | tr -d '"' | cut -d: -f1
   done
 } > "${SAMPLE_DIR}/prometheus.yml"
 
-# Collect the pprof profiles of every node into Pyroscope, for the dashboard's Profiling row.
-{
-  echo "pyroscope.scrape \"arma\" {"
-  echo "  targets = ["
-  for host in ${hosts}; do
-    echo "    {\"__address__\" = \"${host}:${OPERATIONS_PORT}\", \"service_name\" = \"${host}\"},"
-  done
-  echo "  ]"
-  echo "  forward_to = [pyroscope.write.arma.receiver]"
-  echo "}"
-  echo
-  echo "pyroscope.write \"arma\" {"
-  echo "  endpoint {"
-  echo "    url = \"http://pyroscope:4040\""
-  echo "  }"
-  echo "}"
-} > "${SAMPLE_DIR}/config.alloy"
-
-chmod -R a+rX "${EXAMPLE_DIR}/grafana" "${SAMPLE_DIR}/prometheus.yml" "${SAMPLE_DIR}/config.alloy"
+chmod -R a+rX "${EXAMPLE_DIR}/grafana" "${SAMPLE_DIR}/prometheus.yml"
 
 if [ "${PROFILING}" = true ]; then
+  # Collect the pprof profiles of every node into Pyroscope, for the dashboard's Profiling row.
+  {
+    echo "pyroscope.scrape \"arma\" {"
+    echo "  targets = ["
+    for host in ${hosts}; do
+      echo "    {\"__address__\" = \"${host}:${OPERATIONS_PORT}\", \"service_name\" = \"${host}\"},"
+    done
+    echo "  ]"
+    echo "  forward_to = [pyroscope.write.arma.receiver]"
+    echo "}"
+    echo
+    echo "pyroscope.write \"arma\" {"
+    echo "  endpoint {"
+    echo "    url = \"http://pyroscope:4040\""
+    echo "  }"
+    echo "}"
+  } > "${SAMPLE_DIR}/config.alloy"
+  chmod a+r "${SAMPLE_DIR}/config.alloy"
   COMPOSE+=(--profile profiling)
 fi
 "${COMPOSE[@]}" up -d
@@ -124,12 +124,17 @@ if [ "${OPEN_BROWSER}" != false ]; then
   done
 fi
 
+PROFILING_INFO="off (set PROFILING=true for the flame graphs)"
+if [ "${PROFILING}" = true ]; then
+  PROFILING_INFO="on (flame graphs in the dashboard's Profiling row)"
+fi
+
 cat <<INFO
 
 Submitting ${TRANSACTIONS} transactions of ${TX_SIZE}B at ${RATE} tx/s.
 
   Dashboard  : ${DASHBOARD_URL}
   Prometheus : ${PROMETHEUS_URL}
-  Profiling  : ${PROFILING} (flame graphs in the dashboard's Profiling row)
+  Profiling  : ${PROFILING_INFO}
   Clean up   : bash ${EXAMPLE_DIR}/scripts/clean_dashboard.sh
 INFO
