@@ -117,6 +117,46 @@ func TestBatchFetcherResumesAfterTheLastBatchOnReconnect(t *testing.T) {
 	require.Never(t, func() bool { return len(batches) > 0 }, time.Second, 100*time.Millisecond)
 }
 
+// Scenario:
+//  1. Start the stub batchers of 3 parties; the batcher of party 1 holds batches 0 to 2 of each primary.
+//  2. Replicate the shard with a batch frontier at batch 1 of primary 1, at batch 0 of primary 2, and
+//     with no batch of primary 3.
+//  3. Expect batch 2 of primary 1, batches 1 and 2 of primary 2, and batches 0 to 2 of primary 3, each
+//     exactly once and in order, and nothing more.
+func TestBatchFetcherStartsAfterTheBatchFrontier(t *testing.T) {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	shardID := types.ShardID(1)
+	partyID := types.PartyID(1)
+
+	batchers, batcherInfos, cleanup := createStubBatchersAndInfos(t, 3, shardID, ca)
+	t.Cleanup(cleanup)
+	for primary := types.PartyID(1); primary <= 3; primary++ {
+		for seq := range types.BatchSequence(3) {
+			requests := types.BatchedRequests{[]byte{byte(primary), byte(seq)}}
+			batchers[0].SetNextBatch(types.NewSimpleBatch(shardID, primary, seq, requests, 0, nil))
+		}
+	}
+
+	frontier := map[types.ShardID]map[types.PartyID]types.BatchSequence{shardID: {1: 1, 2: 0}}
+	nodeConfig := fetcherConfig(t, ca, partyID, []config.ShardInfo{{ShardId: shardID, Batchers: batcherInfos}})
+	nodeConfig.ReplicationChannelSize = 100
+	signer, _ := signutil.NewSelfSignedSigner(t, "org")
+	fetcher := assembler.NewBatchFetcher(frontier, nodeConfig, signer, testutil.CreateLogger(t, int(partyID)))
+	t.Cleanup(fetcher.Stop)
+	batches := fetcher.Replicate(shardID)
+
+	expected := map[types.PartyID][]types.BatchSequence{1: {2}, 2: {1, 2}, 3: {0, 1, 2}}
+	pulled := make(map[types.PartyID][]types.BatchSequence)
+	for range 6 {
+		batch := nextBatch(t, batches)
+		pulled[batch.Primary()] = append(pulled[batch.Primary()], batch.Seq())
+	}
+	require.Equal(t, expected, pulled)
+	require.Never(t, func() bool { return len(batches) > 0 }, time.Second, 100*time.Millisecond)
+}
+
 func nextBatch(t *testing.T, batches <-chan types.Batch) types.Batch {
 	select {
 	case batch := <-batches:
