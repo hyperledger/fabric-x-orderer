@@ -258,7 +258,7 @@ func (b *Batcher) replicateDecision() {
 							b.logger.Panicf("Failed adding config block to config store: %s", err)
 						}
 						b.logger.Infof("Soft stop")
-						go b.processNewConfigBlock(lastBlock)
+						go b.processNewConfigBlock(lastBlock, header.State)
 						return
 					}
 				} else {
@@ -296,11 +296,12 @@ func (b *Batcher) replicateDecision() {
 	}
 }
 
-func (b *Batcher) processNewConfigBlock(configBlock *common.Block) {
+// processNewConfigBlock applies the config block of a decision whose state is configState.
+func (b *Batcher) processNewConfigBlock(configBlock *common.Block, configState *state.State) {
 	b.logger.Infof("Processing new config block number %d", configBlock.Header.Number)
 	b.SoftStop()
 
-	isAdminOperationRequired, err := b.ApplyConfig(configBlock)
+	isAdminOperationRequired, err := b.ApplyConfig(configBlock, configState)
 	if err != nil {
 		b.logger.Panicf("Failed applying new config: %s", err)
 	}
@@ -338,9 +339,10 @@ func (b *Batcher) hasBatchingParamsChanged(newConfig *node_config.BatcherNodeCon
 
 // ApplyConfig applies the new configuration to the batcher.
 // It receives the new config block and checks if an admin operation is required (party evicted or identity change), if so returns true.
-// If not, it reconfigures the batcher with the new config, retains the current memory pool, prunes the memory pool, and starts the batcher.
+// If not, it reconfigures the batcher with the new config, retains the current memory pool, prunes the memory pool,
+// and starts the batcher in the term of configState, the state of the decision that carries the config block.
 // If an error occurs at any point, the function returns and the batcher will remain in soft stop.
-func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
+func (b *Batcher) ApplyConfig(lastBlock *common.Block, configState *state.State) (bool, error) {
 	partyID := b.config.PartyId
 	shardID := b.config.ShardId
 
@@ -404,11 +406,18 @@ func (b *Batcher) ApplyConfig(lastBlock *common.Block) (bool, error) {
 		return true, nil
 	}
 
-	b.stopAndReconfigure(newConfig, newBatcherConfig, lastBlock)
+	b.stopAndReconfigure(newConfig, newBatcherConfig, lastBlock, configState)
 	return false, nil
 }
 
-func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, newBatcherConfig *node_config.BatcherNodeConfig, lastBlock *common.Block) {
+// stopAndReconfigure restarts the batcher with the new config, in the term of configState, the state of the
+// decision that carries the config block.
+func (b *Batcher) stopAndReconfigure(
+	newConfig *config.Configuration,
+	newBatcherConfig *node_config.BatcherNodeConfig,
+	lastBlock *common.Block,
+	configState *state.State,
+) {
 	lastKnownDecisionNum := getLastKnownDecisionNumFromConfigBlock(lastBlock, b.logger)
 
 	// this is not an admin restart.
@@ -423,7 +432,17 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, newBatcher
 	b.logger.Infof("Applying new config with sequence %d (current: %d), batcher will be restarted dynamically", newConfigSeq, currentConfigSeq)
 	b.config = newBatcherConfig
 	b.fullConfig = newConfig
-	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum, nil)
+	if configState == nil {
+		b.logger.Warnf("The decision of config block %d has no state; starting in term 0", lastBlock.GetHeader().GetNumber())
+	}
+	prevPrimaryID := b.GetPrimaryID()
+	b.configureBatcher(&ConsenterControlEventSenderFactory{}, b.batcher.MemPool, lastKnownDecisionNum, configState)
+	// The decision loop stops at the config decision before it compares primaries, and the batcher now starts in
+	// the config decision's term, so a primary change that comes with the config is counted here.
+	if primaryID := b.GetPrimaryID(); primaryID != prevPrimaryID {
+		b.logger.Infof("Primary changed from %d to %d", prevPrimaryID, primaryID)
+		b.metrics.roleChangesTotal.Add(1)
+	}
 	b.status.Set(node_utils.StateInitializing, newConfigSeq)
 	b.lock.Unlock()
 

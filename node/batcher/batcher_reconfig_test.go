@@ -490,10 +490,12 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 	configBlock, err := cfgutil.CreateConsensusConfigBlock(bundle, configUpdateEnvelope, genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
 	require.NoError(t, err)
 
-	// send the config block to the batchers by the stub consenters
-	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	// send the config block to the batchers by the stub consenters. Removing a party changes the party count, so
+	// consensus bumps the shard term in the config decision: its state has N 3 and term 1.
+	survivingParties := []types.PartyID{1, 3, 4}
+	stEvicted := &state.State{N: uint16(len(survivingParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 1}}}
 	for i := range parties {
-		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
+		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, stEvicted)
 	}
 
 	// wait for batchers to append the config tx to the config store
@@ -521,28 +523,15 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 		}, 60*time.Second, 10*time.Millisecond)
 	}
 
-	// because the party count changed, consensus bumps the shard term. After a reconfigured batcher restarts it
-	// waits for a fresh state, so deliver the post-reconfig state (N 3, term 1) to the surviving batchers.
-	survivingParties := []types.PartyID{1, 3, 4}
-	stEvicted := &state.State{N: uint16(len(survivingParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 1}}}
+	// no further decision is delivered: the surviving batchers start in the config decision's term, and with it
+	// (sorted by party ID: [1, 3, 4]) elect batchers[(shardID + term) % N] = batchers[(1 + 1) % 3] = party 4
+	newPrimary := types.PartyID(4)
 	for j := range parties {
 		if parties[j] == partyToRemove {
 			continue
 		}
-		stubConsenters[j].UpdateState(stEvicted)
-	}
-
-	// with the bumped term the surviving batchers (sorted by party ID: [1, 3, 4]) elect a new primary:
-	// batchers[(shardID + term) % N] = batchers[(1 + 1) % 3] = party 4
-	newPrimary := types.PartyID(4)
-	for j := range parties {
-		partyID := parties[j]
-		if partyID == partyToRemove {
-			continue
-		}
-		require.Eventually(t, func() bool {
-			return batchers[j].GetPrimaryID() == newPrimary
-		}, 60*time.Second, 10*time.Millisecond)
+		require.Equal(t, uint64(1), batchers[j].GetTerm())
+		require.Equal(t, newPrimary, batchers[j].GetPrimaryID())
 	}
 
 	// verify that the reconfigured shard can handle a normal tx: submit a request to the new primary and wait for
@@ -630,15 +619,16 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 	// all parties in the new configuration (1, 3, 4, 5) participate in the shard
 	allParties := []types.PartyID{1, 3, 4, 5}
 
-	// deliver the add-party config block to the surviving batchers' stub consenters. The state bundled with a
-	// config block is not used to drive the term (a reconfigured batcher restarts from a zero state), so the term
-	// carried here is irrelevant; the post-reconfig term is delivered explicitly below.
-	stAddConfig := &state.State{N: uint16(len(allParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	// deliver the add-party config block to the surviving batchers' stub consenters. Adding a party changes the
+	// party count, so consensus bumps the shard term again in the config decision: its state has N 4 and term 2.
+	// With it the parties (sorted by party ID: [1, 3, 4, 5]) elect batchers[(shardID + term) % N] =
+	// batchers[(1 + 2) % 4] = the added party (party 5) as the new primary.
+	stAdd := &state.State{N: uint16(len(allParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 2}}}
 	for j := range parties {
 		if parties[j] == partyToRemove {
 			continue
 		}
-		stubConsenters[j].UpdateStateHeaderWithConfigBlock(types.DecisionNum(2), []*common.Block{addPartyBlock}, stAddConfig)
+		stubConsenters[j].UpdateStateHeaderWithConfigBlock(types.DecisionNum(2), []*common.Block{addPartyBlock}, stAdd)
 	}
 
 	// wait for the surviving batchers to append the add-party config block and reconfigure to config sequence 2
@@ -703,16 +693,8 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 		allBatchers[parties[j]] = batchers[j]
 	}
 
-	// deliver the post-add-party state to all parties. Adding a party changes the party count, so consensus bumps
-	// the shard term again: it is now 2. With N 4 and term 2 the parties (sorted by party ID: [1, 3, 4, 5]) elect
-	// batchers[(shardID + term) % N] = batchers[(1 + 2) % 4] = the added party (party 5) as the new primary.
-	stAdd := &state.State{N: uint16(len(allParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 2}}}
-	for j := range parties {
-		if parties[j] == partyToRemove {
-			continue
-		}
-		stubConsenters[j].UpdateState(stAdd)
-	}
+	// the surviving batchers start in the add-party config decision's term. The added party bootstraps from the
+	// config block itself with an empty WAL, so it learns the term from its first decision.
 	addedStubConsenters[0].UpdateState(stAdd)
 	newPrimaryAfterAdd := addedPartyID
 
