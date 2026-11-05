@@ -227,7 +227,6 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 
 	batcher := &batcher.BatcherRole{
 		N:                       uint16(len(batchers)),
-		Batchers:                batchers,
 		BatchTimeout:            time.Millisecond * 500,
 		Shard:                   arma_types.ShardID(shardID),
 		BAFCreator:              bafCreator,
@@ -238,7 +237,7 @@ func createBenchBatcher(b *testing.B, shardID arma_types.ShardID, nodeID arma_ty
 		Threshold:               2,
 		Ledger:                  ledger,
 		ConfigSequenceGetter:    configSeqGet,
-		StateProvider:           &mocks.FakeStateProvider{},
+		TermProvider:            newTestTermProvider(batchers, arma_types.ShardID(shardID), uint16(len(batchers))),
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		SigVerifier:             &mocks.FakeSigVerifier{},
 		BatchSequenceGap:        arma_types.BatchSequence(10),
@@ -395,7 +394,6 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 
 	b := &batcher.BatcherRole{
 		N:                       uint16(len(batchers)),
-		Batchers:                batchers,
 		BatchTimeout:            time.Millisecond * 500,
 		Shard:                   shardID,
 		BAFCreator:              bafCreator,
@@ -406,7 +404,7 @@ func createTestBatcher(t *testing.T, shardID arma_types.ShardID, nodeID arma_typ
 		Threshold:               2,
 		Ledger:                  ledger,
 		ConfigSequenceGetter:    configSeqGet,
-		StateProvider:           &mocks.FakeStateProvider{},
+		TermProvider:            newTestTermProvider(batchers, arma_types.ShardID(shardID), uint16(len(batchers))),
 		Complainer:              &mocks.FakeComplainer{},
 		BatchedRequestsVerifier: &mocks.FakeBatchedRequestsVerifier{},
 		SigVerifier:             &mocks.FakeSigVerifier{},

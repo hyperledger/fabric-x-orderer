@@ -20,6 +20,28 @@ import (
 // common.Status); on the Submit API it is surfaced via SubmitResponse.Error.
 var ErrThrottled = errors.New("service unavailable: request throttled by router rate limiter")
 
+// errContextDone is carried by a Response when the client gave up on a Submit before the answer arrived.
+// It is not counted in router_requests_rejected: the router refused nothing.
+var errContextDone = errors.New("context done before receiving response")
+
+// badRequestError is an error for a request that is itself wrong. It is counted under code "400" in
+// router_requests_rejected; every other error the router answers with is counted under "500".
+type badRequestError struct {
+	err error
+}
+
+func (e *badRequestError) Error() string {
+	return e.err.Error()
+}
+
+func (e *badRequestError) Unwrap() error {
+	return e.err
+}
+
+func badRequest(err error) error {
+	return &badRequestError{err: err}
+}
+
 type TrackedRequest struct {
 	request  *protos.Request // the request to be forward to the batcher
 	feedback *clientFeedback // the feedback path of the submitting client

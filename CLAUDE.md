@@ -5,11 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 Fabric-X Orderer is the ordering service of Fabric-X, implementing the **Arma** BFT protocol
-("Fabric-X: Scaling Hyperledger Fabric for Asset Exchange", https://dl.acm.org/doi/10.1145/3788853.3803092 ). 
+("Fabric-X: Scaling Hyperledger Fabric for Asset Exchange", https://dl.acm.org/doi/10.1145/3788853.3803092).
 Arma scales BFT ordering horizontally by separating transaction dissemination and persistence from
 consensus: consensus orders only compact batch *metadata*, while full payloads flow through a
 parallel, shardable data plane. The client-facing API is Fabric's Atomic Broadcast API
-(`Broadcast`/`Deliver`, see https://github.com/hyperledger/fabric), so standard Fabric clients 
+(`Broadcast`/`Deliver`, see https://github.com/hyperledger/fabric), so standard Fabric clients
 are largely compatible.
 
 ## The four node roles (the core mental model)
@@ -17,25 +17,25 @@ are largely compatible.
 Everything maps to four server roles, each a top-level package under `node/`. The end-to-end
 flow is: **Router → Batcher → Consenter → Assembler**.
 
-- **Router** (`node/router`) — party-local entry point. Accepts client `common.Envelope`s via the
-  `Broadcast` API, applies request checks, maps each TX to a shard (CRC64 over the payload, so all
-  routers route identically), and forwards to the batcher of its own party in that shard.
+- **Router** (`node/router`) — party-local entry point. Accepts client `common.Envelope`s via
+  `Broadcast`, maps each TX to a shard (CRC64 over the payload, so all routers route identically),
+  and forwards it to its own party's batcher in that shard.
 - **Batcher** (`node/batcher`) — grouped into **shards**. Bundles TXs into batches, persists and
   replicates them within the shard (one *primary* per shard/term; *secondaries* pull-verify-ack),
-  and sends compact **Batch Attestation Fragments (BAFs)** — a signed digest + metadata — to the
-  consenters. Payloads stay in the batcher; they never cross the consensus path.
-- **Consenter** (`node/consensus`) — runs SmartBFT (see: https://github.com/hyperledger/SmartBFT) 
-  over BAFs and control events, emitting a total order of **Batch Attestations (BAs)**. 
-  Also the system controller (e.g. changing a shard's primary on enough complaints).
-- **Assembler** (`node/assembler`) — collates the ordered BA stream from consensus with full
-  batches pulled from batchers, materializing a Fabric-compatible **block ledger**. Serves blocks
-  to consumers via the `Deliver` API.
+  and sends **Batch Attestation Fragments (BAFs)** — signed digest + metadata — to the consenters.
+  Payloads never cross the consensus path.
+- **Consenter** (`node/consensus`) — runs SmartBFT (https://github.com/hyperledger/SmartBFT) over
+  BAFs and control events, emitting a total order of **Batch Attestations (BAs)**. Also the system
+  controller (e.g. changing a shard's primary on enough complaints).
+- **Assembler** (`node/assembler`) — joins the ordered BA stream with full batches pulled from
+  batchers into a Fabric-compatible **block ledger**, served via `Deliver`.
 
 A **party** runs one router, one consenter, one assembler, and one batcher per shard. Multiple
 parties run the same roles and cooperate for BFT and censorship resistance.
 
 Read `docs/architecture.md` first for the full flow (single-party then multi-party); it is the
-authoritative overview. `docs/api.md` covers the client API.
+authoritative overview. Per-role detail is in `docs/{batcher,consensus,assembler}.md`; `docs/api.md`
+covers the client API, `docs/cli/` the generated CLI reference, `docs/monitoring/` metrics.
 
 ## Two binaries
 
@@ -50,14 +50,15 @@ authoritative overview. `docs/api.md` covers the client API.
 
 ```bash
 make binary            # builds ./bin/arma and ./bin/armageddon
-make linter            # golangci-lint (config in .golangci.yml) + dep/help-doc checks
+make linter            # goimports, gofumpt, go vet, staticcheck + dep/help-doc checks (builds bin/)
+make linter-extra      # golangci-lint (.golangci.yml) on changes vs main
 make protos            # regenerate protobuf artifacts from .proto files
-make basic-checks      # license headers, DCO, imports, protos, linter — run before pushing
+make basic-checks      # license headers, DCO, imports, protos, linter, version injection
 make build-image       # build the Docker image locally (Docker or Podman)
 ```
 
-Commits must be signed off (`git commit -s`) — `make check-dco` enforces DCO. All source files
-need the Apache license header (`make check-license`).
+`make linter` needs `goimports`, `gofumpt`, and `staticcheck` on `PATH` (see the `go install` steps
+in `.github/workflows/verify-build.yml`).
 
 ## Tests
 
@@ -65,39 +66,51 @@ Unit and integration tests are split into Make targets because some suites are s
 `-race`:
 
 ```bash
-make unit-tests                    # unit-tests-other + -consensus + -batcher
-make unit-tests-other              # everything except node/consensus, node/batcher, and /test
-make unit-tests-consensus          # node/consensus (skips TestConsensusFullReplacement)
-make unit-tests-batcher            # node/batcher
-make integration-tests             # test/basic + test/faulttolerance + test/reconfig
+make unit-tests                              # unit-tests-other + -consensus + -batcher
+make unit-tests-other                        # everything except node/consensus, node/batcher, and /test
+make unit-tests-consensus                    # node/consensus (skips TestConsensusFullReplacement)
+make unit-tests-consensus-full-replacement   # just TestConsensusFullReplacement (own CI job)
+make unit-tests-batcher                      # node/batcher
+make integration-tests                       # integration-basic + -faulttolerance + -reconfig
+make integration-reconfig-<membership|identity|endpoints|params|configtx>
 ```
 
-Integration/e2e suites live under `test/` (`basic`, `faulttolerance`, `reconfig/*`, `chaos`) and
-spin up real multi-node networks. Test helpers (network setup, MSP/crypto gen, TLS, stub nodes,
-port allocation) live in `testutil/`.
+`integration-reconfig-membership` skips `TestPartiesFullReplacement` and `TestReJoinSingleParty`;
+they run as their own targets/CI jobs (`integration-reconfig-membership-full-parties-replacement`,
+`integration-reconfig-membership-rejoin-single-party`).
+
+Integration/e2e suites live under `test/` (`basic`, `faulttolerance`, `reconfig/*`,
+`deterministic-failure-test`, `fully-randomized-failure-test`) and spin up real multi-node
+networks. Test helpers (network setup, MSP/crypto gen, TLS, stub nodes, port allocation) live in
+`testutil/`.
 
 Run a single test:
 
 ```bash
 go test -race -run '^TestName$' ./node/router/...
-go test -race -run '^TestConsensusFullReplacement$' ./node/consensus/...   # excluded from default target
 ```
 
-The prefered method of testing is via the go `testing` platfrom.
+Write new tests with the standard `testing` package plus `testify/require`. Some integration
+suites use `ginkgo`/`gomega` (`ginkgolinter` is on, so follow gomega idioms when touching them);
+do not write new ginkgo/gomega tests.
 
-Some legacy tests use `testify` and (especially integration suites) `ginkgo`/`gomega`. `ginkgolinter` is
-enabled, so follow gomega idioms. Do not write new tests with `ginkgo`/`gomega`.
+Mocks are generated (counterfeiter / mockery via `//go:generate`); after changing an interface,
+run `go generate` in that package rather than editing mocks by hand.
 
 ## Configuration model
 
 Config splits into **local** and **shared** (`config/`):
 
-- **Local config** — per-node YAML: identity (MSP dir/ID, BCCSP), TLS, listen addresses and ports, file-store paths, a bootstrap section and role-specific parameters. 
+- **Local config** — per-node YAML: identity (MSP dir/ID, BCCSP), TLS, listen addresses and ports,
+  file-store paths, a bootstrap section, and role-specific parameters.
 - **Shared config** — the network-wide topology (parties, shards, endpoints, consensus params),
   represented as an `ordererpb.SharedConfig` and carried in a **config block**.
 
 `config.ReadConfig` (entry point) loads local config, then obtains shared config via the bootstrap
-`Method`: `block` (bootstrap from a genesis/config block; routers and batchers may resume from the last block in their `configstore` and consenters and assemblers may resume from their ledger.). A node then calls `Extract<Role>Config(lastConfigBlock)` to get its role-specific runtime config.
+`Method`. The only supported method is `block`: bootstrap from a genesis/config block; routers and
+batchers may resume from the last block in their `configstore`, consenters and assemblers from
+their ledger. A node then calls `Extract<Role>Config(lastConfigBlock)` to get its role-specific
+runtime config.
 
 Every node must be given the **same genesis block**; a node fails to start without it.
 Reconfiguration (membership, identity, endpoints, params) flows through new config blocks — see
@@ -111,8 +124,10 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
 - `common/types` — core domain types shared across roles (batches, BAFs, batched requests).
 - `request/` — the batcher's router-side request pool/batching internals (pending, buckets, batch store).
 - `common/` — cross-cutting infra: `policy`, `msputils`, `requestfilter`, `monitoring`,
-  `operations` (ops/metrics endpoint), `synchronizer` (shared state-sync), `configstore`.
-- Protobuf definitions live under `node/protos/` and `node/comm/`; regenerate with `make protos`,
+  `operations` (ops/metrics endpoint), `fabhttp` (HTTP server for it), `synchronizer` (shared
+  state-sync), `configstore`, `configack` (config-ack sender/receiver to consenters), `ratelimit`
+  (GCRA token-bucket limiter), `filerepo`, `metadata` (version vars injected via ldflags).
+- Protobuf definitions live under `node/protos/{comm,state}`; regenerate with `make protos`,
   never hand-edit generated `.pb.go` files. `check-protos` verifies they are current.
 - Dependencies are **vendored** (`vendor/`); `make check-deps` flags unused vendored deps.
 
@@ -122,12 +137,16 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
   BCCSP, flogging), `fabric-protos-go-apiv2`, and `hyperledger/SmartBFT` (consensus engine).
 - Logging is `flogging` (`FabricLogger`), typically named per role/party
   (e.g. `Batcher%dShard%d`).
-- Errors use `github.com/pkg/errors` (wrap with context).
-- The linter set is strict (`.golangci.yml`): `gosec`, `gocritic`, `revive`, `ireturn`, `lll`,
-  `gocognit`, etc. `make linter-extra` runs additional checks against `main` for new changes;
+- Some code uses `github.com/pkg/errors` (wrap with context). Avoid it in new code; use the
+  built-in `errors` and `fmt` instead, or `github.com/cockroachdb/errors` if stack traces and
+  richer diagnostics are required.
+- `.golangci.yml` enables a wider linter set than `make linter` (`gosec`, `gocritic`, `revive`,
+  `ireturn`, `lll`, `gocognit`, …), run only by `make linter-extra`; keep new code clean under it.
+  CI does not run it, and the config is in golangci-lint v1 format, so it needs a v1 binary.
   `golangci-lint run --fix --new-from-rev=main` fixes the auto-fixable ones.
-- CLI help text is checked against docs (`make check-help-docs` / `scripts/help_docs.sh`); if you
-  change a command's flags/help, regenerate the docs.
+- CLI help text is checked against `docs/cli/` (`make check-help-docs`); if you change a command's
+  flags/help, run `./scripts/help_docs.sh generate` to regenerate the docs.
+- All source files need the Apache license header (`make check-license`).
 
 ### Coding guidelines
 
@@ -146,7 +165,7 @@ benchmarks rather than guessing.
 
 ## Before opening a PR
 
-Run `make basic-checks` (license, DCO, imports, protos, linter) plus the unit-test target(s)
-covering your change. **Don't run the full test suite locally — it's slow by design** (that's why
-the targets are split); rely on CI (`.github/workflows/verify-build.yml`) for the complete run and
-monitor it. Commits must be signed off (`git commit -s`).
+- Commits must be signed off (`git commit -s`); `make check-dco` enforces it.
+- Run `make basic-checks` plus the unit-test target(s) covering your change. **Don't run the full
+  suite locally — it's slow by design**; rely on CI (`.github/workflows/verify-build.yml`) for the
+  complete run and monitor it.

@@ -86,13 +86,21 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 		return cr.endpoint
 	}
 
+	initOrderingInfo, err := cr.assemblerLedger.LastOrderingInfo()
+	if err != nil {
+		cr.logger.Panicf("Failed fetching last ordering info: %v", err)
+	}
+
+	// position is the next BA to hand over: after the last BA in the ledger until a BA is handed over,
+	// then after the last BA handed over. A reconnect seeks from it, and skips the BAs before it in its
+	// decision, so it does not hand over a BA twice, also not the BAs that wait in incomingBAsChan and are
+	// not yet in the ledger. It is kept in memory only; after a restart the assembler seeks from its ledger.
+	// Pull calls both the request factory and the block handler from its goroutine.
+	position := createAssemblerConsensusPosition(initOrderingInfo)
+	cr.logger.Infof("Initial OrderingInfo: %s; Initial AssemblerConsensusPosition: %+v", initOrderingInfo.String(), position)
+
 	requestEnvelopeFactoryFunc := func() *common.Envelope {
-		lastOrderingInfo, err := cr.assemblerLedger.LastOrderingInfo()
-		if err != nil {
-			cr.logger.Panicf("Failed fetching last ordering info: %v", err)
-		}
-		position := createAssemblerConsensusPosition(lastOrderingInfo)
-		cr.logger.Infof("Last OrderingInfo: %s; Last AssemblerConsensusPosition: %+v", lastOrderingInfo.String(), position)
+		cr.logger.Infof("Requesting decisions from AssemblerConsensusPosition: %+v", position)
 
 		requestEnvelope, err := protoutil.CreateSignedEnvelopeWithTLSBinding(
 			common.HeaderType_DELIVER_SEEK_INFO,
@@ -111,14 +119,6 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 	}
 
 	incomingBAsChan := make(chan *state.AvailableBatchOrdered, replicateBAChanSize)
-
-	initOrderingInfo, err := cr.assemblerLedger.LastOrderingInfo()
-	if err != nil {
-		cr.logger.Panicf("Failed fetching last ordering info: %v", err)
-	}
-
-	initPosition := createAssemblerConsensusPosition(initOrderingInfo)
-	cr.logger.Infof("Initial OrderingInfo: %s; Initial AssemblerConsensusPosition: %+v", initOrderingInfo.String(), initPosition)
 
 	blockHandlerFunc := func(block *common.Block) {
 		header, sigs, err2 := extractHeaderAndSigsFromBlock(block)
@@ -149,16 +149,18 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 				},
 			}
 
-			// During recovery, this condition addresses scenarios where a partially committed decision exists in the ledger.
-			// For instance, if a decision comprising three batches was interrupted after committing two, only the outstanding third batch should be reprocessed.
-			// This skips those batches from a decision that were already committed.
-			if abo.OrderingInformation.DecisionNum == initPosition.DecisionNum && abo.OrderingInformation.BatchIndex < initPosition.BatchIndex {
-				cr.logger.Infof("Recovery from partial decision commit: AvailableBatchOrdered skipped, already committed; BatchID: %s, OrderingInfo: %s; but initial AssemblerConsensusPosition: %+v",
-					types.BatchIDToString(abo.AvailableBatch), abo.OrderingInformation.String(), initPosition)
+			// The seek starts at the decision of position, so the BAs of that decision before position were
+			// already handed over: by the run before a restart, which committed part of the decision, or before a
+			// reconnect. For instance, if a decision comprising three batches was interrupted after two, only the
+			// third batch is handed over again.
+			if abo.OrderingInformation.DecisionNum == position.DecisionNum && abo.OrderingInformation.BatchIndex < position.BatchIndex {
+				cr.logger.Infof("AvailableBatchOrdered skipped, already handed over; BatchID: %s, OrderingInfo: %s; AssemblerConsensusPosition: %+v",
+					types.BatchIDToString(abo.AvailableBatch), abo.OrderingInformation.String(), position)
 				continue
 			}
 
 			incomingBAsChan <- abo
+			position = createAssemblerConsensusPosition(abo.OrderingInformation)
 		}
 	}
 

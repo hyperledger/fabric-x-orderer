@@ -79,16 +79,15 @@ type Batcher struct {
 	config                             *node_config.BatcherNodeConfig
 	fullConfig                         *config.Configuration
 	batchers                           []node_config.BatcherInfo
-	stateChan                          chan *state.State
 	running                            sync.WaitGroup // maybe change the name, it is only for state replicator
 	stopChan                           chan struct{}
 	mainExitChan                       chan struct{}
 	status                             node_utils.NodeStatus
 	configAcker                        configack.Sender
 
-	primaryLock sync.RWMutex
-	term        uint64
-	primaryID   types.PartyID
+	primaryTermLock sync.RWMutex
+	term            uint64
+	primaryID       types.PartyID
 
 	metrics   *BatcherMetrics
 	opsSystem *operations.System
@@ -140,13 +139,13 @@ func (b *Batcher) Run() {
 	defer b.lock.Unlock()
 
 	b.stopChan = make(chan struct{})
-	b.stateChan = make(chan *state.State, 1)
+
+	// Start the role before replicating decisions, since the decision loop notifies the role of term changes.
+	b.logger.Infof("Starting batcher")
+	b.batcher.Start()
 
 	b.running.Add(1)
 	go b.replicateDecision()
-
-	b.logger.Infof("Starting batcher")
-	b.batcher.Start()
 
 	if err := b.opsSystem.Start(); err != nil {
 		b.logger.Panicf("failed to start operations subsystem: %s", err)
@@ -182,9 +181,6 @@ func (b *Batcher) Stop() {
 		close(b.stopChan)
 		b.controlEventBroadcaster.Stop()
 		b.batcher.Stop()
-		for len(b.stateChan) > 0 {
-			<-b.stateChan // drain state channel
-		}
 		b.primaryAckConnector.Stop()
 		b.primaryReqConnector.Stop()
 		b.running.Wait()
@@ -217,9 +213,6 @@ func (b *Batcher) SoftStop() {
 	close(b.stopChan)
 	b.controlEventBroadcaster.Stop()
 	b.batcher.SoftStop()
-	for len(b.stateChan) > 0 {
-		<-b.stateChan // drain state channel
-	}
 	b.primaryAckConnector.Stop()
 	b.primaryReqConnector.Stop()
 	b.running.Wait()
@@ -274,30 +267,29 @@ func (b *Batcher) replicateDecision() {
 			}
 			state := header.State
 			// Revive requests of any of this batcher's BAFs that consensus surfaced as one config
-			// behind. Done here, per decision, rather than off b.stateChan, because that
-			// channel is buffer-1 and can coalesce states, which would miss the single-decision window
-			// StaleConfigBAFs lives for.
+			// behind. Done per decision, since StaleConfigBAFs lives for a single decision.
 			b.batcher.ResubmitStaleConfigBAFs(state)
-			// Update the term before sending the state, since the send can block while the role
-			// is busy, and complaints sent in that time would be signed with the old term.
 			primaryID, term := b.getPrimaryIDAndTerm(state)
-			changed := false
-			b.primaryLock.Lock()
+			b.primaryTermLock.Lock()
+			prevPrimaryID, prevTerm := b.primaryID, b.term
+			b.primaryID, b.term = primaryID, term
+			b.primaryTermLock.Unlock()
 			// The term can change while the primary stays the same, e.g., when term N has the same
-			// primary as term 0, so it is updated on every decision, not only on a primary change.
-			b.term = term
-			if b.primaryID != primaryID {
-				b.logger.Infof("Primary changed from %d to %d", b.primaryID, primaryID)
-				b.primaryID = primaryID
-				changed = true
-				b.metrics.roleChangesTotal.Add(1)
+			// primary as term 0, so it is compared on its own, not only through the primary.
+			if term == prevTerm {
+				continue
 			}
-			b.primaryLock.Unlock()
-			b.stateChan <- state
-			if changed {
+			b.batcher.NotifyTermChange()
+			// Switch the connectors before resubmitting, since the role, already notified, restarts
+			// as a secondary of the new primary and acks its batches, and an ack to a primary the
+			// connector does not have yet is dropped.
+			if primaryID != prevPrimaryID {
+				b.logger.Infof("Primary changed from %d to %d", prevPrimaryID, primaryID)
+				b.metrics.roleChangesTotal.Add(1)
 				b.primaryAckConnector.ConnectToNewPrimary(primaryID)
 				b.primaryReqConnector.ConnectToNewPrimary(primaryID)
 			}
+			b.batcher.ResubmitOnTermChange(state, prevPrimaryID)
 		case <-b.stopChan:
 			return
 		}
@@ -457,10 +449,6 @@ func (b *Batcher) stopAndReconfigure(newConfig *config.Configuration, newBatcher
 	b.Run()
 
 	b.logger.Infof("Batcher started with new config sequence %d, listening on %s", newConfigSeq, b.Address())
-}
-
-func (b *Batcher) GetLatestStateChan() <-chan *state.State {
-	return b.stateChan
 }
 
 func (b *Batcher) Broadcast(_ orderer.AtomicBroadcast_BroadcastServer) error {
@@ -705,7 +693,11 @@ func (b *Batcher) OnFirstStrikeTimeout(req []byte) {
 
 func (b *Batcher) OnSecondStrikeTimeout() {
 	b.logger.Warnf("Second strike timeout occurred; sending a complaint")
-	b.Complain(fmt.Sprintf("batcher %d (shard %d) complaining; second strike timeout occurred", b.config.PartyId, b.config.ShardId))
+	// The pool is restarted whenever the role restarts in a new term, so the role's term is the term
+	// in which the requests timed out.
+	reason := fmt.Sprintf("batcher %d (shard %d) complaining; second strike timeout occurred",
+		b.config.PartyId, b.config.ShardId)
+	b.Complain(b.batcher.Term(), reason)
 }
 
 func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shard types.ShardID, digest []byte, txCount uint64, primarySignature []byte) types.BatchAttestationFragment {
@@ -719,15 +711,21 @@ func (b *Batcher) CreateBAF(seq types.BatchSequence, primary types.PartyID, shar
 }
 
 func (b *Batcher) GetTerm() uint64 {
-	b.primaryLock.RLock()
-	defer b.primaryLock.RUnlock()
-	return b.term
+	_, term := b.CurrentPrimaryAndTerm()
+	return term
 }
 
 func (b *Batcher) GetPrimaryID() types.PartyID {
-	b.primaryLock.RLock()
-	defer b.primaryLock.RUnlock()
-	return b.primaryID
+	primaryID, _ := b.CurrentPrimaryAndTerm()
+	return primaryID
+}
+
+// CurrentPrimaryAndTerm returns the primary and the term of the shard in the latest decision, read
+// together so that they are of the same decision.
+func (b *Batcher) CurrentPrimaryAndTerm() (types.PartyID, uint64) {
+	b.primaryTermLock.RLock()
+	defer b.primaryTermLock.RUnlock()
+	return b.primaryID, b.term
 }
 
 func (b *Batcher) getPrimaryIDAndTerm(state *state.State) (types.PartyID, uint64) {
@@ -749,8 +747,7 @@ func (b *Batcher) getPrimaryIDAndTerm(state *state.State) (types.PartyID, uint64
 	return primaryID, term
 }
 
-func (b *Batcher) createComplaint(reason string) *state.Complaint {
-	term := b.GetTerm()
+func (b *Batcher) createComplaint(term uint64, reason string) *state.Complaint {
 	c, err := CreateComplaint(b.signer, b.config.PartyId, b.config.ShardId, term, b.ConfigSequence(), reason)
 	if err != nil {
 		b.logger.Panicf("Failed creating complaint: %v", err)
@@ -785,8 +782,10 @@ func (b *Batcher) Ack(seq types.BatchSequence, to types.PartyID) {
 	b.primaryAckConnector.SendAck(seq, to)
 }
 
-func (b *Batcher) Complain(reason string) {
-	if err := b.controlEventBroadcaster.BroadcastControlEvent(state.ControlEvent{Complaint: b.createComplaint(reason)}, context.TODO()); err != nil { // TODO also cancel context on term change and add a timeout
+func (b *Batcher) Complain(term uint64, reason string) {
+	ce := state.ControlEvent{Complaint: b.createComplaint(term, reason)}
+	// TODO also cancel context on term change and add a timeout
+	if err := b.controlEventBroadcaster.BroadcastControlEvent(ce, context.TODO()); err != nil {
 		b.logger.Errorf("Failed to broadcast complaint; err: %v", err)
 	}
 	b.metrics.complaintsTotal.Add(1)

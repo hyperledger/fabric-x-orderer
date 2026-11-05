@@ -8,7 +8,6 @@ package router
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/monitoring"
 	arma_types "github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -223,15 +223,13 @@ func (m *RouterMetrics) reportMetrics(final bool) {
 }
 
 func (m *RouterMetrics) increaseErrorCount(err error) {
-	if err == nil {
+	if err == nil || errors.Is(err, ErrThrottled) || errors.Is(err, errContextDone) {
 		return
 	}
-	if strings.Contains(err.Error(), "request verification error") ||
-		strings.Contains(err.Error(), "request structure verification error") ||
-		strings.Contains(err.Error(), "bad request") {
+	var badReq *badRequestError
+	if errors.As(err, &badReq) {
 		m.rejectedTxsWithCode400.Add(1)
-	}
-	if strings.Contains(err.Error(), "server error") {
+	} else {
 		m.rejectedTxsWithCode500.Add(1)
 	}
 }
