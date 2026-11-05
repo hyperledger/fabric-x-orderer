@@ -149,10 +149,11 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 				},
 			}
 
-			// The seek starts at the decision of position, so the BAs of that decision before position were
-			// already handed over: by the run before a restart, which committed part of the decision, or before a
-			// reconnect. For instance, if a decision comprising three batches was interrupted after two, only the
-			// third batch is handed over again.
+			// The seek starts at the decision of position. On the first connection after a restart, the ledger can
+			// end partway through that decision, so the BAs before position were committed by the run before and are
+			// skipped. For instance, if a decision comprising three batches was interrupted after two, only the third
+			// batch is handed over again. A reconnect never needs the skip: the stream hands over a whole decision
+			// before it is read again, so a reconnect always starts at a decision boundary.
 			if abo.OrderingInformation.DecisionNum == position.DecisionNum && abo.OrderingInformation.BatchIndex < position.BatchIndex {
 				cr.logger.Infof("AvailableBatchOrdered skipped, already handed over; BatchID: %s, OrderingInfo: %s; AssemblerConsensusPosition: %+v",
 					types.BatchIDToString(abo.AvailableBatch), abo.OrderingInformation.String(), position)
