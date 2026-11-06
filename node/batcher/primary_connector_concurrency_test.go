@@ -181,12 +181,10 @@ func TestPrimaryReqConnectorSendTimeoutIncludesConnectionWait(t *testing.T) {
 }
 
 // Scenario:
-//  1. Start two primaries that accept TCP connections and never answer, so connecting to either hangs.
-//  2. Send acks to primary 1 from several goroutines, which leaves one of them connecting to it and the
-//     rest waiting for their turn to connect.
-//  3. Switch the connector to primary 2, and send acks to it from several goroutines.
-//  4. Expect the switch to return at once, and every ack to return within about its send timeout
-//     instead of waiting for the senders ahead of it in line to give up on a connection attempt.
+//  1. Start two primaries that accept TCP connections and never answer.
+//  2. Forward requests from several goroutines.
+//  3. Switch the connector to primary 2.
+//  4. Verify senders respect their send timeout.
 func TestPrimaryAckConnectorSendTimeoutIncludesConnectionWait(t *testing.T) {
 	ca, err := tlsgen.NewCA()
 	require.NoError(t, err)
