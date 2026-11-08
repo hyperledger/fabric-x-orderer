@@ -159,7 +159,13 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 				continue
 			}
 
-			incomingBAsChan <- abo
+			// Stop cancels cr.cancelCtx while the collator may have stopped reading; giving up the hand-over
+			// then lets Pull see the cancellation and return.
+			select {
+			case incomingBAsChan <- abo:
+			case <-cr.cancelCtx.Done():
+				return
+			}
 			position = createAssemblerConsensusPosition(abo.OrderingInformation)
 		}
 	}

@@ -99,7 +99,13 @@ func (cr *ConsensusDecisionReplicator) ReplicateDecision() <-chan *state.Header 
 
 	blockHandlerFunc := func(block *common.Block) {
 		header := extractHeaderFromBlock(block, cr.logger)
-		res <- header
+		// Stop cancels cr.cancelCtx while the consumer may have stopped reading; giving up the hand-over
+		// then lets Pull see the cancellation and return.
+		select {
+		case res <- header:
+		case <-cr.cancelCtx.Done():
+			return
+		}
 		handedOver = true
 		nextDecision = block.GetHeader().GetNumber() + 1
 	}
