@@ -64,7 +64,7 @@ func TestConsensusBAReplicatorResumesAfterTheLastBAOnReconnect(t *testing.T) {
 //  2. Replicate BAs, and expect the second BA of decision 1 first.
 //  3. Restart the deliver service before the BA is consumed, append decision 3, and consume the rest.
 //  4. Expect every BA from the second BA of decision 1 to the last BA of decision 3 exactly once and in order.
-func TestConsensusBAReplicatorResumesWithinADecisionOnReconnect(t *testing.T) {
+func TestConsensusBAReplicatorSkipsTheBAsCommittedBeforeARestart(t *testing.T) {
 	server, replicator := replicateBAs(t, 2, &state.OrderingInformation{DecisionNum: 1, BatchIndex: 0, BatchCount: basPerDecision})
 	bas := replicator.Replicate()
 
