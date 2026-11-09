@@ -1622,6 +1622,10 @@ func TestVerifyProposal(t *testing.T) {
 	tooManyBlocks := []*common.Block{header.AvailableCommonBlocks[0], {Header: &common.BlockHeader{Number: latestBlockHeader.Number + 1}}}
 	shortMetadata := proto.Clone(header.AvailableCommonBlocks[0]).(*common.Block)
 	shortMetadata.Metadata.Metadata = shortMetadata.Metadata.Metadata[:1]
+	// A data block that carries a config envelope would be taken for a config block by IsConfigBlock.
+	withConfigData := proto.Clone(header.AvailableCommonBlocks[0]).(*common.Block)
+	withConfigData.Data = &common.BlockData{Data: [][]byte{protoutil.MarshalOrPanic(tx.CreateStructuredConfigEnvelope([]byte{1}))}}
+	require.True(t, protoutil.IsConfigBlock(withConfigData))
 	for _, tst := range []struct {
 		name   string
 		blocks []*common.Block
@@ -1632,6 +1636,7 @@ func TestVerifyProposal(t *testing.T) {
 		{name: "block without a header", blocks: []*common.Block{{}}, err: "block has no header"},
 		{name: "block without metadata", blocks: []*common.Block{{Header: latestBlockHeader}}, err: "block metadata has 0 entries"},
 		{name: "block with short metadata", blocks: []*common.Block{shortMetadata}, err: "block metadata has 1 entries"},
+		{name: "data block with data", blocks: []*common.Block{withConfigData}, err: "proposed data block carries 1 data entries"},
 	} {
 		t.Run(tst.name, func(t *testing.T) {
 			malformed := header
@@ -1641,6 +1646,20 @@ func TestVerifyProposal(t *testing.T) {
 			require.Nil(t, infos)
 		})
 	}
+
+	// 1h. every consenter signs the header's PrevHash, but the decision is appended after the consenter's own
+	// last block, so a PrevHash other than the hash of that block is rejected.
+	t.Log("proposal with a wrong prev hash")
+	wrongPrevHash := header
+	wrongPrevHash.PrevHash = []byte{1, 2, 3}
+	_, err = c.VerifyProposal(smartbft_types.Proposal{Header: wrongPrevHash.Serialize(), Payload: brs.Serialize(), Metadata: mBytes})
+	require.ErrorContains(t, err, "proposed prev hash 010203 isn't equal to the hash of the last decision")
+	c.PrevHash = []byte{1, 2, 3}
+	_, err = c.VerifyProposal(smartbft_types.Proposal{Header: wrongPrevHash.Serialize(), Payload: brs.Serialize(), Metadata: mBytes})
+	require.NoError(t, err)
+	_, err = c.VerifyProposal(proposal)
+	require.ErrorContains(t, err, "proposed prev hash  isn't equal to the hash of the last decision 010203")
+	c.PrevHash = nil
 
 	// 2. nil header
 	t.Log("nil header")
@@ -2001,14 +2020,18 @@ func TestVerifyConsenterSigWithInvalidSignatures(t *testing.T) {
 		emptyArrayBytes, err := asn1.Marshal(emptyArray)
 		require.NoError(t, err)
 
+		validMsgs := [][]byte{[]byte("msg1")}
+		validMsgsBytes, err := asn1.Marshal(validMsgs)
+		require.NoError(t, err)
+
 		invalidSig := smartbft_types.Signature{
 			Value: emptyArrayBytes,
-			Msg:   []byte("some message"),
+			Msg:   validMsgsBytes,
 			ID:    1,
 		}
 		_, err = c.VerifyConsenterSig(invalidSig, proposal)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "signature values array is empty")
+		require.Contains(t, err.Error(), "signature has 1 messages and 0 values, but the proposal has 0 blocks")
 	})
 
 	t.Run("empty msgs array after unmarshal", func(t *testing.T) {
@@ -2029,7 +2052,7 @@ func TestVerifyConsenterSigWithInvalidSignatures(t *testing.T) {
 		}
 		_, err = c.VerifyConsenterSig(invalidSig, proposal)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "signature msgs array is empty")
+		require.Contains(t, err.Error(), "signature has 0 messages and 1 values, but the proposal has 0 blocks")
 	})
 
 	t.Run("invalid ASN.1 encoding in value", func(t *testing.T) {
@@ -2101,11 +2124,17 @@ func TestVerifyConsenterSigWithInvalidSignatures(t *testing.T) {
 			})
 		}
 
-		t.Run("block without metadata", func(t *testing.T) {
-			noMetadata := header
-			noMetadata.AvailableCommonBlocks = []*common.Block{{Header: block.Header}}
-			_, err := c.VerifyConsenterSig(*validSig, smartbft_types.Proposal{Payload: brs.Serialize(), Header: noMetadata.Serialize()})
-			require.ErrorContains(t, err, "block metadata has 0 entries")
+		t.Run("block with short metadata", func(t *testing.T) {
+			// The signature is over the malformed proposal itself, so that verification reaches the block.
+			// The block keeps the ORDERER entry that SignProposal reads, but lacks the last metadata entry.
+			short := proto.Clone(block).(*common.Block)
+			short.Metadata.Metadata = short.Metadata.Metadata[:len(common.BlockMetadataIndex_name)-1]
+			shortMetadata := header
+			shortMetadata.AvailableCommonBlocks = []*common.Block{short}
+			proposalShortMetadata := smartbft_types.Proposal{Payload: brs.Serialize(), Header: shortMetadata.Serialize()}
+			sig := c.SignProposal(proposalShortMetadata, nil)
+			_, err := c.VerifyConsenterSig(*sig, proposalShortMetadata)
+			require.ErrorContains(t, err, "malformed block in index 0: block metadata has 4 entries")
 		})
 	})
 
@@ -2472,6 +2501,21 @@ func TestVerifyCommonBlockRejectsMalformedBlock(t *testing.T) {
 			require.ErrorContains(t, err, tst.err)
 		})
 	}
+}
+
+// TestVerifyCommonBlockAcceptsExtraMetadata checks that a block with more metadata entries than this build
+// knows of is accepted, so a node does not reject the blocks of a node built with a newer fabric-protos.
+func TestVerifyCommonBlockAcceptsExtraMetadata(t *testing.T) {
+	block, err := node_consensus.CreateDataCommonBlock(0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0, 0)
+	require.NoError(t, err)
+	block.Metadata.Metadata = append(block.Metadata.Metadata, []byte{})
+	require.NoError(t, node_consensus.VerifyDataCommonBlock(block, 0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0, 0))
+
+	configBlock, err := node_consensus.CreateConfigCommonBlock(0, nil, 0, 0, 0, 0, nil)
+	require.NoError(t, err)
+	configBlock.Metadata.Metadata = append(configBlock.Metadata.Metadata, []byte{})
+	nilConfigReq := arma_types.BatchedRequests([][]byte{nil})
+	require.NoError(t, node_consensus.VerifyConfigCommonBlock(configBlock, 0, nil, nilConfigReq.Digest(), 0, 0, 0, 0))
 }
 
 func TestConsensusSoftStop(t *testing.T) {

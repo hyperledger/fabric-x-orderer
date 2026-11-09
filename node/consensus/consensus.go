@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/asn1"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"strings"
@@ -489,7 +490,14 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	lastConfigBlockNum := c.lastConfigBlockNum
 	decisionNumOfLastConfigBlock := c.decisionNumOfLastConfigBlock
 	currentTXCount := c.txCount
+	lastDecisionHash := c.PrevHash
 	c.lock.Unlock()
+
+	// Every consenter signs the header's PrevHash, but appends the decision after its own last block, so the
+	// two must match for the signatures to verify against the appended block.
+	if !bytes.Equal(hdr.PrevHash, lastDecisionHash) {
+		return nil, errors.Errorf("proposed prev hash %s isn't equal to the hash of the last decision %s", hex.EncodeToString(hdr.PrevHash), hex.EncodeToString(lastDecisionHash))
+	}
 
 	numOfAvailableBlocks := len(attestations)
 
@@ -506,7 +514,7 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 	// checked before the blocks are indexed: a short list would otherwise panic, and an extra block would
 	// otherwise be signed and delivered without being verified.
 	if len(hdr.AvailableCommonBlocks) != numOfAvailableBlocks {
-		return nil, fmt.Errorf("proposal has %d blocks but its requests yield %d", len(hdr.AvailableCommonBlocks), numOfAvailableBlocks)
+		return nil, errors.Errorf("proposal has %d blocks but its requests yield %d", len(hdr.AvailableCommonBlocks), numOfAvailableBlocks)
 	}
 
 	computedCommonBlocksHeaders := make([]*common.BlockHeader, numOfAvailableBlocks)
@@ -621,11 +629,6 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 		return nil, errors.Wrap(err, "failed unmarshaling signature value")
 	}
 
-	// Validate values array is not empty to prevent index out of bounds
-	if len(values) == 0 {
-		return nil, errors.New("signature values array is empty")
-	}
-
 	// Validate signature.Msg is not nil to prevent panic in asn1.Unmarshal
 	if signature.Msg == nil {
 		return nil, errors.New("signature msg is nil")
@@ -634,11 +637,6 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 	var msgs [][]byte
 	if _, err := asn1.Unmarshal(signature.Msg, &msgs); err != nil {
 		return nil, errors.Wrap(err, "failed unmarshaling signature msg")
-	}
-
-	// Validate msgs array is not empty to prevent index out of bounds
-	if len(msgs) == 0 {
-		return nil, errors.New("signature msgs array is empty")
 	}
 
 	decisionNumOfLastConfigBlock, lastConfigBlockNum := c.getBothDecisionNumAndLastConfigBlockNum()
@@ -656,11 +654,6 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 	// Both come from the signer, so their count is checked before they are indexed by block.
 	if expected := len(hdr.AvailableCommonBlocks) + 1; len(msgs) != expected || len(values) != expected {
 		return nil, errors.Errorf("signature has %d messages and %d values, but the proposal has %d blocks", len(msgs), len(values), len(hdr.AvailableCommonBlocks))
-	}
-	for i, ab := range hdr.AvailableCommonBlocks {
-		if err := checkBlockShape(ab); err != nil {
-			return nil, errors.Wrapf(err, "malformed block in index %d", i)
-		}
 	}
 
 	proposalMsgBytes := msgs[0]
@@ -681,6 +674,11 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 	}
 
 	for i, ab := range hdr.AvailableCommonBlocks {
+		// The proposal may come from another node (in a view change) without having passed VerifyProposal,
+		// so the block's shape is checked before it is read.
+		if err := checkBlockShape(ab); err != nil {
+			return nil, errors.Wrapf(err, "malformed block in index %d", i)
+		}
 		msgBytes := msgs[i+1]
 		msg := &protoutil.MessageToSign{}
 		if err := msg.ASN1Unmarshal(msgBytes); err != nil {

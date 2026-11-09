@@ -70,24 +70,15 @@ func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, txCount uint64, d
 	return configBlock, nil
 }
 
-// checkBlockShape checks that a proposed block has a header and a full metadata slice, so that the
-// verifiers can read them. A proposed block comes from another consenter, so its shape is not assumed.
-func checkBlockShape(block *common.Block) error {
-	if block == nil {
-		return errors.New("block is nil")
-	}
-	if block.Header == nil {
-		return errors.New("block has no header")
-	}
-	if n := len(block.GetMetadata().GetMetadata()); n != len(common.BlockMetadataIndex_name) {
-		return errors.Errorf("block metadata has %d entries instead of %d", n, len(common.BlockMetadataIndex_name))
-	}
-	return nil
-}
-
 func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte, batchID arma_types.BatchID, txCount uint64, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, lastConfigBlockNum uint64) error {
 	if err := checkBlockShape(block); err != nil {
 		return err
+	}
+
+	// A data block carries no data; its batch is fetched from the batchers by its digest. Data, if set,
+	// could make protoutil.IsConfigBlock take the block for a config block.
+	if n := len(block.GetData().GetData()); n != 0 {
+		return errors.Errorf("proposed data block carries %d data entries instead of none", n)
 	}
 
 	// verify hash chain
@@ -188,5 +179,22 @@ func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHas
 		return errors.Errorf("last config in block metadata points to %d instead of the config block number %d", lastConf.Index, blockNum)
 	}
 
+	return nil
+}
+
+// checkBlockShape checks that a proposed block has a header and a metadata entry for every index this
+// build knows of, so that the verifiers can read them. A proposed block comes from another consenter, so
+// its shape is not assumed. Extra metadata entries are allowed, for a block of a node built with a newer
+// fabric-protos.
+func checkBlockShape(block *common.Block) error {
+	if block == nil {
+		return errors.New("block is nil")
+	}
+	if block.Header == nil {
+		return errors.New("block has no header")
+	}
+	if n := len(block.GetMetadata().GetMetadata()); n < len(common.BlockMetadataIndex_name) {
+		return errors.Errorf("block metadata has %d entries instead of at least %d", n, len(common.BlockMetadataIndex_name))
+	}
 	return nil
 }
