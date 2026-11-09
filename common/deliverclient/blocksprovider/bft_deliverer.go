@@ -320,14 +320,15 @@ func (d *BFTDeliverer) handleFetchAndCensorshipEvents(fetchErrC <-chan error) (s
 }
 
 // endRound stops the block fetcher of the round that roundDoneC belongs to. Only the current round's fetcher can set
-// d.blockReceiver, so it is either this round's receiver, or an earlier one that is already stopped. If the fetcher is
-// still connecting, closing roundDoneC tells it not to start a receiver once connected.
+// d.blockReceiver, so it is either this round's receiver or nil. If the fetcher is still connecting, closing roundDoneC
+// tells it not to start a receiver once connected.
 func (d *BFTDeliverer) endRound(roundDoneC chan struct{}) {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
 	close(roundDoneC)
 	d.blockReceiver.Stop()
+	d.blockReceiver = nil
 }
 
 func (d *BFTDeliverer) refreshSources() {
@@ -395,17 +396,20 @@ func (d *BFTDeliverer) FetchBlocks(source *orderers.Endpoint, errC chan<- error,
 		}
 
 		d.mutex.Lock()
-		roundEnded := false
+		// Stop() or endRound() may have run after the check above, so it could not stop this receiver.
+		var errStop *ErrStopping
 		select {
 		case <-roundDoneC:
-			roundEnded = true
+			errStop = &ErrStopping{Message: "round ended"}
 		default:
+			if d.stopFlag {
+				errStop = &ErrStopping{Message: "stopping"}
+			}
 		}
-		if d.stopFlag || roundEnded {
-			// Stop() or endRound() ran after the check above, so it could not stop this receiver.
+		if errStop != nil {
 			d.mutex.Unlock()
 			cancel()
-			errC <- &ErrStopping{Message: "stopping"}
+			errC <- errStop
 			return
 		}
 		d.blockReceiver = blockRcv
