@@ -212,9 +212,6 @@ func (b *BatcherRole) Stop() {
 	}
 	b.cancelBatch()
 	b.MemPool.Close()
-	for len(b.termChan) > 0 {
-		<-b.termChan // drain term channel
-	}
 	b.running.Wait()
 
 	b.isStopped = true
@@ -235,9 +232,6 @@ func (b *BatcherRole) SoftStop() {
 	b.cancelBatch()
 	b.running.Wait()
 	b.MemPool.Halt()
-	for len(b.termChan) > 0 {
-		<-b.termChan // drain term channel
-	}
 }
 
 // termChange is a term change whose pending BAFs are to be resubmitted
