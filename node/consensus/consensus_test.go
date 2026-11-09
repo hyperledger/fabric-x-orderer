@@ -1616,6 +1616,32 @@ func TestVerifyProposal(t *testing.T) {
 		require.NotErrorIs(t, err, node_consensus.ErrReportNotCommitted)
 	}
 
+	// 1g. the leader controls the payload and the block list independently, so a block list whose length
+	// or block shape does not match the attestations the payload yields is rejected without a panic.
+	t.Log("proposal with a malformed block list")
+	tooManyBlocks := []*common.Block{header.AvailableCommonBlocks[0], {Header: &common.BlockHeader{Number: latestBlockHeader.Number + 1}}}
+	shortMetadata := proto.Clone(header.AvailableCommonBlocks[0]).(*common.Block)
+	shortMetadata.Metadata.Metadata = shortMetadata.Metadata.Metadata[:1]
+	for _, tst := range []struct {
+		name   string
+		blocks []*common.Block
+		err    string
+	}{
+		{name: "no blocks", blocks: nil, err: "proposal has 0 blocks but its requests yield 1"},
+		{name: "extra block", blocks: tooManyBlocks, err: "proposal has 2 blocks but its requests yield 1"},
+		{name: "block without a header", blocks: []*common.Block{{}}, err: "block has no header"},
+		{name: "block without metadata", blocks: []*common.Block{{Header: latestBlockHeader}}, err: "block metadata has 0 entries"},
+		{name: "block with short metadata", blocks: []*common.Block{shortMetadata}, err: "block metadata has 1 entries"},
+	} {
+		t.Run(tst.name, func(t *testing.T) {
+			malformed := header
+			malformed.AvailableCommonBlocks = tst.blocks
+			infos, err := c.VerifyProposal(smartbft_types.Proposal{Header: malformed.Serialize(), Payload: brs.Serialize(), Metadata: mBytes})
+			require.ErrorContains(t, err, tst.err)
+			require.Nil(t, infos)
+		})
+	}
+
 	// 2. nil header
 	t.Log("nil header")
 	verifyProposalRequireError(t, c, nil, brs.Serialize(), mBytes)
@@ -2033,6 +2059,56 @@ func TestVerifyConsenterSigWithInvalidSignatures(t *testing.T) {
 		require.Contains(t, err.Error(), "failed unmarshaling signature msg")
 	})
 
+	// A compound signature carries one message and one value for the proposal and one for each of its
+	// blocks; any other count is rejected without a panic.
+	t.Run("signature count does not match the blocks", func(t *testing.T) {
+		withBlock := header
+		block, err := node_consensus.CreateDataCommonBlock(latestBlockHeader.Number, latestBlockHeader.PreviousHash, baf123id1p1s1, 1, 0, 1, 0, 0)
+		require.NoError(t, err)
+		withBlock.AvailableCommonBlocks = []*common.Block{block}
+		proposalWithBlock := smartbft_types.Proposal{Payload: brs.Serialize(), Header: withBlock.Serialize()}
+
+		validSig := c.SignProposal(proposalWithBlock, nil)
+		_, err = c.VerifyConsenterSig(*validSig, proposalWithBlock)
+		require.NoError(t, err)
+
+		var values, msgs [][]byte
+		_, err = asn1.Unmarshal(validSig.Value, &values)
+		require.NoError(t, err)
+		_, err = asn1.Unmarshal(validSig.Msg, &msgs)
+		require.NoError(t, err)
+		require.Len(t, values, 2)
+		require.Len(t, msgs, 2)
+		marshal := func(s [][]byte) []byte {
+			b, err := asn1.Marshal(s)
+			require.NoError(t, err)
+			return b
+		}
+
+		for _, tst := range []struct {
+			name          string
+			values, msgs  [][]byte
+			expectedError string
+		}{
+			{name: "proposal entry only", values: values[:1], msgs: msgs[:1], expectedError: "signature has 1 messages and 1 values, but the proposal has 1 blocks"},
+			{name: "short values", values: values[:1], msgs: msgs, expectedError: "signature has 2 messages and 1 values, but the proposal has 1 blocks"},
+			{name: "short msgs", values: values, msgs: msgs[:1], expectedError: "signature has 1 messages and 2 values, but the proposal has 1 blocks"},
+			{name: "extra entries", values: append(values, values[1]), msgs: append(msgs, msgs[1]), expectedError: "signature has 3 messages and 3 values, but the proposal has 1 blocks"},
+		} {
+			t.Run(tst.name, func(t *testing.T) {
+				_, err := c.VerifyConsenterSig(smartbft_types.Signature{ID: validSig.ID, Value: marshal(tst.values), Msg: marshal(tst.msgs)}, proposalWithBlock)
+				require.ErrorContains(t, err, tst.expectedError)
+			})
+		}
+
+		t.Run("block without metadata", func(t *testing.T) {
+			noMetadata := header
+			noMetadata.AvailableCommonBlocks = []*common.Block{{Header: block.Header}}
+			_, err := c.VerifyConsenterSig(*validSig, smartbft_types.Proposal{Payload: brs.Serialize(), Header: noMetadata.Serialize()})
+			require.ErrorContains(t, err, "block metadata has 0 entries")
+		})
+	})
+
 	t.Run("valid signature passes", func(t *testing.T) {
 		// Create a valid signature using SignProposal
 		validSig := c.SignProposal(proposal, nil)
@@ -2370,6 +2446,30 @@ func TestCreateAndVerifyConfigCommonBlock(t *testing.T) {
 			} else {
 				require.ErrorContains(t, err, tst.err)
 			}
+		})
+	}
+}
+
+// TestVerifyCommonBlockRejectsMalformedBlock checks that the block verifiers reject a proposed block whose
+// header or metadata is missing or short, instead of panicking on it.
+func TestVerifyCommonBlockRejectsMalformedBlock(t *testing.T) {
+	shortMetadata := protoutil.NewBlock(0, nil)
+	shortMetadata.Metadata.Metadata = shortMetadata.Metadata.Metadata[:common.BlockMetadataIndex_ORDERER]
+	for _, tst := range []struct {
+		name  string
+		block *common.Block
+		err   string
+	}{
+		{name: "nil block", block: nil, err: "block is nil"},
+		{name: "no header", block: &common.Block{Metadata: protoutil.NewBlock(0, nil).Metadata}, err: "block has no header"},
+		{name: "no metadata", block: &common.Block{Header: &common.BlockHeader{}}, err: "block metadata has 0 entries"},
+		{name: "short metadata", block: shortMetadata, err: "block metadata has 3 entries"},
+	} {
+		t.Run(tst.name, func(t *testing.T) {
+			err := node_consensus.VerifyDataCommonBlock(tst.block, 0, nil, state.NewAvailableBatch(0, 0, 0, nil), 0, 0, 0, 0, 0)
+			require.ErrorContains(t, err, tst.err)
+			err = node_consensus.VerifyConfigCommonBlock(tst.block, 0, nil, nil, 0, 0, 0, 0)
+			require.ErrorContains(t, err, tst.err)
 		})
 	}
 }

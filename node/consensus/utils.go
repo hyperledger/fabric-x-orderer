@@ -70,7 +70,26 @@ func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, txCount uint64, d
 	return configBlock, nil
 }
 
+// checkBlockShape checks that a proposed block has a header and a full metadata slice, so that the
+// verifiers can read them. A proposed block comes from another consenter, so its shape is not assumed.
+func checkBlockShape(block *common.Block) error {
+	if block == nil {
+		return errors.New("block is nil")
+	}
+	if block.Header == nil {
+		return errors.New("block has no header")
+	}
+	if n := len(block.GetMetadata().GetMetadata()); n != len(common.BlockMetadataIndex_name) {
+		return errors.Errorf("block metadata has %d entries instead of %d", n, len(common.BlockMetadataIndex_name))
+	}
+	return nil
+}
+
 func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte, batchID arma_types.BatchID, txCount uint64, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, lastConfigBlockNum uint64) error {
+	if err := checkBlockShape(block); err != nil {
+		return err
+	}
+
 	// verify hash chain
 	if !bytes.Equal(block.Header.PreviousHash, prevHash) {
 		return errors.Errorf("proposed block header prev hash %s isn't equal to computed prev hash %s", hex.EncodeToString(block.Header.PreviousHash), hex.EncodeToString(prevHash))
@@ -90,10 +109,6 @@ func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte
 	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(batchID, &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke AssemblerBlockMetadataToBytes: %s", err))
-	}
-
-	if block.Metadata == nil || block.Metadata.Metadata == nil {
-		return errors.Errorf("proposed block metadata is nil")
 	}
 
 	if !bytes.Equal(computedBlockMetadata, block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]) {
@@ -117,6 +132,10 @@ func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte
 }
 
 func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHash []byte, dataHash []byte, txCount uint64, decisionNum arma_types.DecisionNum, batchCount, batchIndex int) error {
+	if err := checkBlockShape(configBlock); err != nil {
+		return err
+	}
+
 	// verify block number
 	if configBlock.Header.Number != blockNum {
 		return errors.Errorf("proposed config block header number %d isn't equal to computed number %d", configBlock.Header.Number, blockNum)
@@ -150,10 +169,6 @@ func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHas
 	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(arma_types.NewSimpleBatch(arma_types.ShardIDConsensus, 0, 0, nil, 0, nil), &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke AssemblerBlockMetadataToBytes: %s", err))
-	}
-
-	if configBlock.Metadata == nil || configBlock.Metadata.Metadata == nil || len(configBlock.Metadata.Metadata) != len(common.BlockMetadataIndex_name) {
-		return errors.Errorf("proposed config block metadata is not set")
 	}
 
 	if !bytes.Equal(computedBlockMetadata, configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]) {

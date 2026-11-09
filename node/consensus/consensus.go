@@ -502,6 +502,13 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 		return nil, fmt.Errorf("proposed decision num of last config block %d isn't equal to computed %d", hdr.DecisionNumOfLastConfigBlock, decisionNumOfLastConfigBlock)
 	}
 
+	// The leader supplies the block list apart from the requests it is computed from, so its length is
+	// checked before the blocks are indexed: a short list would otherwise panic, and an extra block would
+	// otherwise be signed and delivered without being verified.
+	if len(hdr.AvailableCommonBlocks) != numOfAvailableBlocks {
+		return nil, fmt.Errorf("proposal has %d blocks but its requests yield %d", len(hdr.AvailableCommonBlocks), numOfAvailableBlocks)
+	}
+
 	computedCommonBlocksHeaders := make([]*common.BlockHeader, numOfAvailableBlocks)
 
 	lastCommonBlockHeader := &common.BlockHeader{}
@@ -643,6 +650,17 @@ func (c *Consensus) VerifyConsenterSig(signature smartbft_types.Signature, prop 
 
 	if hdr.Num == hdr.DecisionNumOfLastConfigBlock {
 		decisionNumOfLastConfigBlock = uint64(hdr.Num)
+	}
+
+	// The signature carries one message and one value for the proposal and one for each of its blocks.
+	// Both come from the signer, so their count is checked before they are indexed by block.
+	if expected := len(hdr.AvailableCommonBlocks) + 1; len(msgs) != expected || len(values) != expected {
+		return nil, errors.Errorf("signature has %d messages and %d values, but the proposal has %d blocks", len(msgs), len(values), len(hdr.AvailableCommonBlocks))
+	}
+	for i, ab := range hdr.AvailableCommonBlocks {
+		if err := checkBlockShape(ab); err != nil {
+			return nil, errors.Wrapf(err, "malformed block in index %d", i)
+		}
 	}
 
 	proposalMsgBytes := msgs[0]
