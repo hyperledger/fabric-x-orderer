@@ -137,9 +137,18 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
   BCCSP, flogging), `fabric-protos-go-apiv2`, and `hyperledger/SmartBFT` (consensus engine).
 - Logging is `flogging` (`FabricLogger`), typically named per role/party
   (e.g. `Batcher%dShard%d`).
-- Some code uses `github.com/pkg/errors` (wrap with context). Avoid it in new code; use the
-  built-in `errors` and `fmt` instead, or `github.com/cockroachdb/errors` if stack traces and
-  richer diagnostics are required.
+- Errors: use the standard library (`errors`, `fmt.Errorf` with `%w`, `errors.Is`/`errors.As`,
+  `errors.Join` for aggregating). `github.com/pkg/errors` is archived and being removed: don't add
+  new uses of it, but don't migrate existing code that is unrelated to your change either (it
+  bloats the PR review). In a file that still imports it, write new code with the standard library
+  and alias one of the two imports if they clash (e.g. `pkgerrors "github.com/pkg/errors"`).
+  Mapping, for code you do migrate:
+  `errors.Wrap(err, "msg")` / `errors.WithMessage` → `fmt.Errorf("msg: %w", err)`;
+  `errors.Wrapf(err, "f %d", x)` → `fmt.Errorf("f %d: %w", x, err)`;
+  `errors.Errorf` → `fmt.Errorf`; `errors.Cause(err) == X` → `errors.Is(err, X)`.
+  Watch out: `errors.Wrap(nil, …)` returns `nil`, but `fmt.Errorf("…: %w", nil)` does not, so add
+  an explicit `if err != nil` wherever the old code relied on that. Use
+  `github.com/cockroachdb/errors` only where stack traces are actually needed.
 - `.golangci.yml` enables a wider linter set than `make linter` (`gosec`, `gocritic`, `revive`,
   `ireturn`, `lll`, `gocognit`, …), run only by `make linter-extra`; keep new code clean under it.
   CI does not run it, and the config is in golangci-lint v1 format, so it needs a v1 binary.
