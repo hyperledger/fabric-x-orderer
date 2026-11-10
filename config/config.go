@@ -592,16 +592,16 @@ func (config *Configuration) ExtractShards() []nodeconfig.ShardInfo {
 		}
 
 		for _, batcher := range party.BatchersConfig {
-			shardId := types.ShardID(batcher.ShardID)
+			shardId := types.ShardID(batcher.GetShardId())
 
-			pemPublicKey := utils.GetPublicKeyFromCertificate(batcher.SignCert)
+			pemPublicKey := utils.GetPublicKeyFromCertificate(batcher.GetNodeConfig().GetSignCert())
 
 			batcher := nodeconfig.BatcherInfo{
 				PartyID:    types.PartyID(party.PartyID),
-				Endpoint:   net.JoinHostPort(batcher.Host, strconv.Itoa(int(batcher.Port))),
+				Endpoint:   net.JoinHostPort(batcher.GetNodeConfig().GetHost(), strconv.Itoa(int(batcher.GetNodeConfig().GetPort()))),
 				TLSCACerts: tlsCACertsCollection,
 				PublicKey:  pemPublicKey,
-				TLSCert:    batcher.TlsCert,
+				TLSCert:    batcher.GetNodeConfig().GetServerTlsCert(),
 			}
 			shardToBatchers[shardId] = append(shardToBatchers[shardId], batcher)
 		}
@@ -632,11 +632,11 @@ func (config *Configuration) ExtractConsenters() []nodeconfig.ConsenterInfo {
 			tlsCACertsCollection = append(tlsCACertsCollection, ca)
 		}
 
-		pemPublicKey := utils.GetPublicKeyFromCertificate(party.ConsenterConfig.SignCert)
+		pemPublicKey := utils.GetPublicKeyFromCertificate(party.ConsenterConfig.GetNodeConfig().GetSignCert())
 
 		consenterInfo := nodeconfig.ConsenterInfo{
 			PartyID:    types.PartyID(party.PartyID),
-			Endpoint:   net.JoinHostPort(party.ConsenterConfig.Host, strconv.Itoa(int(party.ConsenterConfig.Port))),
+			Endpoint:   net.JoinHostPort(party.ConsenterConfig.GetNodeConfig().GetHost(), strconv.Itoa(int(party.ConsenterConfig.GetNodeConfig().GetPort()))),
 			PublicKey:  pemPublicKey,
 			TLSCACerts: tlsCACertsCollection,
 		}
@@ -660,10 +660,10 @@ func (config *Configuration) ExtractAssemblers() []nodeconfig.AssemblerInfo {
 
 		assemblerInfo := nodeconfig.AssemblerInfo{
 			PartyID:    types.PartyID(party.PartyID),
-			Endpoint:   net.JoinHostPort(party.AssemblerConfig.Host, strconv.Itoa(int(party.AssemblerConfig.Port))),
+			Endpoint:   net.JoinHostPort(party.AssemblerConfig.GetNodeConfig().GetHost(), strconv.Itoa(int(party.AssemblerConfig.GetNodeConfig().GetPort()))),
 			TLSCACerts: tlsCACertsCollection,
-			PublicKey:  utils.GetPublicKeyFromCertificate(party.AssemblerConfig.SignCert),
-			TLSCert:    party.AssemblerConfig.TlsCert,
+			PublicKey:  utils.GetPublicKeyFromCertificate(party.AssemblerConfig.GetNodeConfig().GetSignCert()),
+			TLSCert:    party.AssemblerConfig.GetNodeConfig().GetServerTlsCert(),
 		}
 		assemblers = append(assemblers, assemblerInfo)
 	}
@@ -683,7 +683,7 @@ func (config *Configuration) ExtractRouterInParty() nodeconfig.RouterInfo {
 		panic("failed to extract router from config")
 	}
 
-	routerConfig := party.RouterConfig
+	routerConfig := party.RouterConfig.GetNodeConfig()
 
 	var tlsCACertsCollection []nodeconfig.RawBytes
 	for _, ca := range party.TLSCACerts {
@@ -694,7 +694,7 @@ func (config *Configuration) ExtractRouterInParty() nodeconfig.RouterInfo {
 		PartyID:    partyID,
 		Endpoint:   net.JoinHostPort(routerConfig.Host, strconv.Itoa(int(routerConfig.Port))),
 		TLSCACerts: tlsCACertsCollection,
-		TLSCert:    routerConfig.TlsCert,
+		TLSCert:    routerConfig.ServerTlsCert,
 	}
 
 	return routerInfo
@@ -799,7 +799,7 @@ func (config *Configuration) CheckIfRouterNodeExistsInSharedConfig(localSignCert
 			if sharedPartyConfig.RouterConfig == nil {
 				return fmt.Errorf("router configuration of partyID %d is missing from the shared configuration: %+v", localPartyID, sharedPartyConfig)
 			}
-			equal, err := utils.AreCertificatesEqual(localSignCert, sharedPartyConfig.RouterConfig.SignCert)
+			equal, err := utils.AreCertificatesEqual(localSignCert, sharedPartyConfig.RouterConfig.GetNodeConfig().GetSignCert())
 			if err != nil {
 				return fmt.Errorf("error comparing sign cert of router of party%d to the shared configuration: %s", localPartyID, err)
 			}
@@ -808,14 +808,14 @@ func (config *Configuration) CheckIfRouterNodeExistsInSharedConfig(localSignCert
 				if err != nil {
 					return fmt.Errorf("error converting local sign cert of router of party%d to string: %s", localPartyID, err)
 				}
-				sharedSignCertString, err := utils.CertificateBytesToString(sharedPartyConfig.RouterConfig.SignCert)
+				sharedSignCertString, err := utils.CertificateBytesToString(sharedPartyConfig.RouterConfig.GetNodeConfig().GetSignCert())
 				if err != nil {
 					return fmt.Errorf("error converting shared sign cert of router of party%d to string: %s", localPartyID, err)
 				}
 				return fmt.Errorf("sign certificate mismatch: Router%d is attempting to load with sign certificate: %v that differs from the shared configuration sign certificate: %v", localPartyID, localSignCertString, sharedSignCertString)
 			}
 
-			equal, err = utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.RouterConfig.TlsCert)
+			equal, err = utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.RouterConfig.GetNodeConfig().GetServerTlsCert())
 			if err != nil {
 				return fmt.Errorf("error comparing TLS cert of router of party%d to the shared configuration: %s", localPartyID, err)
 			}
@@ -824,7 +824,7 @@ func (config *Configuration) CheckIfRouterNodeExistsInSharedConfig(localSignCert
 				if err != nil {
 					return fmt.Errorf("error converting local TLS cert of router of party%d to string: %s", localPartyID, err)
 				}
-				sharedTLSCertString, err := utils.CertificateBytesToString(sharedPartyConfig.RouterConfig.TlsCert)
+				sharedTLSCertString, err := utils.CertificateBytesToString(sharedPartyConfig.RouterConfig.GetNodeConfig().GetServerTlsCert())
 				if err != nil {
 					return fmt.Errorf("error converting shared TLS cert of router of party%d to string: %s", localPartyID, err)
 				}
@@ -856,7 +856,7 @@ func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig(localSignCer
 
 	var sharedBatcherConfig *ordererpb.BatcherNodeConfig
 	for _, batcher := range sharedPartyConfig.BatchersConfig {
-		if localShardID == batcher.ShardID {
+		if localShardID == batcher.GetShardId() {
 			sharedBatcherConfig = batcher
 			break
 		}
@@ -865,7 +865,7 @@ func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig(localSignCer
 		return fmt.Errorf("batcher in shard%d does not exist for party%d in the shared config", localShardID, localPartyID)
 	}
 
-	equal, err := utils.AreCertificatesEqual(localTLSCert, sharedBatcherConfig.TlsCert)
+	equal, err := utils.AreCertificatesEqual(localTLSCert, sharedBatcherConfig.GetNodeConfig().GetServerTlsCert())
 	if err != nil {
 		return fmt.Errorf("error comparing TLS cert of batcher in shard%d of party%d to the shared configuration: %s", localShardID, localPartyID, err)
 	}
@@ -874,14 +874,14 @@ func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig(localSignCer
 		if err != nil {
 			return fmt.Errorf("error converting local TLS cert of batcher in shard%d of party%d to string: %s", localShardID, localPartyID, err)
 		}
-		sharedTLSCertString, err := utils.CertificateBytesToString(sharedBatcherConfig.TlsCert)
+		sharedTLSCertString, err := utils.CertificateBytesToString(sharedBatcherConfig.GetNodeConfig().GetServerTlsCert())
 		if err != nil {
 			return fmt.Errorf("error converting shared TLS cert of batcher in shard%d of party%d to string: %s", localShardID, localPartyID, err)
 		}
 		return fmt.Errorf("certificate mismatch: the batcher of party %d shard %d is attempting to load with TLS certificate: %v that differs from the shared configuration TLS certificate: %v", localPartyID, localShardID, localTLSCertString, sharedTLSCertString)
 	}
 
-	equal, err = utils.AreCertificatesEqual(localSignCert, sharedBatcherConfig.SignCert)
+	equal, err = utils.AreCertificatesEqual(localSignCert, sharedBatcherConfig.GetNodeConfig().GetSignCert())
 	if err != nil {
 		return fmt.Errorf("error comparing sign cert of batcher in shard%d of party%d to the shared configuration: %s", localShardID, localPartyID, err)
 	}
@@ -890,7 +890,7 @@ func (config *Configuration) CheckIfBatcherNodeExistsInSharedConfig(localSignCer
 		if err != nil {
 			return fmt.Errorf("error converting local sign cert of batcher in shard%d of party%d to string: %s", localShardID, localPartyID, err)
 		}
-		sharedSignCertString, err := utils.CertificateBytesToString(sharedBatcherConfig.SignCert)
+		sharedSignCertString, err := utils.CertificateBytesToString(sharedBatcherConfig.GetNodeConfig().GetSignCert())
 		if err != nil {
 			return err
 		}
@@ -913,7 +913,7 @@ func (config *Configuration) CheckIfConsenterNodeExistsInSharedConfig(localSignC
 			return fmt.Errorf("consenter configuration of partyID %d is missing from the shared configuration: %+v", localPartyID, sharedPartyConfig)
 		}
 
-		equal, err := utils.AreCertificatesEqual(localSignCert, sharedPartyConfig.ConsenterConfig.SignCert)
+		equal, err := utils.AreCertificatesEqual(localSignCert, sharedPartyConfig.ConsenterConfig.GetNodeConfig().GetSignCert())
 		if err != nil {
 			return fmt.Errorf("error comparing sign cert of consenter of party%d to the shared configuration: %s", localPartyID, err)
 		}
@@ -922,14 +922,14 @@ func (config *Configuration) CheckIfConsenterNodeExistsInSharedConfig(localSignC
 			if err != nil {
 				return fmt.Errorf("error converting local sign cert of consenter of party%d to string: %s", localPartyID, err)
 			}
-			sharedSignCertString, err := utils.CertificateBytesToString(sharedPartyConfig.ConsenterConfig.SignCert)
+			sharedSignCertString, err := utils.CertificateBytesToString(sharedPartyConfig.ConsenterConfig.GetNodeConfig().GetSignCert())
 			if err != nil {
 				return fmt.Errorf("error converting shared sign cert of consenter of party%d to string: %s", localPartyID, err)
 			}
 			return fmt.Errorf("sign certificate mismatch: Consenter%d is attempting to load with sign certificate: %v that differs from the shared configuration sign certificate: %v", localPartyID, localSignCertString, sharedSignCertString)
 		}
 
-		equal, err = utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.ConsenterConfig.TlsCert)
+		equal, err = utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.ConsenterConfig.GetNodeConfig().GetServerTlsCert())
 		if err != nil {
 			return fmt.Errorf("error comparing TLS cert of consenter of party%d to the shared configuration: %s", localPartyID, err)
 		}
@@ -938,7 +938,7 @@ func (config *Configuration) CheckIfConsenterNodeExistsInSharedConfig(localSignC
 			if err != nil {
 				return fmt.Errorf("error converting local TLS cert of consenter of party%d to string: %s", localPartyID, err)
 			}
-			sharedTLSCertString, err := utils.CertificateBytesToString(sharedPartyConfig.ConsenterConfig.TlsCert)
+			sharedTLSCertString, err := utils.CertificateBytesToString(sharedPartyConfig.ConsenterConfig.GetNodeConfig().GetServerTlsCert())
 			if err != nil {
 				return fmt.Errorf("error converting shared TLS cert of consenter of party%d to string: %s", localPartyID, err)
 			}
@@ -959,7 +959,7 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig(localSignC
 			if sharedPartyConfig.AssemblerConfig == nil {
 				return fmt.Errorf("assembler configuration of partyID %d is missing from the shared configuration: %+v", localPartyID, sharedPartyConfig)
 			}
-			equal, err := utils.AreCertificatesEqual(localSignCert, sharedPartyConfig.AssemblerConfig.SignCert)
+			equal, err := utils.AreCertificatesEqual(localSignCert, sharedPartyConfig.AssemblerConfig.GetNodeConfig().GetSignCert())
 			if err != nil {
 				return fmt.Errorf("error comparing sign cert of assembler of party%d to the shared configuration: %s", localPartyID, err)
 			}
@@ -968,14 +968,14 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig(localSignC
 				if err != nil {
 					return fmt.Errorf("error converting local sign cert of assembler of party%d to string: %s", localPartyID, err)
 				}
-				sharedSignCertString, err := utils.CertificateBytesToString(sharedPartyConfig.AssemblerConfig.SignCert)
+				sharedSignCertString, err := utils.CertificateBytesToString(sharedPartyConfig.AssemblerConfig.GetNodeConfig().GetSignCert())
 				if err != nil {
 					return fmt.Errorf("error converting shared sign cert of assembler of party%d to string: %s", localPartyID, err)
 				}
 				return fmt.Errorf("sign certificate mismatch: Assembler%d is attempting to load with sign certificate: %v that differs from the shared configuration sign certificate: %v", localPartyID, localSignCertString, sharedSignCertString)
 			}
 
-			equal, err = utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.AssemblerConfig.TlsCert)
+			equal, err = utils.AreCertificatesEqual(localTLSCert, sharedPartyConfig.AssemblerConfig.GetNodeConfig().GetServerTlsCert())
 			if err != nil {
 				return fmt.Errorf("error comparing TLS cert of assembler of party%d to the shared configuration: %s", localPartyID, err)
 			}
@@ -984,7 +984,7 @@ func (config *Configuration) CheckIfAssemblerNodeExistsInSharedConfig(localSignC
 				if err != nil {
 					return fmt.Errorf("error converting local TLS cert of assembler of party%d to string: %s", localPartyID, err)
 				}
-				sharedTLSCertString, err := utils.CertificateBytesToString(sharedPartyConfig.AssemblerConfig.TlsCert)
+				sharedTLSCertString, err := utils.CertificateBytesToString(sharedPartyConfig.AssemblerConfig.GetNodeConfig().GetServerTlsCert())
 				if err != nil {
 					return fmt.Errorf("error converting shared TLS cert of assembler of party%d to string: %s", localPartyID, err)
 				}

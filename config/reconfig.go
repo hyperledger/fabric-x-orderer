@@ -21,10 +21,7 @@ import (
 // NodeConfig represents the shared configuration of a node.
 // This interface is implemented by Router, Batcher, Consensus and Assembler, see config/protos/configuration.pb.go
 type NodeConfig interface {
-	GetHost() string
-	GetPort() uint32
-	GetTlsCert() []byte
-	GetSignCert() []byte
+	GetNodeConfig() *ordererpb.NodeConfig
 }
 
 // IsPartyEvicted returns true if the given party does not appear in the provided configuration.
@@ -73,21 +70,21 @@ func IsNodeConfigChangeRestartRequired(currentConfig, newConfig NodeConfig, logg
 		return false, errors.New("type mismatch: current node config and new node config are not from the same type")
 	}
 
-	currAddr := net.JoinHostPort(currentConfig.GetHost(), strconv.Itoa(int(currentConfig.GetPort())))
-	newAddr := net.JoinHostPort(newConfig.GetHost(), strconv.Itoa(int(newConfig.GetPort())))
+	currAddr := net.JoinHostPort(currentConfig.GetNodeConfig().GetHost(), strconv.Itoa(int(currentConfig.GetNodeConfig().GetPort())))
+	newAddr := net.JoinHostPort(newConfig.GetNodeConfig().GetHost(), strconv.Itoa(int(newConfig.GetNodeConfig().GetPort())))
 
 	if currAddr != newAddr {
 		logger.Infof("Nodes address changed: current=%s, new=%s", currAddr, newAddr)
 		return true, nil
 	}
 
-	if !bytes.Equal(currentConfig.GetTlsCert(), newConfig.GetTlsCert()) {
+	if !bytes.Equal(currentConfig.GetNodeConfig().GetServerTlsCert(), newConfig.GetNodeConfig().GetServerTlsCert()) {
 		logger.Infof("Nodes TLS certificate changed")
 		return true, nil
 	}
 
 	// TODO: enable dynamic reconfig without restart when private and public key dont change
-	if !bytes.Equal(currentConfig.GetSignCert(), newConfig.GetSignCert()) {
+	if !bytes.Equal(currentConfig.GetNodeConfig().GetSignCert(), newConfig.GetNodeConfig().GetSignCert()) {
 		logger.Infof("Nodes sign certificate changed")
 		return true, nil
 	}

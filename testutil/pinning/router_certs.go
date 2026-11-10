@@ -44,8 +44,11 @@ func ConfigurationWithRouters(partyID types.PartyID, routerKeyPairs []*tlsgen.Ce
 		partiesConfig = append(partiesConfig, &ordererpb.PartyConfig{
 			PartyID: uint32(i + 1),
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				Host:    localhost,
-				TlsCert: kp.Cert,
+				NodeConfig: &ordererpb.NodeConfig{
+					Host:          localhost,
+					ClientTlsCert: kp.Cert,
+					ServerTlsCert: kp.Cert,
+				},
 			},
 		})
 	}

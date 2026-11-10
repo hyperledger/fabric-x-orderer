@@ -30,8 +30,8 @@ func TestValidatePartyModification(t *testing.T) {
 		PartyID: 1,
 		CACerts: [][]byte{[]byte("cert")},
 		BatchersConfig: []*ordererpb.BatcherNodeConfig{
-			{ShardID: 1},
-			{ShardID: 2},
+			{ShardId: 1},
+			{ShardId: 2},
 		},
 	}
 
@@ -40,7 +40,7 @@ func TestValidatePartyModification(t *testing.T) {
 			PartyID: 1,
 			CACerts: [][]byte{[]byte("cert")},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
-				{ShardID: 1},
+				{ShardId: 1},
 			},
 		}
 
@@ -55,8 +55,8 @@ func TestValidatePartyModification(t *testing.T) {
 			PartyID: 1,
 			CACerts: [][]byte{[]byte("cert")},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
-				{ShardID: 1},
-				{ShardID: 3},
+				{ShardId: 1},
+				{ShardId: 3},
 			},
 		}
 
@@ -71,7 +71,7 @@ func TestValidatePartyModification(t *testing.T) {
 			PartyID: 1,
 			CACerts: [][]byte{[]byte("cert")},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
-				{ShardID: 1},
+				{ShardId: 1},
 				nil,
 			},
 		}
@@ -86,8 +86,8 @@ func TestValidatePartyModification(t *testing.T) {
 			PartyID: 1,
 			CACerts: [][]byte{[]byte("new-cert")},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
-				{ShardID: 1},
-				{ShardID: 2},
+				{ShardId: 1},
+				{ShardId: 2},
 			},
 		}
 
@@ -265,7 +265,7 @@ func TestValidatePartyAndShardIDs(t *testing.T) {
 	partyWithShard := func(partyID, shardID uint32) []*ordererpb.PartyConfig {
 		return []*ordererpb.PartyConfig{{
 			PartyID:        partyID,
-			BatchersConfig: []*ordererpb.BatcherNodeConfig{{ShardID: shardID}},
+			BatchersConfig: []*ordererpb.BatcherNodeConfig{{ShardId: shardID}},
 		}}
 	}
 

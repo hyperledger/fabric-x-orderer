@@ -62,26 +62,38 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 			CACerts:    newCACerts,
 			TLSCACerts: newTLSCACerts,
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
-				Host:    "localhost",
-				Port:    7050,
-				TlsCert: []byte("consenterNewCert"),
+				NodeConfig: &ordererpb.NodeConfig{
+					Host:          "localhost",
+					Port:          7050,
+					ClientTlsCert: []byte("consenterNewCert"),
+					ServerTlsCert: []byte("consenterNewCert"),
+				},
 			},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				Host:    "localhost",
-				Port:    8050,
-				TlsCert: []byte("routerNewCert"),
+				NodeConfig: &ordererpb.NodeConfig{
+					Host:          "localhost",
+					Port:          8050,
+					ClientTlsCert: []byte("routerNewCert"),
+					ServerTlsCert: []byte("routerNewCert"),
+				},
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				Host:    "localhost",
-				Port:    9050,
-				TlsCert: []byte("assemblerNewCert"),
+				NodeConfig: &ordererpb.NodeConfig{
+					Host:          "localhost",
+					Port:          9050,
+					ClientTlsCert: []byte("assemblerNewCert"),
+					ServerTlsCert: []byte("assemblerNewCert"),
+				},
 			},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
-					ShardID: 1,
-					Host:    "localhost",
-					Port:    10050,
-					TlsCert: []byte("batcherNewCert"),
+					NodeConfig: &ordererpb.NodeConfig{
+						Host:          "localhost",
+						Port:          10050,
+						ClientTlsCert: []byte("batcherNewCert"),
+						ServerTlsCert: []byte("batcherNewCert"),
+					},
+					ShardId: 1,
 				},
 			},
 		},
@@ -134,10 +146,10 @@ func TestCreateConfigUpdateBlock(t *testing.T) {
 	require.Equal(t, append(newKnownCerts, []byte("additionalKnownCert")), mspKnownCerts)
 
 	// Further checks can be added here to verify other updates
-	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetRouterConfig().GetSignCert())
-	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetBatchersConfig()[0].GetSignCert())
-	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetConsenterConfig().GetSignCert())
-	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetAssemblerConfig().GetSignCert())
+	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetRouterConfig().GetNodeConfig().GetSignCert())
+	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetBatchersConfig()[0].GetNodeConfig().GetSignCert())
+	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetConsenterConfig().GetNodeConfig().GetSignCert())
+	require.Equal(t, []byte("newSignCert"), partiesConfig[0].GetAssemblerConfig().GetNodeConfig().GetSignCert())
 
 	_, ok := configUpdate.WriteSet.Groups["Application"].Groups["peer1"]
 	require.False(t, ok)

@@ -1484,7 +1484,7 @@ func (c *Consensus) validateAssemblerFromContext(ctx context.Context) error {
 	// TODO: maybe add to consenter config the assembler of its own party and take from there instead of fullConfig.sharedConfig
 	for _, party := range c.fullConfig.SharedConfig.PartiesConfig {
 		if arma_types.PartyID(party.PartyID) == c.PartyID {
-			return validateClientFromContext(ctx, party.AssemblerConfig.GetTlsCert(), "assembler", c.Logger)
+			return validateClientFromContext(ctx, party.AssemblerConfig.GetNodeConfig().GetServerTlsCert(), "assembler", c.Logger)
 		}
 	}
 	return fmt.Errorf("no assembler config found for party %d", c.PartyID)
