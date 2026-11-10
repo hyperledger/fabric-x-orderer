@@ -137,9 +137,23 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
   BCCSP, flogging), `fabric-protos-go-apiv2`, and `hyperledger/SmartBFT` (consensus engine).
 - Logging is `flogging` (`FabricLogger`), typically named per role/party
   (e.g. `Batcher%dShard%d`).
-- Some code uses `github.com/pkg/errors` (wrap with context). Avoid it in new code; use the
-  built-in `errors` and `fmt` instead, or `github.com/cockroachdb/errors` if stack traces and
-  richer diagnostics are required.
+- Errors: use the standard library (`errors`, `fmt.Errorf` with `%w`, `errors.Is`/`errors.As`,
+  `errors.Join`). `github.com/pkg/errors` is archived and being removed.
+  - Policy: don't add new uses of `pkg/errors`, but don't migrate existing code unrelated to your
+    change either (it bloats the PR review). Use `github.com/cockroachdb/errors` only where stack
+    traces are actually needed.
+  - Aliasing: in a file that still imports `pkg/errors`, `fmt.Errorf` needs no alias, and
+    `errors.Is`/`As`/`Unwrap` already forward to the standard library. Alias only when you need the
+    standard library's `errors.New` or `errors.Join`, and then always as
+    `pkgerrors "github.com/pkg/errors"`.
+  - Mapping, for code you do migrate:
+    - `errors.Wrap(err, "msg")`, `errors.WithMessage(err, "msg")` → `fmt.Errorf("msg: %w", err)`
+    - `errors.Wrapf(err, "f %d", x)`, `errors.WithMessagef(…)` → `fmt.Errorf("f %d: %w", x, err)`
+    - `errors.WithStack(err)` → `err` (just drop the wrapper)
+    - `errors.Errorf(…)` → `fmt.Errorf(…)`
+  - `nil` trap: every `pkg/errors` wrapper (`Wrap*`, `WithMessage*`, `WithStack`) returns `nil`
+    for a `nil` error, but `fmt.Errorf("…: %w", nil)` does not. Add an explicit `if err != nil`
+    wherever the old code relied on that (e.g. `return errors.WithStack(f.Close())`).
 - `.golangci.yml` enables a wider linter set than `make linter` (`gosec`, `gocritic`, `revive`,
   `ireturn`, `lll`, `gocognit`, …), run only by `make linter-extra`; keep new code clean under it.
   CI does not run it, and the config is in golangci-lint v1 format, so it needs a v1 binary.
