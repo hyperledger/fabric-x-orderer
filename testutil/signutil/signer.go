@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -22,9 +23,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/msp"
+	mspi "github.com/hyperledger/fabric-x-common/msp"
 	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-common/protoutil/identity"
+	"github.com/hyperledger/fabric-x-common/utils/certificate"
 	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/crypto"
 	"github.com/hyperledger/fabric-x-orderer/testutil/tx"
@@ -186,4 +190,30 @@ func newSignerOfKey(t *testing.T, key *ecdsa.PrivateKey, mspID string, notBefore
 		ecdsaSigner: crypto.ECDSASigner(*key),
 		creator:     &msp.SerializedIdentity{Mspid: mspID, IdBytes: certPEM},
 	}, certPEM
+}
+
+// ByCertID returns a signer that signs with the key of s, and sends its identity by the ID of its
+// certificate, the hex SHA-256 of the certificate, instead of the certificate itself.
+func (s *TestSigner) ByCertID(t *testing.T) identity.SignerSerializer {
+	t.Helper()
+
+	digest, err := certificate.DigestPemContent(s.creator.IdBytes, bccsp.SHA256)
+	require.NoError(t, err)
+
+	return &certIDSigner{signer: s, mspID: s.creator.Mspid, certID: hex.EncodeToString(digest)}
+}
+
+// certIDSigner signs with the key of a TestSigner, and serializes its identity by certificate ID.
+type certIDSigner struct {
+	signer *TestSigner
+	mspID  string
+	certID string
+}
+
+func (s *certIDSigner) Sign(message []byte) ([]byte, error) {
+	return s.signer.Sign(message)
+}
+
+func (s *certIDSigner) Serialize() ([]byte, error) {
+	return mspi.NewSerializedIdentityWithIDOfCert(s.mspID, s.certID)
 }

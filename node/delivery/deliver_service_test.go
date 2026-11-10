@@ -152,6 +152,45 @@ func TestConsensusDeliverServiceRefusesAnExpiredCertificate(t *testing.T) {
 	require.Nil(t, response.GetBlock())
 }
 
+// Scenario:
+//  1. Let the policy of the configuration admit every request, so that signatures are out of scope,
+//     and let its MSPs resolve the certificate ID of a signer whose certificate is valid and of one
+//     whose certificate has expired.
+//  2. Serve the consensus deliver service over a decision ledger holding one decision, with the
+//     access control a consenter builds from that configuration.
+//  3. Pull with a request sent by the certificate ID of the valid signer, and expect the decision.
+//  4. Pull with a request sent by the certificate ID of the expired signer, and expect it to be
+//     refused as forbidden, with no decision delivered.
+func TestConsensusDeliverServiceRefusesAnExpiredIdentitySentByCertificateID(t *testing.T) {
+	channelID := "arma"
+
+	valid, validCert := signutil.NewSelfSignedSigner(t, "org")
+	expired, expiredCert := signutil.NewExpiredSigner(t, "org")
+
+	bundle := &mocks.FakeConfigResources{}
+	configutil.AdmitSigners(bundle)
+	configutil.ResolveCertIDs(t, bundle, "org", validCert, expiredCert)
+
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+
+	endpoint := serveConsensusDeliverService(t, channelID, bundle, ca)
+	channelName := delivery.DecisionChannelName(channelID)
+
+	t.Run("a valid identity", func(t *testing.T) {
+		response, err := pullDecision(t, endpoint, channelName, valid.ByCertID(t), tlsutil.NewClient(t, ca))
+		require.NoError(t, err)
+		require.NotNil(t, response.GetBlock())
+	})
+
+	t.Run("an expired identity", func(t *testing.T) {
+		response, err := pullDecision(t, endpoint, channelName, expired.ByCertID(t), tlsutil.NewClient(t, ca))
+		require.NoError(t, err)
+		require.Equal(t, common.Status_FORBIDDEN, response.GetStatus())
+		require.Nil(t, response.GetBlock())
+	})
+}
+
 // serveConsensusDeliverService serves a consensus deliver service over a ledger holding a single
 // decision, and returns the endpoint it listens on.
 func serveConsensusDeliverService(t *testing.T, channelID string, bundle channelconfig.Resources, ca tlsgen.CA) string {
