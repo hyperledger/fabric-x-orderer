@@ -579,28 +579,10 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 // the ones that affect the computed state at verificationSeq, and returns the info of all of them.
 // It rejects a payload that carries a request more than once: the leader proposes from its request
 // pool, which holds each request once, so a repeat comes only from a byzantine leader. The state
-// transition counts BAFs toward the batch attestation threshold, so a repeated BAF must not reach it.
+// transition drops a repeated BAF as well; rejecting the proposal here does not rely on that.
 func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, verificationSeq uint64, proposalNum arma_types.DecisionNum) ([]smartbft_types.RequestInfo, error) {
-	reqInfos, err := c.verifyEachProposalRequest(requests, verificationSeq, proposalNum)
-	if err != nil {
-		return nil, err
-	}
-
-	seen := make(map[smartbft_types.RequestInfo]struct{}, len(reqInfos))
-	for _, reqInfo := range reqInfos {
-		if _, exists := seen[reqInfo]; exists {
-			return nil, fmt.Errorf("proposal contains request %s more than once", reqInfo.String())
-		}
-		seen[reqInfo] = struct{}{}
-	}
-
-	return reqInfos, nil
-}
-
-// verifyEachProposalRequest decodes every request in the proposal payload of decision proposalNum,
-// verifies the ones that affect the computed state at verificationSeq, and returns the info of all of them.
-func (c *Consensus) verifyEachProposalRequest(requests arma_types.BatchedRequests, verificationSeq uint64, proposalNum arma_types.DecisionNum) ([]smartbft_types.RequestInfo, error) {
 	reqInfos := make([]smartbft_types.RequestInfo, 0, len(requests))
+	seen := make(map[smartbft_types.RequestInfo]struct{}, len(requests))
 	for _, rawReq := range requests {
 		configSeq, isBAF, err := c.getReqConfigSeq(rawReq)
 		if err != nil {
@@ -612,15 +594,19 @@ func (c *Consensus) verifyEachProposalRequest(requests arma_types.BatchedRequest
 		// cannot affect this decision and is not verified. Every proposed request is still reported in
 		// reqInfos so SmartBFT removes it from its request pool; a request's ID embeds its config sequence,
 		// so reporting a stale one removes exactly it and never a legitimate request at the current sequence.
+		var reqInfo smartbft_types.RequestInfo
 		if configSeq == verificationSeq || (isBAF && configSeq < verificationSeq) {
-			reqID, _, err := c.verifyProposalCE(rawReq, proposalNum)
-			if err != nil {
+			if reqInfo, _, err = c.verifyProposalCE(rawReq, proposalNum); err != nil {
 				return nil, fmt.Errorf("invalid request %s: %v", rawReq, err)
 			}
-			reqInfos = append(reqInfos, reqID)
-			continue
+		} else {
+			reqInfo = c.RequestID(rawReq)
 		}
-		reqInfos = append(reqInfos, c.RequestID(rawReq))
+		if _, exists := seen[reqInfo]; exists {
+			return nil, fmt.Errorf("proposal contains request %s more than once", reqInfo.String())
+		}
+		seen[reqInfo] = struct{}{}
+		reqInfos = append(reqInfos, reqInfo)
 	}
 
 	return reqInfos, nil

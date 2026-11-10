@@ -492,7 +492,7 @@ func (s *State) CollectAndDeduplicateEvents(l *flogging.FabricLogger, ces ...Con
 
 			if complainers, exists := complaints[st]; exists {
 				if _, exists := complainers[ce.Complaint.Signer]; exists {
-					l.Warnf("Node %d already signed complaint for shard %d and term %d", ce.Complaint.Shard, ce.Complaint.Term)
+					l.Warnf("Node %d already signed complaint for shard %d and term %d", ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.Term)
 					continue
 				}
 			} else {
