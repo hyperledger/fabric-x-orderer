@@ -485,6 +485,29 @@ func TestCollectAndDeduplicateEvents_SameSignerDifferentDigests(t *testing.T) {
 	assert.Equal(t, uint64(2), state.Shards[0].Term)
 }
 
+// TestProcessCountsRepeatedBAFOnce checks that a BAF repeated within one round counts once toward
+// the batch attestation threshold. Otherwise a leader could repeat its own self-signed BAF
+// Threshold times in one proposal and commit a batch that no other party attested.
+func TestProcessCountsRepeatedBAFOnce(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+
+	s := &consensus_state.State{
+		N:          4,
+		Threshold:  2,
+		Quorum:     3,
+		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 0}},
+		AppContext: []byte{},
+	}
+
+	baf := types.NewSimpleBatchAttestationFragment(1, 1, 1, make([]byte, 32), 1, 0, 0, nil)
+	baf.SetSignature([]byte{1})
+	ce := consensus_state.ControlEvent{BAF: baf}
+
+	next, extracted, _ := s.Process(logger, 0, ce, ce)
+	require.Empty(t, extracted)
+	require.Equal(t, []types.BatchAttestationFragment{baf}, next.Pending)
+}
+
 func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 	state := consensus_state.State{
 		N:         4,
