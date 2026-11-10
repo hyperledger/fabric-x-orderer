@@ -312,7 +312,9 @@ block. The sections common to all roles — `General`, `FileStore`, `Operations`
 documented field by field in the commented [`local_config.yaml`](../config/sample/local_config.yaml),
 and the [configuration model](architecture.md#6-configuration-and-membership) of the architecture
 overview explains how local and shared configuration fit together. `FileStore.Location` is the
-directory the batch ledger array, the WAL, and the config store are written under.
+directory the batch ledger array, the WAL, and the config store are written under. Each ledger of the
+array keeps its batches in block files, and the array indexes them by block number in one
+[Pebble](https://github.com/cockroachdb/pebble) database.
 
 The role-specific section is `Batcher`:
 

@@ -325,7 +325,8 @@ config block. The sections common to all roles — `General`, `FileStore`, `Oper
 explains how local and shared configuration fit together. Two of them decide how an assembler
 starts: `General.Bootstrap` names the block it bootstraps from, which is the genesis block or, for a
 node joining a running network, a later config block; and `FileStore.Location` is the directory its
-block ledger is written to. The role-specific section is
+block ledger is written to. The ledger keeps its blocks in block files, indexed by block number in a
+[Pebble](https://github.com/cockroachdb/pebble) database. The role-specific section is
 `Assembler`, and this is the whole of it:
 
 ```yaml

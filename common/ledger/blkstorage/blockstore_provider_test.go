@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -185,7 +186,7 @@ func TestDrop(t *testing.T) {
 
 	// negative test
 	provider.Close()
-	require.EqualError(t, provider.Drop("ledger2"), "internal leveldb error while obtaining db iterator: leveldb: closed")
+	require.ErrorIs(t, provider.Drop("ledger2"), pebble.ErrClosed)
 }
 
 func constructLedgerid(id int) string {

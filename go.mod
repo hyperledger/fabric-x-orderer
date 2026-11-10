@@ -18,7 +18,6 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.12.1
-	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/tedsuo/ifrit v0.0.0-20260418191334-846868129986
 	go.uber.org/zap v1.28.0
 	golang.org/x/sync v0.24.0

@@ -11,11 +11,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hyperledger/fabric-x-orderer/common/ledger/dataformat"
-
-	"github.com/syndtr/goleveldb/leveldb"
-
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
+	"github.com/hyperledger/fabric-x-orderer/common/ledger/dataformat"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,15 +22,48 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestDBBasicWriteAndReads(t *testing.T) {
-	testDBBasicWriteAndReads(t, "db1", "db2", "")
+// Scenario:
+//  1. Put the same keys, with different values, in three handles of one provider.
+//  2. Expect each handle to read back its own values.
+//  3. Delete the keys in each handle and expect them to read back as nil.
+func TestDBHandleBasicWriteAndReads(t *testing.T) {
+	p := newTestProvider(t)
+	dbNames := []string{"db1", "db2", ""}
+
+	for _, dbName := range dbNames {
+		db := p.GetDBHandle(dbName)
+		require.NoError(t, db.Put([]byte("key1"), []byte("value1_"+dbName), false))
+		require.NoError(t, db.Put([]byte("key2"), []byte("value2_"+dbName), true))
+	}
+
+	for _, dbName := range dbNames {
+		db := p.GetDBHandle(dbName)
+		val, err := db.Get([]byte("key1"))
+		require.NoError(t, err)
+		require.Equal(t, []byte("value1_"+dbName), val)
+		val, err = db.Get([]byte("key2"))
+		require.NoError(t, err)
+		require.Equal(t, []byte("value2_"+dbName), val)
+	}
+
+	for _, dbName := range dbNames {
+		db := p.GetDBHandle(dbName)
+		require.NoError(t, db.Delete([]byte("key1"), false))
+		require.NoError(t, db.Delete([]byte("key2"), true))
+		val, err := db.Get([]byte("key1"))
+		require.NoError(t, err)
+		require.Nil(t, val)
+		val, err = db.Get([]byte("key2"))
+		require.NoError(t, err)
+		require.Nil(t, val)
+	}
 }
 
-func TestIterator(t *testing.T) {
-	env := newTestProviderEnv(t, testDBPath)
-	defer env.cleanup()
-	p := env.provider
-
+// Scenario:
+//  1. Put keys 0 to 19 in three handles of one provider.
+//  2. Expect the middle handle to hold exactly its own keys and values.
+func TestDBHandleKeyRange(t *testing.T) {
+	p := newTestProvider(t)
 	db1 := p.GetDBHandle("db1")
 	db2 := p.GetDBHandle("db2")
 	db3 := p.GetDBHandle("db3")
@@ -42,137 +73,17 @@ func TestIterator(t *testing.T) {
 		require.NoError(t, db3.Put([]byte(createTestKey(i)), []byte(createTestValue("db3", i)), false))
 	}
 
-	rangeTestCases := []struct {
-		startKey       []byte
-		endKey         []byte
-		expectedKeys   []string
-		expectedValues []string
-	}{
-		{
-			startKey:       []byte(createTestKey(2)),
-			endKey:         []byte(createTestKey(4)),
-			expectedKeys:   createTestKeys(2, 3),
-			expectedValues: createTestValues("db2", 2, 3),
-		},
-		{
-			startKey:       []byte(createTestKey(2)),
-			endKey:         nil,
-			expectedKeys:   createTestKeys(2, 19),
-			expectedValues: createTestValues("db2", 2, 19),
-		},
-		{
-			startKey:       nil,
-			endKey:         nil,
-			expectedKeys:   createTestKeys(0, 19),
-			expectedValues: createTestValues("db2", 0, 19),
-		},
-	}
-
-	for i, testCase := range rangeTestCases {
-		t.Run(
-			fmt.Sprintf("range testCase %d", i),
-			func(t *testing.T) {
-				itr, err := db2.GetIterator(testCase.startKey, testCase.endKey)
-				require.NoError(t, err)
-				defer itr.Release()
-				checkItrResults(t, itr, testCase.expectedKeys, testCase.expectedValues)
-			},
-		)
-	}
-
-	rangeWithSeekTestCases := []struct {
-		startKey          []byte
-		endKey            []byte
-		seekToKey         []byte
-		itrAtKeyAfterSeek []byte
-		expectedKeys      []string
-		expectedValues    []string
-	}{
-		{
-			startKey:          nil,
-			endKey:            nil,
-			seekToKey:         []byte(createTestKey(10)),
-			itrAtKeyAfterSeek: []byte(createTestKey(10)),
-			expectedKeys:      createTestKeys(11, 19),
-			expectedValues:    createTestValues("db1", 11, 19),
-		},
-		{
-			startKey:          []byte(createTestKey(11)),
-			endKey:            nil,
-			seekToKey:         []byte(createTestKey(5)),
-			itrAtKeyAfterSeek: []byte(createTestKey(11)),
-			expectedKeys:      createTestKeys(12, 19),
-			expectedValues:    createTestValues("db1", 12, 19),
-		},
-		{
-			startKey:          nil,
-			endKey:            nil,
-			seekToKey:         []byte(createTestKey(19)),
-			itrAtKeyAfterSeek: []byte(createTestKey(19)),
-			expectedKeys:      nil,
-			expectedValues:    nil,
-		},
-	}
-
-	for i, testCase := range rangeWithSeekTestCases {
-		t.Run(
-			fmt.Sprintf("range with seek testCase %d", i),
-			func(t *testing.T) {
-				itr, err := db1.GetIterator(testCase.startKey, testCase.endKey)
-				require.NoError(t, err)
-				defer itr.Release()
-				require.True(t, itr.Seek(testCase.seekToKey))
-				require.Equal(t, testCase.itrAtKeyAfterSeek, itr.Key())
-				checkItrResults(t, itr, testCase.expectedKeys, testCase.expectedValues)
-			},
-		)
-	}
-
-	t.Run("test-first-prev", func(t *testing.T) {
-		itr, err := db1.GetIterator(nil, nil)
-		require.NoError(t, err)
-		defer itr.Release()
-		require.True(t, itr.Seek([]byte(createTestKey(10))))
-		require.Equal(t, []byte(createTestKey(10)), itr.Key())
-		checkItrResults(t, itr, createTestKeys(11, 19), createTestValues("db1", 11, 19))
-
-		require.True(t, itr.First())
-		require.True(t, itr.Seek([]byte(createTestKey(10))))
-		require.Equal(t, []byte(createTestKey(10)), itr.Key())
-		require.True(t, itr.Prev())
-		checkItrResults(t, itr, createTestKeys(10, 19), createTestValues("db1", 10, 19))
-
-		require.True(t, itr.First())
-		require.False(t, itr.Seek([]byte(createTestKey(20))))
-		require.True(t, itr.First())
-		checkItrResults(t, itr, createTestKeys(1, 19), createTestValues("db1", 1, 19))
-
-		require.True(t, itr.First())
-		require.False(t, itr.Prev())
-		checkItrResults(t, itr, createTestKeys(0, 19), createTestValues("db1", 0, 19))
-
-		require.True(t, itr.First())
-		require.True(t, itr.Last())
-		checkItrResults(t, itr, nil, nil)
-	})
-
-	t.Run("test-error-path", func(t *testing.T) {
-		env.provider.Close()
-		itr, err := db1.GetIterator(nil, nil)
-		require.EqualError(t, err, "internal leveldb error while obtaining db iterator: leveldb: closed")
-		require.Nil(t, itr)
-	})
+	checkHandleEntries(t, db2, createTestKeys(0, 19), createTestValues("db2", 0, 19))
 }
 
-func TestBatchedUpdates(t *testing.T) {
-	env := newTestProviderEnv(t, testDBPath)
-	defer env.cleanup()
-	p := env.provider
+// Scenario:
+//  1. Write a batch of three keys to each of two handles.
+//  2. Write a second batch to each handle that deletes one key.
+//  3. Expect the two remaining keys in each handle.
+func TestDBHandleBatchedUpdates(t *testing.T) {
+	p := newTestProvider(t)
+	dbs := []*DBHandle{p.GetDBHandle("db1"), p.GetDBHandle("db2")}
 
-	db1 := p.GetDBHandle("db1")
-	db2 := p.GetDBHandle("db2")
-
-	dbs := []*DBHandle{db1, db2}
 	for _, db := range dbs {
 		batch := db.NewUpdateBatch()
 		batch.Put([]byte("key1"), []byte("value1"))
@@ -188,108 +99,87 @@ func TestBatchedUpdates(t *testing.T) {
 	}
 
 	for _, db := range dbs {
-		val1, _ := db.Get([]byte("key1"))
-		require.Equal(t, "value1", string(val1))
-
-		val2, err2 := db.Get([]byte("key2"))
-		require.NoError(t, err2, "")
-		require.Nil(t, val2)
-
-		val3, _ := db.Get([]byte("key3"))
-		require.Equal(t, "value3", string(val3))
+		checkHandleEntries(t, db, []string{"key1", "key3"}, []string{"value1", "value3"})
 	}
 }
 
-func TestDrop(t *testing.T) {
-	env := newTestProviderEnv(t, testDBPath)
-	defer env.cleanup()
-	p := env.provider
+// Scenario:
+//  1. Write a batch, and expect writing it again to fail with errBatchWritten and adding to it to panic.
+//  2. Reset the batch, put another key and expect the write to succeed.
+//  3. Expect both keys to be stored.
+func TestDBHandleWriteBatchOnce(t *testing.T) {
+	db := newTestProvider(t).GetDBHandle("db1")
+	batch := db.NewUpdateBatch()
+	batch.Put([]byte("key1"), []byte("value1"))
+	require.NoError(t, db.WriteBatch(batch, true))
 
+	require.ErrorIs(t, db.WriteBatch(batch, true), errBatchWritten)
+	require.Panics(t, func() { batch.Put([]byte("key3"), []byte("value3")) })
+	require.Equal(t, 0, batch.Len())
+	require.Equal(t, 0, batch.Size())
+
+	batch.Reset()
+	batch.Put([]byte("key2"), []byte("value2"))
+	require.NoError(t, db.WriteBatch(batch, true))
+
+	for _, key := range []string{"key1", "key2"} {
+		val, err := db.Get([]byte(key))
+		require.NoError(t, err)
+		require.NotNil(t, val, key)
+	}
+}
+
+// Scenario:
+//  1. Close the db and write a batch.
+//  2. Expect pebble.ErrClosed, and the batch to keep its key.
+func TestDBHandleWriteBatchAfterClose(t *testing.T) {
+	p := newTestProvider(t)
+	db := p.GetDBHandle("db1")
+	batch := db.NewUpdateBatch()
+	batch.Put([]byte("key"), []byte("value"))
+
+	p.Close()
+	require.ErrorIs(t, db.WriteBatch(batch, true), pebble.ErrClosed)
+	require.Equal(t, 1, batch.Len())
+}
+
+// Scenario:
+//  1. Write an empty batch and a nil batch.
+//  2. Expect both writes to succeed and the handle to stay empty.
+func TestDBHandleWriteEmptyBatch(t *testing.T) {
+	db := newTestProvider(t).GetDBHandle("db1")
+
+	require.NoError(t, db.WriteBatch(db.NewUpdateBatch(), true))
+	require.NoError(t, db.WriteBatch(nil, true))
+
+	empty, err := db.IsEmpty()
+	require.NoError(t, err)
+	require.True(t, empty)
+}
+
+// Scenario:
+//  1. Put keys in two handles.
+//  2. Drop the first handle.
+//  3. Expect the first handle to be empty and released by the provider, and the second to keep its keys.
+//  4. Close the provider and expect deleting the second handle's keys to fail with pebble.ErrClosed.
+func TestDrop(t *testing.T) {
+	p := newTestProvider(t)
 	db1 := p.GetDBHandle("db1")
 	db2 := p.GetDBHandle("db2")
-	db3 := p.GetDBHandle("db3")
-
-	require.Contains(t, p.dbHandles, "db1")
-	require.Contains(t, p.dbHandles, "db2")
-	require.Contains(t, p.dbHandles, "db3")
-
 	for i := 0; i < 20; i++ {
 		require.NoError(t, db1.Put([]byte(createTestKey(i)), []byte(createTestValue("db1", i)), false))
 		require.NoError(t, db2.Put([]byte(createTestKey(i)), []byte(createTestValue("db2", i)), false))
 	}
-	// db3 is used to test remove when multiple batches are needed (each long key has 125 bytes)
-	for i := 0; i < 10000; i++ {
-		require.NoError(t, db3.Put([]byte(createTestLongKey(i)), []byte(createTestValue("db3", i)), false))
-	}
-
-	expectedSetup := []struct {
-		db             *DBHandle
-		expectedKeys   []string
-		expectedValues []string
-	}{
-		{
-			db:             db1,
-			expectedKeys:   createTestKeys(0, 19),
-			expectedValues: createTestValues("db1", 0, 19),
-		},
-		{
-			db:             db2,
-			expectedKeys:   createTestKeys(0, 19),
-			expectedValues: createTestValues("db2", 0, 19),
-		},
-		{
-			db:             db3,
-			expectedKeys:   createTestLongKeys(0, 9999),
-			expectedValues: createTestValues("db3", 0, 9999),
-		},
-	}
-
-	for _, dbSetup := range expectedSetup {
-		itr, err := dbSetup.db.GetIterator(nil, nil)
-		require.NoError(t, err)
-		checkItrResults(t, itr, dbSetup.expectedKeys, dbSetup.expectedValues)
-		itr.Release()
-	}
 
 	require.NoError(t, p.Drop("db1"))
-	require.NoError(t, p.Drop("db3"))
 
 	require.NotContains(t, p.dbHandles, "db1")
-	require.NotContains(t, p.dbHandles, "db3")
 	require.Contains(t, p.dbHandles, "db2")
+	checkHandleEntries(t, db1, nil, nil)
+	checkHandleEntries(t, db2, createTestKeys(0, 19), createTestValues("db2", 0, 19))
 
-	expectedResults := []struct {
-		db             *DBHandle
-		expectedKeys   []string
-		expectedValues []string
-	}{
-		{
-			db:             db1,
-			expectedKeys:   nil,
-			expectedValues: nil,
-		},
-		{
-			db:             db2,
-			expectedKeys:   createTestKeys(0, 19),
-			expectedValues: createTestValues("db2", 0, 19),
-		},
-		{
-			db:             db3,
-			expectedKeys:   nil,
-			expectedValues: nil,
-		},
-	}
-
-	for _, result := range expectedResults {
-		itr, err := result.db.GetIterator(nil, nil)
-		require.NoError(t, err)
-		checkItrResults(t, itr, result.expectedKeys, result.expectedValues)
-		itr.Release()
-	}
-
-	// negative test
 	p.Close()
-	require.EqualError(t, db2.deleteAll(), "internal leveldb error while obtaining db iterator: leveldb: closed")
+	require.ErrorIs(t, db2.deleteAll(), pebble.ErrClosed)
 }
 
 func TestFormatCheck(t *testing.T) {
@@ -347,48 +237,30 @@ func TestFormatCheck(t *testing.T) {
 	}
 }
 
+// Scenario:
+//  1. Get two handles from a provider.
+//  2. Close each handle and expect the provider to release it.
 func TestClose(t *testing.T) {
-	env := newTestProviderEnv(t, testDBPath)
-	defer env.cleanup()
-	p := env.provider
-
+	p := newTestProvider(t)
 	db1 := p.GetDBHandle("db1")
 	db2 := p.GetDBHandle("db2")
-
-	expectedDBHandles := map[string]*DBHandle{
-		"db1": db1,
-		"db2": db2,
-	}
-	require.Equal(t, expectedDBHandles, p.dbHandles)
+	require.Equal(t, map[string]*DBHandle{"db1": db1, "db2": db2}, p.dbHandles)
 
 	db1.Close()
-	expectedDBHandles = map[string]*DBHandle{
-		"db2": db2,
-	}
-	require.Equal(t, expectedDBHandles, p.dbHandles)
+	require.Equal(t, map[string]*DBHandle{"db2": db2}, p.dbHandles)
 
 	db2.Close()
 	require.Equal(t, map[string]*DBHandle{}, p.dbHandles)
 }
 
 func TestIsEmpty(t *testing.T) {
-	var env *testDBProviderEnv
-	var db1, db2 *DBHandle
-
-	setup := func() {
-		env = newTestProviderEnv(t, testDBPath)
-		p := env.provider
-		db1 = p.GetDBHandle("db1")
-		db2 = p.GetDBHandle("db2")
-	}
-
-	cleanup := func() {
-		env.cleanup()
+	setup := func(t *testing.T) (*Provider, *DBHandle, *DBHandle) {
+		p := newTestProvider(t)
+		return p, p.GetDBHandle("db1"), p.GetDBHandle("db2")
 	}
 
 	t.Run("both the dbs are empty", func(t *testing.T) {
-		setup()
-		defer cleanup()
+		_, db1, db2 := setup(t)
 
 		empty, err := db1.IsEmpty()
 		require.NoError(t, err)
@@ -400,8 +272,7 @@ func TestIsEmpty(t *testing.T) {
 	})
 
 	t.Run("only one db is empty", func(t *testing.T) {
-		setup()
-		defer cleanup()
+		_, db1, db2 := setup(t)
 
 		require.NoError(t, db1.Put([]byte("key"), []byte("value"), false))
 		empty, err := db1.IsEmpty()
@@ -413,111 +284,49 @@ func TestIsEmpty(t *testing.T) {
 		require.True(t, empty)
 	})
 
-	t.Run("both the dbs contain data", func(t *testing.T) {
-		setup()
-		defer cleanup()
+	t.Run("closed provider", func(t *testing.T) {
+		p, db1, _ := setup(t)
 
-		require.NoError(t, db1.Put([]byte("key"), []byte("value"), false))
-		require.NoError(t, db2.Put([]byte("key"), []byte("value"), false))
-
+		p.Close()
 		empty, err := db1.IsEmpty()
-		require.NoError(t, err)
-		require.False(t, empty)
-
-		empty, err = db2.IsEmpty()
-		require.NoError(t, err)
-		require.False(t, empty)
-	})
-
-	t.Run("iter error", func(t *testing.T) {
-		setup()
-		defer cleanup()
-
-		env.provider.Close()
-		empty, err := db1.IsEmpty()
-		require.EqualError(t, err, "internal leveldb error while obtaining db iterator: leveldb: closed")
-		require.False(t, empty)
-
-		empty, err = db2.IsEmpty()
-		require.EqualError(t, err, "internal leveldb error while obtaining db iterator: leveldb: closed")
+		require.ErrorIs(t, err, pebble.ErrClosed)
 		require.False(t, empty)
 	})
 }
 
 func TestRetrieveDataFormatInfo(t *testing.T) {
-	var env *testDBProviderEnv
-	var provider *Provider
-	setup := func() {
-		env = newTestProviderEnv(t, testDBPath)
-		provider = env.provider
-	}
-
-	cleanup := func() {
-		env.cleanup()
-	}
-
 	t.Run("fresh db provider", func(t *testing.T) {
-		setup()
-		defer cleanup()
-
-		provider.Close()
-		info, err := RetrieveDataFormatInfo(testDBPath)
+		dir := t.TempDir()
+		p, err := NewProvider(&Conf{DBPath: dir})
 		require.NoError(t, err)
-		require.Equal(
-			t,
-			&DataFormatInfo{
-				FormatVerison: "",
-				IsDBEmpty:     true,
-			},
-			info,
-		)
-	})
+		p.Close()
 
-	t.Run("db provider with existing data", func(t *testing.T) {
-		setup()
-		defer cleanup()
-
-		db := provider.GetDBHandle("dummy")
-		require.NoError(t, db.Put([]byte("k"), []byte("v"), true))
-		provider.Close()
-
-		info, err := RetrieveDataFormatInfo(testDBPath)
+		info, err := RetrieveDataFormatInfo(dir)
 		require.NoError(t, err)
-		require.Equal(
-			t,
-			&DataFormatInfo{
-				FormatVerison: "",
-				IsDBEmpty:     false,
-			},
-			info,
-		)
+		require.Equal(t, &DataFormatInfo{FormatVerison: "", IsDBEmpty: true}, info)
 	})
 
 	t.Run("db provider with existing data and version", func(t *testing.T) {
-		setup()
-		defer cleanup()
-
-		require.NoError(t, provider.SetDataFormat("2.6"))
-		db := provider.GetDBHandle("dummy")
-		require.NoError(t, db.Put([]byte("k"), []byte("v"), true))
-		env.provider.Close()
-		info, err := RetrieveDataFormatInfo(testDBPath)
+		dir := t.TempDir()
+		p, err := NewProvider(&Conf{DBPath: dir})
 		require.NoError(t, err)
-		require.Equal(
-			t,
-			&DataFormatInfo{
-				FormatVerison: "2.6",
-				IsDBEmpty:     false,
-			},
-			info,
-		)
+		require.NoError(t, p.SetDataFormat("2.6"))
+		require.NoError(t, p.GetDBHandle("dummy").Put([]byte("k"), []byte("v"), true))
+		p.Close()
+
+		info, err := RetrieveDataFormatInfo(dir)
+		require.NoError(t, err)
+		require.Equal(t, &DataFormatInfo{FormatVerison: "2.6", IsDBEmpty: false}, info)
 	})
 }
 
+// Scenario:
+//  1. Put and delete keys in a batch, then reset it.
+//  2. Expect Size and Len to track every operation and to be zero after the reset.
 func TestUpdateBatch(t *testing.T) {
 	b := &UpdateBatch{
-		dbName:       "mydb",
-		leveldbBatch: &leveldb.Batch{},
+		dbName: "mydb",
+		batch:  &pebble.Batch{},
 	}
 
 	require.Equal(t, 0, b.Size())
@@ -557,13 +366,10 @@ func TestUpdateBatch(t *testing.T) {
 }
 
 func testFormatCheck(t *testing.T, dataFormat, expectedFormat string, dataExists bool, expectedErr *dataformat.ErrFormatMismatch) {
-	require.NoError(t, os.RemoveAll(testDBPath))
-	defer func() {
-		require.NoError(t, os.RemoveAll(testDBPath))
-	}()
+	dir := t.TempDir()
 
 	// setup test pre-conditions (create a db with dbformat)
-	p, err := NewProvider(&Conf{DBPath: testDBPath, ExpectedFormat: dataFormat})
+	p, err := NewProvider(&Conf{DBPath: dir, ExpectedFormat: dataFormat})
 	require.NoError(t, err)
 	f, err := p.GetDataFormat()
 	require.NoError(t, err)
@@ -574,110 +380,15 @@ func testFormatCheck(t *testing.T, dataFormat, expectedFormat string, dataExists
 
 	// close and reopen with new conf
 	p.Close()
-	p, err = NewProvider(&Conf{DBPath: testDBPath, ExpectedFormat: expectedFormat})
+	p, err = NewProvider(&Conf{DBPath: dir, ExpectedFormat: expectedFormat})
 	if expectedErr != nil {
-		expectedErr.DBInfo = fmt.Sprintf("leveldb at [%s]", testDBPath)
+		expectedErr.DBInfo = fmt.Sprintf("pebble db at [%s]", dir)
 		require.Equal(t, err, expectedErr)
 		return
 	}
 	require.NoError(t, err)
+	defer p.Close()
 	f, err = p.GetDataFormat()
 	require.NoError(t, err)
 	require.Equal(t, expectedFormat, f)
-}
-
-func testDBBasicWriteAndReads(t *testing.T, dbNames ...string) {
-	env := newTestProviderEnv(t, testDBPath)
-	defer env.cleanup()
-	p := env.provider
-
-	for _, dbName := range dbNames {
-		db := p.GetDBHandle(dbName)
-		require.NoError(t, db.Put([]byte("key1"), []byte("value1_"+dbName), false))
-		require.NoError(t, db.Put([]byte("key2"), []byte("value2_"+dbName), false))
-		require.NoError(t, db.Put([]byte("key3"), []byte("value3_"+dbName), false))
-	}
-
-	for _, dbName := range dbNames {
-		db := p.GetDBHandle(dbName)
-		val, err := db.Get([]byte("key1"))
-		require.NoError(t, err, "")
-		require.Equal(t, []byte("value1_"+dbName), val)
-
-		val, err = db.Get([]byte("key2"))
-		require.NoError(t, err, "")
-		require.Equal(t, []byte("value2_"+dbName), val)
-
-		val, err = db.Get([]byte("key3"))
-		require.NoError(t, err, "")
-		require.Equal(t, []byte("value3_"+dbName), val)
-	}
-
-	for _, dbName := range dbNames {
-		db := p.GetDBHandle(dbName)
-		require.NoError(t, db.Delete([]byte("key1"), false), "")
-		val, err := db.Get([]byte("key1"))
-		require.NoError(t, err, "")
-		require.Nil(t, val)
-
-		require.NoError(t, db.Delete([]byte("key2"), false), "")
-		val, err = db.Get([]byte("key2"))
-		require.NoError(t, err, "")
-		require.Nil(t, val)
-
-		require.NoError(t, db.Delete([]byte("key3"), false), "")
-		val, err = db.Get([]byte("key3"))
-		require.NoError(t, err, "")
-		require.Nil(t, val)
-	}
-}
-
-func checkItrResults(t *testing.T, itr *Iterator, expectedKeys []string, expectedValues []string) {
-	var actualKeys []string
-	var actualValues []string
-	for itr.Next(); itr.Valid(); itr.Next() {
-		actualKeys = append(actualKeys, string(itr.Key()))
-		actualValues = append(actualValues, string(itr.Value()))
-	}
-	require.Equal(t, expectedKeys, actualKeys)
-	require.Equal(t, expectedValues, actualValues)
-	require.Equal(t, false, itr.Next())
-}
-
-func createTestKey(i int) string {
-	return fmt.Sprintf("key_%06d", i)
-}
-
-const padding100 = "_0123456789_0123456789_0123456789_0123456789_0123456789_0123456789_0123456789_0123456789_0123456789_"
-
-func createTestLongKey(i int) string {
-	return fmt.Sprintf("key_%s_%10d", padding100, i)
-}
-
-func createTestValue(dbname string, i int) string {
-	return fmt.Sprintf("value_%s_%06d", dbname, i)
-}
-
-func createTestKeys(start int, end int) []string {
-	var keys []string
-	for i := start; i <= end; i++ {
-		keys = append(keys, createTestKey(i))
-	}
-	return keys
-}
-
-func createTestLongKeys(start int, end int) []string {
-	var keys []string
-	for i := start; i <= end; i++ {
-		keys = append(keys, createTestLongKey(i))
-	}
-	return keys
-}
-
-func createTestValues(dbname string, start int, end int) []string {
-	var values []string
-	for i := start; i <= end; i++ {
-		values = append(values, createTestValue(dbname, i))
-	}
-	return values
 }
