@@ -533,6 +533,10 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 	assert.NoError(t, err)
 	baf123id2p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 0, 0, baf123id1p1s1.Signature())
 	assert.NoError(t, err)
+	baf123id3p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[2]), 3, 1, dig123, 1, 1, 0, 0, baf123id1p1s1.Signature())
+	assert.NoError(t, err)
+	baf123id4p1s1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[3]), 4, 1, dig123, 1, 1, 0, 0, baf123id1p1s1.Signature())
+	assert.NoError(t, err)
 	baf123id1p1s1cs1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[0]), 1, 1, dig123, 1, 1, 1, 0, baf123id1p1s1.Signature())
 	assert.NoError(t, err)
 	baf123id2p1s1cs1, err := batcher.CreateBAF(crypto.ECDSASigner(*sks[1]), 2, 1, dig123, 1, 1, 1, 0, baf123id1p1s1.Signature())
@@ -609,7 +613,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 			metadata: &smartbftprotos.ViewMetadata{
 				LatestSequence: 0,
 			},
-			ces:                    []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id2p1s1}},
+			ces:                    []state.ControlEvent{{BAF: baf123id1p1s1}, {BAF: baf123id2p1s1}, {BAF: baf123id3p1s1}, {BAF: baf123id4p1s1}},
 			bafsOfAvailableBatches: []arma_types.BatchAttestationFragment{baf123id1p1s1},
 			numPending:             0,
 		},
@@ -1206,13 +1210,16 @@ func TestVerifyProposalRejectsMalformedRequest(t *testing.T) {
 	garbage := []byte{0xff, 0xff, 0xff}
 
 	for _, tc := range []struct {
-		name string
-		reqs [][]byte
+		name    string
+		reqs    [][]byte
+		wantErr string
 	}{
-		{name: "garbage bytes", reqs: [][]byte{garbage}},
-		{name: "report with zero party", reqs: [][]byte{reportWithParty(0)}},
-		{name: "report with party above uint16", reqs: [][]byte{reportWithParty(math.MaxUint16 + 1)}},
-		{name: "valid BAF followed by garbage bytes", reqs: [][]byte{validReq, garbage}},
+		{name: "garbage bytes", reqs: [][]byte{garbage}, wantErr: "invalid request"},
+		{name: "report with zero party", reqs: [][]byte{reportWithParty(0)}, wantErr: "invalid request"},
+		{name: "report with party above uint16", reqs: [][]byte{reportWithParty(math.MaxUint16 + 1)}, wantErr: "invalid request"},
+		{name: "valid BAF followed by garbage bytes", reqs: [][]byte{validReq, garbage}, wantErr: "invalid request"},
+		// An honest leader's request pool holds each request once, so a repeat means a byzantine leader.
+		{name: "valid BAF repeated", reqs: [][]byte{validReq, validReq}, wantErr: "more than once"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// A fresh instance per case, so a panic that leaves c.lock held cannot hang the next case.
@@ -1235,7 +1242,7 @@ func TestVerifyProposalRejectsMalformedRequest(t *testing.T) {
 			require.NotPanics(t, func() {
 				infos, err = c.VerifyProposal(proposal)
 			})
-			require.ErrorContains(t, err, "invalid request")
+			require.ErrorContains(t, err, tc.wantErr)
 			require.Nil(t, infos)
 		})
 	}

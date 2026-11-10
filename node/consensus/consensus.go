@@ -577,7 +577,29 @@ func (c *Consensus) VerifyProposal(proposal smartbft_types.Proposal) ([]smartbft
 
 // verifyProposalRequests decodes every request in the proposal payload of decision proposalNum, verifies
 // the ones that affect the computed state at verificationSeq, and returns the info of all of them.
+// It rejects a payload that carries a request more than once: the leader proposes from its request
+// pool, which holds each request once, so a repeat comes only from a byzantine leader. The state
+// transition counts BAFs toward the batch attestation threshold, so a repeated BAF must not reach it.
 func (c *Consensus) verifyProposalRequests(requests arma_types.BatchedRequests, verificationSeq uint64, proposalNum arma_types.DecisionNum) ([]smartbft_types.RequestInfo, error) {
+	reqInfos, err := c.verifyEachProposalRequest(requests, verificationSeq, proposalNum)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[smartbft_types.RequestInfo]struct{}, len(reqInfos))
+	for _, reqInfo := range reqInfos {
+		if _, exists := seen[reqInfo]; exists {
+			return nil, fmt.Errorf("proposal contains request %s more than once", reqInfo.String())
+		}
+		seen[reqInfo] = struct{}{}
+	}
+
+	return reqInfos, nil
+}
+
+// verifyEachProposalRequest decodes every request in the proposal payload of decision proposalNum,
+// verifies the ones that affect the computed state at verificationSeq, and returns the info of all of them.
+func (c *Consensus) verifyEachProposalRequest(requests arma_types.BatchedRequests, verificationSeq uint64, proposalNum arma_types.DecisionNum) ([]smartbft_types.RequestInfo, error) {
 	reqInfos := make([]smartbft_types.RequestInfo, 0, len(requests))
 	for _, rawReq := range requests {
 		configSeq, isBAF, err := c.getReqConfigSeq(rawReq)
