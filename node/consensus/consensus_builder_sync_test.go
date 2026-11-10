@@ -9,9 +9,12 @@ package consensus
 import (
 	"testing"
 
+	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	node_config "github.com/hyperledger/fabric-x-orderer/node/config"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus/state"
 	"github.com/hyperledger/fabric-x-orderer/node/ledger"
 	"github.com/stretchr/testify/require"
@@ -97,4 +100,66 @@ func TestShouldSyncOnStart(t *testing.T) {
 			shouldSyncOnStart(logger, corruptBlock, 14)
 		})
 	})
+}
+
+// appendDecisions appends count chained decision blocks to consLedger, each naming
+// decisionNumOfLastConfigBlock as the decision of the last config block.
+func appendDecisions(t *testing.T, consLedger *ledger.ConsensusLedger, count uint64, decisionNumOfLastConfigBlock types.DecisionNum) {
+	t.Helper()
+
+	var prevHash []byte
+	for num := uint64(0); num < count; num++ {
+		header := &state.Header{
+			Num:                          types.DecisionNum(num),
+			DecisionNumOfLastConfigBlock: decisionNumOfLastConfigBlock,
+		}
+		proposal := smartbft_types.Proposal{Header: header.Serialize()}
+		block := state.CreateBlockToAppendFromDecision(num, proposal, nil, prevHash, uint64(decisionNumOfLastConfigBlock))
+		consLedger.Append(block)
+		prevHash = protoutil.BlockHeaderHash(block.Header)
+	}
+}
+
+func TestGetInitialStateAndMetadataDecisionNumOfLastConfigBlock(t *testing.T) {
+	logger := flogging.MustGetLogger("test")
+
+	// The ledger holds decisions 0, 1 and 2 (height 3), and its last config block is in decision 1.
+	for _, tc := range []struct {
+		name            string
+		lastConfigBlock *common.Block
+		expected        types.DecisionNum
+	}{
+		{
+			// The node was down across a config change and starts from the new config block, which
+			// is in decision 24. Its ledger still points to decision 1.
+			name:            "rejoin from a config block ahead of the ledger",
+			lastConfigBlock: makeConfigBlockWithDecisionNum(t, 12, 24),
+			expected:        24,
+		},
+		{
+			name:            "rejoin from a config block in the next decision",
+			lastConfigBlock: makeConfigBlockWithDecisionNum(t, 12, 3),
+			expected:        3,
+		},
+		{
+			name:            "restart from the last config block in the ledger",
+			lastConfigBlock: makeConfigBlockWithDecisionNum(t, 5, 1),
+			expected:        1,
+		},
+		{
+			name:            "restart from the genesis block",
+			lastConfigBlock: &common.Block{Header: &common.BlockHeader{Number: 0}},
+			expected:        1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			consLedger, err := ledger.NewConsensusLedger(t.TempDir())
+			require.NoError(t, err)
+			defer consLedger.Close()
+			appendDecisions(t, consLedger, 3, 1)
+
+			_, _, _, _, decisionNumOfLastConfigBlock, _ := getInitialStateAndMetadata(logger, &node_config.ConsenterNodeConfig{}, tc.lastConfigBlock, consLedger)
+			require.Equal(t, tc.expected, decisionNumOfLastConfigBlock)
+		})
+	}
 }

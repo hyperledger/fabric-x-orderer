@@ -272,15 +272,18 @@ func shouldSyncOnStart(logger *flogging.FabricLogger, lastConfigBlock *common.Bl
 		return false
 	}
 
-	_, ordInfo, _, err := ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(lastConfigBlock)
-	if err != nil {
-		// A non-genesis join config block must carry ordering info; failing to read it means the
-		// block is malformed and we cannot safely decide whether to sync.
-		logger.Panicf("Failed to extract ordering info from join config block number %d: %v",
-			lastConfigBlock.Header.Number, err)
-	}
+	return uint64(decisionNumOfConfigBlock(logger, lastConfigBlock)) >= height
+}
 
-	return uint64(ordInfo.DecisionNum) >= height
+// decisionNumOfConfigBlock returns the number of the decision that holds the given non-genesis
+// config block, read from the block's ordering info. It panics if the ordering info cannot be read,
+// because a non-genesis config block always carries it.
+func decisionNumOfConfigBlock(logger *flogging.FabricLogger, configBlock *common.Block) arma_types.DecisionNum {
+	_, ordInfo, _, err := ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(configBlock)
+	if err != nil {
+		logger.Panicf("Failed to extract ordering info from config block number %d: %v", configBlock.Header.Number, err)
+	}
+	return ordInfo.DecisionNum
 }
 
 func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_config.ConsenterNodeConfig, lastConfigBlock *common.Block, consLedger *ledger.ConsensusLedger) (*state.State, *smartbftprotos.ViewMetadata, *smartbft_types.Proposal, []smartbft_types.Signature, arma_types.DecisionNum, []byte) {
@@ -294,13 +297,7 @@ func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_conf
 			return initState, &smartbftprotos.ViewMetadata{}, nil, nil, 0, prevHash
 		}
 		logger.Infof("Starting from join config block number %d", lastConfigBlock.Header.Number)
-		// Extract the decision number from the provided last config block
-		_, ordInfo, _, err := ledger.AssemblerBatchIdOrderingInfoAndTxCountFromBlock(lastConfigBlock)
-		if err != nil {
-			logger.Panicf("Failed to extract ordering info from last config block: %v", err)
-		}
-
-		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, ordInfo.DecisionNum, nil
+		return initState, &smartbftprotos.ViewMetadata{}, nil, nil, decisionNumOfConfigBlock(logger, lastConfigBlock), nil
 	}
 
 	block, err := consLedger.RetrieveBlockByNumber(height - 1)
@@ -323,7 +320,21 @@ func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_conf
 		panic(err)
 	}
 
-	return header.State, md, &decision.Proposal, decision.Signatures, header.DecisionNumOfLastConfigBlock, protoutil.BlockHeaderHash(block.Header)
+	decisionNumOfLastConfigBlock := header.DecisionNumOfLastConfigBlock
+	// A node that was down across a config change restarts from the new config block, whose decision
+	// is not in its ledger yet. The last decision in the ledger then points to the config before the
+	// change, so take the decision number from the config block instead. The synchronizer does not
+	// correct it when it reaches that decision, because the config block is not newer than the one the
+	// node started from.
+	if lastConfigBlock.Header.Number > 0 {
+		if num := decisionNumOfConfigBlock(logger, lastConfigBlock); uint64(num) >= height {
+			logger.Infof("Config block number %d is in decision %d, ahead of the ledger height %d; the last decision in the ledger points to config decision %d",
+				lastConfigBlock.Header.Number, num, height, decisionNumOfLastConfigBlock)
+			decisionNumOfLastConfigBlock = num
+		}
+	}
+
+	return header.State, md, &decision.Proposal, decision.Signatures, decisionNumOfLastConfigBlock, protoutil.BlockHeaderHash(block.Header)
 }
 
 func initialStateFromConfig(config *node_config.ConsenterNodeConfig) *state.State {
