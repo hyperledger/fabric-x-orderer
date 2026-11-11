@@ -32,7 +32,10 @@ func TestValidateConfigRequestTxID(t *testing.T) {
 		lastUpdateNonce  []byte
 		lastUpdateType   common.HeaderType
 		lastUpdateSigErr error
-		errMsg           string
+		// configChannel and lastUpdateChannel override the channel ID in the channel headers, "arma" by default.
+		configChannel     *string
+		lastUpdateChannel *string
+		errMsg            string
 	}{
 		{
 			name:            "valid tx ids",
@@ -76,6 +79,38 @@ func TestValidateConfigRequestTxID(t *testing.T) {
 			lastUpdateType:  common.HeaderType_ENDORSER_TRANSACTION,
 			errMsg:          "last update: unexpected type ENDORSER_TRANSACTION, expected CONFIG_UPDATE",
 		},
+		{
+			name:            "config envelope of another channel",
+			configTxID:      protoutil.ComputeTxID,
+			lastUpdateTxID:  protoutil.ComputeTxID,
+			lastUpdateNonce: []byte("nonce"),
+			configChannel:   new("other"),
+			errMsg:          "config envelope: failed to convert request to signedData : wrong channel id in channel header",
+		},
+		{
+			name:            "config envelope without a channel",
+			configTxID:      protoutil.ComputeTxID,
+			lastUpdateTxID:  protoutil.ComputeTxID,
+			lastUpdateNonce: []byte("nonce"),
+			configChannel:   new(""),
+			errMsg:          "config envelope: failed to convert request to signedData : missing channel id in channel header",
+		},
+		{
+			name:              "last update of another channel",
+			configTxID:        protoutil.ComputeTxID,
+			lastUpdateTxID:    protoutil.ComputeTxID,
+			lastUpdateNonce:   []byte("nonce"),
+			lastUpdateChannel: new("other"),
+			errMsg:            "last update: failed to convert request to signedData : wrong channel id in channel header",
+		},
+		{
+			name:              "last update without a channel",
+			configTxID:        protoutil.ComputeTxID,
+			lastUpdateTxID:    protoutil.ComputeTxID,
+			lastUpdateNonce:   []byte("nonce"),
+			lastUpdateChannel: new(""),
+			errMsg:            "last update: failed to convert request to signedData : missing channel id in channel header",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			lastUpdateType := common.HeaderType_CONFIG_UPDATE
@@ -83,11 +118,11 @@ func TestValidateConfigRequestTxID(t *testing.T) {
 				lastUpdateType = tc.lastUpdateType
 			}
 			lastUpdate := &common.Envelope{
-				Payload:   marshalPayload(t, lastUpdateType, tc.lastUpdateNonce, tc.lastUpdateTxID, &common.ConfigUpdateEnvelope{}),
+				Payload:   marshalPayload(t, lastUpdateType, channelOr(tc.lastUpdateChannel), tc.lastUpdateNonce, tc.lastUpdateTxID, &common.ConfigUpdateEnvelope{}),
 				Signature: []byte("signature"),
 			}
 			envelope := &common.Envelope{
-				Payload:   marshalPayload(t, common.HeaderType_CONFIG, []byte("nonce"), tc.configTxID, &common.ConfigEnvelope{Config: config, LastUpdate: lastUpdate}),
+				Payload:   marshalPayload(t, common.HeaderType_CONFIG, channelOr(tc.configChannel), []byte("nonce"), tc.configTxID, &common.ConfigEnvelope{Config: config, LastUpdate: lastUpdate}),
 				Signature: []byte("signature"),
 			}
 
@@ -98,6 +133,7 @@ func TestValidateConfigRequestTxID(t *testing.T) {
 			policyManager.GetPolicyReturns(policy, true)
 			fc := &mocks.FakeFilterConfig{}
 			fc.GetPolicyManagerReturns(policyManager)
+			fc.GetChannelIDReturns("arma")
 			verifier := requestfilter.NewRulesVerifier(nil)
 			verifier.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
 
@@ -118,10 +154,18 @@ func TestValidateConfigRequestTxID(t *testing.T) {
 	}
 }
 
-func marshalPayload(t *testing.T, headerType common.HeaderType, nonce []byte, txID func(nonce, creator []byte) string, data proto.Message) []byte {
+// channelOr returns the channel ID channel points to, or "arma" if it is nil.
+func channelOr(channel *string) string {
+	if channel == nil {
+		return "arma"
+	}
+	return *channel
+}
+
+func marshalPayload(t *testing.T, headerType common.HeaderType, channelID string, nonce []byte, txID func(nonce, creator []byte) string, data proto.Message) []byte {
 	creator, err := msp.NewSerializedIdentity("org1", []byte("cert"))
 	require.NoError(t, err)
-	chdr := protoutil.MakeChannelHeader(headerType, 0, "arma", 0)
+	chdr := protoutil.MakeChannelHeader(headerType, 0, channelID, 0)
 	chdr.TxId = txID(nonce, creator)
 	shdr := protoutil.MakeSignatureHeader(creator, nonce)
 	return protoutil.MarshalOrPanic(&common.Payload{

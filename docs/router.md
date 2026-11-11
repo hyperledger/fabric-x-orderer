@@ -188,7 +188,8 @@ further:
 2. **Structure, signature and policy** — the payload must be a `common.Payload` with a channel header
    and a signature header, whose creator identity must decode; the signature header must carry a
    non-empty nonce, and the channel header's TxID must be the one derived from it,
-   `hex(SHA256(nonce || creator))`; and, when `ClientSignatureVerificationRequired` is set or the
+   `hex(SHA256(nonce || creator))`; the channel header's channel ID must be the router's channel, except that a
+   data transaction may leave it empty; and, when `ClientSignatureVerificationRequired` is set or the
    request is a configuration update, its signature must satisfy the channel's `Writers` policy. The
    TxID check is a structure check, not a proof of ownership: without signature verification, a
    client can copy another client's nonce and creator and produce the same TxID.

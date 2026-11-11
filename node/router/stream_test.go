@@ -17,6 +17,8 @@ import (
 	"github.com/hyperledger/fabric-lib-go/common/metrics"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/common/policies"
+	"github.com/hyperledger/fabric-x-common/msp"
+	"github.com/hyperledger/fabric-x-common/protoutil"
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
@@ -683,6 +685,58 @@ func TestSendRequestsUnregistersAConfigUpdateOnHandoff(t *testing.T) {
 	_, exists := s.isRequestRegistered(trace)
 	require.False(t, exists)
 	require.Empty(t, responseChan)
+}
+
+// Scenario:
+//  1. Build a stream whose verifier is on channel "arma".
+//  2. Verify data and config update requests whose channel header names "arma", another channel, or none.
+//  3. Expect a data request with no channel or "arma" to pass, a config update to need "arma", and any other
+//     channel to be rejected as a bad request.
+func TestVerifyAndClassifyRequestChecksChannelID(t *testing.T) {
+	s := &stream{
+		logger:   testutil.CreateLogger(t, 0),
+		verifier: createTestVerifierAcceptingConfigUpdates(),
+	}
+
+	for _, tc := range []struct {
+		name      string
+		reqType   common.HeaderType
+		channelID string
+		errMsg    string
+	}{
+		{name: "data request of the channel", reqType: common.HeaderType_MESSAGE, channelID: "arma"},
+		{name: "data request with no channel", reqType: common.HeaderType_MESSAGE, channelID: ""},
+		{name: "data request of another channel", reqType: common.HeaderType_MESSAGE, channelID: "other", errMsg: "wrong channel id in channel header"},
+		{name: "config update of the channel", reqType: common.HeaderType_CONFIG_UPDATE, channelID: "arma"},
+		{name: "config update with no channel", reqType: common.HeaderType_CONFIG_UPDATE, channelID: "", errMsg: "missing channel id in channel header"},
+		{name: "config update of another channel", reqType: common.HeaderType_CONFIG_UPDATE, channelID: "other", errMsg: "wrong channel id in channel header"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reqType, err := s.verifyAndClassifyRequest(createTestRequestOfChannel(t, tc.reqType, tc.channelID))
+			if tc.errMsg != "" {
+				require.ErrorContains(t, err, tc.errMsg)
+				var badReq *badRequestError
+				require.ErrorAs(t, err, &badReq)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.reqType, reqType)
+		})
+	}
+}
+
+// createTestRequestOfChannel builds a request of the given type, whose channel header names channelID.
+func createTestRequestOfChannel(t *testing.T, reqType common.HeaderType, channelID string) *protos.Request {
+	creator, err := msp.NewSerializedIdentity("org1", []byte("cert"))
+	require.NoError(t, err)
+	chdr := protoutil.MakeChannelHeader(reqType, 0, channelID, 0)
+	shdr := protoutil.MakeSignatureHeader(creator, []byte("nonce"))
+	protoutil.SetTxID(chdr, shdr)
+	payload := protoutil.MarshalOrPanic(&common.Payload{
+		Header: protoutil.MakePayloadHeader(chdr, shdr),
+		Data:   []byte("data"),
+	})
+	return &protos.Request{Payload: payload, Signature: []byte("signature")}
 }
 
 // createTestVerifierAcceptingConfigUpdates builds a verifier whose policy manager accepts config updates.

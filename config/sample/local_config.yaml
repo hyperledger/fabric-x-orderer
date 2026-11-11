@@ -188,7 +188,8 @@ General:
   # See: https://hyperledger-fabric.readthedocs.io/en/release-2.5/logging-control.html
   LogSpec: info
 
-  # ClientSignatureVerificationRequired specifies if the router and batcher will validate the signature in the requests
+  # ClientSignatureVerificationRequired specifies if the router and batcher will validate the signature in the requests.
+  # The request structure, including its TxID and channel ID, is checked regardless.
   ClientSignatureVerificationRequired: false
 
 
