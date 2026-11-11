@@ -180,6 +180,12 @@ func pullBlocks(
 		}
 
 		block := resp.GetBlock()
+		if block.GetHeader() == nil {
+			logger.Errorf("Received a block with no header from %s", endpoint)
+			stream.CloseSend()
+			conn.Close()
+			return
+		}
 		if block.Data == nil || len(block.Data.Data) == 0 {
 			logger.Errorf("Received empty block from %s", endpoint)
 			stream.CloseSend()
