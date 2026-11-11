@@ -135,6 +135,9 @@ func (br *BlockReceiver) processMsg(msg *orderer.DeliverResponse) (uint64, *comm
 
 		return 0, nil, errors.Errorf("received bad status %v from orderer", t.Status)
 	case *orderer.DeliverResponse_Block:
+		if t.Block.GetHeader() == nil {
+			return 0, nil, fmt.Errorf("block from orderer [%s] has no block or header", br.endpoint.String())
+		}
 		blockNum := t.Block.Header.Number
 
 		if err := br.updatableBlockVerifier.VerifyBlock(t.Block); err != nil {

@@ -794,6 +794,42 @@ func TestBFTDeliverer_BlockReception(t *testing.T) {
 		setup.stop()
 	})
 
+	t.Run("Block has no header", func(t *testing.T) {
+		setup := newBFTDelivererTestSetup(t)
+		setup.initialize(t)
+
+		startTime := time.Now()
+		setup.start()
+
+		t.Log("Recv() returns a single block with no header")
+		setup.recvStepC <- &orderer.DeliverResponse{
+			Type: &orderer.DeliverResponse_Block{Block: &common.Block{}},
+		}
+
+		t.Log("disconnects, sleeps, and tries again")
+		require.Eventually(t, func() bool { return setup.fakeDialer.DialCallCount() == 2 }, eventuallyTO, 10*time.Millisecond)
+		require.Equal(t, 1, setup.fakeSleeper.SleepCallCount())
+		require.Equal(t, 1, setup.fakeDeliverClient.CloseSendCallCount())
+
+		addr1, _ := setup.fakeDialer.DialArgsForCall(0)
+		addr2, _ := setup.fakeDialer.DialArgsForCall(1)
+		require.NotEqual(t, addr1, addr2)
+
+		setup.assertEventuallyClientConnSetLen(t, 2)
+		setup.assertEventuallyMonitorSetLen(t, 2)
+
+		t.Log("neither verifies nor handles the block")
+		require.Zero(t, setup.fakeUpdatableBlockVerifier.VerifyBlockCallCount())
+		require.Zero(t, setup.fakeBlockHandler.HandleBlockCallCount())
+
+		t.Log("block progress is reported correctly")
+		bNum, bTime := setup.d.BlockProgress()
+		require.Equal(t, uint64(6), bNum)
+		require.True(t, bTime.After(startTime))
+
+		setup.stop()
+	})
+
 	t.Run("Block handling fails", func(t *testing.T) {
 		setup := newBFTDelivererTestSetup(t)
 		setup.initialize(t)
