@@ -11,3 +11,9 @@ datasources:
     uid: arma-prometheus
     url: http://prometheus:9090
     isDefault: true
+  - name: Pyroscope
+    type: grafana-pyroscope-datasource
+    uid: arma-pyroscope
+    url: http://pyroscope:4040
+    jsonData:
+      minStep: 15s
