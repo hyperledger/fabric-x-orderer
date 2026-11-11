@@ -237,10 +237,10 @@ func TestSigFilterType(t *testing.T) {
 }
 
 func TestSigVerifyChannelID(t *testing.T) {
-	id, err := msp.NewSerializedIdentity("org1", []byte("cert"))
-	require.NoError(t, err)
-	nonce := []byte("nonce")
-
+	const (
+		missing = "missing channel id in channel header"
+		wrong   = "wrong channel id in channel header"
+	)
 	for _, tc := range []struct {
 		name      string
 		channelID string
@@ -249,17 +249,20 @@ func TestSigVerifyChannelID(t *testing.T) {
 	}{
 		{name: "data tx, same channel", channelID: "arma", reqType: common.HeaderType_MESSAGE},
 		{name: "data tx, no channel", channelID: "", reqType: common.HeaderType_MESSAGE},
-		{name: "data tx, other channel", channelID: "other", reqType: common.HeaderType_MESSAGE, errMsg: `wrong channel id in channel header, expected "arma"`},
-		{name: "data tx, channel prefix", channelID: "arm", reqType: common.HeaderType_MESSAGE, errMsg: "wrong channel id in channel header"},
-		{name: "data tx, channel extension", channelID: "arma2", reqType: common.HeaderType_MESSAGE, errMsg: "wrong channel id in channel header"},
-		{name: "data tx, upper-case channel", channelID: "ARMA", reqType: common.HeaderType_MESSAGE, errMsg: "wrong channel id in channel header"},
+		{
+			name: "data tx, other channel", channelID: "other", reqType: common.HeaderType_MESSAGE,
+			errMsg: wrong + `, expected "arma"`,
+		},
+		{name: "data tx, channel prefix", channelID: "arm", reqType: common.HeaderType_MESSAGE, errMsg: wrong},
+		{name: "data tx, channel extension", channelID: "arma2", reqType: common.HeaderType_MESSAGE, errMsg: wrong},
+		{name: "data tx, upper-case channel", channelID: "ARMA", reqType: common.HeaderType_MESSAGE, errMsg: wrong},
 		{name: "config update, same channel", channelID: "arma", reqType: common.HeaderType_CONFIG_UPDATE},
-		{name: "config update, no channel", channelID: "", reqType: common.HeaderType_CONFIG_UPDATE, errMsg: "missing channel id in channel header"},
-		{name: "config update, other channel", channelID: "other", reqType: common.HeaderType_CONFIG_UPDATE, errMsg: "wrong channel id in channel header"},
+		{name: "config update, no channel", channelID: "", reqType: common.HeaderType_CONFIG_UPDATE, errMsg: missing},
+		{name: "config update, other channel", channelID: "other", reqType: common.HeaderType_CONFIG_UPDATE, errMsg: wrong},
 		{name: "config, same channel", channelID: "arma", reqType: common.HeaderType_CONFIG},
-		{name: "config, no channel", channelID: "", reqType: common.HeaderType_CONFIG, errMsg: "missing channel id in channel header"},
-		{name: "config, other channel", channelID: "other", reqType: common.HeaderType_CONFIG, errMsg: "wrong channel id in channel header"},
-		{name: "endorser tx, no channel", channelID: "", reqType: common.HeaderType_ENDORSER_TRANSACTION, errMsg: "missing channel id in channel header"},
+		{name: "config, no channel", channelID: "", reqType: common.HeaderType_CONFIG, errMsg: missing},
+		{name: "config, other channel", channelID: "other", reqType: common.HeaderType_CONFIG, errMsg: wrong},
+		{name: "endorser tx, no channel", channelID: "", reqType: common.HeaderType_ENDORSER_TRANSACTION, errMsg: missing},
 	} {
 		for _, sigVerify := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s/sigVerify=%t", tc.name, sigVerify), func(t *testing.T) {
@@ -270,34 +273,16 @@ func TestSigVerifyChannelID(t *testing.T) {
 				fc.GetPolicyManagerReturns(policyManager)
 				fc.GetClientSignatureVerificationRequiredReturns(sigVerify)
 				fc.GetChannelIDReturns("arma")
-				fc.GetRequestMaxBytesReturns(1 << 20)
 
-				// The rules the router, the batcher and the consenter build.
-				v := requestfilter.NewRulesVerifier(nil)
-				v.AddRule(requestfilter.PayloadNotEmptyRule{})
-				v.AddRule(requestfilter.NewMaxSizeFilter(fc))
+				var v requestfilter.RulesVerifier
 				v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
 
-				chdr, err := proto.Marshal(&common.ChannelHeader{
-					ChannelId: tc.channelID,
-					Type:      int32(tc.reqType),
-					TxId:      protoutil.ComputeTxID(nonce, id),
-				})
-				require.NoError(t, err)
-				shdr, err := proto.Marshal(&common.SignatureHeader{Creator: id, Nonce: nonce})
-				require.NoError(t, err)
-				p, err := proto.Marshal(&common.Payload{
-					Header: &common.Header{ChannelHeader: chdr, SignatureHeader: shdr},
-					Data:   []byte("data"),
-				})
-				require.NoError(t, err)
-				req := &comm.Request{Payload: p, Signature: []byte("signature")}
-
-				require.NoError(t, v.Verify(req))
+				req := tx.CreateStructuredRequestOfChannel(tc.reqType, tc.channelID, []byte("data"))
 				classified, err := v.VerifyStructureAndClassify(req)
 				if tc.errMsg != "" {
 					require.ErrorContains(t, err, tc.errMsg)
-					require.Zero(t, policy.EvaluateSignedDataCallCount(), "the policy is evaluated only after the structure is checked")
+					require.Zero(t, policy.EvaluateSignedDataCallCount(),
+						"the policy is evaluated only after the structure is checked")
 					return
 				}
 				require.NoError(t, err)

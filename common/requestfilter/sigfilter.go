@@ -38,7 +38,7 @@ func (sf *SigFilter) VerifyAndClassify(request *comm.Request) (common.HeaderType
 	// extract signedData, while verifying the structure of the request
 	signedData, reqType, err := sf.requestToSignedData(request)
 	if err != nil {
-		return reqType, fmt.Errorf("failed to convert request to signedData : %s", err)
+		return reqType, fmt.Errorf("failed to convert request to signedData : %w", err)
 	}
 
 	if sf.clientSignatureVerificationRequired || reqType == common.HeaderType_CONFIG_UPDATE {

@@ -92,7 +92,9 @@ Arma checks the structure of every transaction it receives: the envelope must ca
 and a signature header, the signature header must carry a creator identity and a non-empty nonce, and the channel
 header's TxID must be the one derived from them, `TxID = hex(SHA256(nonce || creator))` (see
 `protoutil.ComputeTxID`). The channel header's channel ID must also be the network's channel ID: a config update must
-always carry it, while a data transaction may leave it empty. A transaction that fails these checks is rejected.
+always carry it, while a data transaction (`MESSAGE`) may leave it empty. Fabric-X data transactions are always of type
+`MESSAGE`, and the committer rejects data transactions of any other type. A transaction that fails these checks is
+rejected.
 
 Whether Arma also verifies the client's signature on a data transaction is controlled by the
 `ClientSignatureVerificationRequired` setting in the node's local config. When it is off, data transactions need not be

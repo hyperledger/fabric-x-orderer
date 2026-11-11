@@ -57,7 +57,13 @@ const channelID = "arma"
 var fixedNonce = []byte("nonce")
 
 func createStructuredPayload(data []byte, requestType common.HeaderType, nonce []byte) *common.Payload {
-	payloadChannelHeader := createChannelHeader(requestType, 0, channelID, 0)
+	return createStructuredPayloadOfChannel(data, requestType, channelID, nonce)
+}
+
+func createStructuredPayloadOfChannel(
+	data []byte, requestType common.HeaderType, channel string, nonce []byte,
+) *common.Payload {
+	payloadChannelHeader := createChannelHeader(requestType, 0, channel, 0)
 	id, err := msp.NewSerializedIdentity("org1", []byte("cert"))
 	if err != nil {
 		panic(err)
@@ -160,6 +166,16 @@ func CreateStructuredRequest(data []byte) *protos.Request {
 	payloadBytes := deterministicMarshall(payload)
 	return &protos.Request{
 		Payload:   payloadBytes,
+		Signature: []byte("signature"),
+	}
+}
+
+// CreateStructuredRequestOfChannel is like CreateStructuredRequest, but for a request of the given type whose channel
+// header names the given channel, which may be empty.
+func CreateStructuredRequestOfChannel(reqType common.HeaderType, channel string, data []byte) *protos.Request {
+	payload := createStructuredPayloadOfChannel(data, reqType, channel, fixedNonce)
+	return &protos.Request{
+		Payload:   deterministicMarshall(payload),
 		Signature: []byte("signature"),
 	}
 }

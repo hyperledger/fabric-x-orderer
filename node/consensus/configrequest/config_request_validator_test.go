@@ -118,11 +118,13 @@ func TestValidateConfigRequestTxID(t *testing.T) {
 				lastUpdateType = tc.lastUpdateType
 			}
 			lastUpdate := &common.Envelope{
-				Payload:   marshalPayload(t, lastUpdateType, channelOr(tc.lastUpdateChannel), tc.lastUpdateNonce, tc.lastUpdateTxID, &common.ConfigUpdateEnvelope{}),
+				Payload: marshalPayload(t, lastUpdateType, channelOr(tc.lastUpdateChannel),
+					tc.lastUpdateNonce, tc.lastUpdateTxID, &common.ConfigUpdateEnvelope{}),
 				Signature: []byte("signature"),
 			}
 			envelope := &common.Envelope{
-				Payload:   marshalPayload(t, common.HeaderType_CONFIG, channelOr(tc.configChannel), []byte("nonce"), tc.configTxID, &common.ConfigEnvelope{Config: config, LastUpdate: lastUpdate}),
+				Payload: marshalPayload(t, common.HeaderType_CONFIG, channelOr(tc.configChannel),
+					[]byte("nonce"), tc.configTxID, &common.ConfigEnvelope{Config: config, LastUpdate: lastUpdate}),
 				Signature: []byte("signature"),
 			}
 
@@ -162,7 +164,10 @@ func channelOr(channel *string) string {
 	return *channel
 }
 
-func marshalPayload(t *testing.T, headerType common.HeaderType, channelID string, nonce []byte, txID func(nonce, creator []byte) string, data proto.Message) []byte {
+func marshalPayload(
+	t *testing.T, headerType common.HeaderType, channelID string, nonce []byte,
+	txID func(nonce, creator []byte) string, data proto.Message,
+) []byte {
 	creator, err := msp.NewSerializedIdentity("org1", []byte("cert"))
 	require.NoError(t, err)
 	chdr := protoutil.MakeChannelHeader(headerType, 0, channelID, 0)
