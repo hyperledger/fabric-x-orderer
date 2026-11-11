@@ -1101,6 +1101,11 @@ func (c *Consensus) Deliver(proposal smartbft_types.Proposal, signatures []smart
 			c.lastConfigBlockNum = lastBlockNum
 			reconfigDone = make(chan struct{})
 			go c.processNewConfigBlock(configBlock, reconfigDone)
+		} else if c.lastConfigBlockNum == lastBlockNum && c.decisionNumOfLastConfigBlock != hdr.Num {
+			// The node already runs with this config block, so it does not apply it again, but it should
+			// already know the decision that holds it. A mismatch makes the node reject every proposal.
+			c.Logger.Warnf("Config block number %d is in decision %d, but the decision number of the last config block is %d",
+				lastBlockNum, hdr.Num, c.decisionNumOfLastConfigBlock)
 		}
 	}
 
@@ -1611,6 +1616,11 @@ func (c *Consensus) UpdateStateAndRuntimeConfig(block *common.Block) smartbft_ty
 			// goroutine, so there is no blocked Deliver to release; processNewConfigBlock closes
 			// this channel but nothing waits on it.
 			go c.processNewConfigBlock(configBlock, make(chan struct{}))
+		} else if c.lastConfigBlockNum == lastBlockNum && c.decisionNumOfLastConfigBlock != hdr.Num {
+			// The node already runs with this config block, so it does not apply it again, but it should
+			// already know the decision that holds it. A mismatch makes the node reject every proposal.
+			c.Logger.Warnf("Config block number %d is in decision %d, but the decision number of the last config block is %d",
+				lastBlockNum, hdr.Num, c.decisionNumOfLastConfigBlock)
 		}
 	}
 
