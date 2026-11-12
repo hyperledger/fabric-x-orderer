@@ -29,6 +29,7 @@ import (
 func TestSigVerifyFilter(t *testing.T) {
 	var v requestfilter.RulesVerifier
 	fc := &mocks.FakeFilterConfig{}
+	fc.GetChannelIDReturns("ChannelId")
 
 	v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
 	_, err := v.VerifyStructureAndClassify(nil)
@@ -159,6 +160,7 @@ func TestSigVerifyTxID(t *testing.T) {
 					fc := &mocks.FakeFilterConfig{}
 					fc.GetPolicyManagerReturns(policyManager)
 					fc.GetClientSignatureVerificationRequiredReturns(sigVerify)
+					fc.GetChannelIDReturns("arma")
 
 					var v requestfilter.RulesVerifier
 					v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
@@ -193,6 +195,7 @@ func TestSigValidationFlag(t *testing.T) {
 	pm.GetPolicyReturns(p, false)
 	fc.GetPolicyManagerReturns(pm)
 	fc.GetClientSignatureVerificationRequiredReturns(true)
+	fc.GetChannelIDReturns("arma")
 
 	v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
 
@@ -221,6 +224,7 @@ func TestSigValidationFlag(t *testing.T) {
 func TestSigFilterType(t *testing.T) {
 	var v requestfilter.RulesVerifier
 	fc := &mocks.FakeFilterConfig{}
+	fc.GetChannelIDReturns("arma")
 
 	v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
 
@@ -230,4 +234,76 @@ func TestSigFilterType(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, common.HeaderType_MESSAGE, reqType)
 	})
+}
+
+func TestSigVerifyChannelID(t *testing.T) {
+	const (
+		missing = "missing channel id in channel header"
+		wrong   = "wrong channel id in channel header"
+	)
+	for _, tc := range []struct {
+		name      string
+		channelID string
+		reqType   common.HeaderType
+		errMsg    string
+	}{
+		{name: "data tx, same channel", channelID: "arma", reqType: common.HeaderType_MESSAGE},
+		{name: "data tx, no channel", channelID: "", reqType: common.HeaderType_MESSAGE},
+		{
+			name: "data tx, other channel", channelID: "other", reqType: common.HeaderType_MESSAGE,
+			errMsg: wrong + `, expected "arma"`,
+		},
+		{name: "data tx, channel prefix", channelID: "arm", reqType: common.HeaderType_MESSAGE, errMsg: wrong},
+		{name: "data tx, channel extension", channelID: "arma2", reqType: common.HeaderType_MESSAGE, errMsg: wrong},
+		{name: "data tx, upper-case channel", channelID: "ARMA", reqType: common.HeaderType_MESSAGE, errMsg: wrong},
+		{name: "config update, same channel", channelID: "arma", reqType: common.HeaderType_CONFIG_UPDATE},
+		{name: "config update, no channel", channelID: "", reqType: common.HeaderType_CONFIG_UPDATE, errMsg: missing},
+		{name: "config update, other channel", channelID: "other", reqType: common.HeaderType_CONFIG_UPDATE, errMsg: wrong},
+		{name: "config, same channel", channelID: "arma", reqType: common.HeaderType_CONFIG},
+		{name: "config, no channel", channelID: "", reqType: common.HeaderType_CONFIG, errMsg: missing},
+		{name: "config, other channel", channelID: "other", reqType: common.HeaderType_CONFIG, errMsg: wrong},
+		{name: "endorser tx, no channel", channelID: "", reqType: common.HeaderType_ENDORSER_TRANSACTION, errMsg: missing},
+	} {
+		for _, sigVerify := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/sigVerify=%t", tc.name, sigVerify), func(t *testing.T) {
+				policy := &policyMock.FakePolicyEvaluator{}
+				policyManager := &policyMock.FakePolicyManager{}
+				policyManager.GetPolicyReturns(policy, true)
+				fc := &mocks.FakeFilterConfig{}
+				fc.GetPolicyManagerReturns(policyManager)
+				fc.GetClientSignatureVerificationRequiredReturns(sigVerify)
+				fc.GetChannelIDReturns("arma")
+
+				var v requestfilter.RulesVerifier
+				v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
+
+				req := tx.CreateStructuredRequestOfChannel(tc.reqType, tc.channelID, []byte("data"))
+				classified, err := v.VerifyStructureAndClassify(req)
+				if tc.errMsg != "" {
+					require.ErrorContains(t, err, tc.errMsg)
+					require.Zero(t, policy.EvaluateSignedDataCallCount(),
+						"the policy is evaluated only after the structure is checked")
+					return
+				}
+				require.NoError(t, err)
+				require.Equal(t, tc.reqType, classified)
+			})
+		}
+	}
+}
+
+func TestSigFilterUpdateChannelID(t *testing.T) {
+	var v requestfilter.RulesVerifier
+	req := tx.CreateStructuredRequest([]byte("data"))
+	fc := &mocks.FakeFilterConfig{}
+	fc.GetChannelIDReturns("arma")
+
+	v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
+	_, err := v.VerifyStructureAndClassify(req)
+	require.NoError(t, err)
+
+	fc.GetChannelIDReturns("other")
+	require.NoError(t, v.Update(fc))
+	_, err = v.VerifyStructureAndClassify(req)
+	require.ErrorContains(t, err, `wrong channel id in channel header, expected "other"`)
 }

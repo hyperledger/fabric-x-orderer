@@ -38,7 +38,7 @@ func (sf *SigFilter) VerifyAndClassify(request *comm.Request) (common.HeaderType
 	// extract signedData, while verifying the structure of the request
 	signedData, reqType, err := sf.requestToSignedData(request)
 	if err != nil {
-		return reqType, fmt.Errorf("failed to convert request to signedData : %s", err)
+		return reqType, fmt.Errorf("failed to convert request to signedData : %w", err)
 	}
 
 	if sf.clientSignatureVerificationRequired || reqType == common.HeaderType_CONFIG_UPDATE {
@@ -54,8 +54,8 @@ func (sf *SigFilter) VerifyAndClassify(request *comm.Request) (common.HeaderType
 	return reqType, nil
 }
 
-// requestToSignedData verifies the request structure and returns the payload, identity and signature in a SignedData.
-// additionally, the request tyoe is extracted and returned.
+// requestToSignedData verifies the request structure, including its TxID and channel ID, and returns the payload,
+// identity and signature in a SignedData. Additionally, the request type is extracted and returned.
 func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.SignedData, common.HeaderType, error) {
 	var reqType common.HeaderType
 	if request == nil {
@@ -96,10 +96,9 @@ func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.Sign
 		return nil, reqType, err
 	}
 
-	// TODO: check channel ID
-	// if sf.channelID != chdr.ChannelId {
-	// 	return nil, fmt.Errorf("channelID is incorrect. expected: %s, actual: %s", sf.channelID, chdr.ChannelId)
-	// }
+	if err = sf.verifyChannelID(chdr); err != nil {
+		return nil, reqType, err
+	}
 
 	id, err := protoutil.UnmarshalIdentity(shdr.Creator)
 	if err != nil {
@@ -113,6 +112,25 @@ func (sf *SigFilter) requestToSignedData(request *comm.Request) (*protoutil.Sign
 	}, common.HeaderType(chdr.Type), nil
 }
 
+// verifyChannelID checks the channel header's ChannelId against the node's channel ID.
+// A data transaction (MESSAGE) may leave the channel ID empty, since a deployment may bind its data transactions to
+// the network through their namespaces instead; a non-empty one must match.
+// Any other request, a config update in particular, must carry the node's channel ID.
+// The errors never echo the request's (unbounded) channel ID into errors and logs.
+func (sf *SigFilter) verifyChannelID(chdr *common.ChannelHeader) error {
+	channelID := chdr.GetChannelId()
+	if channelID == "" {
+		if common.HeaderType(chdr.GetType()) == common.HeaderType_MESSAGE {
+			return nil
+		}
+		return errMissingChannelID
+	}
+	if channelID != sf.channelID {
+		return fmt.Errorf("%w, expected %q", errWrongChannelID, sf.channelID)
+	}
+	return nil
+}
+
 func (sf *SigFilter) Update(config FilterConfig) error {
 	sf.clientSignatureVerificationRequired = config.GetClientSignatureVerificationRequired()
 	sf.channelID = config.GetChannelID()
@@ -121,8 +139,10 @@ func (sf *SigFilter) Update(config FilterConfig) error {
 }
 
 var (
-	errMissingNonce = errors.New("missing nonce in signature header")
-	errInvalidTxID  = errors.New("invalid tx id")
+	errMissingNonce     = errors.New("missing nonce in signature header")
+	errInvalidTxID      = errors.New("invalid tx id")
+	errMissingChannelID = errors.New("missing channel id in channel header")
+	errWrongChannelID   = errors.New("wrong channel id in channel header")
 )
 
 // verifyTxID checks that the signature header carries a nonce, and that the channel header's TxId

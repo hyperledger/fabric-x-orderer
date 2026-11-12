@@ -49,11 +49,21 @@ func createPayloadHeader(ch *common.ChannelHeader, sh *common.SignatureHeader) *
 	}
 }
 
+// channelID is the channel ID in the channel header of the test envelopes: the channel of the networks that
+// armageddon generates, which the orderer nodes check it against.
+const channelID = "arma"
+
 // fixedNonce is the nonce of the structured test envelopes, which are deterministic and so all share the same TxID.
 var fixedNonce = []byte("nonce")
 
 func createStructuredPayload(data []byte, requestType common.HeaderType, nonce []byte) *common.Payload {
-	payloadChannelHeader := createChannelHeader(requestType, 0, "channelID", 0)
+	return createStructuredPayloadOfChannel(data, requestType, channelID, nonce)
+}
+
+func createStructuredPayloadOfChannel(
+	data []byte, requestType common.HeaderType, channel string, nonce []byte,
+) *common.Payload {
+	payloadChannelHeader := createChannelHeader(requestType, 0, channel, 0)
 	id, err := msp.NewSerializedIdentity("org1", []byte("cert"))
 	if err != nil {
 		panic(err)
@@ -152,10 +162,15 @@ func CreateStructuredConfigUpdateRequest(data []byte) *protos.Request {
 }
 
 func CreateStructuredRequest(data []byte) *protos.Request {
-	payload := createStructuredPayload(data, common.HeaderType_MESSAGE, fixedNonce)
-	payloadBytes := deterministicMarshall(payload)
+	return CreateStructuredRequestOfChannel(common.HeaderType_MESSAGE, channelID, data)
+}
+
+// CreateStructuredRequestOfChannel is like CreateStructuredRequest, but for a request of the given type whose channel
+// header names the given channel, which may be empty.
+func CreateStructuredRequestOfChannel(reqType common.HeaderType, channel string, data []byte) *protos.Request {
+	payload := createStructuredPayloadOfChannel(data, reqType, channel, fixedNonce)
 	return &protos.Request{
-		Payload:   payloadBytes,
+		Payload:   deterministicMarshall(payload),
 		Signature: []byte("signature"),
 	}
 }
@@ -300,7 +315,7 @@ func computeCertID(certBytes []byte) (string, error) {
 // createSignedStructuredPayloadWithCertID builds a Payload whose creator identity uses a certificate-ID
 // (hash) instead of the full certificate PEM.
 func createSignedStructuredPayloadWithCertID(data []byte, certBytes []byte, org string) *common.Payload {
-	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)
+	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, channelID, 0)
 
 	certID, err := computeCertID(certBytes)
 	if err != nil {
@@ -341,7 +356,7 @@ func signPayload(payload *common.Payload, signer *crypto.ECDSASigner) *common.En
 
 // TODO: Revise it when cert registry is integrated into orderer
 func createSignedStructuredPayload(data []byte, certBytes []byte, org string) *common.Payload {
-	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, "channelID", 0)
+	payloadChannelHeader := createChannelHeader(common.HeaderType_MESSAGE, 0, channelID, 0)
 
 	sId := msppb.NewIdentity(org, certBytes)
 
@@ -357,7 +372,7 @@ func createSignedStructuredPayload(data []byte, certBytes []byte, org string) *c
 }
 
 func CreatePayloadWithConfigUpdate(data []byte, certBytes []byte, org string) *common.Payload {
-	payloadChannelHeader := createChannelHeader(common.HeaderType_CONFIG_UPDATE, 0, "arma", 0)
+	payloadChannelHeader := createChannelHeader(common.HeaderType_CONFIG_UPDATE, 0, channelID, 0)
 
 	sId := msppb.NewIdentity(org, certBytes)
 
