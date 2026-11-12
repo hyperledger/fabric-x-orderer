@@ -77,3 +77,24 @@ func TestRebuildCommittedIndex(t *testing.T) {
 			"pair %v", key)
 	}
 }
+
+// TestRebuildCommittedIndexPanicsOnMismatchedDecision verifies that the rebuild fails when a ledger block does
+// not hold the decision of its number, instead of indexing it under the wrong decision.
+func TestRebuildCommittedIndexPanicsOnMismatchedDecision(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+	l, err := ledger.NewConsensusLedger(t.TempDir())
+	require.NoError(t, err)
+	defer l.Close()
+
+	var prevHash []byte
+	for n, num := range []arma_types.DecisionNum{1, 2, 3} { // every block holds the decision after its number
+		hdr := &state.Header{Num: num, State: &state.State{}}
+		md, err := proto.Marshal(&smartbftprotos.ViewMetadata{LatestSequence: uint64(num)})
+		require.NoError(t, err)
+		block := state.CreateBlockToAppendFromDecision(uint64(n), smartbft_types.Proposal{Header: hdr.Serialize(), Payload: []byte{1}, Metadata: md}, nil, prevHash, 0)
+		prevHash = protoutil.BlockHeaderHash(block.Header)
+		l.Append(block)
+	}
+
+	require.Panics(t, func() { rebuildCommittedIndex(logger, committedindex.New(), l, &state.State{}) })
+}

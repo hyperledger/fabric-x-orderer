@@ -21,6 +21,10 @@ import (
 // whose last decision has state st. It replays the decisions from st.ReplayFrom, which committed every
 // batch at or above the prune points of st, and then drops the batches below those prune points. It panics
 // if a decision cannot be read.
+//
+// The replay covers the decisions of the batches not pruned yet, normally the last few. A seq that is never
+// committed (an orphan) stops the prune point of its <shard, primary>, so the batches committed above it stay
+// in the index, and every rebuild then replays from the decision of the first of them.
 func rebuildCommittedIndex(logger *flogging.FabricLogger, idx *committedindex.Index, l *ledger.ConsensusLedger, st *state.State) {
 	height := l.Height()
 	from := uint64(st.ReplayFrom)
@@ -49,7 +53,12 @@ func rebuildCommittedIndex(logger *flogging.FabricLogger, idx *committedindex.In
 		if err != nil {
 			logger.Panicf("Failed reading decision %d to rebuild the committed index: %v", num, err)
 		}
-		idx.Add(hdr.Num, ids)
+		if uint64(hdr.Num) != num {
+			logger.Panicf("Ledger block %d holds decision %d; cannot rebuild the committed index", num, hdr.Num)
+		}
+		if err := idx.Add(hdr.Num, ids); err != nil {
+			logger.Panicf("Failed rebuilding the committed index at decision %d: %v", num, err)
+		}
 	}
 
 	for _, p := range st.PrunePoints {

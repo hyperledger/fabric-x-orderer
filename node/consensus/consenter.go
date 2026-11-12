@@ -119,7 +119,9 @@ func (c *Consenter) IndexCommitted(hdr *state.Header) {
 	if err != nil {
 		c.Logger.Panicf("Failed indexing the batches of decision %d: %v", hdr.Num, err)
 	}
-	c.Committed.Add(hdr.Num, ids)
+	if err := c.Committed.Add(hdr.Num, ids); err != nil {
+		c.Logger.Panicf("Failed indexing the batches of decision %d: %v", hdr.Num, err)
+	}
 	if hdr.State != nil {
 		for _, p := range hdr.State.PrunePoints {
 			c.Committed.DropBelow(p.Shard, p.Primary, p.Seq)

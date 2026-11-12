@@ -172,6 +172,15 @@ func TestConsenterIndexCommitted(t *testing.T) {
 		require.Panics(t, func() { c.IndexCommitted(hdr) })
 	})
 
+	t.Run("skipped decision panics", func(t *testing.T) {
+		c := createConsenter(testutil.CreateLogger(t, 0))
+		commitSeqs(t, c, []arma_types.BatchSequence{0}, []arma_types.DecisionNum{1})
+
+		hdr := headerWithBatches(t, 3, batch)
+		hdr.State = &state.State{}
+		require.Panics(t, func() { c.IndexCommitted(hdr) })
+	})
+
 	t.Run("drops batches below the decision's prune points", func(t *testing.T) {
 		c := createConsenter(testutil.CreateLogger(t, 0))
 		commitSeqs(t, c, []arma_types.BatchSequence{0, 1, 2, 3}, []arma_types.DecisionNum{1, 2, 3, 4})

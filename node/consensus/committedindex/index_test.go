@@ -34,7 +34,9 @@ func indexOf(commits ...commit) *Index {
 		last = max(last, c.decision)
 	}
 	for d := types.DecisionNum(0); d <= last; d++ {
-		x.Add(d, byDecision[d])
+		if err := x.Add(d, byDecision[d]); err != nil {
+			panic(err)
+		}
 	}
 	return x
 }
@@ -137,8 +139,8 @@ func TestReplayFromEmpty(t *testing.T) {
 	x := New()
 	require.Equal(t, types.DecisionNum(0), x.ReplayFrom())
 
-	x.Add(0, nil)
-	x.Add(1, nil)
+	require.NoError(t, x.Add(0, nil))
+	require.NoError(t, x.Add(1, nil))
 	require.Equal(t, types.DecisionNum(2), x.ReplayFrom())
 
 	x = indexOf(commit{1, 1, 0, 0, 3}, commit{1, 1, 1, 0, 7})
@@ -168,8 +170,8 @@ func TestAddIdempotent(t *testing.T) {
 	x := indexOf(commit{1, 1, 0, 0, 1}, commit{1, 1, 1, 0, 2}, commit{1, 1, 2, 0, 3})
 	size, replayFrom := x.Size(), x.ReplayFrom()
 
-	x.Add(3, []types.BatchID{state.NewAvailableBatch(1, 1, 2, []byte{0})})
-	x.Add(2, []types.BatchID{state.NewAvailableBatch(1, 1, 1, []byte{0})})
+	require.NoError(t, x.Add(3, []types.BatchID{state.NewAvailableBatch(1, 1, 2, []byte{0})}))
+	require.NoError(t, x.Add(2, []types.BatchID{state.NewAvailableBatch(1, 1, 1, []byte{0})}))
 
 	require.Equal(t, size, x.Size())
 	require.Equal(t, replayFrom, x.ReplayFrom())
@@ -191,4 +193,20 @@ func TestFarBeyondTheWindow(t *testing.T) {
 	x.DropBelow(1, 1, far)
 	require.Zero(t, x.Size())
 	require.Equal(t, types.DecisionNum(3), x.ReplayFrom())
+}
+
+// TestAddSkippedDecision verifies that the first decision added may be any decision, as when a restarting
+// consenter replays from its last state, but that skipping a decision afterwards is reported and changes
+// nothing.
+func TestAddSkippedDecision(t *testing.T) {
+	x := New()
+	require.NoError(t, x.Add(7, nil))
+	require.NoError(t, x.Add(8, []types.BatchID{state.NewAvailableBatch(1, 1, 0, []byte{0})}))
+
+	require.ErrorContains(t, x.Add(10, []types.BatchID{state.NewAvailableBatch(1, 1, 1, []byte{0})}), "decision 9")
+	require.Equal(t, 1, x.Size())
+	require.Equal(t, types.DecisionNum(8), x.ReplayFrom())
+
+	require.NoError(t, x.Add(9, nil))
+	require.NoError(t, x.Add(8, nil), "a decision already added is ignored")
 }

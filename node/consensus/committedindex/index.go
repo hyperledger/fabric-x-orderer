@@ -11,6 +11,7 @@ package committedindex
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 	"sort"
 	"sync"
@@ -32,10 +33,15 @@ type Index struct {
 	ledgers map[LedgerKey]*ledgerWindow
 	// queue holds, in decision order, the decisions that committed batches still in the index, with the
 	// number of such batches. Its front is the lowest decision that committed a batch the index holds.
+	// Entries whose count drops to zero are removed only from the front. A batch that stays in the index
+	// keeps the front in place, so the zero-count entries behind it pile up: this happens above a seq that
+	// is never committed (an orphan), whose prune point never advances, and needs compaction once orphans
+	// are pruned too.
 	queue []decisionCount
-	// next is the decision Add expects next.
-	next types.DecisionNum
-	size int
+	// next is the decision Add expects next, once started is set by the first Add.
+	next    types.DecisionNum
+	started bool
+	size    int
 }
 
 // ledgerWindow holds the batches of one <shard, primary>. decisions[i] lists the decisions that committed
@@ -56,18 +62,24 @@ func New() *Index {
 	return &Index{}
 }
 
-// Add records the batches committed by decision num. Decisions must be added in order; a decision below
-// the next one expected was already added and is ignored, so adding a decision again changes nothing.
-func (x *Index) Add(num types.DecisionNum, ids []types.BatchID) {
+// Add records the batches committed by decision num. Decisions must be added in order, each one once, but
+// the first decision added may be any decision. A decision below the next one expected was already added and
+// is ignored, so adding a decision again changes nothing. Add returns an error, and changes nothing, if num
+// skips a decision: the index would then miss that decision's batches.
+func (x *Index) Add(num types.DecisionNum, ids []types.BatchID) error {
 	x.lock.Lock()
 	defer x.lock.Unlock()
 
-	if num < x.next {
-		return
+	if x.started && num < x.next {
+		return nil
 	}
+	if x.started && num > x.next {
+		return fmt.Errorf("decision %d added before decision %d", num, x.next)
+	}
+	x.started = true
 	x.next = num + 1
 	if len(ids) == 0 {
-		return
+		return nil
 	}
 
 	if x.ledgers == nil {
@@ -84,6 +96,7 @@ func (x *Index) Add(num types.DecisionNum, ids []types.BatchID) {
 		}
 		w.add(id.Seq(), num)
 	}
+	return nil
 }
 
 // DropBelow removes the batches of <shard, primary> whose seq is below seq.
