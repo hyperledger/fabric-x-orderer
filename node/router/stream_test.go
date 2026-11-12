@@ -20,6 +20,7 @@ import (
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
+	requestfilterMocks "github.com/hyperledger/fabric-x-orderer/common/requestfilter/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
 	protos "github.com/hyperledger/fabric-x-orderer/node/protos/comm"
 	commMocks "github.com/hyperledger/fabric-x-orderer/node/protos/comm/mocks"
@@ -683,6 +684,37 @@ func TestSendRequestsUnregistersAConfigUpdateOnHandoff(t *testing.T) {
 	_, exists := s.isRequestRegistered(trace)
 	require.False(t, exists)
 	require.Empty(t, responseChan)
+}
+
+// Scenario:
+//  1. Classify requests whose channel header type is supported, unsupported, above the known range, and negative.
+//  2. Expect only the supported types to pass, and every other type to be rejected as a bad request.
+func TestVerifyAndClassifyRequestRejectsUnsupportedTypes(t *testing.T) {
+	for _, tc := range []struct {
+		reqType   common.HeaderType
+		supported bool
+	}{
+		{reqType: common.HeaderType_MESSAGE, supported: true},
+		{reqType: common.HeaderType_CONFIG_UPDATE, supported: true},
+		{reqType: common.HeaderType_CONFIG, supported: false},
+		{reqType: common.HeaderType(7), supported: false},
+		{reqType: common.HeaderType(-1), supported: false},
+	} {
+		t.Run(tc.reqType.String(), func(t *testing.T) {
+			structureRule := &requestfilterMocks.FakeStructureRule{}
+			structureRule.VerifyAndClassifyReturns(tc.reqType, nil)
+			verifier := requestfilter.NewRulesVerifier(nil)
+			verifier.AddStructureRule(structureRule)
+			s := &stream{logger: testutil.CreateLogger(t, 0), verifier: verifier}
+
+			_, err := s.verifyAndClassifyRequest(&protos.Request{})
+			if tc.supported {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, "request has unsupported type")
+		})
+	}
 }
 
 // createTestVerifierAcceptingConfigUpdates builds a verifier whose policy manager accepts config updates.
