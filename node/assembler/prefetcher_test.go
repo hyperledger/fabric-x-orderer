@@ -7,11 +7,15 @@ SPDX-License-Identifier: Apache-2.0
 package assembler_test
 
 import (
+	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/hyperledger/fabric-x-orderer/common/operations"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/common/utils"
 	"github.com/hyperledger/fabric-x-orderer/node/assembler"
 	assembler_mocks "github.com/hyperledger/fabric-x-orderer/node/assembler/mocks"
 	"github.com/hyperledger/fabric-x-orderer/node/config"
@@ -163,4 +167,75 @@ func TestPrefetcher_StopWillStopBatchFetcher(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return test.batchFetcherMock.StopCallCount() == 1
 	}, eventuallyTimeout, eventuallyTick)
+}
+
+// Scenario:
+//  1. Start a prefetcher whose index Put waits until the index is stopped, as Put does on a full partition.
+//  2. Stream one batch, so that Put waits.
+//  3. Stop the prefetcher.
+//  4. Expect Stop to return.
+func TestPrefetcher_StopWakesAPutWaitingForRoom(t *testing.T) {
+	// Arrange
+	test := setupPrefetcherTest(t, []types.ShardID{1}, []types.PartyID{1})
+	indexStopped := make(chan struct{})
+	var stopIndexOnce sync.Once
+	test.prefetchIndexMock.StopCalls(func() { stopIndexOnce.Do(func() { close(indexStopped) }) })
+	test.prefetchIndexMock.PutCalls(func(types.Batch) error {
+		<-indexStopped
+		return utils.ErrOperationCancelled
+	})
+	test.prefetcher.Start()
+	test.shardToReplicationChan[1] <- createTestBatch(1, 1, 0, nil)
+	require.Eventually(t, func() bool {
+		return test.prefetchIndexMock.PutCallCount() == 1
+	}, eventuallyTimeout, eventuallyTick)
+
+	// Act
+	stopped := make(chan struct{})
+	go func() {
+		test.prefetcher.Stop()
+		close(stopped)
+	}()
+
+	// Assert
+	require.Eventually(t, func() bool {
+		select {
+		case <-stopped:
+			return true
+		default:
+			return false
+		}
+	}, eventuallyTimeout, eventuallyTick)
+}
+
+// Scenario:
+//  1. Start a prefetcher whose GetBatch waits until the batch fetcher is stopped, then takes a moment to return.
+//  2. Request a batch, so that a GetBatch is in progress.
+//  3. Stop the prefetcher.
+//  4. Expect that GetBatch has returned by the time Stop returns.
+func TestPrefetcher_StopWaitsForTheBatchFetchesInProgress(t *testing.T) {
+	// Arrange
+	test := setupPrefetcherTest(t, []types.ShardID{1}, []types.PartyID{1})
+	fetcherStopped := make(chan struct{})
+	var stopFetcherOnce sync.Once
+	test.batchFetcherMock.StopCalls(func() { stopFetcherOnce.Do(func() { close(fetcherStopped) }) })
+	var fetchReturned atomic.Bool
+	test.batchFetcherMock.GetBatchCalls(func(types.BatchID) (types.Batch, error) {
+		<-fetcherStopped
+		time.Sleep(eventuallyTick)
+		fetchReturned.Store(true)
+		return nil, context.Canceled
+	})
+	test.prefetcher.Start()
+	test.batchRequestChan <- createTestBatchId(1, 1, 0, nil)
+	require.Eventually(t, func() bool {
+		return test.batchFetcherMock.GetBatchCallCount() == 1
+	}, eventuallyTimeout, eventuallyTick)
+
+	// Act
+	test.prefetcher.Stop()
+
+	// Assert
+	require.True(t, fetchReturned.Load())
+	require.Zero(t, test.prefetchIndexMock.PutForceCallCount())
 }

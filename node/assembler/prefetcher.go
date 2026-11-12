@@ -82,8 +82,11 @@ func (p *Prefetcher) Start() {
 // Stops the prefetcher.
 func (p *Prefetcher) Stop() {
 	p.cancelContextFunc()
-	p.wg.Wait()
+	// Stop the index first: a Put waiting for room in it is woken only by the index stopping.
+	// Stop the fetcher before waiting: it is what cancels the GetBatch calls in progress.
+	p.prefetchIndex.Stop()
 	p.batchFetcher.Stop()
+	p.wg.Wait()
 }
 
 func (p *Prefetcher) handleReplication(shard types.ShardID) {
@@ -117,7 +120,9 @@ func (p *Prefetcher) handleBatchRequests() {
 			p.logger.Infof("Exiting handleBatchRequests")
 			return
 		case batchId := <-p.prefetchIndex.Requests():
+			p.wg.Add(1)
 			go func(batchId types.BatchID) {
+				defer p.wg.Done()
 				fetchStart := time.Now()
 				batch, err := p.batchFetcher.GetBatch(batchId)
 				p.metrics.batchUnaryFetchLatency.Observe(time.Since(fetchStart).Seconds())

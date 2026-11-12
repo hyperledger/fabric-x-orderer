@@ -258,7 +258,7 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 		if atomic.LoadInt32(&wasBatchRequestedFlag) == 0 && doubleDigest {
 			pi.logger.Debugf("PopOrWait %s, double digest, requesting batch %s", pi.getName(), BatchToString(batchId))
 			atomic.StoreInt32(&wasBatchRequestedFlag, 0x1)
-			pi.batchRequestChan <- batchId
+			pi.requestBatch(batchId)
 		}
 
 		// If we did not request a batch via the `batchRequestChan`, and we are going to wait for it, we schedule
@@ -267,7 +267,7 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 			censorMonitor = time.AfterFunc(pi.popWaitMonitorTimeout, func() {
 				atomic.StoreInt32(&wasBatchRequestedFlag, 0x1)
 				pi.logger.Debugf("PopOrWait %s, censorship monitor, requesting batch %s", pi.getName(), BatchToString(batchId))
-				pi.batchRequestChan <- batchId
+				pi.requestBatch(batchId)
 				pi.stateCond.Broadcast()
 			})
 
@@ -276,6 +276,15 @@ func (pi *PartitionPrefetchIndex) PopOrWait(batchId types.BatchID) (types.Batch,
 
 		pi.logger.Debugf("PopOrWait %s, going to wait for batch %s", pi.getName(), BatchToString(batchId))
 		pi.stateCond.Wait()
+	}
+}
+
+// requestBatch asks the prefetcher to fetch the batch, unless the index is stopped first:
+// once the prefetcher has stopped, nothing drains the request channel.
+func (pi *PartitionPrefetchIndex) requestBatch(batchId types.BatchID) {
+	select {
+	case pi.batchRequestChan <- batchId:
+	case <-pi.cancellationContext.Done():
 	}
 }
 
@@ -289,6 +298,10 @@ func (pi *PartitionPrefetchIndex) saveOrdinaryBatch(batch types.Batch) error {
 
 		pi.stateCond.L.Lock()
 		defer pi.stateCond.L.Unlock()
+		// Stop stopped this timer while the handler waited for the lock
+		if pi.cancellationContext.Err() != nil {
+			return
+		}
 
 		_, err := pi.removeUnsafe(batch)
 		if err != nil {
@@ -321,6 +334,9 @@ func (pi *PartitionPrefetchIndex) Put(batch types.Batch) error {
 	}
 	pi.stateCond.L.Lock()
 	defer pi.stateCond.L.Unlock()
+	if pi.cancellationContext.Err() != nil {
+		return utils.ErrOperationCancelled
+	}
 	if pi.cache.Has(batch) {
 		return ErrBatchAlreadyExists
 	}
@@ -361,6 +377,9 @@ func (bs *PartitionPrefetchIndex) PutForce(batch types.Batch) error {
 
 	bs.stateCond.L.Lock()
 	defer bs.stateCond.L.Unlock()
+	if bs.cancellationContext.Err() != nil {
+		return utils.ErrOperationCancelled
+	}
 	err := bs.forcedPutCache.Put(batch)
 	if err != nil {
 		return err
