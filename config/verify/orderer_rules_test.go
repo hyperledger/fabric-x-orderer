@@ -270,7 +270,7 @@ func TestValidateNewConfig_CertificateExpiration(t *testing.T) {
 	require.NoError(t, err)
 	caKeyPEM, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "tlsca", "priv_sk"))
 	require.NoError(t, err)
-	routerCert, err := utils.Parsex509Cert(shared.PartiesConfig[0].RouterConfig.TlsCert)
+	routerCert, err := utils.Parsex509Cert(shared.PartiesConfig[0].RouterConfig.NodeConfig.ServerTlsCert)
 	require.NoError(t, err)
 	caCert, err := utils.Parsex509Cert(caCertPEM)
 	require.NoError(t, err)
@@ -280,7 +280,9 @@ func TestValidateNewConfig_CertificateExpiration(t *testing.T) {
 	tmpl.NotAfter = routerCert.NotBefore.Add(time.Second)
 	expiredDER, err := x509.CreateCertificate(rand.Reader, &tmpl, caCert, routerCert.PublicKey, caKey)
 	require.NoError(t, err)
-	shared.PartiesConfig[0].RouterConfig.TlsCert = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: expiredDER})
+	expiredPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: expiredDER})
+	shared.PartiesConfig[0].RouterConfig.NodeConfig.ServerTlsCert = expiredPEM
+	shared.PartiesConfig[0].RouterConfig.NodeConfig.ClientTlsCert = expiredPEM
 
 	// validate the new config, expect error
 	consensusType := &orderer.ConsensusType{}
@@ -354,19 +356,19 @@ func TestValidateNewConfig_RouterAndAssemblerEndpointsMismatch(t *testing.T) {
 	}{
 		{
 			name:   "router host",
-			update: func(party *ordererpb.PartyConfig) { party.RouterConfig.Host = "router.example.com" },
+			update: func(party *ordererpb.PartyConfig) { party.RouterConfig.NodeConfig.Host = "router.example.com" },
 		},
 		{
 			name:   "router port",
-			update: func(party *ordererpb.PartyConfig) { party.RouterConfig.Port++ },
+			update: func(party *ordererpb.PartyConfig) { party.RouterConfig.NodeConfig.Port++ },
 		},
 		{
 			name:   "assembler host",
-			update: func(party *ordererpb.PartyConfig) { party.AssemblerConfig.Host = "assembler.example.com" },
+			update: func(party *ordererpb.PartyConfig) { party.AssemblerConfig.NodeConfig.Host = "assembler.example.com" },
 		},
 		{
 			name:   "assembler port",
-			update: func(party *ordererpb.PartyConfig) { party.AssemblerConfig.Port++ },
+			update: func(party *ordererpb.PartyConfig) { party.AssemblerConfig.NodeConfig.Port++ },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -385,7 +387,7 @@ func TestValidateNewConfig_DuplicateSigningCertInGenesis(t *testing.T) {
 	_, env, _, _, _, _, _ := setupOrdererRulesTest(t, 2)
 
 	env = updateSharedConfig(t, env, func(shared *ordererpb.SharedConfig) {
-		shared.PartiesConfig[0].AssemblerConfig.SignCert = shared.PartiesConfig[0].RouterConfig.SignCert
+		shared.PartiesConfig[0].AssemblerConfig.NodeConfig.SignCert = shared.PartiesConfig[0].RouterConfig.NodeConfig.SignCert
 	})
 
 	err := (&verify.DefaultOrdererRules{}).ValidateNewConfig(env, factory.GetDefault(), types.PartyID(1))

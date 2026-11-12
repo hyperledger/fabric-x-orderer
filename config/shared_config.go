@@ -172,10 +172,13 @@ func loadRouterConfig(host string, port uint32, tlsCertPath string, signCertPath
 		return nil, fmt.Errorf("load shared config failed, read router sign cert failed, err: %v", err)
 	}
 	return &ordererpb.RouterNodeConfig{
-		Host:     host,
-		Port:     port,
-		SignCert: signCert,
-		TlsCert:  TLSCert,
+		NodeConfig: &ordererpb.NodeConfig{
+			Host:          host,
+			Port:          port,
+			ClientTlsCert: TLSCert,
+			ServerTlsCert: TLSCert,
+			SignCert:      signCert,
+		},
 	}, nil
 }
 
@@ -193,11 +196,14 @@ func loadBatchersConfig(batchersConfigYaml []BatcherNodeConfig) ([]*ordererpb.Ba
 			return nil, fmt.Errorf("load shared config failed, read batcher sign cert failed, err: %v", err)
 		}
 		batcherConfig := &ordererpb.BatcherNodeConfig{
-			ShardID:  uint32(batcher.ShardID),
-			Host:     batcher.Host,
-			Port:     batcher.Port,
-			SignCert: signCert,
-			TlsCert:  TLSCert,
+			NodeConfig: &ordererpb.NodeConfig{
+				Host:          batcher.Host,
+				Port:          batcher.Port,
+				ClientTlsCert: TLSCert,
+				ServerTlsCert: TLSCert,
+				SignCert:      signCert,
+			},
+			ShardId: uint32(batcher.ShardID),
 		}
 		batchersConfig = append(batchersConfig, batcherConfig)
 	}
@@ -215,10 +221,13 @@ func loadConsenterConfig(host string, port uint32, tlsCertPath string, signCertP
 		return nil, fmt.Errorf("load shared config failed, read consenter sign cert failed, err: %v", err)
 	}
 	return &ordererpb.ConsenterNodeConfig{
-		Host:     host,
-		Port:     port,
-		SignCert: signCert,
-		TlsCert:  TLSCert,
+		NodeConfig: &ordererpb.NodeConfig{
+			Host:          host,
+			Port:          port,
+			ClientTlsCert: TLSCert,
+			ServerTlsCert: TLSCert,
+			SignCert:      signCert,
+		},
 	}, nil
 }
 
@@ -233,9 +242,12 @@ func loadAssemblerConfig(host string, port uint32, tlsCertPath string, signCertP
 		return nil, fmt.Errorf("load shared config failed, read assembler sign cert failed, err: %v", err)
 	}
 	return &ordererpb.AssemblerNodeConfig{
-		Host:     host,
-		Port:     port,
-		SignCert: signCert,
-		TlsCert:  TLSCert,
+		NodeConfig: &ordererpb.NodeConfig{
+			Host:          host,
+			Port:          port,
+			ClientTlsCert: TLSCert,
+			ServerTlsCert: TLSCert,
+			SignCert:      signCert,
+		},
 	}, nil
 }

@@ -119,8 +119,8 @@ MSP, as in Steps 1 and 3 of CA rotation), trigger a dynamic restart instead:
 
 - **Its own party was removed.** This applies to all node types.
 - **Its own identity changed.** An identity change is any of:
-  - its host or port (the `host`/`port` of this node's entry in `PartiesConfig`);
-  - its TLS certificate (`tls_cert`);
+  - its host or port (the `host`/`port` in the `node_config` of this node's entry in `PartiesConfig`);
+  - its TLS certificate (`client_tls_cert` / `server_tls_cert`);
   - its signing certificate (`sign_cert`).
 - **Batchers only: a batching parameter used by the mempool changed** (see
   [5.2](#52-update-batching-parameters)). The batcher's memory pool cannot be reconfigured
@@ -277,7 +277,7 @@ A rule marked **no** is not enforced: the TX is accepted, so you must keep the c
 | If you change...                               | ...you must also update                                                                                                         | Validated |
 |------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|-----------|
 | A consenter's `host` / `port`                  | The party's entry in `Orderer.values.Orderers.value.consenter_mapping` (`host`, `port`)                                          | yes       |
-| A consenter's `tls_cert`                       | `consenter_mapping` (`client_tls_cert`, `server_tls_cert`)                                                                       | yes       |
+| A consenter's TLS certificate                  | `consenter_mapping` (`client_tls_cert`, `server_tls_cert`)                                                                       | yes       |
 | A consenter's `sign_cert`                      | `consenter_mapping` (`identity`) **and** the `Orderer.policies.BlockValidation` policy                                           | yes       |
 | The set of parties (add / remove)              | `consenter_mapping`, the orderer org under `Orderer.groups`, **and** the `BlockValidation` policy (BFT quorum over the consenters) | yes       |
 | A party's `TLSCACerts`                         | The org MSP `tls_root_certs` under `Orderer.groups.<org>`                                                                        | yes       |
@@ -385,7 +385,7 @@ Field names are exactly as they appear in the JSON.
 | What                                   | JSON path                                                                                       |
 |----------------------------------------|-------------------------------------------------------------------------------------------------|
 | Parties (endpoints, certs, CAs)        | `<shared>.PartiesConfig[]`: `PartyID`, `CACerts`, `TLSCACerts`, `RouterConfig`, `AssemblerConfig`, `ConsenterConfig`, `BatchersConfig[]` |
-| A node entry                           | `host`, `port`, `tls_cert`, `sign_cert` (batchers also have `shardID`)                           |
+| A node entry                           | `node_config`: `host`, `port`, `client_tls_cert`, `server_tls_cert`, `sign_cert` (batchers also have `shard_id`, next to `node_config`) |
 | Highest party ID ever used             | `<shared>.MaxPartyID`                                                                            |
 | Batching parameters                    | `<shared>.BatchingConfig`: `BatchSize.{MaxMessageCount,AbsoluteMaxBytes}`, `BatchTimeouts.{BatchCreationTimeout,FirstStrikeThreshold,SecondStrikeThreshold,AutoRemoveTimeout}`, `RequestMaxBytes` |
 | SmartBFT parameters                    | `<shared>.ConsensusConfig.SmartBFTConfig.*`                                                      |
@@ -488,7 +488,7 @@ certificate does not cover the new host, rotate the node's TLS certificate
 ([5.4](#54-rotate-a-nodes-tls-or-signing-certificate)) in the same TX. Both changes modify the same
 party, so the TX is allowed.
 
-**Edit:** set the node's `host` / `port` in its entry in `<shared>.PartiesConfig[]` (party 1), and:
+**Edit:** set the node's `node_config.host` / `node_config.port` in its entry in `<shared>.PartiesConfig[]` (party 1), and:
 
 | Node                 | Also update                                                                                       |
 |----------------------|---------------------------------------------------------------------------------------------------|
@@ -541,16 +541,17 @@ Transactions sent to the new address are processed and appear in blocks pulled f
 Use this flow when a node gets a new certificate **from the same CA** (for example, renewal before
 expiry). If the CA itself changes, use [5.5](#55-rotate-a-partys-ca-certificates).
 
-Every node (router, batcher, consenter, assembler) has a `tls_cert` and a `sign_cert` in the shared
-config.
+Every node (router, batcher, consenter, assembler) has a `client_tls_cert`, a `server_tls_cert` and a
+`sign_cert` in the `node_config` of its entry in the shared config. Set both TLS fields to the node's TLS
+certificate.
 
 **Prepare:** issue the new certificate(s) from the party's TLS CA (for TLS) or signing CA (for
 signing).
 
-**Edit:** set the node's `tls_cert` and/or `sign_cert` in its entry in `<shared>.PartiesConfig[]`. For a
-consenter, also update party 1's entry in `consenter_mapping`:
+**Edit:** set the node's `client_tls_cert` and `server_tls_cert` and/or `sign_cert` in the `node_config` of
+its entry in `<shared>.PartiesConfig[]`. For a consenter, also update party 1's entry in `consenter_mapping`:
 
-- new `tls_cert` → `client_tls_cert` and `server_tls_cert`;
+- new TLS certificate → `client_tls_cert` and `server_tls_cert`;
 - new `sign_cert` → `identity`, and rebuild the `BlockValidation` policy
   (see [Where things are in the decoded config](#where-things-are-in-the-decoded-config)).
 
@@ -596,7 +597,7 @@ node certificates (TLS and signing for every node of the party), and new admin a
 
 **Step 2: Switch party 1's nodes to certificates from the new CAs.**
 
-- **Edit** (on the latest config block): replace the `tls_cert` and `sign_cert` of **every** node
+- **Edit** (on the latest config block): replace the TLS certificates and `sign_cert` of **every** node
   of party 1, as in [5.4](#54-rotate-a-nodes-tls-or-signing-certificate) (including the consenter's
   `consenter_mapping` entry and the `BlockValidation` policy). In the same TX, point `org1`'s MSP at
   the new signing CA:
@@ -689,7 +690,8 @@ This example adds **party 5** to a network of parties 1–4. Only one party can 
 
 - set `<shared>.MaxPartyID` to 5;
 - add a party 5 entry to `<shared>.PartiesConfig[]` with `CACerts`, `TLSCACerts`, and the
-  `host`, `port`, `tls_cert` and `sign_cert` of its router, assembler, consenter and batchers;
+  `node_config` (`host`, `port`, `client_tls_cert`, `server_tls_cert`, `sign_cert`) of its router,
+  assembler, consenter and batchers, plus each batcher's `shard_id`;
 - add a party 5 entry to `consenter_mapping`: `id` 5, `msp_id` `org5`, the consenter's `host` and
   `port`, its signing certificate as `identity`, and its TLS certificate as `client_tls_cert` and
   `server_tls_cert`;

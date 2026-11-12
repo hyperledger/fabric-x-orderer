@@ -1221,7 +1221,7 @@ func createStubConsenters(t *testing.T, dir string, parties []types.PartyID) []*
 		sk, err := tx.CreateECDSAPrivateKey(consenterConfig.SigningPrivateKey)
 		require.NoError(t, err)
 		require.NotNil(t, sk)
-		pk := utils.GetPublicKeyFromCertificate(partyConfig.ConsenterConfig.SignCert)
+		pk := utils.GetPublicKeyFromCertificate(partyConfig.ConsenterConfig.NodeConfig.SignCert)
 		stubConsenter := NewStubConsenter(t, i, &node{
 			GRPCServer: srv,
 			TLSCert:    consenterConfig.TLSCertificateFile,

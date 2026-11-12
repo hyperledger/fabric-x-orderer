@@ -62,10 +62,10 @@ func validatePartyCertificates(party *ordererpb.PartyConfig, ignoreExpiration bo
 	}
 
 	if party.RouterConfig != nil {
-		if err := verifyCert(party.RouterConfig.TlsCert, tlsOpts, ignoreExpiration); err != nil {
+		if err := verifyCert(party.RouterConfig.GetNodeConfig().GetServerTlsCert(), tlsOpts, ignoreExpiration); err != nil {
 			return errors.Wrap(err, "router TLS certificate validation failed")
 		}
-		if err := verifyCert(party.RouterConfig.SignCert, signOpts, ignoreExpiration); err != nil {
+		if err := verifyCert(party.RouterConfig.GetNodeConfig().GetSignCert(), signOpts, ignoreExpiration); err != nil {
 			return errors.Wrap(err, "router signing certificate validation failed")
 		}
 	} else {
@@ -73,10 +73,10 @@ func validatePartyCertificates(party *ordererpb.PartyConfig, ignoreExpiration bo
 	}
 
 	if party.AssemblerConfig != nil {
-		if err := verifyCert(party.AssemblerConfig.TlsCert, tlsOpts, ignoreExpiration); err != nil {
+		if err := verifyCert(party.AssemblerConfig.GetNodeConfig().GetServerTlsCert(), tlsOpts, ignoreExpiration); err != nil {
 			return errors.Wrap(err, "assembler TLS certificate validation failed")
 		}
-		if err := verifyCert(party.AssemblerConfig.SignCert, signOpts, ignoreExpiration); err != nil {
+		if err := verifyCert(party.AssemblerConfig.GetNodeConfig().GetSignCert(), signOpts, ignoreExpiration); err != nil {
 			return errors.Wrap(err, "assembler signing certificate validation failed")
 		}
 	} else {
@@ -84,10 +84,10 @@ func validatePartyCertificates(party *ordererpb.PartyConfig, ignoreExpiration bo
 	}
 
 	if party.ConsenterConfig != nil {
-		if err := verifyCert(party.ConsenterConfig.TlsCert, tlsOpts, ignoreExpiration); err != nil {
+		if err := verifyCert(party.ConsenterConfig.GetNodeConfig().GetServerTlsCert(), tlsOpts, ignoreExpiration); err != nil {
 			return errors.Wrap(err, "consenter TLS certificate validation failed")
 		}
-		if err := verifyCert(party.ConsenterConfig.SignCert, signOpts, ignoreExpiration); err != nil {
+		if err := verifyCert(party.ConsenterConfig.GetNodeConfig().GetSignCert(), signOpts, ignoreExpiration); err != nil {
 			return errors.Wrap(err, "consenter signing certificate validation failed")
 		}
 	} else {
@@ -99,10 +99,10 @@ func validatePartyCertificates(party *ordererpb.PartyConfig, ignoreExpiration bo
 			return errors.New("batcher config is nil")
 		}
 
-		if err := verifyCert(b.TlsCert, tlsOpts, ignoreExpiration); err != nil {
+		if err := verifyCert(b.GetNodeConfig().GetServerTlsCert(), tlsOpts, ignoreExpiration); err != nil {
 			return errors.Wrap(err, "batcher TLS certificate validation failed")
 		}
-		if err := verifyCert(b.SignCert, signOpts, ignoreExpiration); err != nil {
+		if err := verifyCert(b.GetNodeConfig().GetSignCert(), signOpts, ignoreExpiration); err != nil {
 			return errors.Wrap(err, "batcher signing certificate validation failed")
 		}
 
@@ -126,14 +126,14 @@ func validateUniqueSigningCerts(parties []*ordererpb.PartyConfig) error {
 
 		partyID := arma_types.PartyID(party.PartyID)
 		signCerts := []nodeSignCert{
-			{node: arma_types.NewRouterIdentity(partyID), cert: party.GetRouterConfig().GetSignCert()},
-			{node: arma_types.NewAssemblerIdentity(partyID), cert: party.GetAssemblerConfig().GetSignCert()},
-			{node: arma_types.NewConsenterIdentity(partyID), cert: party.GetConsenterConfig().GetSignCert()},
+			{node: arma_types.NewRouterIdentity(partyID), cert: party.GetRouterConfig().GetNodeConfig().GetSignCert()},
+			{node: arma_types.NewAssemblerIdentity(partyID), cert: party.GetAssemblerConfig().GetNodeConfig().GetSignCert()},
+			{node: arma_types.NewConsenterIdentity(partyID), cert: party.GetConsenterConfig().GetNodeConfig().GetSignCert()},
 		}
 		for _, b := range party.BatchersConfig {
 			signCerts = append(signCerts, nodeSignCert{
-				node: arma_types.NewBatcherIdentity(partyID, arma_types.ShardID(b.GetShardID())),
-				cert: b.GetSignCert(),
+				node: arma_types.NewBatcherIdentity(partyID, arma_types.ShardID(b.GetShardId())),
+				cert: b.GetNodeConfig().GetSignCert(),
 			})
 		}
 

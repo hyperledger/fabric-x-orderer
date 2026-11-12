@@ -34,21 +34,33 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
-					TlsCert:  tlsCertPEM,
-					SignCert: signCertPEM,
+					NodeConfig: &ordererpb.NodeConfig{
+						ClientTlsCert: tlsCertPEM,
+						ServerTlsCert: tlsCertPEM,
+						SignCert:      signCertPEM,
+					},
 				},
 			},
 		}
@@ -83,8 +95,11 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert:  []byte("invalid"),
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: []byte("invalid"),
+					ServerTlsCert: []byte("invalid"),
+					SignCert:      signCertPEM,
+				},
 			},
 		}
 
@@ -100,8 +115,11 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 			TLSCACerts: [][]byte{differentTLSCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 		}
 
@@ -118,21 +136,33 @@ func TestValidatePartyCertificates_TLS(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
-				TlsCert:  expiredConsenterTLSCert,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: expiredConsenterTLSCert,
+					ServerTlsCert: expiredConsenterTLSCert,
+					SignCert:      signCertPEM,
+				},
 			},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
-					TlsCert:  tlsCertPEM,
-					SignCert: signCertPEM,
+					NodeConfig: &ordererpb.NodeConfig{
+						ClientTlsCert: tlsCertPEM,
+						ServerTlsCert: tlsCertPEM,
+						SignCert:      signCertPEM,
+					},
 				},
 			},
 		}
@@ -183,16 +213,25 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: []byte("invalid"),
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      []byte("invalid"),
+				},
 			},
 		}
 
@@ -208,16 +247,25 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{differentSignCACertPEM}, // Different CA
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM, // Signed by different CA
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM, // Signed by different CA
+				},
 			},
 		}
 
@@ -235,21 +283,33 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: expiredSignCert,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      expiredSignCert,
+				},
 			},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
-					TlsCert:  tlsCertPEM,
-					SignCert: signCertPEM,
+					NodeConfig: &ordererpb.NodeConfig{
+						ClientTlsCert: tlsCertPEM,
+						ServerTlsCert: tlsCertPEM,
+						SignCert:      signCertPEM,
+					},
 				},
 			},
 		}
@@ -268,21 +328,33 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
-					TlsCert:  tlsCertPEM,
-					SignCert: []byte("invalid"),
+					NodeConfig: &ordererpb.NodeConfig{
+						ClientTlsCert: tlsCertPEM,
+						ServerTlsCert: tlsCertPEM,
+						SignCert:      []byte("invalid"),
+					},
 				},
 			},
 		}
@@ -299,21 +371,33 @@ func TestValidatePartyCertificates_Signing(t *testing.T) {
 			TLSCACerts: [][]byte{tlsCACertPEM},
 			CACerts:    [][]byte{signCACertPEM},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
-				TlsCert:  tlsCertPEM,
-				SignCert: signCertPEM,
+				NodeConfig: &ordererpb.NodeConfig{
+					ClientTlsCert: tlsCertPEM,
+					ServerTlsCert: tlsCertPEM,
+					SignCert:      signCertPEM,
+				},
 			},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
 				{
-					TlsCert:  tlsCertPEM,
-					SignCert: expiredSignCert,
+					NodeConfig: &ordererpb.NodeConfig{
+						ClientTlsCert: tlsCertPEM,
+						ServerTlsCert: tlsCertPEM,
+						SignCert:      expiredSignCert,
+					},
 				},
 			},
 		}
@@ -386,12 +470,12 @@ func TestValidateUniqueSigningCerts(t *testing.T) {
 	newParty := func(partyID uint32) *ordererpb.PartyConfig {
 		return &ordererpb.PartyConfig{
 			PartyID:         partyID,
-			RouterConfig:    &ordererpb.RouterNodeConfig{SignCert: newSignCert()},
-			AssemblerConfig: &ordererpb.AssemblerNodeConfig{SignCert: newSignCert()},
-			ConsenterConfig: &ordererpb.ConsenterNodeConfig{SignCert: newSignCert()},
+			RouterConfig:    &ordererpb.RouterNodeConfig{NodeConfig: &ordererpb.NodeConfig{SignCert: newSignCert()}},
+			AssemblerConfig: &ordererpb.AssemblerNodeConfig{NodeConfig: &ordererpb.NodeConfig{SignCert: newSignCert()}},
+			ConsenterConfig: &ordererpb.ConsenterNodeConfig{NodeConfig: &ordererpb.NodeConfig{SignCert: newSignCert()}},
 			BatchersConfig: []*ordererpb.BatcherNodeConfig{
-				{ShardID: 1, SignCert: newSignCert()},
-				{ShardID: 2, SignCert: newSignCert()},
+				{NodeConfig: &ordererpb.NodeConfig{SignCert: newSignCert()}, ShardId: 1},
+				{NodeConfig: &ordererpb.NodeConfig{SignCert: newSignCert()}, ShardId: 2},
 			},
 		}
 	}
@@ -402,7 +486,7 @@ func TestValidateUniqueSigningCerts(t *testing.T) {
 
 	t.Run("duplicate cert within party", func(t *testing.T) {
 		party := newParty(1)
-		party.AssemblerConfig.SignCert = party.RouterConfig.SignCert
+		party.AssemblerConfig.NodeConfig.SignCert = party.RouterConfig.NodeConfig.SignCert
 
 		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party, newParty(2)})
 		require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing key")
@@ -410,7 +494,7 @@ func TestValidateUniqueSigningCerts(t *testing.T) {
 
 	t.Run("duplicate cert across batchers", func(t *testing.T) {
 		party := newParty(1)
-		party.BatchersConfig[1].SignCert = party.BatchersConfig[0].SignCert
+		party.BatchersConfig[1].NodeConfig.SignCert = party.BatchersConfig[0].NodeConfig.SignCert
 
 		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party})
 		require.EqualError(t, err, "batcher of party 1 in shard 1 and batcher of party 1 in shard 2 share the same signing key")
@@ -419,7 +503,7 @@ func TestValidateUniqueSigningCerts(t *testing.T) {
 	t.Run("duplicate cert across parties", func(t *testing.T) {
 		party1 := newParty(1)
 		party2 := newParty(2)
-		party2.BatchersConfig[0].SignCert = party1.ConsenterConfig.SignCert
+		party2.BatchersConfig[0].NodeConfig.SignCert = party1.ConsenterConfig.NodeConfig.SignCert
 
 		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party1, party2})
 		require.EqualError(t, err, "consenter of party 1 and batcher of party 2 in shard 1 share the same signing key")
@@ -427,7 +511,7 @@ func TestValidateUniqueSigningCerts(t *testing.T) {
 
 	t.Run("duplicate cert with different PEM encoding", func(t *testing.T) {
 		party := newParty(1)
-		party.AssemblerConfig.SignCert = append([]byte("\n"), party.RouterConfig.SignCert...)
+		party.AssemblerConfig.NodeConfig.SignCert = append([]byte("\n"), party.RouterConfig.NodeConfig.SignCert...)
 
 		err := validateUniqueSigningCerts([]*ordererpb.PartyConfig{party})
 		require.EqualError(t, err, "router of party 1 and assembler of party 1 share the same signing key")
@@ -447,8 +531,8 @@ func TestValidateUniqueSigningCerts(t *testing.T) {
 		require.Equal(t, assemblerCert.RawSubjectPublicKeyInfo, consenterCert.RawSubjectPublicKeyInfo)
 
 		party := newParty(1)
-		party.AssemblerConfig.SignCert = assemblerCertPEM
-		party.ConsenterConfig.SignCert = consenterCertPEM
+		party.AssemblerConfig.NodeConfig.SignCert = assemblerCertPEM
+		party.ConsenterConfig.NodeConfig.SignCert = consenterCertPEM
 
 		err = validateUniqueSigningCerts([]*ordererpb.PartyConfig{party})
 		require.EqualError(t, err, "assembler of party 1 and consenter of party 1 share the same signing key")

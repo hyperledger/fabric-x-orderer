@@ -471,7 +471,7 @@ func (c *ConfigUpdateBuilder) UpdateRouterSignCert(t *testing.T, partyID types.P
 	for _, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
-			routerConfig := partyMap["RouterConfig"].(map[string]any)
+			routerConfig := partyMap["RouterConfig"].(map[string]any)["node_config"].(map[string]any)
 			routerConfig["sign_cert"] = cert
 			found = true
 			break
@@ -493,8 +493,8 @@ func (c *ConfigUpdateBuilder) UpdateBatcherSignCert(t *testing.T, partyID types.
 			batchersConfig := partyMap["BatchersConfig"].([]any)
 			for _, bc := range batchersConfig {
 				bcMap := bc.(map[string]any)
-				if uint32(shardID) == uint32(bcMap["shardID"].(float64)) {
-					bcMap["sign_cert"] = cert
+				if uint32(shardID) == uint32(bcMap["shard_id"].(float64)) {
+					bcMap["node_config"].(map[string]any)["sign_cert"] = cert
 					found = true
 					break
 				}
@@ -515,7 +515,7 @@ func (c *ConfigUpdateBuilder) UpdateConsenterSignCert(t *testing.T, partyID type
 	for _, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
-			consenterConfig := partyMap["ConsenterConfig"].(map[string]any)
+			consenterConfig := partyMap["ConsenterConfig"].(map[string]any)["node_config"].(map[string]any)
 			consenterConfig["sign_cert"] = cert
 			found = true
 			break
@@ -549,7 +549,7 @@ func (c *ConfigUpdateBuilder) UpdateAssemblerSignCert(t *testing.T, partyID type
 	for _, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
-			assemblerConfig := partyMap["AssemblerConfig"].(map[string]any)
+			assemblerConfig := partyMap["AssemblerConfig"].(map[string]any)["node_config"].(map[string]any)
 			assemblerConfig["sign_cert"] = cert
 			found = true
 			break
@@ -760,8 +760,9 @@ func (c *ConfigUpdateBuilder) UpdateRouterTLSCert(t *testing.T, partyID types.Pa
 	for _, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
-			consenterConfig := partyMap["RouterConfig"].(map[string]any)
-			consenterConfig["tls_cert"] = cert
+			consenterConfig := partyMap["RouterConfig"].(map[string]any)["node_config"].(map[string]any)
+			consenterConfig["client_tls_cert"] = cert
+			consenterConfig["server_tls_cert"] = cert
 			found = true
 			break
 		}
@@ -782,8 +783,9 @@ func (c *ConfigUpdateBuilder) UpdateBatcherTLSCert(t *testing.T, partyID types.P
 			batchersConfig := partyMap["BatchersConfig"].([]any)
 			for _, bc := range batchersConfig {
 				bcMap := bc.(map[string]any)
-				if uint32(shardID) == uint32(bcMap["shardID"].(float64)) {
-					bcMap["tls_cert"] = cert
+				if uint32(shardID) == uint32(bcMap["shard_id"].(float64)) {
+					bcMap["node_config"].(map[string]any)["client_tls_cert"] = cert
+					bcMap["node_config"].(map[string]any)["server_tls_cert"] = cert
 					found = true
 					break
 				}
@@ -804,8 +806,9 @@ func (c *ConfigUpdateBuilder) UpdateConsensusTLSCert(t *testing.T, partyID types
 	for _, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
-			consenterConfig := partyMap["ConsenterConfig"].(map[string]any)
-			consenterConfig["tls_cert"] = cert
+			consenterConfig := partyMap["ConsenterConfig"].(map[string]any)["node_config"].(map[string]any)
+			consenterConfig["client_tls_cert"] = cert
+			consenterConfig["server_tls_cert"] = cert
 			found = true
 			break
 		}
@@ -838,8 +841,9 @@ func (c *ConfigUpdateBuilder) UpdateAssemblerTLSCert(t *testing.T, partyID types
 	for _, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
-			consenterConfig := partyMap["AssemblerConfig"].(map[string]any)
-			consenterConfig["tls_cert"] = cert
+			consenterConfig := partyMap["AssemblerConfig"].(map[string]any)["node_config"].(map[string]any)
+			consenterConfig["client_tls_cert"] = cert
+			consenterConfig["server_tls_cert"] = cert
 			found = true
 			break
 		}
@@ -858,7 +862,7 @@ func (c *ConfigUpdateBuilder) UpdateOrderingEndpoint(t *testing.T, partyID types
 	for _, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
-			consenterConfig := partyMap["ConsenterConfig"].(map[string]any)
+			consenterConfig := partyMap["ConsenterConfig"].(map[string]any)["node_config"].(map[string]any)
 			consenterConfig["host"] = host
 			consenterConfig["port"] = float64(port)
 			found = true
@@ -896,7 +900,7 @@ func (c *ConfigUpdateBuilder) UpdateRouterEndpoint(t *testing.T, partyID types.P
 	for _, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
-			routerConfig := partyMap["RouterConfig"].(map[string]any)
+			routerConfig := partyMap["RouterConfig"].(map[string]any)["node_config"].(map[string]any)
 			routerConfig["host"] = host
 			routerConfig["port"] = float64(port)
 			found = true
@@ -919,7 +923,7 @@ func (c *ConfigUpdateBuilder) UpdateAssemblerEndpoint(t *testing.T, partyID type
 	for _, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
-			assemblerConfig := partyMap["AssemblerConfig"].(map[string]any)
+			assemblerConfig := partyMap["AssemblerConfig"].(map[string]any)["node_config"].(map[string]any)
 			assemblerConfig["host"] = host
 			assemblerConfig["port"] = float64(port)
 			found = true
@@ -945,9 +949,9 @@ func (c *ConfigUpdateBuilder) UpdateBatcherEndpoint(t *testing.T, partyID types.
 			batchersConfig := partyMap["BatchersConfig"].([]any)
 			for _, bc := range batchersConfig {
 				bcMap := bc.(map[string]any)
-				if uint32(shardID) == uint32(bcMap["shardID"].(float64)) {
-					bcMap["host"] = host
-					bcMap["port"] = float64(port)
+				if uint32(shardID) == uint32(bcMap["shard_id"].(float64)) {
+					bcMap["node_config"].(map[string]any)["host"] = host
+					bcMap["node_config"].(map[string]any)["port"] = float64(port)
 					found = true
 					break
 				}
@@ -975,11 +979,11 @@ func (c *ConfigUpdateBuilder) UpdateOrgEndpoints(t *testing.T, partyID types.Par
 	for _, party := range partiesConfigList {
 		partyMap := party.(map[string]any)
 		if uint32(partyID) == uint32(partyMap["PartyID"].(float64)) {
-			assemblerConfig := partyMap["AssemblerConfig"].(map[string]any)
+			assemblerConfig := partyMap["AssemblerConfig"].(map[string]any)["node_config"].(map[string]any)
 			deliverHost = assemblerConfig["host"].(string)
 			deliverPort = int(assemblerConfig["port"].(float64))
 
-			routerConfig := partyMap["RouterConfig"].(map[string]any)
+			routerConfig := partyMap["RouterConfig"].(map[string]any)["node_config"].(map[string]any)
 			broadcastHost = routerConfig["host"].(string)
 			broadcastPort = int(routerConfig["port"].(float64))
 
@@ -1026,11 +1030,14 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, k
 	for _, bc := range newParty.BatchersConfig {
 		batchersConfig = append(batchersConfig,
 			map[string]any{
-				"shardID":   bc.ShardID,
-				"host":      bc.Host,
-				"port":      bc.Port,
-				"sign_cert": bc.SignCert,
-				"tls_cert":  bc.TlsCert,
+				"node_config": map[string]any{
+					"host":            bc.NodeConfig.Host,
+					"port":            bc.NodeConfig.Port,
+					"client_tls_cert": bc.NodeConfig.ClientTlsCert,
+					"server_tls_cert": bc.NodeConfig.ServerTlsCert,
+					"sign_cert":       bc.NodeConfig.SignCert,
+				},
+				"shard_id": bc.ShardId,
 			})
 	}
 
@@ -1041,22 +1048,31 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, k
 			"TLSCACerts": newParty.TLSCACerts,
 
 			"ConsenterConfig": map[string]any{
-				"host":      newParty.ConsenterConfig.Host,
-				"port":      newParty.ConsenterConfig.Port,
-				"sign_cert": newParty.ConsenterConfig.SignCert,
-				"tls_cert":  newParty.ConsenterConfig.TlsCert,
+				"node_config": map[string]any{
+					"host":            newParty.ConsenterConfig.NodeConfig.Host,
+					"port":            newParty.ConsenterConfig.NodeConfig.Port,
+					"client_tls_cert": newParty.ConsenterConfig.NodeConfig.ClientTlsCert,
+					"server_tls_cert": newParty.ConsenterConfig.NodeConfig.ServerTlsCert,
+					"sign_cert":       newParty.ConsenterConfig.NodeConfig.SignCert,
+				},
 			},
 			"RouterConfig": map[string]any{
-				"host":      newParty.RouterConfig.Host,
-				"port":      newParty.RouterConfig.Port,
-				"sign_cert": newParty.RouterConfig.SignCert,
-				"tls_cert":  newParty.RouterConfig.TlsCert,
+				"node_config": map[string]any{
+					"host":            newParty.RouterConfig.NodeConfig.Host,
+					"port":            newParty.RouterConfig.NodeConfig.Port,
+					"client_tls_cert": newParty.RouterConfig.NodeConfig.ClientTlsCert,
+					"server_tls_cert": newParty.RouterConfig.NodeConfig.ServerTlsCert,
+					"sign_cert":       newParty.RouterConfig.NodeConfig.SignCert,
+				},
 			},
 			"AssemblerConfig": map[string]any{
-				"host":      newParty.AssemblerConfig.Host,
-				"port":      newParty.AssemblerConfig.Port,
-				"sign_cert": newParty.AssemblerConfig.SignCert,
-				"tls_cert":  newParty.AssemblerConfig.TlsCert,
+				"node_config": map[string]any{
+					"host":            newParty.AssemblerConfig.NodeConfig.Host,
+					"port":            newParty.AssemblerConfig.NodeConfig.Port,
+					"client_tls_cert": newParty.AssemblerConfig.NodeConfig.ClientTlsCert,
+					"server_tls_cert": newParty.AssemblerConfig.NodeConfig.ServerTlsCert,
+					"sign_cert":       newParty.AssemblerConfig.NodeConfig.SignCert,
+				},
 			},
 			"BatchersConfig": batchersConfig,
 		})
@@ -1072,11 +1088,11 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, k
 
 	consenterMappingList = append(consenterMappingList, map[string]any{
 		"id":              maxPartyID,
-		"host":            newParty.ConsenterConfig.Host,
-		"port":            newParty.ConsenterConfig.Port,
-		"identity":        newParty.ConsenterConfig.SignCert,
-		"client_tls_cert": newParty.ConsenterConfig.TlsCert,
-		"server_tls_cert": newParty.ConsenterConfig.TlsCert,
+		"host":            newParty.ConsenterConfig.NodeConfig.Host,
+		"port":            newParty.ConsenterConfig.NodeConfig.Port,
+		"identity":        newParty.ConsenterConfig.NodeConfig.SignCert,
+		"client_tls_cert": newParty.ConsenterConfig.NodeConfig.ClientTlsCert,
+		"server_tls_cert": newParty.ConsenterConfig.NodeConfig.ServerTlsCert,
 		"msp_id":          fmt.Sprintf("org%d", uint32(maxPartyID)),
 	})
 
@@ -1098,8 +1114,8 @@ func (c *ConfigUpdateBuilder) AddNewParty(t *testing.T, newParty *PartyConfig, k
 
 	// Update endpoints
 	addresses := []string{
-		fmt.Sprintf("id=%d,broadcast,%s", int(maxPartyID), net.JoinHostPort(newParty.RouterConfig.Host, strconv.Itoa(int(newParty.RouterConfig.Port)))),
-		fmt.Sprintf("id=%d,deliver,%s", int(maxPartyID), net.JoinHostPort(newParty.AssemblerConfig.Host, strconv.Itoa(int(newParty.AssemblerConfig.Port)))),
+		fmt.Sprintf("id=%d,broadcast,%s", int(maxPartyID), net.JoinHostPort(newParty.RouterConfig.NodeConfig.Host, strconv.Itoa(int(newParty.RouterConfig.NodeConfig.Port)))),
+		fmt.Sprintf("id=%d,deliver,%s", int(maxPartyID), net.JoinHostPort(newParty.AssemblerConfig.NodeConfig.Host, strconv.Itoa(int(newParty.AssemblerConfig.NodeConfig.Port)))),
 	}
 	overwriteNestedJSONValue(t, newOrg, addresses, "values", "Endpoints", "value", "addresses")
 
@@ -1466,11 +1482,14 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(
 		require.NoError(t, err)
 
 		batchersConfig[i] = &ordererpb.BatcherNodeConfig{
-			ShardID:  uint32(i + 1),
-			Host:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-			Port:     batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-			TlsCert:  batcherTlsCert,
-			SignCert: batcherSignCert,
+			NodeConfig: &ordererpb.NodeConfig{
+				Host:          batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+				Port:          batcherNodeConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+				ClientTlsCert: batcherTlsCert,
+				ServerTlsCert: batcherTlsCert,
+				SignCert:      batcherSignCert,
+			},
+			ShardId: uint32(i + 1),
 		}
 	}
 
@@ -1516,22 +1535,31 @@ func (c *ConfigUpdateBuilder) PrepareAndAddNewParty(
 			CACerts:    [][]byte{caCert},
 			TLSCACerts: [][]byte{tlsCACert},
 			ConsenterConfig: &ordererpb.ConsenterNodeConfig{
-				Host:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-				Port:     consenterConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-				SignCert: consenterSignCert,
-				TlsCert:  consenterTlsCert,
+				NodeConfig: &ordererpb.NodeConfig{
+					Host:          consenterConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+					Port:          consenterConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+					ClientTlsCert: consenterTlsCert,
+					ServerTlsCert: consenterTlsCert,
+					SignCert:      consenterSignCert,
+				},
 			},
 			RouterConfig: &ordererpb.RouterNodeConfig{
-				Host:     routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-				Port:     routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-				SignCert: routerSignCert,
-				TlsCert:  routerTlsCert,
+				NodeConfig: &ordererpb.NodeConfig{
+					Host:          routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+					Port:          routerLocalConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+					ClientTlsCert: routerTlsCert,
+					ServerTlsCert: routerTlsCert,
+					SignCert:      routerSignCert,
+				},
 			},
 			AssemblerConfig: &ordererpb.AssemblerNodeConfig{
-				Host:     assemblerConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
-				Port:     assemblerConfig.NodeLocalConfig.GeneralConfig.ListenPort,
-				SignCert: assemblerSignCert,
-				TlsCert:  assemblerTlsCert,
+				NodeConfig: &ordererpb.NodeConfig{
+					Host:          assemblerConfig.NodeLocalConfig.GeneralConfig.ListenAddress,
+					Port:          assemblerConfig.NodeLocalConfig.GeneralConfig.ListenPort,
+					ClientTlsCert: assemblerTlsCert,
+					ServerTlsCert: assemblerTlsCert,
+					SignCert:      assemblerSignCert,
+				},
 			},
 			BatchersConfig: batchersConfig,
 		},

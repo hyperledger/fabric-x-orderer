@@ -10,9 +10,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-protos-go-apiv2/peer"
-	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -381,27 +381,50 @@ func createProposalFromCDS(channelID string, msg proto.Message, creator []byte, 
 	return CreateProposalFromCIS(common.HeaderType_ENDORSER_TRANSACTION, channelID, lsccSpec, creator)
 }
 
+// txIDLength is the length of a TxID: the hex encoding of a SHA-256 digest.
+const txIDLength = 2 * sha256.Size
+
+// ErrInvalidTxID is returned by CheckTxID when the TxID does not match the nonce and creator.
+// It deliberately does not include the received TxID, whose length is unbounded.
+var ErrInvalidTxID = errors.New("invalid txid")
+
 // ComputeTxID computes TxID as the Hash computed
 // over the concatenation of nonce and creator.
 func ComputeTxID(nonce, creator []byte) string {
-	// TODO: Get the Hash function to be used from
-	// channel configuration
-	hasher := sha256.New()
-	hasher.Write(nonce)
-	hasher.Write(creator)
-	return hex.EncodeToString(hasher.Sum(nil))
+	txID := computeTxID(nonce, creator)
+	return string(txID[:])
 }
 
 // CheckTxID checks that txid is equal to the Hash computed
 // over the concatenation of nonce and creator.
 func CheckTxID(txid string, nonce, creator []byte) error {
-	computedTxID := ComputeTxID(nonce, creator)
+	if len(txid) != txIDLength {
+		return ErrInvalidTxID
+	}
 
-	if txid != computedTxID {
-		return errors.Errorf("invalid txid. got [%s], expected [%s]", txid, computedTxID)
+	computedTxID := computeTxID(nonce, creator)
+	if txid != string(computedTxID[:]) {
+		return ErrInvalidTxID
 	}
 
 	return nil
+}
+
+// computeTxID returns the hex-encoded TxID, without heap allocations.
+//
+// It is kept separate from ComputeTxID so that CheckTxID does not allocate: CheckTxID only compares
+// string(computedTxID[:]) against txid, which the compiler optimizes into a byte comparison without
+// building a string. Calling ComputeTxID from CheckTxID instead would allocate a string on every call,
+// since a TxID is longer than the compiler's 32-byte stack buffer for strings that don't escape.
+func computeTxID(nonce, creator []byte) (txID [txIDLength]byte) {
+	// TODO: Get the Hash function to be used from
+	// channel configuration
+	hasher := sha256.New()
+	hasher.Write(nonce)   //nolint:revive // hash.Write never returns an error
+	hasher.Write(creator) //nolint:revive // hash.Write never returns an error
+	var digest [sha256.Size]byte
+	hex.Encode(txID[:], hasher.Sum(digest[:0]))
+	return txID
 }
 
 // InvokedChaincodeName takes the proposal bytes of a SignedProposal, and unpacks it all the way down,

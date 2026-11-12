@@ -61,27 +61,27 @@ func TestSharedConfigLoading(t *testing.T) {
 
 	// check that all certificates are valid x509 certificates
 	for _, partyConfig := range sharedConfig.PartiesConfig {
-		cert, err := utils.Parsex509Cert(partyConfig.RouterConfig.TlsCert)
+		cert, err := utils.Parsex509Cert(partyConfig.RouterConfig.NodeConfig.ServerTlsCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
 
 		for _, batcher := range partyConfig.BatchersConfig {
-			cert, err = utils.Parsex509Cert(batcher.TlsCert)
+			cert, err = utils.Parsex509Cert(batcher.NodeConfig.ServerTlsCert)
 			require.NotNil(t, cert)
 			require.NoError(t, err)
-			cert, err = utils.Parsex509Cert(batcher.SignCert)
+			cert, err = utils.Parsex509Cert(batcher.NodeConfig.SignCert)
 			require.NotNil(t, cert)
 			require.NoError(t, err)
 		}
 
-		cert, err = utils.Parsex509Cert(partyConfig.ConsenterConfig.TlsCert)
+		cert, err = utils.Parsex509Cert(partyConfig.ConsenterConfig.NodeConfig.ServerTlsCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
-		cert, err = utils.Parsex509Cert(partyConfig.ConsenterConfig.SignCert)
+		cert, err = utils.Parsex509Cert(partyConfig.ConsenterConfig.NodeConfig.SignCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
 
-		cert, err = utils.Parsex509Cert(partyConfig.AssemblerConfig.TlsCert)
+		cert, err = utils.Parsex509Cert(partyConfig.AssemblerConfig.NodeConfig.ServerTlsCert)
 		require.NotNil(t, cert)
 		require.NoError(t, err)
 	}

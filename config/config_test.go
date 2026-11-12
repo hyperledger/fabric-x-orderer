@@ -122,18 +122,19 @@ func TestConfigurationCheckIfRouterNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
 	require.NoError(t, err)
-	origSignCert := fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.SignCert
+	origSignCert := fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.NodeConfig.SignCert
 	fakeSignCert, err := ChangeExpirationTimeOfCert(t, origSignCert, caCert, caPrivateKey)
 	require.NoError(t, err)
-	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.SignCert = fakeSignCert
+	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.NodeConfig.SignCert = fakeSignCert
 	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "sign certificate mismatch")
-	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.SignCert = origSignCert
+	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.NodeConfig.SignCert = origSignCert
 
-	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.TlsCert, caCert, caPrivateKey)
+	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.NodeConfig.ServerTlsCert, caCert, caPrivateKey)
 	require.NoError(t, err)
-	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.TlsCert = fakeTLSCert
+	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.NodeConfig.ServerTlsCert = fakeTLSCert
+	fullConfig.SharedConfig.PartiesConfig[0].RouterConfig.NodeConfig.ClientTlsCert = fakeTLSCert
 	err = fullConfig.CheckIfRouterNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "certificate mismatch")
@@ -183,17 +184,18 @@ func TestConfigurationCheckIfBatcherNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
 	require.NoError(t, err)
-	fakeSignCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].SignCert, caCert, caPrivateKey)
+	fakeSignCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].NodeConfig.SignCert, caCert, caPrivateKey)
 	require.NoError(t, err)
-	fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].SignCert = fakeSignCert
+	fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].NodeConfig.SignCert = fakeSignCert
 	err = fullConfig.CheckIfBatcherNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "sign certificate mismatch")
 
 	// change batcher11 TLS cert
-	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].TlsCert, caCert, caPrivateKey)
+	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].NodeConfig.ServerTlsCert, caCert, caPrivateKey)
 	require.NoError(t, err)
-	fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].TlsCert = fakeTLSCert
+	fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].NodeConfig.ServerTlsCert = fakeTLSCert
+	fullConfig.SharedConfig.PartiesConfig[0].BatchersConfig[0].NodeConfig.ClientTlsCert = fakeTLSCert
 	err = fullConfig.CheckIfBatcherNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "certificate mismatch")
@@ -249,17 +251,18 @@ func TestConfigurationCheckIfConsenterNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
 	require.NoError(t, err)
-	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.TlsCert, caCert, caPrivateKey)
+	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.NodeConfig.ServerTlsCert, caCert, caPrivateKey)
 	require.NoError(t, err)
-	fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.TlsCert = fakeTLSCert
+	fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.NodeConfig.ServerTlsCert = fakeTLSCert
+	fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.NodeConfig.ClientTlsCert = fakeTLSCert
 	err = fullConfig.CheckIfConsenterNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "certificate mismatch")
 
 	// change consenter1 sign cert
-	fakeSignCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.SignCert, caCert, caPrivateKey)
+	fakeSignCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.NodeConfig.SignCert, caCert, caPrivateKey)
 	require.NoError(t, err)
-	fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.SignCert = fakeSignCert
+	fullConfig.SharedConfig.PartiesConfig[0].ConsenterConfig.NodeConfig.SignCert = fakeSignCert
 	err = fullConfig.CheckIfConsenterNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "sign certificate mismatch")
@@ -309,18 +312,19 @@ func TestConfigurationCheckIfAssemblerNodeExistsInSharedConfig(t *testing.T) {
 	require.NoError(t, err)
 	caPrivateKey, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", "org1", "ca", "priv_sk"))
 	require.NoError(t, err)
-	origSignCert := fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.SignCert
+	origSignCert := fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.NodeConfig.SignCert
 	fakeSignCert, err := ChangeExpirationTimeOfCert(t, origSignCert, caCert, caPrivateKey)
 	require.NoError(t, err)
-	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.SignCert = fakeSignCert
+	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.NodeConfig.SignCert = fakeSignCert
 	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "sign certificate mismatch")
-	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.SignCert = origSignCert
+	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.NodeConfig.SignCert = origSignCert
 
-	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.TlsCert, caCert, caPrivateKey)
+	fakeTLSCert, err := ChangeExpirationTimeOfCert(t, fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.NodeConfig.ServerTlsCert, caCert, caPrivateKey)
 	require.NoError(t, err)
-	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.TlsCert = fakeTLSCert
+	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.NodeConfig.ServerTlsCert = fakeTLSCert
+	fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.NodeConfig.ClientTlsCert = fakeTLSCert
 	err = fullConfig.CheckIfAssemblerNodeExistsInSharedConfig(localSignCert)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "certificate mismatch")
@@ -358,7 +362,7 @@ func TestConfigurationNewUpdatedConfigurationFromBlock(t *testing.T) {
 	require.NotNil(t, genesisBlock)
 
 	// change the genesis block to have a new port to the assembler of party1
-	newPort := fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.Port + 1
+	newPort := fullConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.NodeConfig.Port + 1
 	envelope, err := protoutil.GetEnvelopeFromBlock(genesisBlock.Data.Data[0])
 	require.NoError(t, err)
 	require.NotNil(t, envelope)
@@ -377,7 +381,7 @@ func TestConfigurationNewUpdatedConfigurationFromBlock(t *testing.T) {
 	sharedConfig := &ordererpb.SharedConfig{}
 	err = proto.Unmarshal(consensusTypeValue.Metadata, sharedConfig)
 	require.NoError(t, err)
-	sharedConfig.PartiesConfig[0].AssemblerConfig.Port = newPort
+	sharedConfig.PartiesConfig[0].AssemblerConfig.NodeConfig.Port = newPort
 	consensusTypeValue.Metadata, err = proto.Marshal(sharedConfig)
 	require.NoError(t, err)
 	configEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"] = &common.ConfigValue{
@@ -397,7 +401,7 @@ func TestConfigurationNewUpdatedConfigurationFromBlock(t *testing.T) {
 	require.Equal(t, configSeq, uint64(0))
 
 	// verify that local config is kept and shared config is changed
-	require.Equal(t, newPort, newConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.Port)
+	require.Equal(t, newPort, newConfig.SharedConfig.PartiesConfig[0].AssemblerConfig.NodeConfig.Port)
 	require.Equal(t, newConfig.LocalConfig, fullConfig.LocalConfig)
 }
 
@@ -434,7 +438,7 @@ func TestExtractAssemblers(t *testing.T) {
 		require.Equal(t, assembler.PartyID, types.PartyID(sharedPartyConfig.PartyID))
 
 		// Check Endpoint matches (Host:Port)
-		expectedEndpoint := net.JoinHostPort(sharedPartyConfig.AssemblerConfig.Host, strconv.Itoa(int(sharedPartyConfig.AssemblerConfig.Port)))
+		expectedEndpoint := net.JoinHostPort(sharedPartyConfig.AssemblerConfig.NodeConfig.Host, strconv.Itoa(int(sharedPartyConfig.AssemblerConfig.NodeConfig.Port)))
 		require.Equal(t, assembler.Endpoint, expectedEndpoint)
 
 		// Check TLSCACerts count matches
@@ -442,7 +446,7 @@ func TestExtractAssemblers(t *testing.T) {
 
 		// Check TLSCert is not empty
 		require.NotEmpty(t, assembler.TLSCert)
-		require.Equal(t, len(assembler.TLSCert), len(sharedPartyConfig.AssemblerConfig.TlsCert))
+		require.Equal(t, len(assembler.TLSCert), len(sharedPartyConfig.AssemblerConfig.NodeConfig.ServerTlsCert))
 	}
 }
 
@@ -493,7 +497,7 @@ func TestExtractAssemblerAddresses(t *testing.T) {
 		require.NotNil(t, endpoint)
 
 		// Verify endpoint address matches (Host:Port)
-		expectedEndpoint := net.JoinHostPort(sharedPartyConfig.AssemblerConfig.Host, strconv.Itoa(int(sharedPartyConfig.AssemblerConfig.Port)))
+		expectedEndpoint := net.JoinHostPort(sharedPartyConfig.AssemblerConfig.NodeConfig.Host, strconv.Itoa(int(sharedPartyConfig.AssemblerConfig.NodeConfig.Port)))
 		require.Equal(t, endpoint.Address, expectedEndpoint)
 
 		// Verify TLS root certs count matches
@@ -778,7 +782,8 @@ func TestReadConfigWithInvalidPartyCertificates(t *testing.T) {
 	sharedConfig := &ordererpb.SharedConfig{}
 	require.NoError(t, proto.Unmarshal(consensusType.Metadata, sharedConfig))
 
-	sharedConfig.PartiesConfig[0].RouterConfig.TlsCert = []byte("not-a-cert")
+	sharedConfig.PartiesConfig[0].RouterConfig.NodeConfig.ServerTlsCert = []byte("not-a-cert")
+	sharedConfig.PartiesConfig[0].RouterConfig.NodeConfig.ClientTlsCert = []byte("not-a-cert")
 	consensusType.Metadata = protoutil.MarshalOrPanic(sharedConfig)
 	configEnv.Config.ChannelGroup.Groups["Orderer"].Values["ConsensusType"].Value = protoutil.MarshalOrPanic(consensusType)
 

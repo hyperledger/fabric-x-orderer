@@ -228,7 +228,7 @@ Application: &ApplicationDefaults
 Orderer: &OrdererDefaults
 
     # Orderer Type: The orderer implementation to start.
-    # Available types are "etcdraft" and "BFT".
+    # Available types are "etcdraft", "BFT", and "arma" (Fabric-X).
     # Please note that "solo" and "kafka" are no longer supported.
     OrdererType: etcdraft
 
@@ -691,23 +691,19 @@ Profiles:
                       # For this end, an orderer endpoints may contain the following fields:
                       # - host     (required) the party's host.
                       # - port     (required) the party's port.
-                      # - id       (optional) the orderer party ID (default: 0).
+                      # - id       (required) the orderer party ID.
                       # - api      (optional) a list of supported APIs (default: ["broadcast", "deliver"]).
                       #
                       # This can be encoded using the following schemas.
                       # It will be parsed according to the first schema that succeed according to the following order.
                       # - YAML.
                       # - JSON.
-                      # - [id=ID,][broadcast,][deliver,][host=Host,][port=Port,][Host:Port].
+                      # - id=ID,[broadcast,][deliver,][host=Host,][port=Port,][Host:Port].
                       #
                       # Following are examples of encoding host=localhost, port=7050, ID=0, API=broadcast,deliver:
-                      # - localhost:7050
                       # - id=0,broadcast,deliver,localhost:7050
                       # - id=0,broadcast,deliver,host=localhost,port=7050
-                      # - {host: "localhost", port: 7050]}
                       # - {host: "localhost", port: 7050, id: 0, api: ["broadcast", "deliver"]}
-                      # - host: localhost
-                      #   port: 7050
                       # - host: localhost
                       #   port: 7050
                       #   id: 0

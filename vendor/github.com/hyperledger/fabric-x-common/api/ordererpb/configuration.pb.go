@@ -200,24 +200,100 @@ func (x *PartyConfig) GetAssemblerConfig() *AssemblerNodeConfig {
 	return nil
 }
 
-type RouterNodeConfig struct {
+// NodeConfig carries the endpoint and certificates common to every Arma node.
+type NodeConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// the hostname or IP on which the gRPC server will listen
 	Host string `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
 	// the port on which the gRPC server will listen
 	Port uint32 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
-	// the certificate used to authenticate with clients
-	TlsCert []byte `protobuf:"bytes,3,opt,name=tls_cert,json=tlsCert,proto3" json:"tls_cert,omitempty"`
-	// the signing certificate (that includes the public key) of the node,
-	// used to authenticate signatures it produces
-	SignCert      []byte `protobuf:"bytes,4,opt,name=sign_cert,json=signCert,proto3" json:"sign_cert,omitempty"`
+	// the TLS certificate the node presents when it connects, as a client, to other nodes
+	ClientTlsCert []byte `protobuf:"bytes,3,opt,name=client_tls_cert,json=clientTlsCert,proto3" json:"client_tls_cert,omitempty"`
+	// the TLS certificate the node's gRPC server presents to its clients
+	ServerTlsCert []byte `protobuf:"bytes,4,opt,name=server_tls_cert,json=serverTlsCert,proto3" json:"server_tls_cert,omitempty"`
+	// the signing certificate (that includes the public key) of the node, used to authenticate signatures
+	// it produces: BAFs by a batcher, decisions and blocks by a consenter, and Delivery API SeekInfo requests by all
+	SignCert      []byte `protobuf:"bytes,5,opt,name=sign_cert,json=signCert,proto3" json:"sign_cert,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeConfig) Reset() {
+	*x = NodeConfig{}
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeConfig) ProtoMessage() {}
+
+func (x *NodeConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeConfig.ProtoReflect.Descriptor instead.
+func (*NodeConfig) Descriptor() ([]byte, []int) {
+	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *NodeConfig) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *NodeConfig) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *NodeConfig) GetClientTlsCert() []byte {
+	if x != nil {
+		return x.ClientTlsCert
+	}
+	return nil
+}
+
+func (x *NodeConfig) GetServerTlsCert() []byte {
+	if x != nil {
+		return x.ServerTlsCert
+	}
+	return nil
+}
+
+func (x *NodeConfig) GetSignCert() []byte {
+	if x != nil {
+		return x.SignCert
+	}
+	return nil
+}
+
+type RouterNodeConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// the endpoint and certificates of the router
+	NodeConfig    *NodeConfig `protobuf:"bytes,1,opt,name=node_config,json=nodeConfig,proto3" json:"node_config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RouterNodeConfig) Reset() {
 	*x = RouterNodeConfig{}
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[2]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -229,7 +305,7 @@ func (x *RouterNodeConfig) String() string {
 func (*RouterNodeConfig) ProtoMessage() {}
 
 func (x *RouterNodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[2]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -242,56 +318,29 @@ func (x *RouterNodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouterNodeConfig.ProtoReflect.Descriptor instead.
 func (*RouterNodeConfig) Descriptor() ([]byte, []int) {
-	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{2}
+	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *RouterNodeConfig) GetHost() string {
+func (x *RouterNodeConfig) GetNodeConfig() *NodeConfig {
 	if x != nil {
-		return x.Host
-	}
-	return ""
-}
-
-func (x *RouterNodeConfig) GetPort() uint32 {
-	if x != nil {
-		return x.Port
-	}
-	return 0
-}
-
-func (x *RouterNodeConfig) GetTlsCert() []byte {
-	if x != nil {
-		return x.TlsCert
-	}
-	return nil
-}
-
-func (x *RouterNodeConfig) GetSignCert() []byte {
-	if x != nil {
-		return x.SignCert
+		return x.NodeConfig
 	}
 	return nil
 }
 
 type BatcherNodeConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// the endpoint and certificates of the batcher
+	NodeConfig *NodeConfig `protobuf:"bytes,1,opt,name=node_config,json=nodeConfig,proto3" json:"node_config,omitempty"`
 	// the ID of the shard to which the batcher is associated
-	ShardID uint32 `protobuf:"varint,1,opt,name=shardID,proto3" json:"shardID,omitempty"`
-	// the hostname or IP on which the gRPC server will listen
-	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
-	// the port on which the gRPC server will listen
-	Port uint32 `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
-	// the signing certificate (that includes the public key) of the batcher used to authenticate signatures on BAS's
-	SignCert []byte `protobuf:"bytes,4,opt,name=sign_cert,json=signCert,proto3" json:"sign_cert,omitempty"`
-	// the certificate used to authenticate with clients
-	TlsCert       []byte `protobuf:"bytes,5,opt,name=tls_cert,json=tlsCert,proto3" json:"tls_cert,omitempty"`
+	ShardId       uint32 `protobuf:"varint,2,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BatcherNodeConfig) Reset() {
 	*x = BatcherNodeConfig{}
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[3]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -303,7 +352,7 @@ func (x *BatcherNodeConfig) String() string {
 func (*BatcherNodeConfig) ProtoMessage() {}
 
 func (x *BatcherNodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[3]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -316,61 +365,34 @@ func (x *BatcherNodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatcherNodeConfig.ProtoReflect.Descriptor instead.
 func (*BatcherNodeConfig) Descriptor() ([]byte, []int) {
-	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{3}
+	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *BatcherNodeConfig) GetShardID() uint32 {
+func (x *BatcherNodeConfig) GetNodeConfig() *NodeConfig {
 	if x != nil {
-		return x.ShardID
-	}
-	return 0
-}
-
-func (x *BatcherNodeConfig) GetHost() string {
-	if x != nil {
-		return x.Host
-	}
-	return ""
-}
-
-func (x *BatcherNodeConfig) GetPort() uint32 {
-	if x != nil {
-		return x.Port
-	}
-	return 0
-}
-
-func (x *BatcherNodeConfig) GetSignCert() []byte {
-	if x != nil {
-		return x.SignCert
+		return x.NodeConfig
 	}
 	return nil
 }
 
-func (x *BatcherNodeConfig) GetTlsCert() []byte {
+func (x *BatcherNodeConfig) GetShardId() uint32 {
 	if x != nil {
-		return x.TlsCert
+		return x.ShardId
 	}
-	return nil
+	return 0
 }
 
 type ConsenterNodeConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// the hostname or IP on which the gRPC server will listen
-	Host string `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
-	// the port on which the gRPC server will listen
-	Port uint32 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
-	// the signing certificate (that includes the public key) of the consensus used to authenticate signatures on blocks
-	SignCert []byte `protobuf:"bytes,3,opt,name=sign_cert,json=signCert,proto3" json:"sign_cert,omitempty"`
-	// the certificate used to authenticate with clients
-	TlsCert       []byte `protobuf:"bytes,4,opt,name=tls_cert,json=tlsCert,proto3" json:"tls_cert,omitempty"`
+	// the endpoint and certificates of the consenter
+	NodeConfig    *NodeConfig `protobuf:"bytes,1,opt,name=node_config,json=nodeConfig,proto3" json:"node_config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ConsenterNodeConfig) Reset() {
 	*x = ConsenterNodeConfig{}
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[4]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -382,7 +404,7 @@ func (x *ConsenterNodeConfig) String() string {
 func (*ConsenterNodeConfig) ProtoMessage() {}
 
 func (x *ConsenterNodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[4]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -395,55 +417,27 @@ func (x *ConsenterNodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsenterNodeConfig.ProtoReflect.Descriptor instead.
 func (*ConsenterNodeConfig) Descriptor() ([]byte, []int) {
-	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{4}
+	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *ConsenterNodeConfig) GetHost() string {
+func (x *ConsenterNodeConfig) GetNodeConfig() *NodeConfig {
 	if x != nil {
-		return x.Host
-	}
-	return ""
-}
-
-func (x *ConsenterNodeConfig) GetPort() uint32 {
-	if x != nil {
-		return x.Port
-	}
-	return 0
-}
-
-func (x *ConsenterNodeConfig) GetSignCert() []byte {
-	if x != nil {
-		return x.SignCert
-	}
-	return nil
-}
-
-func (x *ConsenterNodeConfig) GetTlsCert() []byte {
-	if x != nil {
-		return x.TlsCert
+		return x.NodeConfig
 	}
 	return nil
 }
 
 type AssemblerNodeConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// the hostname or IP on which the gRPC server will listen
-	Host string `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
-	// the port on which the gRPC server will listen
-	Port uint32 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
-	// the certificate used to authenticate with clients
-	TlsCert []byte `protobuf:"bytes,3,opt,name=tls_cert,json=tlsCert,proto3" json:"tls_cert,omitempty"`
-	// the signing certificate (that includes the public key) of the node,
-	// used to authenticate signatures it produces
-	SignCert      []byte `protobuf:"bytes,4,opt,name=sign_cert,json=signCert,proto3" json:"sign_cert,omitempty"`
+	// the endpoint and certificates of the assembler
+	NodeConfig    *NodeConfig `protobuf:"bytes,1,opt,name=node_config,json=nodeConfig,proto3" json:"node_config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AssemblerNodeConfig) Reset() {
 	*x = AssemblerNodeConfig{}
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[5]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -455,7 +449,7 @@ func (x *AssemblerNodeConfig) String() string {
 func (*AssemblerNodeConfig) ProtoMessage() {}
 
 func (x *AssemblerNodeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[5]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -468,33 +462,12 @@ func (x *AssemblerNodeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssemblerNodeConfig.ProtoReflect.Descriptor instead.
 func (*AssemblerNodeConfig) Descriptor() ([]byte, []int) {
-	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{5}
+	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *AssemblerNodeConfig) GetHost() string {
+func (x *AssemblerNodeConfig) GetNodeConfig() *NodeConfig {
 	if x != nil {
-		return x.Host
-	}
-	return ""
-}
-
-func (x *AssemblerNodeConfig) GetPort() uint32 {
-	if x != nil {
-		return x.Port
-	}
-	return 0
-}
-
-func (x *AssemblerNodeConfig) GetTlsCert() []byte {
-	if x != nil {
-		return x.TlsCert
-	}
-	return nil
-}
-
-func (x *AssemblerNodeConfig) GetSignCert() []byte {
-	if x != nil {
-		return x.SignCert
+		return x.NodeConfig
 	}
 	return nil
 }
@@ -509,7 +482,7 @@ type ConsensusConfig struct {
 
 func (x *ConsensusConfig) Reset() {
 	*x = ConsensusConfig{}
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[6]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -521,7 +494,7 @@ func (x *ConsensusConfig) String() string {
 func (*ConsensusConfig) ProtoMessage() {}
 
 func (x *ConsensusConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[6]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -534,7 +507,7 @@ func (x *ConsensusConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsensusConfig.ProtoReflect.Descriptor instead.
 func (*ConsensusConfig) Descriptor() ([]byte, []int) {
-	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{6}
+	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ConsensusConfig) GetSmartBFTConfig() *SmartBFTConfig {
@@ -611,7 +584,7 @@ type SmartBFTConfig struct {
 
 func (x *SmartBFTConfig) Reset() {
 	*x = SmartBFTConfig{}
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[7]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -623,7 +596,7 @@ func (x *SmartBFTConfig) String() string {
 func (*SmartBFTConfig) ProtoMessage() {}
 
 func (x *SmartBFTConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[7]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -636,7 +609,7 @@ func (x *SmartBFTConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SmartBFTConfig.ProtoReflect.Descriptor instead.
 func (*SmartBFTConfig) Descriptor() ([]byte, []int) {
-	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{7}
+	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SmartBFTConfig) GetRequestBatchMaxCount() uint64 {
@@ -793,7 +766,7 @@ type BatchingConfig struct {
 
 func (x *BatchingConfig) Reset() {
 	*x = BatchingConfig{}
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[8]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -805,7 +778,7 @@ func (x *BatchingConfig) String() string {
 func (*BatchingConfig) ProtoMessage() {}
 
 func (x *BatchingConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[8]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -818,7 +791,7 @@ func (x *BatchingConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchingConfig.ProtoReflect.Descriptor instead.
 func (*BatchingConfig) Descriptor() ([]byte, []int) {
-	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{8}
+	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *BatchingConfig) GetBatchTimeouts() *BatchTimeouts {
@@ -865,7 +838,7 @@ type BatchSize struct {
 
 func (x *BatchSize) Reset() {
 	*x = BatchSize{}
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[9]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -877,7 +850,7 @@ func (x *BatchSize) String() string {
 func (*BatchSize) ProtoMessage() {}
 
 func (x *BatchSize) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[9]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -890,7 +863,7 @@ func (x *BatchSize) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchSize.ProtoReflect.Descriptor instead.
 func (*BatchSize) Descriptor() ([]byte, []int) {
-	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{9}
+	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *BatchSize) GetMaxMessageCount() uint32 {
@@ -934,7 +907,7 @@ type BatchTimeouts struct {
 
 func (x *BatchTimeouts) Reset() {
 	*x = BatchTimeouts{}
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[10]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -946,7 +919,7 @@ func (x *BatchTimeouts) String() string {
 func (*BatchTimeouts) ProtoMessage() {}
 
 func (x *BatchTimeouts) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ordererpb_configuration_proto_msgTypes[10]
+	mi := &file_api_ordererpb_configuration_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -959,7 +932,7 @@ func (x *BatchTimeouts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchTimeouts.ProtoReflect.Descriptor instead.
 func (*BatchTimeouts) Descriptor() ([]byte, []int) {
-	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{10}
+	return file_api_ordererpb_configuration_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *BatchTimeouts) GetBatchCreationTimeout() string {
@@ -1011,28 +984,27 @@ const file_api_ordererpb_configuration_proto_rawDesc = "" +
 	"\fRouterConfig\x18\x04 \x01(\v2\x1b.ordererpb.RouterNodeConfigR\fRouterConfig\x12D\n" +
 	"\x0eBatchersConfig\x18\x05 \x03(\v2\x1c.ordererpb.BatcherNodeConfigR\x0eBatchersConfig\x12H\n" +
 	"\x0fConsenterConfig\x18\x06 \x01(\v2\x1e.ordererpb.ConsenterNodeConfigR\x0fConsenterConfig\x12H\n" +
-	"\x0fAssemblerConfig\x18\a \x01(\v2\x1e.ordererpb.AssemblerNodeConfigR\x0fAssemblerConfig\"r\n" +
-	"\x10RouterNodeConfig\x12\x12\n" +
+	"\x0fAssemblerConfig\x18\a \x01(\v2\x1e.ordererpb.AssemblerNodeConfigR\x0fAssemblerConfig\"\xa1\x01\n" +
+	"\n" +
+	"NodeConfig\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\rR\x04port\x12\x19\n" +
-	"\btls_cert\x18\x03 \x01(\fR\atlsCert\x12\x1b\n" +
-	"\tsign_cert\x18\x04 \x01(\fR\bsignCert\"\x8d\x01\n" +
-	"\x11BatcherNodeConfig\x12\x18\n" +
-	"\ashardID\x18\x01 \x01(\rR\ashardID\x12\x12\n" +
-	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
-	"\x04port\x18\x03 \x01(\rR\x04port\x12\x1b\n" +
-	"\tsign_cert\x18\x04 \x01(\fR\bsignCert\x12\x19\n" +
-	"\btls_cert\x18\x05 \x01(\fR\atlsCert\"u\n" +
-	"\x13ConsenterNodeConfig\x12\x12\n" +
-	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1b\n" +
-	"\tsign_cert\x18\x03 \x01(\fR\bsignCert\x12\x19\n" +
-	"\btls_cert\x18\x04 \x01(\fR\atlsCert\"u\n" +
-	"\x13AssemblerNodeConfig\x12\x12\n" +
-	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
-	"\x04port\x18\x02 \x01(\rR\x04port\x12\x19\n" +
-	"\btls_cert\x18\x03 \x01(\fR\atlsCert\x12\x1b\n" +
-	"\tsign_cert\x18\x04 \x01(\fR\bsignCert\"T\n" +
+	"\x04port\x18\x02 \x01(\rR\x04port\x12&\n" +
+	"\x0fclient_tls_cert\x18\x03 \x01(\fR\rclientTlsCert\x12&\n" +
+	"\x0fserver_tls_cert\x18\x04 \x01(\fR\rserverTlsCert\x12\x1b\n" +
+	"\tsign_cert\x18\x05 \x01(\fR\bsignCert\"J\n" +
+	"\x10RouterNodeConfig\x126\n" +
+	"\vnode_config\x18\x01 \x01(\v2\x15.ordererpb.NodeConfigR\n" +
+	"nodeConfig\"f\n" +
+	"\x11BatcherNodeConfig\x126\n" +
+	"\vnode_config\x18\x01 \x01(\v2\x15.ordererpb.NodeConfigR\n" +
+	"nodeConfig\x12\x19\n" +
+	"\bshard_id\x18\x02 \x01(\rR\ashardId\"M\n" +
+	"\x13ConsenterNodeConfig\x126\n" +
+	"\vnode_config\x18\x01 \x01(\v2\x15.ordererpb.NodeConfigR\n" +
+	"nodeConfig\"M\n" +
+	"\x13AssemblerNodeConfig\x126\n" +
+	"\vnode_config\x18\x01 \x01(\v2\x15.ordererpb.NodeConfigR\n" +
+	"nodeConfig\"T\n" +
 	"\x0fConsensusConfig\x12A\n" +
 	"\x0eSmartBFTConfig\x18\x01 \x01(\v2\x19.ordererpb.SmartBFTConfigR\x0eSmartBFTConfig\"\x96\b\n" +
 	"\x0eSmartBFTConfig\x122\n" +
@@ -1083,36 +1055,41 @@ func file_api_ordererpb_configuration_proto_rawDescGZIP() []byte {
 	return file_api_ordererpb_configuration_proto_rawDescData
 }
 
-var file_api_ordererpb_configuration_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_api_ordererpb_configuration_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_api_ordererpb_configuration_proto_goTypes = []any{
 	(*SharedConfig)(nil),        // 0: ordererpb.SharedConfig
 	(*PartyConfig)(nil),         // 1: ordererpb.PartyConfig
-	(*RouterNodeConfig)(nil),    // 2: ordererpb.RouterNodeConfig
-	(*BatcherNodeConfig)(nil),   // 3: ordererpb.BatcherNodeConfig
-	(*ConsenterNodeConfig)(nil), // 4: ordererpb.ConsenterNodeConfig
-	(*AssemblerNodeConfig)(nil), // 5: ordererpb.AssemblerNodeConfig
-	(*ConsensusConfig)(nil),     // 6: ordererpb.ConsensusConfig
-	(*SmartBFTConfig)(nil),      // 7: ordererpb.SmartBFTConfig
-	(*BatchingConfig)(nil),      // 8: ordererpb.BatchingConfig
-	(*BatchSize)(nil),           // 9: ordererpb.BatchSize
-	(*BatchTimeouts)(nil),       // 10: ordererpb.BatchTimeouts
+	(*NodeConfig)(nil),          // 2: ordererpb.NodeConfig
+	(*RouterNodeConfig)(nil),    // 3: ordererpb.RouterNodeConfig
+	(*BatcherNodeConfig)(nil),   // 4: ordererpb.BatcherNodeConfig
+	(*ConsenterNodeConfig)(nil), // 5: ordererpb.ConsenterNodeConfig
+	(*AssemblerNodeConfig)(nil), // 6: ordererpb.AssemblerNodeConfig
+	(*ConsensusConfig)(nil),     // 7: ordererpb.ConsensusConfig
+	(*SmartBFTConfig)(nil),      // 8: ordererpb.SmartBFTConfig
+	(*BatchingConfig)(nil),      // 9: ordererpb.BatchingConfig
+	(*BatchSize)(nil),           // 10: ordererpb.BatchSize
+	(*BatchTimeouts)(nil),       // 11: ordererpb.BatchTimeouts
 }
 var file_api_ordererpb_configuration_proto_depIdxs = []int32{
 	1,  // 0: ordererpb.SharedConfig.PartiesConfig:type_name -> ordererpb.PartyConfig
-	6,  // 1: ordererpb.SharedConfig.ConsensusConfig:type_name -> ordererpb.ConsensusConfig
-	8,  // 2: ordererpb.SharedConfig.BatchingConfig:type_name -> ordererpb.BatchingConfig
-	2,  // 3: ordererpb.PartyConfig.RouterConfig:type_name -> ordererpb.RouterNodeConfig
-	3,  // 4: ordererpb.PartyConfig.BatchersConfig:type_name -> ordererpb.BatcherNodeConfig
-	4,  // 5: ordererpb.PartyConfig.ConsenterConfig:type_name -> ordererpb.ConsenterNodeConfig
-	5,  // 6: ordererpb.PartyConfig.AssemblerConfig:type_name -> ordererpb.AssemblerNodeConfig
-	7,  // 7: ordererpb.ConsensusConfig.SmartBFTConfig:type_name -> ordererpb.SmartBFTConfig
-	10, // 8: ordererpb.BatchingConfig.BatchTimeouts:type_name -> ordererpb.BatchTimeouts
-	9,  // 9: ordererpb.BatchingConfig.BatchSize:type_name -> ordererpb.BatchSize
-	10, // [10:10] is the sub-list for method output_type
-	10, // [10:10] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	7,  // 1: ordererpb.SharedConfig.ConsensusConfig:type_name -> ordererpb.ConsensusConfig
+	9,  // 2: ordererpb.SharedConfig.BatchingConfig:type_name -> ordererpb.BatchingConfig
+	3,  // 3: ordererpb.PartyConfig.RouterConfig:type_name -> ordererpb.RouterNodeConfig
+	4,  // 4: ordererpb.PartyConfig.BatchersConfig:type_name -> ordererpb.BatcherNodeConfig
+	5,  // 5: ordererpb.PartyConfig.ConsenterConfig:type_name -> ordererpb.ConsenterNodeConfig
+	6,  // 6: ordererpb.PartyConfig.AssemblerConfig:type_name -> ordererpb.AssemblerNodeConfig
+	2,  // 7: ordererpb.RouterNodeConfig.node_config:type_name -> ordererpb.NodeConfig
+	2,  // 8: ordererpb.BatcherNodeConfig.node_config:type_name -> ordererpb.NodeConfig
+	2,  // 9: ordererpb.ConsenterNodeConfig.node_config:type_name -> ordererpb.NodeConfig
+	2,  // 10: ordererpb.AssemblerNodeConfig.node_config:type_name -> ordererpb.NodeConfig
+	8,  // 11: ordererpb.ConsensusConfig.SmartBFTConfig:type_name -> ordererpb.SmartBFTConfig
+	11, // 12: ordererpb.BatchingConfig.BatchTimeouts:type_name -> ordererpb.BatchTimeouts
+	10, // 13: ordererpb.BatchingConfig.BatchSize:type_name -> ordererpb.BatchSize
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_api_ordererpb_configuration_proto_init() }
@@ -1126,7 +1103,7 @@ func file_api_ordererpb_configuration_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_ordererpb_configuration_proto_rawDesc), len(file_api_ordererpb_configuration_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

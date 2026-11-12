@@ -467,24 +467,24 @@ func validateConsenterConsistency(consenters []*common.Consenter, parties []*ord
 		if party.ConsenterConfig == nil {
 			return errors.Errorf("consenter config missing in shared config for party %d", consenter.Id)
 		}
-		nodeCfg := party.ConsenterConfig
-		if consenter.Host != nodeCfg.Host {
-			return errors.Errorf("host mismatch for party %d: %s != %s", consenter.Id, consenter.Host, nodeCfg.Host)
+		nodeCfg := party.ConsenterConfig.GetNodeConfig()
+		if consenter.Host != nodeCfg.GetHost() {
+			return errors.Errorf("host mismatch for party %d: %s != %s", consenter.Id, consenter.Host, nodeCfg.GetHost())
 		}
 
-		if consenter.Port != nodeCfg.Port {
-			return errors.Errorf("port mismatch for party %d: %d != %d", consenter.Id, consenter.Port, nodeCfg.Port)
+		if consenter.Port != nodeCfg.GetPort() {
+			return errors.Errorf("port mismatch for party %d: %d != %d", consenter.Id, consenter.Port, nodeCfg.GetPort())
 		}
 
-		if !slices.Equal(consenter.Identity, nodeCfg.SignCert) {
+		if !slices.Equal(consenter.Identity, nodeCfg.GetSignCert()) {
 			return errors.Errorf("identity/sign_cert mismatch for party %d", consenter.Id)
 		}
 
-		if len(consenter.ServerTlsCert) > 0 && !slices.Equal(consenter.ServerTlsCert, nodeCfg.TlsCert) {
+		if len(consenter.ServerTlsCert) > 0 && !slices.Equal(consenter.ServerTlsCert, nodeCfg.GetServerTlsCert()) {
 			return errors.Errorf("server TLS certificate mismatch for party %d", consenter.Id)
 		}
 
-		if len(consenter.ClientTlsCert) > 0 && !slices.Equal(consenter.ClientTlsCert, nodeCfg.TlsCert) {
+		if len(consenter.ClientTlsCert) > 0 && !slices.Equal(consenter.ClientTlsCert, nodeCfg.GetServerTlsCert()) {
 			return errors.Errorf("client TLS certificate mismatch for party %d", consenter.Id)
 		}
 	}
@@ -540,14 +540,14 @@ func validatePartyModification(curr, next *ordererpb.PartyConfig) (bool, error) 
 		if b == nil {
 			return false, errors.Errorf("batcher config is nil for party %d in next config", curr.PartyID)
 		}
-		nextShardIDs[b.ShardID] = struct{}{}
+		nextShardIDs[b.GetShardId()] = struct{}{}
 	}
 
 	for _, b := range curr.BatchersConfig {
 		if b == nil {
 			return false, errors.Errorf("batcher config is nil for party %d in current config", curr.PartyID)
 		}
-		if _, ok := nextShardIDs[b.ShardID]; !ok {
+		if _, ok := nextShardIDs[b.GetShardId()]; !ok {
 			return false, errors.Errorf("batcher shard IDs cannot change for party %d", curr.PartyID)
 		}
 	}
@@ -712,8 +712,8 @@ func validatePartyAndShardIDs(parties []*ordererpb.PartyConfig, maxPartyID uint3
 			if batcher == nil {
 				return errors.Errorf("nil batcher config for party %d", party.PartyID)
 			}
-			if batcher.ShardID == 0 || batcher.ShardID >= uint32(arma_types.ShardIDConsensus) {
-				return errors.Errorf("shard ID %d of party %d out of range [1, %d]", batcher.ShardID, party.PartyID, arma_types.ShardIDConsensus-1)
+			if batcher.GetShardId() == 0 || batcher.GetShardId() >= uint32(arma_types.ShardIDConsensus) {
+				return errors.Errorf("shard ID %d of party %d out of range [1, %d]", batcher.GetShardId(), party.PartyID, arma_types.ShardIDConsensus-1)
 			}
 		}
 	}
@@ -728,29 +728,29 @@ func validateRouterAndAssemblerEndpoints(parties []*ordererpb.PartyConfig, party
 			return errors.Errorf("missing orderer organization for party %d", party.PartyID)
 		}
 
-		routerHost := party.GetRouterConfig().GetHost()
-		routerPort := int(party.GetRouterConfig().GetPort())
-		assemblerHost := party.GetAssemblerConfig().GetHost()
-		assemblerPort := int(party.GetAssemblerConfig().GetPort())
+		routerHost := party.GetRouterConfig().GetNodeConfig().GetHost()
+		routerPort := int(party.GetRouterConfig().GetNodeConfig().GetPort())
+		assemblerHost := party.GetAssemblerConfig().GetNodeConfig().GetHost()
+		assemblerPort := int(party.GetAssemblerConfig().GetNodeConfig().GetPort())
 		for _, raw := range org.Endpoints() {
 			ep, err := types.ParseOrdererEndpoint(raw)
 			if err != nil {
 				return err
 			}
 			if slices.Contains(ep.API, types.Broadcast) && ep.Host != routerHost {
-				logger.Warnf("party %d: broadcast endpoint %q has host %s, but SharedConfig RouterConfig.Host is %s",
+				logger.Warnf("party %d: broadcast endpoint %q has host %s, but RouterConfig's host in SharedConfig is %s",
 					party.PartyID, raw, ep.Host, routerHost)
 			}
 			if slices.Contains(ep.API, types.Broadcast) && ep.Port != routerPort {
-				logger.Warnf("party %d: broadcast endpoint %q has port %d, but SharedConfig RouterConfig.Port is %d",
+				logger.Warnf("party %d: broadcast endpoint %q has port %d, but RouterConfig's port in SharedConfig is %d",
 					party.PartyID, raw, ep.Port, routerPort)
 			}
 			if slices.Contains(ep.API, types.Deliver) && ep.Host != assemblerHost {
-				logger.Warnf("party %d: deliver endpoint %q has host %s, but SharedConfig AssemblerConfig.Host is %s",
+				logger.Warnf("party %d: deliver endpoint %q has host %s, but AssemblerConfig's host in SharedConfig is %s",
 					party.PartyID, raw, ep.Host, assemblerHost)
 			}
 			if slices.Contains(ep.API, types.Deliver) && ep.Port != assemblerPort {
-				logger.Warnf("party %d: deliver endpoint %q has port %d, but SharedConfig AssemblerConfig.Port is %d",
+				logger.Warnf("party %d: deliver endpoint %q has port %d, but AssemblerConfig's port in SharedConfig is %d",
 					party.PartyID, raw, ep.Port, assemblerPort)
 			}
 		}

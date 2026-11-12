@@ -321,7 +321,7 @@ func findBatcherInConfigByShard(shardID types.ShardID, conf *config.Configuratio
 		return nil, errors.Wrapf(err, "failed to find party config in the shared configuration for batcher")
 	}
 	for _, batcher := range partyConfig.BatchersConfig {
-		if types.ShardID(batcher.ShardID) == shardID {
+		if types.ShardID(batcher.GetShardId()) == shardID {
 			return batcher, nil
 		}
 	}

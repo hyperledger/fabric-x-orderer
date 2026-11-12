@@ -42,52 +42,41 @@ message PartyConfig {
     AssemblerNodeConfig AssemblerConfig = 7;
 }
 
-message RouterNodeConfig {
+// NodeConfig carries the endpoint and certificates common to every Arma node.
+message NodeConfig {
     // the hostname or IP on which the gRPC server will listen
     string host = 1;
     // the port on which the gRPC server will listen
     uint32 port = 2;
-    // the certificate used to authenticate with clients
-    bytes tls_cert = 3;
-    // the signing certificate (that includes the public key) of the node,
-    // used to authenticate signatures it produces
-    bytes sign_cert = 4;
+    // the TLS certificate the node presents when it connects, as a client, to other nodes
+    bytes client_tls_cert = 3;
+    // the TLS certificate the node's gRPC server presents to its clients
+    bytes server_tls_cert = 4;
+    // the signing certificate (that includes the public key) of the node, used to authenticate signatures
+    // it produces: BAFs by a batcher, decisions and blocks by a consenter, and Delivery API SeekInfo requests by all
+    bytes sign_cert = 5;
+}
+
+message RouterNodeConfig {
+    // the endpoint and certificates of the router
+    NodeConfig node_config = 1;
 }
 
 message BatcherNodeConfig {
+    // the endpoint and certificates of the batcher
+    NodeConfig node_config = 1;
     // the ID of the shard to which the batcher is associated
-    uint32 shardID = 1;
-    // the hostname or IP on which the gRPC server will listen
-    string host = 2;
-    // the port on which the gRPC server will listen
-    uint32 port = 3;
-    // the signing certificate (that includes the public key) of the batcher used to authenticate signatures on BAS's
-    bytes sign_cert = 4;
-    // the certificate used to authenticate with clients
-    bytes tls_cert = 5;
+    uint32 shard_id = 2;
 }
 
 message ConsenterNodeConfig {
-    // the hostname or IP on which the gRPC server will listen
-    string host = 1;
-    // the port on which the gRPC server will listen
-    uint32 port = 2;
-    // the signing certificate (that includes the public key) of the consensus used to authenticate signatures on blocks
-    bytes sign_cert = 3;
-    // the certificate used to authenticate with clients
-    bytes tls_cert = 4;
+    // the endpoint and certificates of the consenter
+    NodeConfig node_config = 1;
 }
 
 message AssemblerNodeConfig {
-    // the hostname or IP on which the gRPC server will listen
-    string host = 1;
-    // the port on which the gRPC server will listen
-    uint32 port = 2;
-    // the certificate used to authenticate with clients
-    bytes tls_cert = 3;
-    // the signing certificate (that includes the public key) of the node,
-    // used to authenticate signatures it produces
-    bytes sign_cert = 4;
+    // the endpoint and certificates of the assembler
+    NodeConfig node_config = 1;
 }
 
 // BFT configuration

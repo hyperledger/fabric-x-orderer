@@ -172,8 +172,8 @@ func TestUpdatePartyRouterEndpoint(t *testing.T) {
 	configLogger := testutil.CreateLoggerForModule(t, "RouterConfig", zap.DebugLevel)
 	cfg, _, err := config.ReadConfig(routerNodeConfigPath, configLogger)
 	require.NoError(t, err)
-	require.True(t, cfg.SharedConfig.GetPartiesConfig()[partyToUpdate-1].RouterConfig.Host == routerIP &&
-		cfg.SharedConfig.GetPartiesConfig()[partyToUpdate-1].RouterConfig.Port == uint32(newPort), "Shared config was not updated with the new router endpoint")
+	require.True(t, cfg.SharedConfig.GetPartiesConfig()[partyToUpdate-1].RouterConfig.NodeConfig.Host == routerIP &&
+		cfg.SharedConfig.GetPartiesConfig()[partyToUpdate-1].RouterConfig.NodeConfig.Port == uint32(newPort), "Shared config was not updated with the new router endpoint")
 
 	// Update the router node local config with the new endpoint to allow it to start
 	localConfig, _, err := config.LoadLocalConfig(routerNodeConfigPath, configLogger)
@@ -243,7 +243,7 @@ func (v *verifyRouterEndpointUpdate) HandleBlock(t *testing.T, block *common.Blo
 			return fmt.Errorf("party config for party %d not found in the config block", v.updatedParty)
 		}
 
-		v.RouterEndpointUpdated.Store(partyConfig.RouterConfig.Host == v.routerIP && partyConfig.RouterConfig.Port == uint32(v.newPort))
+		v.RouterEndpointUpdated.Store(partyConfig.RouterConfig.NodeConfig.Host == v.routerIP && partyConfig.RouterConfig.NodeConfig.Port == uint32(v.newPort))
 	}
 
 	return nil

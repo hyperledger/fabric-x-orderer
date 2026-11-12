@@ -236,19 +236,19 @@ func TestChangePartyCertificates(t *testing.T) {
 	newRouterSignCertBytes, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "router", "msp", "signcerts", "router-cert.pem"))
 	require.NoError(t, err)
 	// Verify that the router TLS and signing cert paths are updated in the config
-	require.Equal(t, newTlsCertBytes, updatedPartyConfig.RouterConfig.GetTlsCert(), "Certificate path was not updated in the config")
-	require.Equal(t, newRouterSignCertBytes, updatedPartyConfig.RouterConfig.GetSignCert(), "Router signing certificate path was not updated in the config")
+	require.Equal(t, newTlsCertBytes, updatedPartyConfig.RouterConfig.GetNodeConfig().GetServerTlsCert(), "Certificate path was not updated in the config")
+	require.Equal(t, newRouterSignCertBytes, updatedPartyConfig.RouterConfig.GetNodeConfig().GetSignCert(), "Router signing certificate path was not updated in the config")
 
 	// Verify that the batcher TLS certs path are updated in the config
 	for _, shardConfig := range updatedPartyConfig.BatchersConfig {
-		newBatcherTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardConfig.ShardID), "tls")
+		newBatcherTlsCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardConfig.ShardId), "tls")
 		newTlsCertBytes, err = os.ReadFile(filepath.Join(newBatcherTlsCertPath, "server.crt"))
 		require.NoError(t, err)
-		newBatcherSignCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardConfig.ShardID), "msp", "signcerts")
-		newSignCertBytes, err := os.ReadFile(filepath.Join(newBatcherSignCertPath, fmt.Sprintf("batcher%d-cert.pem", shardConfig.ShardID)))
+		newBatcherSignCertPath := filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), fmt.Sprintf("batcher%d", shardConfig.ShardId), "msp", "signcerts")
+		newSignCertBytes, err := os.ReadFile(filepath.Join(newBatcherSignCertPath, fmt.Sprintf("batcher%d-cert.pem", shardConfig.ShardId)))
 		require.NoError(t, err)
-		require.Equal(t, newTlsCertBytes, shardConfig.GetTlsCert(), "Batcher certificate path was not updated in the config")
-		require.Equal(t, newSignCertBytes, shardConfig.GetSignCert(), "Batcher signing certificate path was not updated in the config")
+		require.Equal(t, newTlsCertBytes, shardConfig.GetNodeConfig().GetServerTlsCert(), "Batcher certificate path was not updated in the config")
+		require.Equal(t, newSignCertBytes, shardConfig.GetNodeConfig().GetSignCert(), "Batcher signing certificate path was not updated in the config")
 	}
 
 	newTlsCertBytes, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "tls", "server.crt"))
@@ -256,16 +256,16 @@ func TestChangePartyCertificates(t *testing.T) {
 	newAssemblerSignCertBytes, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "assembler", "msp", "signcerts", "assembler-cert.pem"))
 	require.NoError(t, err)
 	// Verify that the assembler TLS and signing cert paths are updated in the config
-	require.Equal(t, newTlsCertBytes, updatedPartyConfig.AssemblerConfig.GetTlsCert(), "Certificate path was not updated in the config")
-	require.Equal(t, newAssemblerSignCertBytes, updatedPartyConfig.AssemblerConfig.GetSignCert(), "Assembler signing certificate path was not updated in the config")
+	require.Equal(t, newTlsCertBytes, updatedPartyConfig.AssemblerConfig.GetNodeConfig().GetServerTlsCert(), "Certificate path was not updated in the config")
+	require.Equal(t, newAssemblerSignCertBytes, updatedPartyConfig.AssemblerConfig.GetNodeConfig().GetSignCert(), "Assembler signing certificate path was not updated in the config")
 
 	newTlsCertBytes, err = os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "tls", "server.crt"))
 	require.NoError(t, err)
 	newSignCertBytes, err := os.ReadFile(filepath.Join(dir, "crypto", "ordererOrganizations", updateOrg, "orderers", fmt.Sprintf("party%d", partyToUpdate), "consenter", "msp", "signcerts", "consenter-cert.pem"))
 	require.NoError(t, err)
 	// Verify that the consenter TLS and signing cert paths are updated in the config
-	require.Equal(t, newTlsCertBytes, updatedPartyConfig.ConsenterConfig.GetTlsCert(), "Consenter certificate path was not updated in the config")
-	require.Equal(t, newSignCertBytes, updatedPartyConfig.ConsenterConfig.GetSignCert(), "Consenter signing certificate path was not updated in the config")
+	require.Equal(t, newTlsCertBytes, updatedPartyConfig.ConsenterConfig.GetNodeConfig().GetServerTlsCert(), "Consenter certificate path was not updated in the config")
+	require.Equal(t, newSignCertBytes, updatedPartyConfig.ConsenterConfig.GetNodeConfig().GetSignCert(), "Consenter signing certificate path was not updated in the config")
 
 	updatedRouterInfo := armaNetwork.GetRouter(t, partyToUpdate)
 	// Verify that the updated router TLS connection to a consenter node is successful by checking for successful pulls,
