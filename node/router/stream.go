@@ -144,7 +144,7 @@ func (s *stream) verifyAndClassifyRequest(request *protos.Request) (common.Heade
 		return reqType, badRequest(fmt.Errorf("request structure verification error: %s", err))
 	}
 
-	if int(reqType) >= len(common.HeaderType_value) || reqType == common.HeaderType_CONFIG || reqType == common.HeaderType_ORDERER_TRANSACTION || reqType == common.HeaderType_DELIVER_SEEK_INFO {
+	if _, known := common.HeaderType_name[int32(reqType)]; !known || reqType == common.HeaderType_CONFIG || reqType == common.HeaderType_ORDERER_TRANSACTION || reqType == common.HeaderType_DELIVER_SEEK_INFO {
 		s.logger.Debugf("request has unsupported type: %s", reqType)
 		return reqType, badRequest(fmt.Errorf("request structure verification error: request has unsupported type %s", reqType))
 	}
