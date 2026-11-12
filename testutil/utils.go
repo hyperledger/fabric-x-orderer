@@ -777,3 +777,12 @@ func StopAndRestartArmaNetwork(t *testing.T, armaNetwork *ArmaNetwork) {
 	armaNetwork.Restart(t, readyChan)
 	WaitReady(t, readyChan, totalNodes, 10)
 }
+
+// PartyIDs returns the party IDs 1 to n, sorted, as a state lists the parties of an n-party network.
+func PartyIDs(n int) []types.PartyID {
+	parties := make([]types.PartyID, n)
+	for i := range parties {
+		parties[i] = types.PartyID(i + 1)
+	}
+	return parties
+}

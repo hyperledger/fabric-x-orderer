@@ -38,7 +38,7 @@ func TestDeliverCountsDecisionSize(t *testing.T) {
 	genesisProposal := smartbft_types.Proposal{
 		Header: (&state.Header{
 			AvailableCommonBlocks: []*common.Block{{Header: &common.BlockHeader{Number: 0}}},
-			State:                 &state.State{N: 1},
+			State:                 &state.State{N: 1, Parties: testutil.PartyIDs(1)},
 			Num:                   0,
 		}).Serialize(),
 	}
@@ -64,7 +64,7 @@ func TestDeliverCountsDecisionSize(t *testing.T) {
 
 	proposal := smartbft_types.Proposal{
 		Header: (&state.Header{
-			State:                        &state.State{N: 1},
+			State:                        &state.State{N: 1, Parties: testutil.PartyIDs(1)},
 			Num:                          1,
 			DecisionNumOfLastConfigBlock: 0,
 		}).Serialize(),

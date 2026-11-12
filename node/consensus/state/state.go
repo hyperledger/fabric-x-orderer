@@ -81,6 +81,9 @@ type State struct {
 	Pending    []types.BatchAttestationFragment
 	Complaints []Complaint
 	AppContext []byte
+	// Parties holds the party IDs sorted by party ID, N of them. Every party runs a batcher in every
+	// shard, and a shard's primaries take turns in this order.
+	Parties []types.PartyID
 	// StaleConfigBAFs holds BAFs whose config sequence is behind the current one.
 	// They are surfaced for a single decision (recomputed each round in Process) so that a
 	// batcher which fell behind a config change can detect its own BAF here and revive the batch's
@@ -129,10 +132,10 @@ func (s *State) String() string {
 		}
 	}
 
-	return fmt.Sprintf("State{N: %d, Quorum: %d, Threshold: %d, ShardCount: %d, AssemblerHeights: %d, PrunePoints: %d, "+
-		"DurableWatermark: %d, \nPending: %s, \nComplaints: %s}",
-		s.N, s.Quorum, s.Threshold, len(s.Shards), len(s.AssemblerHeights), len(s.PrunePoints), s.DurableWatermark,
-		pendingStr, complaintsStr)
+	return fmt.Sprintf("State{N: %d, Parties: %v, Quorum: %d, Threshold: %d, ShardCount: %d, AssemblerHeights: %d, "+
+		"PrunePoints: %d, DurableWatermark: %d, \nPending: %s, \nComplaints: %s}",
+		s.N, s.Parties, s.Quorum, s.Threshold, len(s.Shards), len(s.AssemblerHeights), len(s.PrunePoints),
+		s.DurableWatermark, pendingStr, complaintsStr)
 }
 
 func (s *State) Serialize() []byte {
@@ -185,8 +188,16 @@ func (s *State) Serialize() []byte {
 		protoPrunePoints[i] = s.PrunePoints[i].toProto()
 	}
 
+	var protoParties []uint32
+	if len(s.Parties) > 0 {
+		protoParties = make([]uint32, len(s.Parties))
+		for i, party := range s.Parties {
+			protoParties[i] = uint32(party)
+		}
+	}
+
 	protoState := &stateprotos.State{
-		NumberOfParties:  uint32(s.N),
+		Parties:          protoParties,
 		Shards:           protoShards,
 		Pending:          protoPending,
 		Complaints:       protoComplaints,
@@ -211,11 +222,25 @@ func (s *State) Deserialize(rawBytes []byte) error {
 		return err
 	}
 
-	if ps.NumberOfParties > math.MaxUint16 {
-		return fmt.Errorf("the NumberOfParties value %d exceeds uint16 maximum %d", ps.NumberOfParties, math.MaxUint16)
+	if len(ps.Parties) > math.MaxUint16 {
+		return fmt.Errorf("the state has %d parties, more than the uint16 maximum %d", len(ps.Parties), math.MaxUint16)
 	}
 
-	s.N = uint16(ps.NumberOfParties)
+	s.Parties = nil
+	if len(ps.Parties) > 0 {
+		s.Parties = make([]types.PartyID, len(ps.Parties))
+		for i, party := range ps.Parties {
+			if party > math.MaxUint16 {
+				return fmt.Errorf("the party ID %d at index %d exceeds uint16 maximum %d", party, i, math.MaxUint16)
+			}
+			if i > 0 && party <= ps.Parties[i-1] {
+				return fmt.Errorf("the party IDs are not sorted and unique: %d at index %d follows %d", party, i, ps.Parties[i-1])
+			}
+			s.Parties[i] = types.PartyID(party)
+		}
+	}
+
+	s.N = uint16(len(s.Parties))
 	if s.N == 0 {
 		s.Threshold = 0
 		s.Quorum = 0
@@ -337,6 +362,7 @@ func (s *State) Process(l *flogging.FabricLogger, configSeq types.ConfigSequence
 
 func (s *State) Clone() *State {
 	s2 := *s
+	s2.Parties = slices.Clone(s.Parties)
 	s2.Shards = make([]ShardTerm, len(s.Shards))
 	s2.Pending = make([]types.BatchAttestationFragment, len(s.Pending))
 	s2.Complaints = make([]Complaint, len(s.Complaints))

@@ -90,11 +90,11 @@ func TestBatcherRun(t *testing.T) {
 
 	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
 	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
-	stubConsenters[0].UpdateState(&state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}})
+	stubConsenters[0].UpdateState(&state.State{N: uint16(numParties), Parties: testutil.PartyIDs(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}})
 	require.Equal(t, types.PartyID(1), batchers[0].GetPrimaryID())
 	require.Equal(t, types.PartyID(1), batchers[2].GetPrimaryID())
 
-	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
+	termChangeState := &state.State{N: uint16(numParties), Parties: testutil.PartyIDs(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
 
 	for i := 0; i < numParties; i++ {
 		stubConsenters[i].UpdateState(termChangeState)
@@ -174,7 +174,7 @@ func TestBatcherRun(t *testing.T) {
 	// stop primary, change term, and recover after a batch
 	batchers[1].Stop()
 
-	termChangeAgainState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 2}}}
+	termChangeAgainState := &state.State{N: uint16(numParties), Parties: testutil.PartyIDs(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 2}}}
 
 	for i := 0; i < numParties; i++ {
 		if i != 1 {
@@ -290,7 +290,7 @@ func TestBatcherComplainAndReqFwd(t *testing.T) {
 	require.Equal(t, numParties, stubConsenters[2].BAFCount())
 
 	// change term
-	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
+	termChangeState := &state.State{N: uint16(numParties), Parties: testutil.PartyIDs(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
 	for i := 1; i < numParties; i++ {
 		stubConsenters[i].UpdateState(termChangeState)
 	}
@@ -356,7 +356,7 @@ func TestBatcherComplainsInTermWithSamePrimary(t *testing.T) {
 
 	// move to term N, whose primary is the same as term 0's
 	term := uint64(numParties)
-	samePrimaryState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: term}}}
+	samePrimaryState := &state.State{N: uint16(numParties), Parties: testutil.PartyIDs(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: term}}}
 	for i := 0; i < numParties; i++ {
 		stubConsenters[i].UpdateState(samePrimaryState)
 	}
@@ -412,7 +412,7 @@ func TestBatcherRestartsInLastKnownTerm(t *testing.T) {
 
 	// move to term 1, whose primary is party 2
 	term := uint64(1)
-	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: term}}}
+	termChangeState := &state.State{N: uint16(numParties), Parties: testutil.PartyIDs(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: term}}}
 	for i := 0; i < numParties; i++ {
 		stubConsenters[i].UpdateState(termChangeState)
 	}
@@ -554,7 +554,7 @@ func TestControlEventBroadcasterWaitsForQuorum(t *testing.T) {
 	}
 
 	// change term
-	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
+	termChangeState := &state.State{N: uint16(numParties), Parties: testutil.PartyIDs(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
 	stubConsenters[0].UpdateState(termChangeState)
 	stubConsenters[2].UpdateState(termChangeState)
 
@@ -657,7 +657,7 @@ func TestBatcherJoin(t *testing.T) {
 
 	genesisBlock := tx.CreateConfigBlock(0, []byte("genesis block"))
 	availableCommonBlocks := []*common.Block{genesisBlock}
-	st := &state.State{N: 1, Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}}
+	st := &state.State{N: 1, Parties: testutil.PartyIDs(1), Shards: []state.ShardTerm{{Shard: shardID, Term: 0}}}
 	stubConsenters[0].UpdateStateHeaderWithConfigBlock(types.DecisionNum(0), availableCommonBlocks, st)
 
 	blocks, err = batchers[0].ConfigStore.ListBlockNumbers()
@@ -817,7 +817,7 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	}, 30*time.Second, 10*time.Millisecond)
 
 	termChangeWithPendingState := &state.State{
-		N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}},
+		N: uint16(numParties), Parties: testutil.PartyIDs(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}},
 		Pending: []types.BatchAttestationFragment{baf2},
 	}
 
@@ -855,7 +855,7 @@ func TestResubmitPendingBAFs(t *testing.T) {
 	availableCommonBlocks := []*common.Block{configBlock}
 
 	stPending := &state.State{
-		N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}},
+		N: uint16(numParties), Parties: testutil.PartyIDs(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}},
 		Pending: []types.BatchAttestationFragment{baf2},
 	}
 

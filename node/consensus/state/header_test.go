@@ -12,6 +12,7 @@ import (
 
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	"github.com/hyperledger/fabric-x-common/protoutil"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
@@ -19,7 +20,7 @@ import (
 func TestHeaderSerializeDeserialize(t *testing.T) {
 	t.Run("basic serialization with state", func(t *testing.T) {
 		hdr := Header{
-			State:                        &State{N: 4, Threshold: 2, Quorum: 3, AppContext: []byte{}},
+			State:                        &State{N: 4, Parties: []types.PartyID{1, 2, 3, 4}, Threshold: 2, Quorum: 3, AppContext: []byte{}},
 			Num:                          100,
 			DecisionNumOfLastConfigBlock: 10,
 			PrevHash:                     []byte{123},
@@ -262,6 +263,7 @@ func TestHeaderSerializeDeserialize(t *testing.T) {
 		hdr := Header{
 			State: &State{
 				N:          4,
+				Parties:    []types.PartyID{1, 2, 3, 4},
 				Threshold:  2,
 				Quorum:     3,
 				Shards:     []ShardTerm{{Shard: 1, Term: 1}},
@@ -349,6 +351,7 @@ func TestHeaderSerializeDeserialize(t *testing.T) {
 		hdr := Header{
 			State: &State{
 				N:          10,
+				Parties:    []types.PartyID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
 				Threshold:  4,
 				Quorum:     7,
 				Shards:     []ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 2}},
@@ -378,6 +381,7 @@ func TestHeaderSerializeDeserialize(t *testing.T) {
 		hdr := Header{
 			State: &State{
 				N:         4,
+				Parties:   []types.PartyID{1, 2, 3, 4},
 				Threshold: 2,
 				Quorum:    3,
 				Shards:    []ShardTerm{{Shard: 1, Term: 1}},

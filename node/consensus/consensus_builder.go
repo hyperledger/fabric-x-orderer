@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
@@ -340,6 +341,10 @@ func getInitialStateAndMetadata(logger *flogging.FabricLogger, config *node_conf
 func initialStateFromConfig(config *node_config.ConsenterNodeConfig) *state.State {
 	var initState state.State
 	initState.N = uint16(len(config.Consenters))
+	for _, consenter := range config.Consenters {
+		initState.Parties = append(initState.Parties, consenter.PartyID)
+	}
+	slices.Sort(initState.Parties)
 	_, T, Q := utils.ComputeFTQ(initState.N)
 	initState.Threshold = T
 	initState.Quorum = Q

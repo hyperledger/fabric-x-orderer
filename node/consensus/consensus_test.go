@@ -184,6 +184,7 @@ func TestConsensus(t *testing.T) {
 
 			initialState := &state.State{
 				N:          4,
+				Parties:    testutil.PartyIDs(4),
 				Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 				Threshold:  2,
 				Quorum:     3,
@@ -731,6 +732,7 @@ func TestAssembleProposalAndVerify(t *testing.T) {
 
 			initialState := &state.State{
 				N:          4,
+				Parties:    testutil.PartyIDs(4),
 				Shards:     shards,
 				Threshold:  2,
 				Quorum:     3,
@@ -1108,6 +1110,7 @@ func TestVerifyProposalAcceptsOneBehindBAFAndSkipsOtherStaleCEs(t *testing.T) {
 
 	initialState := &state.State{
 		N:          4,
+		Parties:    testutil.PartyIDs(4),
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
@@ -1176,6 +1179,7 @@ func TestVerifyProposalRejectsMalformedRequest(t *testing.T) {
 
 	initialState := &state.State{
 		N:          4,
+		Parties:    testutil.PartyIDs(4),
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
@@ -1263,6 +1267,7 @@ func TestVerifyProposalReleasesLockWhenApplyingConfigFails(t *testing.T) {
 
 	initialState := &state.State{
 		N:          4,
+		Parties:    testutil.PartyIDs(4),
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
@@ -1372,6 +1377,7 @@ func TestAssembleProposalWithMultipleConfigRequests(t *testing.T) {
 
 	initialState := &state.State{
 		N:          4,
+		Parties:    testutil.PartyIDs(4),
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
@@ -1454,6 +1460,7 @@ func TestVerifyProposal(t *testing.T) {
 
 	initialState := state.State{
 		N:          4,
+		Parties:    testutil.PartyIDs(4),
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
@@ -1692,6 +1699,7 @@ func TestVerifyProposal(t *testing.T) {
 	badState := newState
 	headerState.State = &badState
 	headerState.State.N = 10
+	headerState.State.Parties = testutil.PartyIDs(10)
 	headerState.State.Quorum = 7
 	headerState.State.Threshold = 4
 	verifyProposalRequireError(t, c, headerState.Serialize(), brs.Serialize(), mBytes)
@@ -1801,6 +1809,7 @@ func TestSignProposal(t *testing.T) {
 
 	initialState := state.State{
 		N:          4,
+		Parties:    testutil.PartyIDs(4),
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
@@ -1922,6 +1931,7 @@ func TestVerifyConsenterSigWithInvalidSignatures(t *testing.T) {
 
 	initialState := state.State{
 		N:          4,
+		Parties:    testutil.PartyIDs(4),
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  2,
 		Quorum:     3,
@@ -2171,6 +2181,7 @@ func TestConsensusStartStop(t *testing.T) {
 
 	initialState := &state.State{
 		N:          1,
+		Parties:    testutil.PartyIDs(1),
 		Shards:     []state.ShardTerm{{Shard: 1}, {Shard: 2}},
 		Threshold:  1,
 		Quorum:     1,
@@ -2598,6 +2609,7 @@ func startSingleConsensusNode(t *testing.T) (*node_consensus.Consensus, *ecdsa.P
 
 	initialState := &state.State{
 		N:          1,
+		Parties:    testutil.PartyIDs(1),
 		Shards:     []state.ShardTerm{{Shard: 1}},
 		Threshold:  1,
 		Quorum:     1,

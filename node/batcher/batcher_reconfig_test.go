@@ -86,7 +86,7 @@ func TestBatcherReconfigAutoRemoveTimeoutReachesPendingAdmin(t *testing.T) {
 	require.NoError(t, err)
 
 	// send the config block to the batchers by the stub consenters
-	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	st := &state.State{N: uint16(len(parties)), Parties: parties, Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
 	for i := range parties {
 		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
 	}
@@ -167,7 +167,7 @@ func TestBatcherReconfigRequestMaxBytesRejectsOversizedRequests(t *testing.T) {
 	require.NoError(t, err)
 
 	// send the config block to the batcher by the stub consenter
-	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	st := &state.State{N: uint16(len(parties)), Parties: parties, Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
 	stubConsenters[0].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
 
 	// wait for the batcher to append the config tx to the config store
@@ -406,7 +406,7 @@ func TestBatcherReconfigMempoolSizeMetricAfterPrune(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	st := &state.State{N: uint16(len(parties)), Parties: parties, Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
 	stubConsenters[secondaryIdx].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
 
 	require.Eventually(t, func() bool {
@@ -493,7 +493,7 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 	// send the config block to the batchers by the stub consenters. Removing a party changes the party count, so
 	// consensus bumps the shard term in the config decision: its state has N 3 and term 1.
 	survivingParties := []types.PartyID{1, 3, 4}
-	stEvicted := &state.State{N: uint16(len(survivingParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 1}}}
+	stEvicted := &state.State{N: uint16(len(survivingParties)), Parties: survivingParties, Shards: []state.ShardTerm{{Shard: 1, Term: 1}}}
 	for i := range parties {
 		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, stEvicted)
 	}
@@ -623,7 +623,7 @@ func TestBatcherReconfigPrimaryEvictionAndAddParty(t *testing.T) {
 	// party count, so consensus bumps the shard term again in the config decision: its state has N 4 and term 2.
 	// With it the parties (sorted by party ID: [1, 3, 4, 5]) elect batchers[(shardID + term) % N] =
 	// batchers[(1 + 2) % 4] = the added party (party 5) as the new primary.
-	stAdd := &state.State{N: uint16(len(allParties)), Shards: []state.ShardTerm{{Shard: 1, Term: 2}}}
+	stAdd := &state.State{N: uint16(len(allParties)), Parties: allParties, Shards: []state.ShardTerm{{Shard: 1, Term: 2}}}
 	for j := range parties {
 		if parties[j] == partyToRemove {
 			continue
@@ -854,7 +854,7 @@ func TestBatcherReconfigPrimaryEndpointChange(t *testing.T) {
 	require.NoError(t, err)
 
 	// send the config block to the batchers by the stub consenters
-	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	st := &state.State{N: uint16(len(parties)), Parties: parties, Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
 	for i := range parties {
 		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
 	}
@@ -971,7 +971,7 @@ func TestBatcherReconfigPrimaryCertChange(t *testing.T) {
 	require.NoError(t, err)
 
 	// send the config block to the batchers by the stub consenters
-	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	st := &state.State{N: uint16(len(parties)), Parties: parties, Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
 	for i := range parties {
 		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
 	}
@@ -1083,7 +1083,7 @@ func TestBatcherReconfigCACerts(t *testing.T) {
 	require.NoError(t, err)
 
 	// send the config block to the batchers by the stub consenters
-	st := &state.State{N: uint16(len(parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	st := &state.State{N: uint16(len(parties)), Parties: parties, Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
 	for i := range parties {
 		stubConsenters[i].UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
 	}
