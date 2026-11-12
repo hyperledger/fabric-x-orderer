@@ -97,7 +97,10 @@ func (x *Index) DropBelow(shard types.ShardID, primary types.PartyID, seq types.
 		return
 	}
 
-	dropped := min(int(seq-w.base), len(w.decisions))
+	dropped := len(w.decisions)
+	if offset := seq - w.base; offset < types.BatchSequence(dropped) {
+		dropped = int(offset)
+	}
 	for _, decisions := range w.decisions[:dropped] {
 		for _, decision := range decisions {
 			x.release(decision)
@@ -129,12 +132,12 @@ func (x *Index) DurableFrontier(shard types.ShardID, primary types.PartyID, from
 	defer x.lock.RUnlock()
 
 	w, exists := x.ledgers[LedgerKey{Shard: shard, Primary: primary}]
-	if !exists || from < w.base {
+	if !exists || from < w.base || from-w.base >= types.BatchSequence(len(w.decisions)) {
 		return from
 	}
 
 	seq := from
-	for i := int(seq - w.base); i < len(w.decisions); i++ {
+	for i := int(from - w.base); i < len(w.decisions); i++ {
 		decisions := w.decisions[i]
 		if len(decisions) == 0 || slices.Max(decisions) > durable {
 			break

@@ -113,10 +113,12 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	}
 	c.DeliverService = deliverService
 	c.Config = nodeConfig
-	c.Arma = &Consenter{
+	consenter := &Consenter{
 		DB:     badb,
 		Logger: c.Logger,
 	}
+	rebuildCommittedIndex(c.Logger, &consenter.Committed, consLedger, initialState)
+	c.Arma = consenter
 	c.BADB = badb
 	c.State = initialState
 	c.lastConfigBlockNum = lastConfigBlock.Header.Number

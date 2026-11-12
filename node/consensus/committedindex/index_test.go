@@ -179,3 +179,16 @@ func TestLedgersSorted(t *testing.T) {
 	x := indexOf(commit{1, 2, 0, 0, 1}, commit{0, 3, 0, 0, 2}, commit{1, 1, 0, 0, 3})
 	require.Equal(t, []LedgerKey{{Shard: 0, Primary: 3}, {Shard: 1, Primary: 1}, {Shard: 1, Primary: 2}}, x.Ledgers())
 }
+
+// TestFarBeyondTheWindow verifies that a seq far above the held batches drops all of them and yields itself
+// as the frontier, rather than overflowing the window offset.
+func TestFarBeyondTheWindow(t *testing.T) {
+	const far = types.BatchSequence(1 << 63)
+
+	x := indexOf(commit{1, 1, 0, 0, 1}, commit{1, 1, 1, 0, 2})
+	require.Equal(t, far, x.DurableFrontier(1, 1, far, 10))
+
+	x.DropBelow(1, 1, far)
+	require.Zero(t, x.Size())
+	require.Equal(t, types.DecisionNum(3), x.ReplayFrom())
+}
