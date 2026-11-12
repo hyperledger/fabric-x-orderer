@@ -26,7 +26,7 @@ type LedgerKey struct {
 
 // Index records the decisions that committed the batches of each <shard, primary>, from the lowest seq not
 // dropped yet upwards. Batches are added in decision order, as decisions commit, and dropped below the prune
-// points. It is safe for concurrent use.
+// points. The zero value is an empty index. It is safe for concurrent use, and must not be copied.
 type Index struct {
 	lock    sync.RWMutex
 	ledgers map[LedgerKey]*ledgerWindow
@@ -53,7 +53,7 @@ type decisionCount struct {
 
 // New returns an empty index.
 func New() *Index {
-	return &Index{ledgers: make(map[LedgerKey]*ledgerWindow)}
+	return &Index{}
 }
 
 // Add records the batches committed by decision num. Decisions must be added in order; a decision below
@@ -70,6 +70,9 @@ func (x *Index) Add(num types.DecisionNum, ids []types.BatchID) {
 		return
 	}
 
+	if x.ledgers == nil {
+		x.ledgers = make(map[LedgerKey]*ledgerWindow)
+	}
 	x.queue = append(x.queue, decisionCount{decision: num, count: len(ids)})
 	x.size += len(ids)
 	for _, id := range ids {

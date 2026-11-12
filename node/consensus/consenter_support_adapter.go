@@ -135,6 +135,7 @@ func (c *ConsenterSupportAdapter) indexAndWrite(block *common.Block) *state.Head
 	}
 	hdr, digests := c.consensus.headerAndDigestsFromProposal(*proposal)
 	c.consensus.Arma.Index(digests)
+	c.consensus.Arma.IndexCommitted(hdr)
 
 	c.consensus.Storage.WriteBlock(block)
 
