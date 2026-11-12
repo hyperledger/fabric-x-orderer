@@ -162,12 +162,7 @@ func CreateStructuredConfigUpdateRequest(data []byte) *protos.Request {
 }
 
 func CreateStructuredRequest(data []byte) *protos.Request {
-	payload := createStructuredPayload(data, common.HeaderType_MESSAGE, fixedNonce)
-	payloadBytes := deterministicMarshall(payload)
-	return &protos.Request{
-		Payload:   payloadBytes,
-		Signature: []byte("signature"),
-	}
+	return CreateStructuredRequestOfChannel(common.HeaderType_MESSAGE, channelID, data)
 }
 
 // CreateStructuredRequestOfChannel is like CreateStructuredRequest, but for a request of the given type whose channel

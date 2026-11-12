@@ -156,8 +156,6 @@ func requireMatchingBatchedIDs(t *testing.T, verifier *batcher.RequestsInspector
 	}
 }
 
-// fakeRequestPool is a test double for batcher.RequestPool. A request is reported
-// as present iff its id was added to present; the zero value is an empty pool.
 // Scenario:
 //  1. Build a batcher verifier on channel "arma", with a single shard so that every request maps to it.
 //  2. Verify data requests whose channel header names "arma", another channel, or none, singly and in a batch.
@@ -195,6 +193,8 @@ func TestRequestsInspectorVerifierChecksChannelID(t *testing.T) {
 	require.ErrorContains(t, err, "wrong channel id in channel header")
 }
 
+// fakeRequestPool is a test double for batcher.RequestPool. A request is reported
+// as present iff its id was added to present; the zero value is an empty pool.
 type fakeRequestPool struct {
 	present map[string]bool
 }
