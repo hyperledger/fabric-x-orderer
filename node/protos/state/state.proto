@@ -85,4 +85,5 @@ message State {
   repeated AssemblerHeight assembler_heights = 7; // Highest committed decision reported by each assembler party, sorted by party
   repeated PrunePoint prune_points = 8; // Agreed prune point per <shard, primary>, sorted by (shard, primary); an absent pair means 0
   uint64 durable_watermark = 9; // Highest decision committed by at least 2f+1 assemblers, as they reported; never decreases
+  uint64 replay_from = 10; // Lowest decision that committed a batch at or above its primary's prune point; a restarting consenter rebuilds its committed index from it
 }
