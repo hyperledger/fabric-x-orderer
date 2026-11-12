@@ -113,10 +113,14 @@ func (c *Consensus) configureConsensus(nodeConfig *node_config.ConsenterNodeConf
 	}
 	c.DeliverService = deliverService
 	c.Config = nodeConfig
-	c.Arma = &Consenter{
+	consenter := &Consenter{
 		DB:     badb,
 		Logger: c.Logger,
 	}
+	// A dynamic reconfiguration also rebuilds the index, from the same ledger. Keeping the index of the
+	// previous configuration would avoid that replay.
+	rebuildCommittedIndex(c.Logger, &consenter.Committed, consLedger, initialState)
+	c.Arma = consenter
 	c.BADB = badb
 	c.State = initialState
 	c.lastConfigBlockNum = lastConfigBlock.Header.Number

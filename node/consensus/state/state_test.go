@@ -276,6 +276,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 					{Shard: 2, Primary: 1, Seq: 5},
 				},
 				DurableWatermark: 7,
+				ReplayFrom:       42,
 				AppContext:       []byte{1},
 			},
 		},
@@ -1016,7 +1017,7 @@ func TestCollectAssemblerReports(t *testing.T) {
 
 // TestProcessRecordsAssemblerReports verifies that Process records reports of the current config
 // sequence, drops reports of any other config sequence, and carries published prune points over to the
-// next state (UpdatePrunePoints never computes a new one yet, so it must not clear existing ones).
+// next state (Process does not compute prune points, so it must not clear existing ones).
 func TestProcessRecordsAssemblerReports(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 	const cur = types.ConfigSequence(3)
@@ -1214,4 +1215,46 @@ func TestStateDeserializeRejectsOutOfRangePruningFields(t *testing.T) {
 			require.ErrorContains(t, s.Deserialize(raw), "exceeds uint16 maximum")
 		})
 	}
+}
+
+// TestSetPrunePoint verifies that SetPrunePoint keeps prune points sorted by (shard, primary), never lowers
+// one, and never adds an entry for prune point 0.
+func TestSetPrunePoint(t *testing.T) {
+	var s consensus_state.State
+	s.SetPrunePoint(1, 2, 5)
+	s.SetPrunePoint(0, 3, 4)
+	s.SetPrunePoint(1, 1, 2)
+	require.Equal(t, []consensus_state.PrunePoint{
+		{Shard: 0, Primary: 3, Seq: 4},
+		{Shard: 1, Primary: 1, Seq: 2},
+		{Shard: 1, Primary: 2, Seq: 5},
+	}, s.PrunePoints)
+
+	s.SetPrunePoint(1, 2, 3)
+	require.Equal(t, types.BatchSequence(5), s.PrunePoint(1, 2))
+
+	s.SetPrunePoint(2, 1, 0)
+	require.Len(t, s.PrunePoints, 3)
+
+	var deserialized consensus_state.State
+	require.NoError(t, deserialized.Deserialize(s.Serialize()))
+	require.Equal(t, s.PrunePoints, deserialized.PrunePoints)
+}
+
+// TestDropPendingBelowPrunePoints verifies that pending BAFs below their <shard, primary> prune point are
+// removed and the others are kept in order.
+func TestDropPendingBelowPrunePoints(t *testing.T) {
+	baf := func(primary types.PartyID, seq types.BatchSequence) types.BatchAttestationFragment {
+		return types.NewSimpleBatchAttestationFragment(0, primary, seq, []byte{byte(seq)}, 3, 0, 0, nil)
+	}
+	s := consensus_state.State{Pending: []types.BatchAttestationFragment{baf(1, 1), baf(2, 1), baf(1, 4), baf(1, 6)}}
+	s.SetPrunePoint(0, 1, 5)
+
+	s.DropPendingBelowPrunePoints(testutil.CreateLogger(t, 0))
+
+	require.Len(t, s.Pending, 2)
+	require.Equal(t, types.PartyID(2), s.Pending[0].Primary())
+	require.Equal(t, types.BatchSequence(1), s.Pending[0].Seq())
+	require.Equal(t, types.PartyID(1), s.Pending[1].Primary())
+	require.Equal(t, types.BatchSequence(6), s.Pending[1].Seq())
 }
