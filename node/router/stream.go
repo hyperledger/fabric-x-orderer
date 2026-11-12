@@ -9,7 +9,6 @@ package router
 import (
 	"context"
 	"fmt"
-	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -316,7 +315,6 @@ func (s *stream) renewStream(client protos.RequestTransmitClient, endpoint strin
 	}
 
 	newStreamRequests := make(chan *TrackedRequest, 1000)
-	newRequestsByTraceID := make(map[string]*TrackedRequest)
 
 	// close the old stream. This should stop the sendRequests and readResponses goroutines.
 	s.close()
@@ -334,8 +332,9 @@ CopyChannelLoop:
 	}
 
 	s.lock.Lock()
-	// copy the response-Channels map
-	maps.Copy(newRequestsByTraceID, s.requestsByTraceID)
+	// Hand the registrations over, so that a request is answered by one of the streams, not by both.
+	newRequestsByTraceID := s.requestsByTraceID
+	s.requestsByTraceID = make(map[string]*TrackedRequest)
 
 	newStream := &stream{
 		endpoint:                          endpoint,
