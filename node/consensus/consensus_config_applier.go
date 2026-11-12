@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 package consensus
 
 import (
+	"slices"
+
 	smartbft_types "github.com/hyperledger/SmartBFT/pkg/types"
 	"github.com/hyperledger/fabric-lib-go/bccsp"
 	"github.com/hyperledger/fabric-protos-go-apiv2/common"
@@ -66,6 +68,8 @@ func (ca *DefaultConfigApplier) ApplyConfigToState(state *state.State, configReq
 	for _, party := range sharedConfig.PartiesConfig {
 		parties = append(parties, arma_types.PartyID(party.GetPartyID()))
 	}
+	slices.Sort(parties)
+	newState.Parties = parties
 	newState.RetainAssemblerHeights(parties)
 
 	return newState, nil

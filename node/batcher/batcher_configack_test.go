@@ -266,7 +266,7 @@ func (s *batcherWithStubs) deliverConfigUpdate(t *testing.T, dir string, configU
 	configBlock, err := cfgutil.CreateConsensusConfigBlock(s.bundle, configUpdateEnvelope, s.genesisBlock.Header, 1, types.DecisionNum(1), 1, 0)
 	require.NoError(t, err)
 
-	st := &state.State{N: uint16(len(s.parties)), Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
+	st := &state.State{N: uint16(len(s.parties)), Parties: s.parties, Shards: []state.ShardTerm{{Shard: 1, Term: 0}}}
 	s.stubConsenter.UpdateStateHeaderWithConfigBlock(types.DecisionNum(1), []*common.Block{configBlock}, st)
 }
 

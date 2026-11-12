@@ -23,6 +23,7 @@ import (
 var (
 	initialState = consensus_state.State{
 		N:         4,
+		Parties:   []types.PartyID{1, 2, 3, 4},
 		Threshold: 2,
 		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 	}
@@ -47,6 +48,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "full state with all fields",
 			state: consensus_state.State{
 				N:          4,
+				Parties:    []types.PartyID{1, 2, 3, 4},
 				Threshold:  2,
 				Quorum:     3,
 				Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -57,6 +59,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with empty app context",
 			state: consensus_state.State{
 				N:          4,
+				Parties:    []types.PartyID{1, 2, 3, 4},
 				Threshold:  2,
 				Quorum:     3,
 				Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -67,6 +70,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with multiple shards",
 			state: consensus_state.State{
 				N:         4,
+				Parties:   []types.PartyID{1, 2, 3, 4},
 				Threshold: 2,
 				Quorum:    3,
 				Shards: []consensus_state.ShardTerm{
@@ -81,6 +85,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with complaints",
 			state: consensus_state.State{
 				N:         4,
+				Parties:   []types.PartyID{1, 2, 3, 4},
 				Threshold: 2,
 				Quorum:    3,
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -112,6 +117,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with large app context",
 			state: consensus_state.State{
 				N:          10,
+				Parties:    []types.PartyID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
 				Threshold:  4,
 				Quorum:     7,
 				Shards:     []consensus_state.ShardTerm{{Shard: 5, Term: 100}},
@@ -122,6 +128,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with high term numbers",
 			state: consensus_state.State{
 				N:         4,
+				Parties:   []types.PartyID{1, 2, 3, 4},
 				Threshold: 2,
 				Quorum:    3,
 				Shards: []consensus_state.ShardTerm{
@@ -135,6 +142,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with single pending BAF",
 			state: consensus_state.State{
 				N:         4,
+				Parties:   []types.PartyID{1, 2, 3, 4},
 				Threshold: 2,
 				Quorum:    3,
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -152,6 +160,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with multiple pending BAFs",
 			state: consensus_state.State{
 				N:         4,
+				Parties:   []types.PartyID{1, 2, 3, 4},
 				Threshold: 2,
 				Quorum:    3,
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 2}},
@@ -179,6 +188,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with pending BAFs and complaints",
 			state: consensus_state.State{
 				N:         4,
+				Parties:   []types.PartyID{1, 2, 3, 4},
 				Threshold: 2,
 				Quorum:    3,
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -205,6 +215,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with pending BAFs with signatures",
 			state: consensus_state.State{
 				N:         4,
+				Parties:   []types.PartyID{1, 2, 3, 4},
 				Threshold: 2,
 				Quorum:    3,
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -222,6 +233,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with many pending BAFs",
 			state: consensus_state.State{
 				N:         4,
+				Parties:   []types.PartyID{1, 2, 3, 4},
 				Threshold: 2,
 				Quorum:    3,
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -264,6 +276,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 			name: "state with assembler heights and prune points",
 			state: consensus_state.State{
 				N:         4,
+				Parties:   []types.PartyID{1, 2, 3, 4},
 				Threshold: 2,
 				Quorum:    3,
 				Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 2}},
@@ -307,6 +320,7 @@ func TestStateSerializeDeserialize(t *testing.T) {
 func TestStateString(t *testing.T) {
 	s := consensus_state.State{
 		N:          4,
+		Parties:    []types.PartyID{1, 2, 3, 4},
 		Threshold:  2,
 		Quorum:     3,
 		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 3}},
@@ -335,6 +349,7 @@ func TestStateString(t *testing.T) {
 	// Test with more than 5 BAFs
 	s2 := consensus_state.State{
 		N:          4,
+		Parties:    []types.PartyID{1, 2, 3, 4},
 		Threshold:  2,
 		Quorum:     3,
 		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -376,6 +391,7 @@ func TestCollectAndDeduplicateEvents(t *testing.T) {
 
 	expectedState := consensus_state.State{
 		N:          4,
+		Parties:    []types.PartyID{1, 2, 3, 4},
 		Threshold:  2,
 		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 		Complaints: []consensus_state.Complaint{complaint},
@@ -462,6 +478,7 @@ func TestCollectAndDeduplicateEvents_SameSignerDifferentDigests(t *testing.T) {
 
 	state := consensus_state.State{
 		N:         4,
+		Parties:   []types.PartyID{1, 2, 3, 4},
 		Threshold: 2,
 		Quorum:    3,
 		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -493,6 +510,7 @@ func TestProcessCountsRepeatedBAFOnce(t *testing.T) {
 
 	s := &consensus_state.State{
 		N:          4,
+		Parties:    []types.PartyID{1, 2, 3, 4},
 		Threshold:  2,
 		Quorum:     3,
 		Shards:     []consensus_state.ShardTerm{{Shard: 1, Term: 0}},
@@ -511,6 +529,7 @@ func TestProcessCountsRepeatedBAFOnce(t *testing.T) {
 func TestFilterPendingEventsWithDiffConfigSeq(t *testing.T) {
 	state := consensus_state.State{
 		N:         4,
+		Parties:   []types.PartyID{1, 2, 3, 4},
 		Threshold: 2,
 		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
 		Complaints: []consensus_state.Complaint{
@@ -562,6 +581,7 @@ func TestProcessSurfacesStaleConfigBAFsBehind(t *testing.T) {
 	logger := testutil.CreateLogger(t, 0)
 	st := consensus_state.State{
 		N:         4,
+		Parties:   []types.PartyID{1, 2, 3, 4},
 		Threshold: 2,
 		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
 	}
@@ -606,6 +626,7 @@ func TestStateSerializeDeserializeStaleConfigBAFs(t *testing.T) {
 	baf.SetSignature([]byte{9})
 	st := consensus_state.State{
 		N:               4,
+		Parties:         []types.PartyID{1, 2, 3, 4},
 		Threshold:       2,
 		Quorum:          3,
 		Shards:          []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -624,6 +645,7 @@ func TestStateSerializeDeserializeStaleConfigBAFs(t *testing.T) {
 func TestPrimaryRotateDueToComplaints(t *testing.T) {
 	state := consensus_state.State{
 		N:         4,
+		Parties:   []types.PartyID{1, 2, 3, 4},
 		Threshold: 2,
 		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
 		Complaints: []consensus_state.Complaint{
@@ -668,6 +690,7 @@ func TestDetectEquivocation(t *testing.T) {
 	t.Run("no equivocation - single digest per batch attestation", func(t *testing.T) {
 		state := consensus_state.State{
 			N:         4,
+			Parties:   []types.PartyID{1, 2, 3, 4},
 			Threshold: 2,
 			Quorum:    3,
 			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -686,6 +709,7 @@ func TestDetectEquivocation(t *testing.T) {
 	t.Run("equivocation detected - multiple digests for same seq/shard/primary", func(t *testing.T) {
 		state := consensus_state.State{
 			N:         4,
+			Parties:   []types.PartyID{1, 2, 3, 4},
 			Threshold: 2,
 			Quorum:    3,
 			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -705,6 +729,7 @@ func TestDetectEquivocation(t *testing.T) {
 	t.Run("equivocation with multiple signers on different digests", func(t *testing.T) {
 		state := consensus_state.State{
 			N:         4,
+			Parties:   []types.PartyID{1, 2, 3, 4},
 			Threshold: 2,
 			Quorum:    3,
 			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 5}},
@@ -725,6 +750,7 @@ func TestDetectEquivocation(t *testing.T) {
 	t.Run("no equivocation - different sequences", func(t *testing.T) {
 		state := consensus_state.State{
 			N:         4,
+			Parties:   []types.PartyID{1, 2, 3, 4},
 			Threshold: 2,
 			Quorum:    3,
 			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -744,6 +770,7 @@ func TestDetectEquivocation(t *testing.T) {
 	t.Run("no equivocation - different shards", func(t *testing.T) {
 		state := consensus_state.State{
 			N:         4,
+			Parties:   []types.PartyID{1, 2, 3, 4},
 			Threshold: 2,
 			Quorum:    3,
 			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
@@ -764,6 +791,7 @@ func TestDetectEquivocation(t *testing.T) {
 	t.Run("no equivocation - different primaries", func(t *testing.T) {
 		state := consensus_state.State{
 			N:         4,
+			Parties:   []types.PartyID{1, 2, 3, 4},
 			Threshold: 2,
 			Quorum:    3,
 			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -783,6 +811,7 @@ func TestDetectEquivocation(t *testing.T) {
 	t.Run("equivocation in multiple shards", func(t *testing.T) {
 		state := consensus_state.State{
 			N:         4,
+			Parties:   []types.PartyID{1, 2, 3, 4},
 			Threshold: 2,
 			Quorum:    3,
 			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
@@ -806,6 +835,7 @@ func TestDetectEquivocation(t *testing.T) {
 	t.Run("empty pending - no equivocation", func(t *testing.T) {
 		state := consensus_state.State{
 			N:         4,
+			Parties:   []types.PartyID{1, 2, 3, 4},
 			Threshold: 2,
 			Quorum:    3,
 			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -825,6 +855,7 @@ func TestDetectEquivocation(t *testing.T) {
 		// and must not trigger equivocation detection.
 		state := consensus_state.State{
 			N:         4,
+			Parties:   []types.PartyID{1, 2, 3, 4},
 			Threshold: 2,
 			Quorum:    3,
 			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -846,6 +877,7 @@ func TestDetectEquivocation(t *testing.T) {
 		// the same primary and both signed their BAF (Signer != Primary).
 		state := consensus_state.State{
 			N:         4,
+			Parties:   []types.PartyID{1, 2, 3, 4},
 			Threshold: 2,
 			Quorum:    3,
 			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -888,6 +920,7 @@ func TestExtractBatchAttestationsFromPending_EquivocationDigestLeak(t *testing.T
 
 	state := consensus_state.State{
 		N:         4,
+		Parties:   []types.PartyID{1, 2, 3, 4},
 		Threshold: 2,
 		Quorum:    3,
 		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -917,6 +950,7 @@ func TestExtractBatchAttestationsFromPending_EquivocationDigestLeak(t *testing.T
 	thresholdDigest2 := []byte{4, 5, 6}
 	state2 := consensus_state.State{
 		N:         4,
+		Parties:   []types.PartyID{1, 2, 3, 4},
 		Threshold: 2,
 		Quorum:    3,
 		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
@@ -1212,6 +1246,52 @@ func TestStateDeserializeRejectsOutOfRangePruningFields(t *testing.T) {
 			require.NoError(t, err)
 			var s consensus_state.State
 			require.ErrorContains(t, s.Deserialize(raw), "exceeds uint16 maximum")
+		})
+	}
+}
+
+func TestStateSerializeDeserializeParties(t *testing.T) {
+	st := consensus_state.State{N: 4, Parties: []types.PartyID{1, 3, 5, 7}, Threshold: 2, Quorum: 3, AppContext: []byte{}}
+
+	var got consensus_state.State
+	require.NoError(t, got.Deserialize(st.Serialize()))
+	assert.Equal(t, st.Parties, got.Parties)
+	assert.Equal(t, uint16(4), got.N, "N is the number of parties")
+
+	clone := got.Clone()
+	clone.Parties[0] = 9
+	assert.Equal(t, types.PartyID(1), got.Parties[0], "a clone does not share the parties")
+}
+
+func TestStateDeserializeRejectsInvalidParties(t *testing.T) {
+	tests := []struct {
+		name    string
+		state   *stateprotos.State
+		wantErr string
+	}{
+		{
+			name:    "party ID out of range",
+			state:   &stateprotos.State{Parties: []uint32{1, math.MaxUint16 + 1}},
+			wantErr: "exceeds uint16 maximum",
+		},
+		{
+			name:    "unsorted",
+			state:   &stateprotos.State{Parties: []uint32{1, 3, 2}},
+			wantErr: "not sorted and unique",
+		},
+		{
+			name:    "duplicate",
+			state:   &stateprotos.State{Parties: []uint32{1, 2, 2}},
+			wantErr: "not sorted and unique",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, err := proto.Marshal(tt.state)
+			require.NoError(t, err)
+			var s consensus_state.State
+			require.ErrorContains(t, s.Deserialize(raw), tt.wantErr)
 		})
 	}
 }

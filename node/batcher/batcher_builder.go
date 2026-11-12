@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
@@ -261,6 +262,10 @@ func computeZeroState(config *node_config.BatcherNodeConfig) state.State {
 	}
 
 	s.N = uint16(len(config.Consenters))
+	for _, consenter := range config.Consenters {
+		s.Parties = append(s.Parties, consenter.PartyID)
+	}
+	slices.Sort(s.Parties)
 
 	return s
 }

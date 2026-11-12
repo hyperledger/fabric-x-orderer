@@ -24,6 +24,7 @@ import (
 func TestConsenter(t *testing.T) {
 	s := &state.State{
 		N:         4,
+		Parties:   testutil.PartyIDs(4),
 		Shards:    []state.ShardTerm{{Shard: 1, Term: 1}},
 		Threshold: 2,
 		Pending:   []arma_types.BatchAttestationFragment{},
@@ -123,6 +124,7 @@ func TestConsenterAggregateFragmentsHonest(t *testing.T) {
 	newState := func() *state.State {
 		return &state.State{
 			N:         7,
+			Parties:   testutil.PartyIDs(7),
 			Shards:    []state.ShardTerm{{Shard: 1, Term: 1}, {Shard: 2, Term: 1}},
 			Threshold: 2,
 			Pending:   []arma_types.BatchAttestationFragment{},
@@ -187,6 +189,7 @@ func TestConsenterEquivocatingDigests(t *testing.T) {
 	newState := func() *state.State {
 		return &state.State{
 			N:         7,
+			Parties:   testutil.PartyIDs(7),
 			Shards:    []state.ShardTerm{{Shard: 1, Term: 1}},
 			Threshold: 2,
 			Pending:   []arma_types.BatchAttestationFragment{},

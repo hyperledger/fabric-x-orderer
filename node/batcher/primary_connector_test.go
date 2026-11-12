@@ -76,7 +76,7 @@ func TestPrimaryConnector(t *testing.T) {
 	batchers[0].Stop()
 
 	// change term
-	termChangeState := &state.State{N: uint16(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
+	termChangeState := &state.State{N: uint16(numParties), Parties: testutil.PartyIDs(numParties), Shards: []state.ShardTerm{{Shard: shardID, Term: 1}}}
 	for i := 1; i < numParties; i++ {
 		stubConsenters[i].UpdateState(termChangeState)
 	}

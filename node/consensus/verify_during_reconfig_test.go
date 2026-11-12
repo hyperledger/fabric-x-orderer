@@ -166,7 +166,7 @@ func TestVerifyProposalRejectsReconfigDuringRequestVerification(t *testing.T) {
 	baf, err := batcher.CreateBAF(signer, 1, 1, make([]byte, 32), 1, 1, 0, 0, nil)
 	require.NoError(t, err)
 	requests := types.BatchedRequests{(&state.ControlEvent{BAF: baf}).Bytes()}
-	hdr := &state.Header{Num: 1, State: &state.State{N: 1}}
+	hdr := &state.Header{Num: 1, State: &state.State{N: 1, Parties: testutil.PartyIDs(1)}}
 	md, err := proto.Marshal(&smartbftprotos.ViewMetadata{LatestSequence: 1})
 	require.NoError(t, err)
 
