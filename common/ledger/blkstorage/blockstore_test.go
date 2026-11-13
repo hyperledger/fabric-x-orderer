@@ -9,6 +9,7 @@ package blkstorage
 import (
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/testutil"
 
 	"github.com/stretchr/testify/require"
@@ -34,8 +35,8 @@ func TestWrongBlockNumber(t *testing.T) {
 func TestBlockNumIndexErrorPropagation(t *testing.T) {
 	// Scenario:
 	// 1. Open a store and add three blocks.
-	// 2. Close the underlying leveldb provider under the store.
-	// 3. Retrieve a block by number and expect the leveldb failure to surface.
+	// 2. Close the underlying db provider under the store.
+	// 3. Retrieve a block by number and expect the db failure to surface.
 	env := newTestEnv(t, NewConf(t.TempDir(), 0))
 	defer env.Cleanup()
 
@@ -53,5 +54,5 @@ func TestBlockNumIndexErrorPropagation(t *testing.T) {
 
 	block, err := store.RetrieveBlockByNumber(1)
 	require.Nil(t, block)
-	require.ErrorContains(t, err, "leveldb: closed")
+	require.ErrorIs(t, err, pebble.ErrClosed)
 }

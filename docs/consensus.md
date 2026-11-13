@@ -395,11 +395,10 @@ Two more directories are derived from `FileStore.Location`: the **consensus ledg
 blocks the node has committed, and the **batch-attestation DB** (`batchDB`), the set of already-ordered
 batch digests. Neither is configured separately.
 
-The batch-attestation DB is a [Pebble](https://github.com/cockroachdb/pebble) database. Earlier
-versions stored it in goleveldb, which Pebble cannot read: a consenter started on such a `batchDB`
-fails with an error. Delete the node's whole storage directory before upgrading, not only `batchDB`.
-A consenter that keeps its ledger but loses `batchDB` does not rebuild the digests it has already
-ordered.
+The batch-attestation DB is a [Pebble](https://github.com/cockroachdb/pebble) database. The consensus
+ledger keeps its decision blocks in block files, indexed by block number in a Pebble database. A
+consenter that keeps its ledger but loses `batchDB` does not rebuild the digests it has already
+ordered, so the two directories are kept, or deleted, together.
 
 Everything else a consenter needs comes from the **shared configuration** and is therefore uniform
 across the whole cluster. This includes the topology — the parties (from which `N`, and hence `f`,

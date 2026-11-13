@@ -119,7 +119,7 @@ Reconfiguration (membership, identity, endpoints, params) flows through new conf
 ## Where things live
 
 - `node/comm` — gRPC servers/clients, cluster service, TLS/mutual-TLS auth, deliver plumbing.
-- `node/ledger`, `common/ledger` — block/batch ledger storage (goleveldb-backed).
+- `node/ledger`, `common/ledger` — block/batch ledger storage (block files, with a Pebble block index).
 - `node/delivery`, `common/deliver`, `common/deliverclient` — Deliver API server + client.
 - `common/types` — core domain types shared across roles (batches, BAFs, batched requests).
 - `request/` — the batcher's router-side request pool/batching internals (pending, buckets, batch store).

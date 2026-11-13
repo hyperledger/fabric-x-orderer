@@ -8,26 +8,24 @@ package leveldbhelper
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/hyperledger/fabric-x-orderer/common/ledger/dataformat"
-
-	"github.com/pkg/errors"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/iterator"
 )
 
 const (
 	// internalDBName is used to keep track of data related to internals such as data format
 	// _ is used as name because this is not allowed as a channelname
 	internalDBName = "_"
-	// maxBatchSize limits the memory usage (1MB) for a batch. It is measured by the total number of bytes
-	// of all the keys in a batch.
-	maxBatchSize = 1000000
 )
 
 var (
+	// errBatchWritten is returned by WriteBatch for a batch that was already written and not Reset since.
+	errBatchWritten = errors.New("the batch was already written; Reset it to write it again")
+
 	dbNameKeySep     = []byte{0x00}
 	lastKeyIndicator = byte(0x01)
 	formatVersionKey = []byte{'f'} // a single key in db whose value indicates the version of the data format
@@ -48,7 +46,7 @@ type Conf struct {
 	ExpectedFormat string
 }
 
-// Provider enables to use a single leveldb as multiple logical leveldbs
+// Provider enables to use a single db as multiple logical dbs
 type Provider struct {
 	db *DB
 
@@ -141,7 +139,7 @@ func openDBAndCheckFormat(conf *Conf) (d *DB, e error) {
 		return nil, &dataformat.ErrFormatMismatch{
 			ExpectedFormat: conf.ExpectedFormat,
 			Format:         string(formatVersion),
-			DBInfo:         fmt.Sprintf("leveldb at [%s]", conf.DBPath),
+			DBInfo:         fmt.Sprintf("pebble db at [%s]", conf.DBPath),
 		}
 	}
 	logger.Debug("format is latest, nothing to do")
@@ -176,7 +174,7 @@ func (p *Provider) GetDBHandle(dbName string) *DBHandle {
 	return dbHandle
 }
 
-// Close closes the underlying leveldb
+// Close closes the underlying db
 func (p *Provider) Close() {
 	p.db.Close()
 }
@@ -210,97 +208,70 @@ func (h *DBHandle) Delete(key []byte, sync bool) error {
 	return h.db.Delete(constructLevelKey(h.dbName, key), sync)
 }
 
-// DeleteAll deletes all the keys that belong to the channel (dbName).
+// deleteAll deletes all the keys that belong to the channel (dbName), in one atomic range deletion.
 func (h *DBHandle) deleteAll() error {
-	iter, err := h.GetIterator(nil, nil)
-	if err != nil {
-		return err
-	}
-	defer iter.Release()
-
-	// use leveldb iterator directly to be more efficient
-	dbIter := iter.Iterator
-
-	// This is common code shared by all the leveldb instances. Because each leveldb has its own key size pattern,
-	// each batch is limited by memory usage instead of number of keys. Once the batch memory usage reaches maxBatchSize,
-	// the batch will be committed.
-	numKeys := 0
-	batchSize := 0
-	batch := &leveldb.Batch{}
-	for dbIter.Next() {
-		if err := dbIter.Error(); err != nil {
-			return errors.Wrap(err, "internal leveldb error while retrieving data from db iterator")
-		}
-		key := dbIter.Key()
-		numKeys++
-		batchSize = batchSize + len(key)
-		batch.Delete(key)
-		if batchSize >= maxBatchSize {
-			if err := h.db.WriteBatch(batch, true); err != nil {
-				return err
-			}
-			logger.Infof("Have removed %d entries for channel %s in leveldb %s", numKeys, h.dbName, h.db.conf.DBPath)
-			batchSize = 0
-			batch.Reset()
-		}
-	}
-	if batch.Len() > 0 {
-		return h.db.WriteBatch(batch, true)
+	sKey, eKey := h.keyRange()
+	if err := h.db.DeleteRange(sKey, eKey, true); err != nil {
+		return fmt.Errorf("error deleting the keys of [%s]: %w", h.dbName, err)
 	}
 	return nil
 }
 
 // IsEmpty returns true if no data exists for the DBHandle
 func (h *DBHandle) IsEmpty() (bool, error) {
-	itr, err := h.GetIterator(nil, nil)
+	sKey, eKey := h.keyRange()
+	empty, err := h.db.isEmptyRange(sKey, eKey)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("internal db error while checking whether [%s] is empty: %w", h.dbName, err)
 	}
-	defer itr.Release()
-
-	if err := itr.Error(); err != nil {
-		return false, errors.WithMessagef(itr.Error(), "internal leveldb error while obtaining next entry from iterator")
-	}
-
-	return !itr.Next(), nil
+	return empty, nil
 }
 
 // NewUpdateBatch returns a new UpdateBatch that can be used to update the db
 func (h *DBHandle) NewUpdateBatch() *UpdateBatch {
 	return &UpdateBatch{
-		dbName:       h.dbName,
-		leveldbBatch: &leveldb.Batch{},
+		db:     h.db,
+		dbName: h.dbName,
+		batch:  h.db.newBatch(),
 	}
 }
 
-// WriteBatch writes a batch in an atomic way
+// WriteBatch writes a batch in an atomic way. A batch is written once: the write releases it, and
+// writing it again returns errBatchWritten unless it is Reset first. A batch is written to the db it was
+// created from: if that db is closed, the write fails with pebble.ErrClosed and can be tried again only
+// while the same db stays closed, since a reopened db is a new Pebble instance.
 func (h *DBHandle) WriteBatch(batch *UpdateBatch, sync bool) error {
-	if batch == nil || batch.leveldbBatch.Len() == 0 {
+	if batch == nil {
 		return nil
 	}
-	if err := h.db.WriteBatch(batch.leveldbBatch, sync); err != nil {
+	if batch.batch == nil {
+		return errBatchWritten
+	}
+	if batch.batch.Empty() {
+		return nil
+	}
+	err := h.db.WriteBatch(batch.batch, sync)
+	if errors.Is(err, pebble.ErrClosed) {
+		// Refused before Pebble saw the batch, so it is still intact.
 		return err
 	}
-	return nil
+	if err == nil {
+		// Return the batch to Pebble's pool, as Pebble's own Set does after a successful Apply.
+		err = batch.batch.Close()
+	}
+	// Pebble refuses to apply a batch twice, including one whose Apply failed, so it is dropped either way.
+	batch.batch = nil
+	batch.size = 0
+	return err
 }
 
-// GetIterator gets an handle to iterator. The iterator should be released after the use.
-// The resultset contains all the keys that are present in the db between the startKey (inclusive) and the endKey (exclusive).
-// A nil startKey represents the first available key and a nil endKey represent a logical key after the last available key
-func (h *DBHandle) GetIterator(startKey []byte, endKey []byte) (*Iterator, error) {
-	sKey := constructLevelKey(h.dbName, startKey)
-	eKey := constructLevelKey(h.dbName, endKey)
-	if endKey == nil {
-		// replace the last byte 'dbNameKeySep' by 'lastKeyIndicator'
-		eKey[len(eKey)-1] = lastKeyIndicator
-	}
-	logger.Debugf("Getting iterator for range [%#v] - [%#v]", sKey, eKey)
-	itr := h.db.GetIterator(sKey, eKey)
-	if err := itr.Error(); err != nil {
-		itr.Release()
-		return nil, errors.Wrapf(err, "internal leveldb error while obtaining db iterator")
-	}
-	return &Iterator{h.dbName, itr}, nil
+// keyRange returns the db keys that bound all the keys of this handle, as [start, end).
+func (h *DBHandle) keyRange() ([]byte, []byte) {
+	sKey := constructLevelKey(h.dbName, nil)
+	eKey := constructLevelKey(h.dbName, nil)
+	// replace the last byte 'dbNameKeySep' by 'lastKeyIndicator'
+	eKey[len(eKey)-1] = lastKeyIndicator
+	return sKey, eKey
 }
 
 // Close closes the DBHandle after its db data have been deleted
@@ -312,9 +283,11 @@ func (h *DBHandle) Close() {
 
 // UpdateBatch encloses the details of multiple `updates`
 type UpdateBatch struct {
-	leveldbBatch *leveldb.Batch
-	dbName       string
-	size         int
+	// batch is nil once the batch was written.
+	batch  *pebble.Batch
+	db     *DB
+	dbName string
+	size   int
 }
 
 // Put adds a KV
@@ -322,57 +295,52 @@ func (b *UpdateBatch) Put(key []byte, value []byte) {
 	if value == nil {
 		panic("Nil value not allowed")
 	}
+	b.requireNotWritten()
 	k := constructLevelKey(b.dbName, key)
-	b.leveldbBatch.Put(k, value)
+	// A batch without an index never fails to record an operation.
+	_ = b.batch.Set(k, value, nil)
 	b.size += len(k) + len(value)
 }
 
 // Delete deletes a Key and associated value
 func (b *UpdateBatch) Delete(key []byte) {
+	b.requireNotWritten()
 	k := constructLevelKey(b.dbName, key)
 	b.size += len(k)
-	b.leveldbBatch.Delete(k)
+	_ = b.batch.Delete(k, nil)
 }
 
-// Size returns the current size of the batch
+// Size returns the current size of the batch. A written batch has none.
 func (b *UpdateBatch) Size() int {
 	return b.size
 }
 
-// Len returns number of records in the batch
+// Len returns number of records in the batch. A written batch has none.
 func (b *UpdateBatch) Len() int {
-	return b.leveldbBatch.Len()
+	if b.batch == nil {
+		return 0
+	}
+	return int(b.batch.Count())
 }
 
-// Reset resets the batch
+// Reset empties the batch, so it can be written again. A written batch gets a new batch from the db.
 func (b *UpdateBatch) Reset() {
-	b.leveldbBatch.Reset()
+	if b.batch == nil {
+		b.batch = b.db.newBatch()
+	} else {
+		b.batch.Reset()
+	}
 	b.size = 0
 }
 
-// Iterator extends actual leveldb iterator
-type Iterator struct {
-	dbName string
-	iterator.Iterator
-}
-
-// Key wraps actual leveldb iterator method
-func (itr *Iterator) Key() []byte {
-	return retrieveAppKey(itr.Iterator.Key())
-}
-
-// Seek moves the iterator to the first key/value pair
-// whose key is greater than or equal to the given key.
-// It returns whether such pair exist.
-func (itr *Iterator) Seek(key []byte) bool {
-	levelKey := constructLevelKey(itr.dbName, key)
-	return itr.Iterator.Seek(levelKey)
+// requireNotWritten panics if the batch was written: Pebble recycles a written batch, so adding to it
+// would write into a batch that another caller may hold.
+func (b *UpdateBatch) requireNotWritten() {
+	if b.batch == nil {
+		panic(errBatchWritten)
+	}
 }
 
 func constructLevelKey(dbName string, key []byte) []byte {
 	return append(append([]byte(dbName), dbNameKeySep...), key...)
-}
-
-func retrieveAppKey(levelKey []byte) []byte {
-	return bytes.SplitN(levelKey, dbNameKeySep, 2)[1]
 }

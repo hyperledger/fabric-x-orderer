@@ -49,7 +49,7 @@ EOF
 
   ./bin/armageddon generate --config="$config_yaml" --output="$TEST_DIR" --sampleConfigPath=testutil/fabric/sampleconfig
 
-  # Each node needs its own data directory, because LevelDB locks it
+  # Each node needs its own data directory, because its databases lock it
   local count=0 config_file component party data_dir
   for config_file in "${TEST_DIR}"/config/party*/local_config_*.yaml; do
     component=$(basename "$config_file" .yaml | sed 's/local_config_//')
