@@ -7,9 +7,17 @@ SPDX-License-Identifier: Apache-2.0
 package router
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/fabric-x-orderer/common/operations"
+	"github.com/hyperledger/fabric-x-orderer/common/requestfilter"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
+	"github.com/hyperledger/fabric-x-orderer/node/comm/tlsgen"
+	"github.com/hyperledger/fabric-x-orderer/node/config"
+	"github.com/hyperledger/fabric-x-orderer/testutil"
+	"github.com/hyperledger/fabric-x-orderer/testutil/stub"
 	"github.com/stretchr/testify/require"
 )
 
@@ -151,4 +159,54 @@ func missingStreams(hitsPerSlot map[[2]int]int, connections int, streamsPerConn 
 		}
 	}
 	return missing
+}
+
+// Scenario:
+//  1. Start a shard router connected to a stub batcher.
+//  2. Stop it, with Stop or with SoftStop.
+//  3. Expect every one of its streams to be closed.
+func TestShardRouterStopClosesEveryStream(t *testing.T) {
+	for name, stop := range map[string]func(*ShardRouter){
+		"Stop":     func(sr *ShardRouter) { sr.Stop() },
+		"SoftStop": func(sr *ShardRouter) { sr.SoftStop(errors.New("router is stopping")) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			sr := startShardRouter(t)
+
+			stop(sr)
+
+			for i, streamsInConn := range sr.streams {
+				for j, s := range streamsInConn {
+					require.NotNil(t, s)
+					select {
+					case <-s.doneChannel:
+					default:
+						t.Fatalf("stream %d of connection %d is still open", j, i)
+					}
+				}
+			}
+		})
+	}
+}
+
+// startShardRouter starts a shard router with 2 connections of 2 streams each to a stub batcher.
+func startShardRouter(t *testing.T) *ShardRouter {
+	ca, err := tlsgen.NewCA()
+	require.NoError(t, err)
+	keyPair, err := ca.NewClientCertKeyPair()
+	require.NoError(t, err)
+
+	shardID := types.ShardID(1)
+	batcher := stub.NewStubBatcher(t, ca, types.PartyID(1), shardID)
+	batcher.Start()
+	t.Cleanup(batcher.Stop)
+
+	logger := testutil.CreateLogger(t, 0)
+	metrics := NewRouterMetrics(&config.RouterNodeConfig{PartyID: 1, Metrics: &operations.Metrics{Provider: "disabled"}}, logger)
+	sr := NewShardRouter(logger, batcher.GetBatcherEndpoint(), [][]byte{ca.CertBytes()}, keyPair.Cert, keyPair.Key,
+		2, 2, requestfilter.NewRulesVerifier(nil), nil, shardID, metrics)
+	sr.InitShardRouter()
+	require.True(t, sr.IsAllStreamsOKinSR())
+
+	return sr
 }

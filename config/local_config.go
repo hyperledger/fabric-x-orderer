@@ -116,7 +116,7 @@ type GeneralConfig struct {
 	// LogSpec controls the logging level of the node
 	LogSpec string `yaml:"LogSpec,omitempty"`
 	// ClientSignatureVerificationRequired specifies if the router and batcher will validate the signature in the requests.
-	// The request structure, including its TxID, is checked regardless.
+	// The request structure, including its TxID and channel ID, is checked regardless.
 	ClientSignatureVerificationRequired bool `yaml:"ClientSignatureVerificationRequired,omitempty"`
 }
 

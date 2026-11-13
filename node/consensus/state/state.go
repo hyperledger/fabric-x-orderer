@@ -436,19 +436,17 @@ func (s *State) PrimaryRotateDueToComplaints(l *flogging.FabricLogger) {
 //   - s.Complaints: each accepted complaint is appended.
 //
 // A BAF is skipped when its shard is not in s.Shards, or when an equal attestationKey
-// (<shard, primary, seq, signer, digest>) is already present in s.Pending — i.e. the same signer has
-// already attested that exact (batch, digest). Note two BAFs from one signer with *different* digests
-// for the same batch are NOT duplicates: they are equivocation evidence and both are kept.
+// (<shard, primary, seq, signer, digest>) is already present in s.Pending or was accepted earlier in
+// this call — i.e. the same signer has already attested that exact (batch, digest). Note two BAFs from
+// one signer with *different* digests for the same batch are NOT duplicates: they are equivocation
+// evidence and both are kept.
 // A complaint is skipped when its ShardTerm is not in s.Shards, or when the same signer has already
 // complained about that ShardTerm. The dedup sets are seeded from the existing s.Pending / s.Complaints
-// and, for complaints, updated as events are accepted within this call.
+// and updated as events are accepted within this call.
 func (s *State) CollectAndDeduplicateEvents(l *flogging.FabricLogger, ces ...ControlEvent) {
-	// shardsAndSequences dedups incoming BAFs against ones already in Pending. It is seeded from
-	// Pending and, unlike the complaints set below, is not updated as BAFs are appended in this
-	// loop — so two identical BAFs arriving in the same round would both be kept here. That case
-	// is prevented upstream: ControlEvent.ID() hashes the full <seq, configSeq, signer, primary,
-	// shard, digest> tuple, and SmartBFT's request pool rejects a duplicate RequestInfo before it
-	// ever reaches a proposal, so identical BAFs cannot co-occur in one round's events.
+	// shardsAndSequences dedups incoming BAFs against ones already in Pending and ones accepted
+	// earlier in this loop. The threshold tally counts every pending BAF, so a BAF the leader
+	// repeats in one proposal must be dropped here, or each copy would count as another signer.
 	shardsAndSequences := make(map[attestationKey]struct{}, len(s.Pending))
 	for _, baf := range s.Pending {
 		shardsAndSequences[attestationKeyOf(baf)] = struct{}{}
@@ -481,6 +479,7 @@ func (s *State) CollectAndDeduplicateEvents(l *flogging.FabricLogger, ces ...Con
 				continue
 			}
 
+			shardsAndSequences[attestationKeyOf(ce.BAF)] = struct{}{}
 			s.Pending = append(s.Pending, ce.BAF)
 		}
 
@@ -493,7 +492,7 @@ func (s *State) CollectAndDeduplicateEvents(l *flogging.FabricLogger, ces ...Con
 
 			if complainers, exists := complaints[st]; exists {
 				if _, exists := complainers[ce.Complaint.Signer]; exists {
-					l.Warnf("Node %d already signed complaint for shard %d and term %d", ce.Complaint.Shard, ce.Complaint.Term)
+					l.Warnf("Node %d already signed complaint for shard %d and term %d", ce.Complaint.Signer, ce.Complaint.Shard, ce.Complaint.Term)
 					continue
 				}
 			} else {

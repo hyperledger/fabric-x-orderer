@@ -71,6 +71,16 @@ func CreateConfigCommonBlock(blockNum uint64, prevHash []byte, txCount uint64, d
 }
 
 func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte, batchID arma_types.BatchID, txCount uint64, decisionNum arma_types.DecisionNum, batchCount, batchIndex int, lastConfigBlockNum uint64) error {
+	if err := checkBlockShape(block); err != nil {
+		return err
+	}
+
+	// A data block carries no data; its batch is fetched from the batchers by its digest. Data, if set,
+	// could make protoutil.IsConfigBlock take the block for a config block.
+	if n := len(block.GetData().GetData()); n != 0 {
+		return errors.Errorf("proposed data block carries %d data entries instead of none", n)
+	}
+
 	// verify hash chain
 	if !bytes.Equal(block.Header.PreviousHash, prevHash) {
 		return errors.Errorf("proposed block header prev hash %s isn't equal to computed prev hash %s", hex.EncodeToString(block.Header.PreviousHash), hex.EncodeToString(prevHash))
@@ -90,10 +100,6 @@ func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte
 	computedBlockMetadata, err := ledger.AssemblerBlockMetadataToBytes(batchID, &state.OrderingInformation{DecisionNum: decisionNum, BatchCount: batchCount, BatchIndex: batchIndex}, txCount)
 	if err != nil {
 		panic(fmt.Errorf("failed to invoke AssemblerBlockMetadataToBytes: %s", err))
-	}
-
-	if block.Metadata == nil || block.Metadata.Metadata == nil {
-		return errors.Errorf("proposed block metadata is nil")
 	}
 
 	if !bytes.Equal(computedBlockMetadata, block.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]) {
@@ -117,6 +123,10 @@ func VerifyDataCommonBlock(block *common.Block, blockNum uint64, prevHash []byte
 }
 
 func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHash []byte, dataHash []byte, txCount uint64, decisionNum arma_types.DecisionNum, batchCount, batchIndex int) error {
+	if err := checkBlockShape(configBlock); err != nil {
+		return err
+	}
+
 	// verify block number
 	if configBlock.Header.Number != blockNum {
 		return errors.Errorf("proposed config block header number %d isn't equal to computed number %d", configBlock.Header.Number, blockNum)
@@ -152,10 +162,6 @@ func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHas
 		panic(fmt.Errorf("failed to invoke AssemblerBlockMetadataToBytes: %s", err))
 	}
 
-	if configBlock.Metadata == nil || configBlock.Metadata.Metadata == nil || len(configBlock.Metadata.Metadata) != len(common.BlockMetadataIndex_name) {
-		return errors.Errorf("proposed config block metadata is not set")
-	}
-
 	if !bytes.Equal(computedBlockMetadata, configBlock.Metadata.Metadata[common.BlockMetadataIndex_ORDERER]) {
 		return errors.Errorf("proposed config block metadata isn't equal to computed metadata")
 	}
@@ -173,5 +179,22 @@ func VerifyConfigCommonBlock(configBlock *common.Block, blockNum uint64, prevHas
 		return errors.Errorf("last config in block metadata points to %d instead of the config block number %d", lastConf.Index, blockNum)
 	}
 
+	return nil
+}
+
+// checkBlockShape checks that a proposed block has a header and a metadata entry for every index this
+// build knows of, so that the verifiers can read them. A proposed block comes from another consenter, so
+// its shape is not assumed. Extra metadata entries are allowed, for a block of a node built with a newer
+// fabric-protos.
+func checkBlockShape(block *common.Block) error {
+	if block == nil {
+		return errors.New("block is nil")
+	}
+	if block.Header == nil {
+		return errors.New("block has no header")
+	}
+	if n := len(block.GetMetadata().GetMetadata()); n < len(common.BlockMetadataIndex_name) {
+		return errors.Errorf("block metadata has %d entries instead of at least %d", n, len(common.BlockMetadataIndex_name))
+	}
 	return nil
 }

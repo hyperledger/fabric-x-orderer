@@ -9,6 +9,7 @@ package batcher_test
 import (
 	"testing"
 
+	"github.com/hyperledger/fabric-protos-go-apiv2/common"
 	policyMocks "github.com/hyperledger/fabric-x-orderer/common/policy/mocks"
 	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/batcher"
@@ -46,7 +47,7 @@ func TestRequestsInspectAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	req2, err := proto.Marshal(tx.CreateStructuredRequest([]byte{11})) // should map to shard 2
 	require.NoError(t, err)
-	largeReq, err := proto.Marshal(tx.CreateStructuredRequest(make([]byte, 102))) // large request, mapped to shard 1
+	largeReq, err := proto.Marshal(tx.CreateStructuredRequest(make([]byte, 103))) // large request, mapped to shard 1
 	require.NoError(t, err)
 	reqWithConfigSeq := tx.CreateStructuredRequest([]byte{1})
 	reqWithConfigSeq.ConfigSeq = 1
@@ -153,6 +154,43 @@ func requireMatchingBatchedIDs(t *testing.T, verifier *batcher.RequestsInspector
 	for i, req := range reqs {
 		require.Equal(t, verifier.RequestID(req), ids[i], "id at index %d does not match its request", i)
 	}
+}
+
+// Scenario:
+//  1. Build a batcher verifier on channel "arma", with a single shard so that every request maps to it.
+//  2. Verify data requests whose channel header names "arma", another channel, or none, singly and in a batch.
+//  3. Expect the request of another channel to be rejected, alone or in a batch pulled from the primary.
+func TestRequestsInspectorVerifierChecksChannelID(t *testing.T) {
+	bundle := &configMocks.FakeConfigResources{}
+	configtxValidator := &policyMocks.FakeConfigtxValidator{}
+	configtxValidator.ChannelIDReturns("arma")
+	bundle.ConfigtxValidatorReturns(configtxValidator)
+	config := &config.BatcherNodeConfig{
+		ShardId:         1,
+		Shards:          []config.ShardInfo{{ShardId: types.ShardID(1)}},
+		BatchMaxSize:    10,
+		BatchMaxBytes:   1 << 20,
+		RequestMaxBytes: 1 << 10,
+		Bundle:          bundle,
+	}
+	verifier := batcher.NewRequestsInspectorVerifier(
+		testutil.CreateLogger(t, 1), config, nil, batcher.DefaultRequestID, &fakeRequestPool{})
+
+	marshal := func(channel string) []byte {
+		req, err := proto.Marshal(tx.CreateStructuredRequestOfChannel(common.HeaderType_MESSAGE, channel, []byte{1}))
+		require.NoError(t, err)
+		return req
+	}
+	ofChannel, noChannel, otherChannel := marshal("arma"), marshal(""), marshal("other")
+
+	require.NoError(t, verifier.VerifyRequest(ofChannel))
+	require.NoError(t, verifier.VerifyRequest(noChannel))
+	require.ErrorContains(t, verifier.VerifyRequest(otherChannel), "wrong channel id in channel header")
+
+	_, err := verifier.VerifyBatchedRequests(types.BatchedRequests{ofChannel, noChannel})
+	require.NoError(t, err)
+	_, err = verifier.VerifyBatchedRequests(types.BatchedRequests{ofChannel, otherChannel})
+	require.ErrorContains(t, err, "wrong channel id in channel header")
 }
 
 // fakeRequestPool is a test double for batcher.RequestPool. A request is reported

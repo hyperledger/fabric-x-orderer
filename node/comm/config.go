@@ -165,12 +165,17 @@ func (cc ClientConfig) DialOptions() ([]grpc.DialOption, error) {
 }
 
 func (cc ClientConfig) Dial(address string) (*grpc.ClientConn, error) {
+	return cc.DialContext(context.Background(), address)
+}
+
+// DialContext is Dial, and also gives up when ctx is done.
+func (cc ClientConfig) DialContext(ctx context.Context, address string) (*grpc.ClientConn, error) {
 	dialOpts, err := cc.DialOptions()
 	if err != nil {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), cc.DialTimeout)
+	ctx, cancel := context.WithTimeout(ctx, cc.DialTimeout)
 	defer cancel()
 
 	conn, err := grpc.DialContext(ctx, address, dialOpts...)

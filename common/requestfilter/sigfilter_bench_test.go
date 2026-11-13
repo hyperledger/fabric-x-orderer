@@ -41,6 +41,7 @@ func BenchmarkSigFilter(b *testing.B) {
 
 	fc := &mocks.FakeFilterConfig{}
 	fc.GetClientSignatureVerificationRequiredReturns(false)
+	fc.GetChannelIDReturns("arma")
 	var v requestfilter.RulesVerifier
 	v.AddStructureRule(requestfilter.NewSigFilter(fc, policies.ChannelWriters))
 

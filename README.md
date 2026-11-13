@@ -91,7 +91,10 @@ The sections below explain how to configure the security aspects of an Arma depl
 Arma checks the structure of every transaction it receives: the envelope must carry a payload with a channel header
 and a signature header, the signature header must carry a creator identity and a non-empty nonce, and the channel
 header's TxID must be the one derived from them, `TxID = hex(SHA256(nonce || creator))` (see
-`protoutil.ComputeTxID`). A transaction that fails these checks is rejected.
+`protoutil.ComputeTxID`). The channel header's channel ID must also be the network's channel ID: a config update must
+always carry it, while a data transaction (`MESSAGE`) may leave it empty. Fabric-X data transactions are always of type
+`MESSAGE`, and the committer rejects data transactions of any other type. A transaction that fails these checks is
+rejected.
 
 Whether Arma also verifies the client's signature on a data transaction is controlled by the
 `ClientSignatureVerificationRequired` setting in the node's local config. When it is off, data transactions need not be
@@ -102,6 +105,61 @@ included.
 Note that the TxID check is a structure check, not a proof of ownership: when client signatures are not verified,
 nothing binds the creator in the signature header to the sender, so a client can copy another client's nonce and
 creator, and produce the same TxID.
+
+#### Binding data transactions to a network
+
+Anyone who can read a network's blocks can copy a data transaction and submit it to another network. Whether the other
+network accepts it depends on how the transaction is bound to its own network. There are two ways to bind it, and every
+data transaction must be bound in at least one of them.
+
+**1. By its namespaces**
+
+A data transaction reads and writes keys in one or more namespaces. A namespace binds the transaction to a network in
+two steps:
+
+- **The namespace itself.** The committer accepts the transaction only if every namespace it uses exists on the
+  network, at the version the transaction names. If another network has no such namespace, its committer rejects the
+  transaction.
+- **The namespace's endorsement crypto.** The committer accepts the transaction only if the endorsements on each
+  namespace satisfy that namespace's policy on the network. If another network has a namespace with the same ID and
+  version, but its policy uses different keys or identities, its committer rejects the transaction.
+
+So a transaction can be replayed only on a network that has the same namespaces, at the same versions, with the same
+endorsement crypto. To prevent replay, never share namespace endorsement crypto between networks:
+
+- For a threshold or key-based policy, give each network its own namespace keys.
+- For an MSP-rule policy, such as `Org1.member`, give each network its own application organizations, with their own
+  MSPs and CA trust roots. Issuing new certificates from the same CA is not enough, because `Org1.member` accepts any
+  certificate from that CA.
+- A network cloned from another network's state, for example from a snapshot or with fabric-x-migrate, starts with the
+  same namespaces and policies as the source. Before the clone accepts transactions, replace the policy of every
+  namespace. This also bumps the version of each namespace, so no transaction from the source network is valid on the
+  clone.
+
+When transactions are bound by their namespaces, clients do not need to set the channel ID.
+
+**2. By the channel ID in the envelope**
+
+Use this only if networks must share namespace endorsement crypto. It needs both of the following:
+
+- Clients set the channel ID in the channel header of every data transaction. Arma rejects a data transaction whose
+  channel ID is not the network's channel ID.
+- Every network that shares the crypto sets `ClientSignatureVerificationRequired: true` on its routers and batchers.
+  The client's signature covers the channel ID, so nobody else can change it. Without signature verification, anyone
+  can copy the transaction into a new envelope that names the other network's channel ID.
+
+This binding has a limit. The client that submitted the original transaction holds the creator's key, so it can sign a
+new envelope with the other network's channel ID and replay its own transaction there. Only binding by namespaces
+prevents this.
+
+This binding depends on the settings of every network that shares the crypto. So sharing namespace endorsement crypto
+between networks is a decision for the administrators of all of them, not for one application.
+
+**Data transactions without a channel ID**
+
+If a client leaves out the channel ID and sends a data transaction to the wrong network, Arma orders it and Broadcast
+returns success. If the transaction is bound by its namespaces, the committer of that network rejects it, and the state
+does not change. The client learns about the failure only from the committer.
 
 ## Run
 

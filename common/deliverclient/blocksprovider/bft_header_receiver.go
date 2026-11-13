@@ -112,6 +112,10 @@ func (hr *BFTHeaderReceiver) DeliverHeaders() {
 			return
 
 		case *orderer.DeliverResponse_Block:
+			if t.Block.GetHeader() == nil {
+				hr.logger.Warningf("[%s][%s] Received no block or a block with no header", hr.chainID, hr.endpoint)
+				return
+			}
 			blockNum := t.Block.Header.Number
 
 			if !hr.configBlockOps.IsConfigBlock(t.Block) { // normal blocks with block.Data==nil

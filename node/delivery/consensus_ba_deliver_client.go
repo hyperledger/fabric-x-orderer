@@ -92,9 +92,9 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 	}
 
 	// position is the next BA to hand over: after the last BA in the ledger until a BA is handed over,
-	// then after the last BA handed over. A reconnect seeks from it, and skips the BAs before it in its
-	// decision, so it does not hand over a BA twice, also not the BAs that wait in incomingBAsChan and are
-	// not yet in the ledger. It is kept in memory only; after a restart the assembler seeks from its ledger.
+	// then after the last BA handed over. Every connection seeks from its decision, so a reconnect does not
+	// hand over a BA twice, also not the BAs that wait in incomingBAsChan and are not yet in the ledger. It is
+	// kept in memory only; after a restart the assembler seeks from its ledger.
 	// Pull calls both the request factory and the block handler from its goroutine.
 	position := createAssemblerConsensusPosition(initOrderingInfo)
 	cr.logger.Infof("Initial OrderingInfo: %s; Initial AssemblerConsensusPosition: %+v", initOrderingInfo.String(), position)
@@ -149,12 +149,14 @@ func (cr *ConsensusBAReplicator) Replicate() <-chan *state.AvailableBatchOrdered
 				},
 			}
 
-			// The seek starts at the decision of position, so the BAs of that decision before position were
-			// already handed over: by the run before a restart, which committed part of the decision, or before a
-			// reconnect. For instance, if a decision comprising three batches was interrupted after two, only the
-			// third batch is handed over again.
+			// The seek starts at the decision of position. After a restart the ledger can end partway through that
+			// decision, so the BAs before position were committed by the run before and are skipped, on the first
+			// connection and on any reconnect until a BA is handed over. For instance, if a decision comprising
+			// three batches was interrupted after two, only the third batch is handed over again. Once a BA is
+			// handed over, position moves to a decision boundary before the stream is read again: Pull hands
+			// over every BA of a decision before it reads the next one.
 			if abo.OrderingInformation.DecisionNum == position.DecisionNum && abo.OrderingInformation.BatchIndex < position.BatchIndex {
-				cr.logger.Infof("AvailableBatchOrdered skipped, already handed over; BatchID: %s, OrderingInfo: %s; AssemblerConsensusPosition: %+v",
+				cr.logger.Infof("AvailableBatchOrdered skipped, already committed; BatchID: %s, OrderingInfo: %s; AssemblerConsensusPosition: %+v",
 					types.BatchIDToString(abo.AvailableBatch), abo.OrderingInformation.String(), position)
 				continue
 			}

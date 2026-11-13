@@ -96,6 +96,31 @@ func TestBftHeaderReceiver_NilResponse(t *testing.T) {
 	assert.Equal(t, fakeBlockVerifier.VerifyBlockAttestationCallCount(), 0)
 }
 
+// Scenario:
+//  1. Start a header receiver whose stream returns a block with no header.
+//  2. Expect the receiver to stop with an error stop time, without a header and without verifying.
+func TestBftHeaderReceiver_BlockWithNoHeader(t *testing.T) {
+	fakeBlockVerifier := &fake.UpdatableBlockVerifier{}
+
+	streamClientMock := &fake.DeliverClient{}
+	streamClientMock.RecvReturns(&orderer.DeliverResponse{
+		Type: &orderer.DeliverResponse_Block{Block: &common.Block{}},
+	}, nil)
+	streamClientMock.CloseSendReturns(nil)
+
+	hr := blocksprovider.NewBFTHeaderReceiver("testchannel", "10.10.10.11:666", streamClientMock,
+		fakeBlockVerifier, &utils.CommonConfigBlockOperations{}, nil, flogging.MustGetLogger("test.BFTHeaderReceiver"))
+
+	hr.DeliverHeaders()
+	require.True(t, hr.IsStarted())
+	require.True(t, hr.IsStopped())
+	require.False(t, hr.GetErrorStopTime().IsZero())
+	_, _, err := hr.LastBlockNum()
+	require.EqualError(t, err, "not found")
+	require.Zero(t, fakeBlockVerifier.VerifyBlockAttestationCallCount())
+	require.Zero(t, fakeBlockVerifier.VerifyBlockCallCount())
+}
+
 func TestBftHeaderReceiver_WithBlocks_Renew(t *testing.T) {
 	fakeBlockVerifier := &fake.UpdatableBlockVerifier{}
 	fakeBlockVerifier.VerifyBlockAttestationCalls(naiveBlockVerifier)

@@ -67,16 +67,20 @@ type ShardRouter struct {
 	tlsCert                      []byte
 	tlsKey                       []byte
 	clientConfig                 comm.ClientConfig
-	closeReconnectOnce           sync.Once
 	initOnce                     sync.Once
 	reconnectRequests            chan reconnectReq
-	closeReconnect               chan struct{}
 	verifier                     *requestfilter.RulesVerifier
 	configSubmitter              ConfigurationSubmitter
 	batcherReconnects            metrics.Counter
 	batcherConnected             metrics.Gauge
 	wasConnected                 bool
 	forwarded                    metrics.Counter
+
+	// stopCtx is cancelled by Stop and SoftStop. It stops the reconnection goroutine, also during a dial, and
+	// they wait for the goroutine to exit before they close the connections and the streams.
+	stopCtx        context.Context
+	cancelStop     context.CancelFunc
+	reconnectGroup sync.WaitGroup
 }
 
 func NewShardRouter(l *flogging.FabricLogger,
@@ -108,6 +112,7 @@ func NewShardRouter(l *flogging.FabricLogger,
 	}
 
 	batcherReconnects, batcherConnected := routerMetrics.shardMetrics(shardID)
+	stopCtx, cancelStop := context.WithCancel(context.Background())
 
 	sr := &ShardRouter{
 		tlsCert:                      tlsCert,
@@ -119,13 +124,14 @@ func NewShardRouter(l *flogging.FabricLogger,
 		router2batcherConnPoolSize:   numOfConnectionsForBatcher,
 		clientConfig:                 cc,
 		reconnectRequests:            make(chan reconnectReq, 2*numOfgRPCStreamsPerConnection*numOfConnectionsForBatcher),
-		closeReconnect:               make(chan struct{}),
 		verifier:                     verifier,
 		configSubmitter:              configSubmitter,
 		batcherReconnects:            batcherReconnects,
 		batcherConnected:             batcherConnected,
 		wasConnected:                 true,
 		forwarded:                    routerMetrics.forwardedToShard(shardID),
+		stopCtx:                      stopCtx,
+		cancelStop:                   cancelStop,
 	}
 
 	return sr
@@ -227,12 +233,12 @@ func (sr *ShardRouter) reconnect(connIndex int) error {
 	numOfRetries := 1
 	for {
 		select {
-		case <-sr.closeReconnect:
-			return fmt.Errorf("reconnection aborted because the shard-router was stoped")
+		case <-sr.stopCtx.Done():
+			return fmt.Errorf("reconnection aborted because the shard-router was stopped")
 		case <-time.After(interval):
 			sr.logger.Warnf("Retry attempt #%d", numOfRetries)
 			numOfRetries++
-			conn, err := sr.clientConfig.Dial(sr.batcherEndpoint)
+			conn, err := sr.clientConfig.DialContext(sr.stopCtx, sr.batcherEndpoint)
 			if err != nil {
 				interval = min(interval*2, maxRetryInterval)
 				sr.logger.Errorf("Reconnection failed: %v, trying again in: %s", err, interval)
@@ -240,8 +246,12 @@ func (sr *ShardRouter) reconnect(connIndex int) error {
 				continue
 			} else {
 				sr.lock.Lock()
+				oldConn := sr.connPool[connIndex]
 				sr.connPool[connIndex] = conn
 				sr.lock.Unlock()
+				if oldConn != nil {
+					oldConn.Close()
+				}
 				sr.logger.Debugf("Reconnection succeeded for connection %d", connIndex)
 				return nil
 			}
@@ -378,7 +388,11 @@ func (sr *ShardRouter) initConnPoolAndStreams() {
 }
 
 func (sr *ShardRouter) startReconnectionRoutine() {
-	go sr.reconnectRoutine()
+	sr.reconnectGroup.Add(1)
+	go func() {
+		defer sr.reconnectGroup.Done()
+		sr.reconnectRoutine()
+	}()
 }
 
 func (sr *ShardRouter) maybeNotifyReconnectRoutine(stream *stream) {
@@ -393,7 +407,7 @@ func (sr *ShardRouter) maybeNotifyReconnectRoutine(stream *stream) {
 func (sr *ShardRouter) reconnectRoutine() {
 	for {
 		select {
-		case <-sr.closeReconnect:
+		case <-sr.stopCtx.Done():
 			sr.logger.Infof("Reconnection goroutine in shard-router is exiting")
 			return
 		case req := <-sr.reconnectRequests:
@@ -401,7 +415,7 @@ func (sr *ShardRouter) reconnectRoutine() {
 			reconnected := false
 			for !reconnected {
 				select {
-				case <-sr.closeReconnect:
+				case <-sr.stopCtx.Done():
 					sr.logger.Infof("Reconnection goroutine in shard-router is exiting")
 					return
 				default:
@@ -416,44 +430,41 @@ func (sr *ShardRouter) reconnectRoutine() {
 }
 
 func (sr *ShardRouter) Stop() {
-	// close the reconnection goroutine
-	sr.closeReconnectOnce.Do(func() {
-		close(sr.closeReconnect)
-	})
-
-	// close all connetions in connection pool
-	sr.lock.RLock()
-	for _, con := range sr.connPool {
-		if con != nil {
-			con.Close()
-		}
-	}
-	sr.lock.RUnlock()
+	sr.stop(nil)
 }
 
+// SoftStop stops the shard router like Stop, and also answers every pending request with errToClients.
 func (sr *ShardRouter) SoftStop(errToClients error) {
-	// close the reconnection goroutine
-	sr.closeReconnectOnce.Do(func() {
-		close(sr.closeReconnect)
-	})
+	sr.stop(errToClients)
+}
 
-	// send error responses to all pending requests in all streams
+// stop stops the reconnection goroutine and waits for it, so that no connection or stream is replaced while
+// they are closed. Then it closes every stream and every connection, and answers the pending requests of each
+// stream with errToClients, if it is not nil.
+func (sr *ShardRouter) stop(errToClients error) {
+	sr.cancelStop()
+	sr.reconnectGroup.Wait()
+
 	sr.lock.RLock()
+	defer sr.lock.RUnlock()
+
 	for _, streamsInConn := range sr.streams {
 		for _, stream := range streamsInConn {
-			if stream != nil {
+			if stream == nil {
+				continue
+			}
+			if errToClients != nil {
 				stream.sendResponseToAllClientsOnError(errToClients)
 			}
+			stream.close()
 		}
 	}
 
-	// close all connetions in connection pool
-	for _, con := range sr.connPool {
-		if con != nil {
-			con.Close()
+	for _, conn := range sr.connPool {
+		if conn != nil {
+			conn.Close()
 		}
 	}
-	sr.lock.RUnlock()
 }
 
 // IsAllStreamsOKinSR checks that all the streams in the shard-router are not faulty.

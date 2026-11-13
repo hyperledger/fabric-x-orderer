@@ -68,7 +68,14 @@ type Consensus struct {
 }
 
 func (c *Consensus) Complain(viewNum uint64, stopView bool) {
-	c.consensusLock.RLock()
+	// A reconfiguration holds the write lock while it replaces the view changer
+	// and waits for the views it stopped. Waiting for the read lock here would
+	// block the view that complains, and the reconfiguration would wait for
+	// that view forever. The complaint is irrelevant during a reconfiguration,
+	// because the view changer is replaced anyway.
+	if !c.consensusLock.TryRLock() {
+		return
+	}
 	defer c.consensusLock.RUnlock()
 	c.viewChanger.StartViewChange(viewNum, stopView)
 }
@@ -236,6 +243,9 @@ func (c *Consensus) reconfig(reconfig types.Reconfig) {
 	verificationSeq := c.Verifier.VerificationSequence()
 	c.Logger.Infof("Pruning the request pool after reconfig with verification sequence %d", verificationSeq)
 	c.Pool.Prune(func(req []byte) error {
+		if uint64(len(req)) > c.Config.RequestMaxBytes {
+			return fmt.Errorf("request (%d) is bigger than request max bytes (%d)", len(req), c.Config.RequestMaxBytes)
+		}
 		_, err := c.Verifier.VerifyRequest(req)
 		return err
 	})
@@ -500,6 +510,19 @@ func (c *Consensus) setViewAndSeq(view, seq, dec uint64) (newView, newSeq, newDe
 	}
 	if viewSeq == nil {
 		c.Logger.Debugf("No new view to restore")
+
+		// The built-in WAL truncates a NewView record when the next pre-prepare
+		// is saved. In that case the trailing proposal still defines the view
+		// and the decision count the node was in before the restart.
+		lastProposal, err := c.state.LoadLastProposalView()
+		if err != nil {
+			c.Logger.Panicf("Failed loading the last proposal view, error: %v", err)
+		}
+		if lastProposal != nil && lastProposal.GetViewId() > newView {
+			c.Logger.Debugf("Restoring start view %d from the last proposal record", lastProposal.GetViewId())
+			newView = lastProposal.GetViewId()
+			newDec = lastProposal.GetDecisionsInView()
+		}
 	} else if viewSeq.Seq >= seq {
 		// Check if metadata should be taken from the restored new view
 		c.Logger.Debugf("Restoring from new view with view %d and seq %d", viewSeq.View, viewSeq.Seq)

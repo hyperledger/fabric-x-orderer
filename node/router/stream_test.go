@@ -685,6 +685,52 @@ func TestSendRequestsUnregistersAConfigUpdateOnHandoff(t *testing.T) {
 	require.Empty(t, responseChan)
 }
 
+// Scenario:
+//  1. Build a stream whose verifier is on channel "arma".
+//  2. Verify data and config update requests whose channel header names "arma", another channel, or none.
+//  3. Expect a data request with no channel or "arma" to pass, a config update to need "arma", and any other
+//     channel to be rejected as a bad request.
+func TestVerifyAndClassifyRequestChecksChannelID(t *testing.T) {
+	s := &stream{
+		logger:   testutil.CreateLogger(t, 0),
+		verifier: createTestVerifierAcceptingConfigUpdates(),
+	}
+
+	const (
+		missing = "missing channel id in channel header"
+		wrong   = "wrong channel id in channel header"
+	)
+	for _, tc := range []struct {
+		name      string
+		reqType   common.HeaderType
+		channelID string
+		errMsg    string
+	}{
+		{name: "data request of the channel", reqType: common.HeaderType_MESSAGE, channelID: "arma"},
+		{name: "data request with no channel", reqType: common.HeaderType_MESSAGE, channelID: ""},
+		{name: "data request of another channel", reqType: common.HeaderType_MESSAGE, channelID: "other", errMsg: wrong},
+		{name: "config update of the channel", reqType: common.HeaderType_CONFIG_UPDATE, channelID: "arma"},
+		{name: "config update with no channel", reqType: common.HeaderType_CONFIG_UPDATE, channelID: "", errMsg: missing},
+		{
+			name: "config update of another channel", reqType: common.HeaderType_CONFIG_UPDATE, channelID: "other",
+			errMsg: wrong,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := tx.CreateStructuredRequestOfChannel(tc.reqType, tc.channelID, []byte("data"))
+			reqType, err := s.verifyAndClassifyRequest(req)
+			if tc.errMsg != "" {
+				require.ErrorContains(t, err, tc.errMsg)
+				var badReq *badRequestError
+				require.ErrorAs(t, err, &badReq)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.reqType, reqType)
+		})
+	}
+}
+
 // createTestVerifierAcceptingConfigUpdates builds a verifier whose policy manager accepts config updates.
 func createTestVerifierAcceptingConfigUpdates() *requestfilter.RulesVerifier {
 	bundle := &configMocks.FakeConfigResources{}
