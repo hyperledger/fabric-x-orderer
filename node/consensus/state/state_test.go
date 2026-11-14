@@ -481,7 +481,7 @@ func TestCollectAndDeduplicateEvents_SameSignerDifferentDigests(t *testing.T) {
 	assert.Equal(t, []byte{4, 5, 6}, state.Pending[1].Digest())
 
 	// The retained conflict is now visible to equivocation detection, which rotates the primary.
-	state.DetectEquivocation(logger)
+	state.DetectEquivocation(logger, nil)
 	assert.Equal(t, uint64(2), state.Shards[0].Term)
 }
 
@@ -677,7 +677,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		state.DetectEquivocation(logger)
+		state.DetectEquivocation(logger, nil)
 
 		// Term should not change - no equivocation detected
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -696,7 +696,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		state.DetectEquivocation(logger)
+		state.DetectEquivocation(logger, nil)
 
 		// Term should be incremented due to equivocation
 		assert.Equal(t, uint64(2), state.Shards[0].Term)
@@ -716,10 +716,48 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		state.DetectEquivocation(logger)
+		state.DetectEquivocation(logger, nil)
 
 		// Term should be incremented
 		assert.Equal(t, uint64(6), state.Shards[0].Term)
+	})
+
+	t.Run("no rotation when the conflict was already pending", func(t *testing.T) {
+		pending := []types.BatchAttestationFragment{
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0, nil),
+			types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{4, 5, 6}, types.PartyID(3), 0, 0, nil),
+		}
+		state := consensus_state.State{
+			N:         4,
+			Threshold: 2,
+			Quorum:    3,
+			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 2}},
+			Pending:   pending,
+		}
+
+		state.DetectEquivocation(logger, pending)
+
+		// The equivocation was punished when the digests first met, so the term stays.
+		assert.Equal(t, uint64(2), state.Shards[0].Term)
+	})
+
+	t.Run("rotation when the conflict appears this round", func(t *testing.T) {
+		first := types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{1, 2, 3}, types.PartyID(2), 0, 0, nil)
+		state := consensus_state.State{
+			N:         4,
+			Threshold: 2,
+			Quorum:    3,
+			Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 1}},
+			Pending: []types.BatchAttestationFragment{
+				first,
+				types.NewSimpleBatchAttestationFragment(types.ShardID(1), types.PartyID(1), types.BatchSequence(1), []byte{4, 5, 6}, types.PartyID(3), 0, 0, nil),
+			},
+		}
+
+		// Only one digest was pending before this round, so the conflict is new.
+		state.DetectEquivocation(logger, []types.BatchAttestationFragment{first})
+
+		assert.Equal(t, uint64(2), state.Shards[0].Term)
 	})
 
 	t.Run("no equivocation - different sequences", func(t *testing.T) {
@@ -735,7 +773,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		state.DetectEquivocation(logger)
+		state.DetectEquivocation(logger, nil)
 
 		// Term should not change
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -754,7 +792,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		state.DetectEquivocation(logger)
+		state.DetectEquivocation(logger, nil)
 
 		// Terms should not change
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -774,7 +812,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		state.DetectEquivocation(logger)
+		state.DetectEquivocation(logger, nil)
 
 		// Term should not change
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -796,7 +834,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		state.DetectEquivocation(logger)
+		state.DetectEquivocation(logger, nil)
 
 		// Both terms should be incremented
 		assert.Equal(t, uint64(2), state.Shards[0].Term)
@@ -812,7 +850,7 @@ func TestDetectEquivocation(t *testing.T) {
 			Pending:   []types.BatchAttestationFragment{},
 		}
 
-		state.DetectEquivocation(logger)
+		state.DetectEquivocation(logger, nil)
 
 		// Term should not change
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -835,7 +873,7 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		state.DetectEquivocation(logger)
+		state.DetectEquivocation(logger, nil)
 
 		// Term must not change: self-signed BAFs cannot be used as equivocation evidence.
 		assert.Equal(t, uint64(1), state.Shards[0].Term)
@@ -857,11 +895,48 @@ func TestDetectEquivocation(t *testing.T) {
 			},
 		}
 
-		state.DetectEquivocation(logger)
+		state.DetectEquivocation(logger, nil)
 
 		// Equivocation is detected: term must be incremented.
 		assert.Equal(t, uint64(2), state.Shards[0].Term)
 	})
+}
+
+// TestProcessRotatesOnceOnEquivocation verifies that an equivocation rotates the shard's primary
+// once, in the decision where the conflicting digests first meet in Pending. The evidence stays in
+// Pending afterwards, so later decisions must not rotate again on account of it.
+func TestProcessRotatesOnceOnEquivocation(t *testing.T) {
+	logger := testutil.CreateLogger(t, 0)
+	st := &consensus_state.State{
+		N:         7,
+		Threshold: 3,
+		Quorum:    5,
+		Shards:    []consensus_state.ShardTerm{{Shard: 1, Term: 0}},
+	}
+
+	// Primary 2 signs two batches for seq 1 and sends them to different secondaries.
+	st, _, _ = st.Process(logger, 0,
+		bafCE(1, 2, 1, []byte{1}, 3, 0, 0, nil),
+		bafCE(1, 2, 1, []byte{2}, 4, 0, 0, nil))
+	require.Equal(t, uint64(1), st.Shards[0].Term)
+	require.Len(t, st.Pending, 2)
+
+	// Decisions without new evidence leave the term alone, though the evidence is still pending.
+	for range 5 {
+		st, _, _ = st.Process(logger, 0)
+	}
+	assert.Equal(t, uint64(1), st.Shards[0].Term)
+	assert.Len(t, st.Pending, 2)
+
+	// A third digest for the same batch is more evidence of the same equivocation.
+	st, _, _ = st.Process(logger, 0, bafCE(1, 2, 1, []byte{3}, 5, 0, 0, nil))
+	assert.Equal(t, uint64(1), st.Shards[0].Term)
+
+	// Conflicting digests for another seq are a new equivocation, and rotate again.
+	st, _, _ = st.Process(logger, 0,
+		bafCE(1, 2, 2, []byte{4}, 3, 0, 0, nil),
+		bafCE(1, 2, 2, []byte{5}, 4, 0, 0, nil))
+	assert.Equal(t, uint64(2), st.Shards[0].Term)
 }
 
 // TestExtractBatchAttestationsFromPending_EquivocationDigestLeak demonstrates the bug where,
@@ -901,7 +976,7 @@ func TestExtractBatchAttestationsFromPending_EquivocationDigestLeak(t *testing.T
 		},
 	}
 
-	state.DetectEquivocation(logger)
+	state.DetectEquivocation(logger, nil)
 	// Equivocation is detected: term must be incremented.
 	assert.Equal(t, uint64(2), state.Shards[0].Term)
 
@@ -930,7 +1005,7 @@ func TestExtractBatchAttestationsFromPending_EquivocationDigestLeak(t *testing.T
 		},
 	}
 
-	state2.DetectEquivocation(logger)
+	state2.DetectEquivocation(logger, nil)
 	// Equivocation is detected: term must be incremented.
 	assert.Equal(t, uint64(2), state2.Shards[0].Term)
 
