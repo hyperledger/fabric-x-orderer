@@ -4,6 +4,7 @@ package mocks
 import (
 	"sync"
 
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 	"github.com/hyperledger/fabric-x-orderer/node/consensus"
 )
 
@@ -24,11 +25,11 @@ type FakeBatchAttestationDB struct {
 	existsReturnsOnCall map[int]struct {
 		result1 bool
 	}
-	PutStub        func([][]byte, []uint64)
+	PutStub        func([]types.BatchID, types.DecisionNum)
 	putMutex       sync.RWMutex
 	putArgsForCall []struct {
-		arg1 [][]byte
-		arg2 []uint64
+		arg1 []types.BatchID
+		arg2 types.DecisionNum
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
@@ -132,24 +133,19 @@ func (fake *FakeBatchAttestationDB) ExistsReturnsOnCall(i int, result1 bool) {
 	}{result1}
 }
 
-func (fake *FakeBatchAttestationDB) Put(arg1 [][]byte, arg2 []uint64) {
-	var arg1Copy [][]byte
+func (fake *FakeBatchAttestationDB) Put(arg1 []types.BatchID, arg2 types.DecisionNum) {
+	var arg1Copy []types.BatchID
 	if arg1 != nil {
-		arg1Copy = make([][]byte, len(arg1))
+		arg1Copy = make([]types.BatchID, len(arg1))
 		copy(arg1Copy, arg1)
-	}
-	var arg2Copy []uint64
-	if arg2 != nil {
-		arg2Copy = make([]uint64, len(arg2))
-		copy(arg2Copy, arg2)
 	}
 	fake.putMutex.Lock()
 	fake.putArgsForCall = append(fake.putArgsForCall, struct {
-		arg1 [][]byte
-		arg2 []uint64
-	}{arg1Copy, arg2Copy})
+		arg1 []types.BatchID
+		arg2 types.DecisionNum
+	}{arg1Copy, arg2})
 	stub := fake.PutStub
-	fake.recordInvocation("Put", []interface{}{arg1Copy, arg2Copy})
+	fake.recordInvocation("Put", []interface{}{arg1Copy, arg2})
 	fake.putMutex.Unlock()
 	if stub != nil {
 		fake.PutStub(arg1, arg2)
@@ -162,13 +158,13 @@ func (fake *FakeBatchAttestationDB) PutCallCount() int {
 	return len(fake.putArgsForCall)
 }
 
-func (fake *FakeBatchAttestationDB) PutCalls(stub func([][]byte, []uint64)) {
+func (fake *FakeBatchAttestationDB) PutCalls(stub func([]types.BatchID, types.DecisionNum)) {
 	fake.putMutex.Lock()
 	defer fake.putMutex.Unlock()
 	fake.PutStub = stub
 }
 
-func (fake *FakeBatchAttestationDB) PutArgsForCall(i int) ([][]byte, []uint64) {
+func (fake *FakeBatchAttestationDB) PutArgsForCall(i int) ([]types.BatchID, types.DecisionNum) {
 	fake.putMutex.RLock()
 	defer fake.putMutex.RUnlock()
 	argsForCall := fake.putArgsForCall[i]

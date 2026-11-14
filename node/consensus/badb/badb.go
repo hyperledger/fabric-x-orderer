@@ -13,16 +13,19 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/hyperledger/fabric-lib-go/common/flogging"
 	"github.com/hyperledger/fabric-x-orderer/common/pebbledb"
+	"github.com/hyperledger/fabric-x-orderer/common/types"
 )
 
 // The first byte of a key names its keyspace.
 const (
-	digestKeyPrefix = 0 // digest -> epoch
-	epochKeyPrefix  = 1 // epoch | digest -> empty
+	digestKeyPrefix  = 0 // digest -> decision
+	epochKeyPrefix   = 1 // decision | digest -> empty
+	batchIDKeyPrefix = 2 // shard | primary | seq | digest -> decision
 )
 
-// BatchAttestationDB records the digests of the batches that consensus has ordered, so the consenter can
-// reject a batch attestation fragment for a batch that is already ordered. It is safe for concurrent use.
+// BatchAttestationDB records the batches that consensus has ordered. Their digests let the consenter
+// reject a batch attestation fragment for a batch that is already ordered, and their batch IDs record the
+// decision that ordered each batch of a <shard, primary>, in sequence order. It is safe for concurrent use.
 type BatchAttestationDB struct {
 	// lock guards closed. Pebble panics when a closed database is used, so every method holds it for
 	// reading while it uses db, and Close holds it for writing.
@@ -127,25 +130,30 @@ func (db *BatchAttestationDB) Exists(digest []byte) bool {
 	}
 }
 
-// Put stores each digest with the epoch at the same index, in one atomic write synced to disk. Storing a
-// digest again overwrites its epoch. It panics on a write error or a closed database.
-func (db *BatchAttestationDB) Put(digest [][]byte, epoch []uint64) {
+// Put indexes the batches that one decision ordered: each batch is stored under its digest, which Exists
+// checks, and under its batch ID <shard, primary, seq, digest>, with the decision as the value of both. It
+// writes in one atomic write synced to disk, and storing the same batches again changes nothing. It panics
+// on a write error or a closed database.
+func (db *BatchAttestationDB) Put(ids []types.BatchID, decision types.DecisionNum) {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 	if db.closed {
 		db.logger.Panicf("Failed updating database: %v", pebble.ErrClosed)
 	}
 
+	decisionBuff := make([]byte, 8)
+	binary.BigEndian.PutUint64(decisionBuff, uint64(decision))
+
 	batch := db.db.NewBatch()
 	defer batch.Close()
-	for i := 0; i < len(digest); i++ {
-		epochBuff := make([]byte, 8)
-		binary.BigEndian.PutUint64(epochBuff, epoch[i])
-
-		if err := batch.Set(makeDigestKey(digest[i]), epochBuff, nil); err != nil {
+	for _, id := range ids {
+		if err := batch.Set(makeDigestKey(id.Digest()), decisionBuff, nil); err != nil {
 			db.logger.Panicf("Failed updating database: %v", err)
 		}
-		if err := batch.Set(makeEpochKey(digest[i], epochBuff), []byte{0}, nil); err != nil {
+		if err := batch.Set(makeEpochKey(id.Digest(), decisionBuff), []byte{0}, nil); err != nil {
+			db.logger.Panicf("Failed updating database: %v", err)
+		}
+		if err := batch.Set(makeBatchIDKey(id), decisionBuff, nil); err != nil {
 			db.logger.Panicf("Failed updating database: %v", err)
 		}
 	}
@@ -214,6 +222,20 @@ func makeDigestKey(digest []byte) []byte {
 	buff := make([]byte, len(digest)+1)
 	buff[0] = digestKeyPrefix
 	copy(buff[1:], digest)
+	return buff
+}
+
+// makeBatchIDKey returns the key of a batch ID in the batch ID keyspace: the shard and the primary as 2
+// big-endian bytes each, the seq as 8 big-endian bytes, then the digest. The keys therefore sort by shard,
+// primary and seq, so the batches of one <shard, primary> are contiguous and in sequence order.
+func makeBatchIDKey(id types.BatchID) []byte {
+	digest := id.Digest()
+	buff := make([]byte, 1+2+2+8+len(digest))
+	buff[0] = batchIDKeyPrefix
+	binary.BigEndian.PutUint16(buff[1:], uint16(id.Shard()))
+	binary.BigEndian.PutUint16(buff[3:], uint16(id.Primary()))
+	binary.BigEndian.PutUint64(buff[5:], uint64(id.Seq()))
+	copy(buff[13:], digest)
 	return buff
 }
 
